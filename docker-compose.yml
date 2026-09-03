@@ -1,0 +1,72 @@
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: meta_pulse
+      MYSQL_USER: pulse
+      MYSQL_PASSWORD: ${PULSE_DB_PASSWORD:?set PULSE_DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${PULSE_DB_ROOT_PASSWORD:?set PULSE_DB_ROOT_PASSWORD}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - pulse_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${PULSE_DB_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  pulse-api:
+    build: .
+    restart: unless-stopped
+    environment:
+      PULSE_ENV: development
+      PULSE_HTTP_ADDR: :8088
+      PULSE_DB_DSN: pulse:${PULSE_DB_PASSWORD}@tcp(mysql:3306)/meta_pulse?charset=utf8mb4&parseTime=True&loc=Local
+      PULSE_REDIS_ADDR: redis:6379
+      NEWAPI_LOG_DSN: ${NEWAPI_LOG_DSN:-}
+      NEWAPI_INTERNAL_BASE_URL: ${NEWAPI_INTERNAL_BASE_URL:-}
+      PULSE_SERVICE_HMAC_SECRET: ${PULSE_SERVICE_HMAC_SECRET:-}
+      PULSE_USER_BFF_HMAC_SECRET: ${PULSE_USER_BFF_HMAC_SECRET:-}
+      PULSE_ADMIN_HMAC_SECRET: ${PULSE_ADMIN_HMAC_SECRET:-}
+    ports:
+      - "8088:8088"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  pulse-worker:
+    build: .
+    restart: unless-stopped
+    entrypoint: ["meta-pulse-worker"]
+    environment:
+      PULSE_ENV: development
+      PULSE_DB_DSN: pulse:${PULSE_DB_PASSWORD}@tcp(mysql:3306)/meta_pulse?charset=utf8mb4&parseTime=True&loc=Local
+      PULSE_REDIS_ADDR: redis:6379
+      NEWAPI_LOG_DSN: ${NEWAPI_LOG_DSN:-}
+      NEWAPI_INTERNAL_BASE_URL: ${NEWAPI_INTERNAL_BASE_URL:-}
+      PULSE_SERVICE_HMAC_SECRET: ${PULSE_SERVICE_HMAC_SECRET:-}
+      PULSE_INGEST_BATCH_SIZE: ${PULSE_INGEST_BATCH_SIZE:-500}
+      PULSE_SETTLEMENT_BATCH_SIZE: ${PULSE_SETTLEMENT_BATCH_SIZE:-100}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  pulse_mysql_data:
