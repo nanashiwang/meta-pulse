@@ -1,0 +1,27 @@
+# Binaries / build
+bin/
+dist/
+coverage/
+*.out
+*.test
+
+# Runtime
+*.log
+*.pid
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local data
+.data/
+data/
