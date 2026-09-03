@@ -102,9 +102,10 @@ signature = hex(HMAC-SHA256(shared_secret, payload))
 
 | 约束 | 防御的攻击 |
 |---|---|
-| 字段以换行连接 | 字段边界歧义导致的签名移植（`ab`+`c` 与 `a`+`bc`） |
+| 字段以换行连接，且签发端/验签端都拒绝字段中的 `CR/LF` | 分隔符注入造成的字段边界歧义与签名移植 |
 | TTL 2 分钟，双向校验 | 陈旧 ticket 重放；伪造的未来时间戳 |
 | nonce 单次有效，验签成功后由共享 Redis `SET NX` 原子消费；Redis 不可用时 fail closed | ticket 落在浏览器历史/Referer/代理日志中被重放；多实例各自放行；以及攻击者抢先烧掉他人 nonce 的骚扰 |
+| `user_id` 必须是大于 0 的规范十进制整数 | `0`、负数、前导零或带符号身份绕过 |
 | secret 为空时拒绝 | 未配置时 fail closed——空密钥的 HMAC 仍是合法 HMAC |
 
 new-api 已提供签发入口；论坛公网开放前仍须完成共享 Redis、固定 HTTPS callback 与网关 Cookie 隔离验收。

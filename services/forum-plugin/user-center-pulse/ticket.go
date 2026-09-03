@@ -44,9 +44,9 @@ type LoginTicket struct {
 
 // signingPayload builds the string that new-api signs and we verify.
 //
-// Fields are newline-joined rather than concatenated so that a value containing
-// the separator cannot be shifted into an adjacent field: signing "a|b" + "c"
-// and "a" + "b|c" must not produce the same payload.
+// Fields are newline-joined using the contract shared with new-api. Verify must
+// reject CR/LF in every string field before checking the signature; otherwise a
+// separator embedded in one field could shift data into an adjacent field.
 func (t *LoginTicket) signingPayload() string {
 	return strings.Join([]string{
 		t.UserID,
@@ -59,6 +59,19 @@ func (t *LoginTicket) signingPayload() string {
 	}, "\n")
 }
 
+func (t *LoginTicket) validateSignedFields() error {
+	userID, err := strconv.ParseUint(t.UserID, 10, 64)
+	if err != nil || userID == 0 || strconv.FormatUint(userID, 10) != t.UserID {
+		return fmt.Errorf("invalid user id in login ticket")
+	}
+	for _, field := range []string{t.UserID, t.Username, t.DisplayName, t.Email, t.Avatar, t.Nonce} {
+		if strings.ContainsAny(field, "\r\n") {
+			return fmt.Errorf("login ticket fields must not contain CR or LF")
+		}
+	}
+	return nil
+}
+
 // Verify checks the ticket signature, freshness, and single use.
 func (t *LoginTicket) Verify(ctx context.Context, secret string, nonces LoginTicketNonceStore, now time.Time) error {
 	if secret == "" {
@@ -67,8 +80,8 @@ func (t *LoginTicket) Verify(ctx context.Context, secret string, nonces LoginTic
 	if t.UserID == "" || t.Nonce == "" || t.Signature == "" {
 		return fmt.Errorf("incomplete login ticket")
 	}
-	if _, err := strconv.ParseInt(t.UserID, 10, 64); err != nil {
-		return fmt.Errorf("invalid user id in login ticket")
+	if err := t.validateSignedFields(); err != nil {
+		return err
 	}
 	if nonces == nil {
 		return fmt.Errorf("login ticket nonce store not configured")

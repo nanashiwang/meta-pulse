@@ -70,6 +70,42 @@ func TestForgedTicketRejected(t *testing.T) {
 	}
 }
 
+func TestSignedNonCanonicalUserIDRejected(t *testing.T) {
+	now := time.Now()
+	for _, userID := range []string{"0", "-1", "+1", "001"} {
+		t.Run(userID, func(t *testing.T) {
+			ticket := mintTicket(userID, now, "nonce-user-"+userID)
+			if err := ticket.Verify(context.Background(), testSecret, NewNonceCache(), now); err == nil {
+				t.Fatalf("signed non-canonical user id %q was accepted", userID)
+			}
+		})
+	}
+}
+
+func TestSignedFieldsRejectCRLFBoundaryShifting(t *testing.T) {
+	now := time.Now()
+	a := &LoginTicket{
+		UserID: "1", Username: "alice\nAdmin", DisplayName: "X", Email: "Y", Avatar: "Z",
+		Timestamp: now.Unix(), Nonce: "nonce-boundary",
+	}
+	b := &LoginTicket{
+		UserID: "1", Username: "alice", DisplayName: "Admin", Email: "X", Avatar: "Y\nZ",
+		Timestamp: now.Unix(), Nonce: "nonce-boundary",
+	}
+	if a.signingPayload() != b.signingPayload() {
+		t.Fatal("test setup does not reproduce the newline boundary ambiguity")
+	}
+	mac := hmac.New(sha256.New, []byte(testSecret))
+	_, _ = mac.Write([]byte(a.signingPayload()))
+	signature := hex.EncodeToString(mac.Sum(nil))
+	a.Signature, b.Signature = signature, signature
+	for _, ticket := range []*LoginTicket{a, b} {
+		if err := ticket.Verify(context.Background(), testSecret, NewNonceCache(), now); err == nil {
+			t.Fatal("correctly signed ticket containing a newline was accepted")
+		}
+	}
+}
+
 func TestWrongSecretRejected(t *testing.T) {
 	now := time.Now()
 	ticket := mintTicket("123", now, "nonce-secret")
@@ -136,17 +172,6 @@ func TestFailedVerificationDoesNotBurnNonce(t *testing.T) {
 	legit := mintTicket("123", now, "nonce-shared")
 	if err := legit.Verify(context.Background(), testSecret, nonces, now); err != nil {
 		t.Errorf("legitimate ticket rejected after a forgery attempt: %v", err)
-	}
-}
-
-// Newline-joining the payload prevents field-shifting: moving characters across
-// a field boundary must change the signature.
-func TestFieldShiftingProducesDifferentPayload(t *testing.T) {
-	a := &LoginTicket{UserID: "1", Username: "ab", DisplayName: "c", Nonce: "n"}
-	b := &LoginTicket{UserID: "1", Username: "a", DisplayName: "bc", Nonce: "n"}
-
-	if a.signingPayload() == b.signingPayload() {
-		t.Error("field boundaries are ambiguous; signatures could be transplanted")
 	}
 }
 
