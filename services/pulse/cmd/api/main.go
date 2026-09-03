@@ -80,7 +80,7 @@ func main() {
 	metrics := observability.NewMetrics()
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           app.NewRouterWithProfile(logger, readiness, profile, profileAuth, metrics),
+		Handler:           app.NewRouterWithProfileAndSummary(logger, readiness, profile, profile, profileAuth, metrics),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
