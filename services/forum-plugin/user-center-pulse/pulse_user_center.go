@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/apache/answer-plugins/util"
 	"github.com/apache/answer/plugin"
@@ -30,11 +31,13 @@ var Info embed.FS
 type UserCenter struct {
 	Config *Config
 	Client *PulseClient
+	Nonces *NonceCache
 }
 
 func init() {
 	plugin.Register(&UserCenter{
 		Config: &Config{},
+		Nonces: NewNonceCache(),
 	})
 }
 
@@ -85,10 +88,7 @@ func (uc *UserCenter) ControlCenterItems() []plugin.ControlCenter {
 	}
 }
 
-// LoginCallback resolves a new-api session into a forum user.
-//
-// The signature is verified by new-api's signed BFF before the request reaches
-// us; here we only map the trusted headers onto Answer's user model.
+// LoginCallback resolves a new-api login ticket into a forum user.
 func (uc *UserCenter) LoginCallback(ctx *plugin.GinContext) (*plugin.UserCenterBasicUserInfo, error) {
 	return uc.resolveUser(ctx)
 }
@@ -99,21 +99,39 @@ func (uc *UserCenter) SignUpCallback(ctx *plugin.GinContext) (*plugin.UserCenter
 	return uc.resolveUser(ctx)
 }
 
+// resolveUser verifies the signed ticket new-api issued for this browser.
+//
+// This callback is reached by a browser redirect, so every field is attacker-
+// controlled until the signature checks out. Nothing here may be trusted before
+// Verify returns nil.
 func (uc *UserCenter) resolveUser(ctx *gin.Context) (*plugin.UserCenterBasicUserInfo, error) {
-	externalID := ctx.Query("user_id")
-	if externalID == "" {
-		return nil, fmt.Errorf("missing user_id in user center callback")
-	}
-	if _, err := strconv.ParseInt(externalID, 10, 64); err != nil {
-		return nil, fmt.Errorf("invalid user_id in user center callback")
+	timestamp, err := strconv.ParseInt(ctx.Query("timestamp"), 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid timestamp in login ticket")
 	}
 
-	userInfo := &plugin.UserCenterBasicUserInfo{
-		ExternalID:  externalID,
+	ticket := &LoginTicket{
+		UserID:      ctx.Query("user_id"),
 		Username:    ctx.Query("username"),
 		DisplayName: ctx.Query("display_name"),
 		Email:       ctx.Query("email"),
 		Avatar:      ctx.Query("avatar"),
+		Timestamp:   timestamp,
+		Nonce:       ctx.Query("nonce"),
+		Signature:   ctx.Query("signature"),
+	}
+
+	if err := ticket.Verify(uc.Config.HMACSecret, uc.Nonces, time.Now()); err != nil {
+		log.Warnf("rejected user center login callback: %v", err)
+		return nil, fmt.Errorf("login verification failed")
+	}
+
+	userInfo := &plugin.UserCenterBasicUserInfo{
+		ExternalID:  ticket.UserID,
+		Username:    ticket.Username,
+		DisplayName: ticket.DisplayName,
+		Email:       ticket.Email,
+		Avatar:      ticket.Avatar,
 		Status:      plugin.UserStatusAvailable,
 	}
 	if userInfo.DisplayName == "" {

@@ -857,6 +857,7 @@ Redis
 19. 论坛内容不得产生 contribution 或 ticket。
 20. 论坛不得拥有独立注册通道。
 21. Pulse 故障不得阻断论坛登录或浏览。
+22. 论坛登录回调参数在验签通过前一律视为攻击者可控。
 
 ## 34. 社区层
 
@@ -875,7 +876,8 @@ meta-pulse-forum   社区内容
 - 内容奖励直接生成 Reward Grant，**不产生 contribution 或 ticket**；
 - 内容奖励使用独立 `budget_type = content_reward`，不计入贡献毛利占比分母；
 - 新增表：`pulse_content_candidate`、`pulse_content_award`、`pulse_user_level`；
-- 新增只读接口：`GET /v1/internal/users/:user_id/profile`。
+- 新增只读接口：`GET /v1/internal/users/:user_id/profile`；
+- 论坛登录回调由 new-api 签发 HMAC Login Ticket，插件验签后方可信任 `user_id`（该接口是 Pulse 的跨仓库前置项）。
 
 ## 35. 最终工程范围
 

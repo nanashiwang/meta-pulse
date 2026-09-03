@@ -95,11 +95,12 @@ Apache Answer 源码不进入仓库，通过官方镜像与 Go module 引入。
 
 - [完整项目架构](docs/ARCHITECTURE.md)
 - [社区架构（论坛 + 博客）](docs/COMMUNITY.md)
+- [实施计划（里程碑与出口标准）](docs/IMPLEMENTATION_PLAN.md)
 - [工程约束](AGENTS.md)
 - [数据库迁移说明](services/pulse/migrations/README.md)
 
 ## 当前状态
 
-**开发启动｜完整项目架构已冻结｜社区层已规划。**
+**开发启动｜完整项目架构已冻结｜社区层已规划｜M0 待启动。**
 
-实现可以并行拆分，但不得改变 `docs/ARCHITECTURE.md` 定义的系统边界、事实源和工程红线，以及 `docs/COMMUNITY.md` 定义的社区层边界。
+实现可以并行拆分，但不得改变 `docs/ARCHITECTURE.md` 定义的系统边界、事实源和工程红线，以及 `docs/COMMUNITY.md` 定义的社区层边界。推进顺序与每个里程碑的出口标准见 `docs/IMPLEMENTATION_PLAN.md`。

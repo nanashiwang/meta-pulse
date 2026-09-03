@@ -7,7 +7,8 @@
 1. `README.md`
 2. `docs/ARCHITECTURE.md`
 3. `docs/COMMUNITY.md`（涉及论坛/博客时）
-4. 本文件
+4. `docs/IMPLEMENTATION_PLAN.md`（里程碑顺序与出口标准）
+5. 本文件
 
 `docs/ARCHITECTURE.md` 是系统架构基线。实现可以拆分，但不得擅自改变其中的系统边界、事实源和工程红线。
 
@@ -45,6 +46,7 @@ Meta Pulse = 调用之后的增长与权益系统
 17. 论坛内容不得产生 contribution 或 ticket。
 18. 论坛不得拥有独立注册通道；身份一律来自 new-api。
 19. Pulse 故障不得阻断论坛登录或浏览。
+20. 论坛登录回调是浏览器重定向，所有参数在验签通过前一律视为攻击者可控。
 
 ## 3. 技术栈
 

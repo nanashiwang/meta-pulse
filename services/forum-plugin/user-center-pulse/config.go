@@ -73,5 +73,10 @@ func (uc *UserCenter) ConfigReceiver(config []byte) error {
 	}
 	uc.Config = c
 	uc.Client = NewPulseClient(c)
+	// The nonce cache must survive a config change: clearing it would reopen
+	// the replay window every time an operator saves the settings form.
+	if uc.Nonces == nil {
+		uc.Nonces = NewNonceCache()
+	}
 	return nil
 }

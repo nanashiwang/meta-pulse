@@ -74,12 +74,36 @@ Answer v2.0.2 的 `go.mod` 仍声明 v1 模块路径（`github.com/apache/answer
 ```text
 Browser → new-api Session
             ↓ (UserCenter LoginRedirectURL)
-        Answer LoginCallback
+        new-api 签发 Login Ticket（HMAC 签名 + 时间窗 + nonce）
+            ↓ 浏览器重定向携带 ticket
+        Answer LoginCallback → 插件验签
             ↓ external_id = new-api user_id
         Answer 调 Pulse 只读接口取等级
             ↓
         PersonalBranding 徽章渲染
 ```
+
+### Login Ticket 验签
+
+`LoginCallback` 由**浏览器重定向**到达，因此 query 参数在验签通过前全部是攻击者可控的。若直接信任 `user_id`，任何人访问 `?user_id=1&username=admin` 即可登录为任意用户——这正是 AGENTS.md 第 13 条禁止的情况。
+
+new-api 签发、插件校验的 ticket：
+
+```text
+payload   = user_id \n username \n display_name \n email \n avatar \n timestamp \n nonce
+signature = hex(HMAC-SHA256(shared_secret, payload))
+```
+
+四项约束：
+
+| 约束 | 防御的攻击 |
+|---|---|
+| 字段以换行连接 | 字段边界歧义导致的签名移植（`ab`+`c` 与 `a`+`bc`） |
+| TTL 2 分钟，双向校验 | 陈旧 ticket 重放；伪造的未来时间戳 |
+| nonce 单次有效，验签成功后才消耗 | ticket 落在浏览器历史/Referer/代理日志中被重放；以及攻击者抢先烧掉他人 nonce 的骚扰 |
+| secret 为空时拒绝 | 未配置时 fail closed——空密钥的 HMAC 仍是合法 HMAC |
+
+**new-api 未实现签发接口前，论坛不得开放公网访问。**
 
 插件 `Description()` 中的两个关键开关：
 

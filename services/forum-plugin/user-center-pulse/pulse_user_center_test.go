@@ -1,7 +1,13 @@
 package pulse_user_center
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"net/url"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/apache/answer/plugin"
 )
@@ -33,38 +39,75 @@ func TestDescriptionEnforcesIdentityBoundaries(t *testing.T) {
 	}
 }
 
-func TestResolveUserRejectsUntrustedUserID(t *testing.T) {
-	uc := &UserCenter{Config: &Config{}}
+// The callback is a browser redirect, so an unsigned request must never
+// authenticate anyone. Before signature verification existed, the first case
+// here logged the attacker in as user 1.
+func TestResolveUserRejectsUnsignedCallback(t *testing.T) {
+	uc := &UserCenter{Config: &Config{HMACSecret: testSecret}, Nonces: NewNonceCache()}
 
 	for _, tc := range []struct {
 		name  string
 		query string
 	}{
-		{"missing", ""},
-		{"non-numeric", "?user_id=admin"},
-		{"injection", "?user_id=1%20OR%201"},
+		{"forged admin", "?user_id=1&username=admin&timestamp=0&nonce=n"},
+		{"no signature", "?user_id=123&timestamp=0&nonce=n"},
+		{"no timestamp", "?user_id=123&nonce=n&signature=ab"},
+		{"empty", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			ctx := newTestContext(tc.query)
-			if _, err := uc.resolveUser(ctx); err == nil {
-				t.Errorf("expected rejection for %q", tc.query)
+			if _, err := uc.resolveUser(newTestContext(tc.query)); err == nil {
+				t.Errorf("unsigned callback %q authenticated a user", tc.query)
 			}
 		})
 	}
 }
 
-func TestResolveUserMapsTrustedHeaders(t *testing.T) {
-	uc := &UserCenter{Config: &Config{}}
-	ctx := newTestContext("?user_id=123&username=alice&email=alice@example.test")
+func TestResolveUserAcceptsSignedTicket(t *testing.T) {
+	uc := &UserCenter{Config: &Config{HMACSecret: testSecret}, Nonces: NewNonceCache()}
+	ticket := mintTicket("123", time.Now(), "nonce-resolve")
 
-	info, err := uc.resolveUser(ctx)
+	query := url.Values{
+		"user_id":      {ticket.UserID},
+		"username":     {ticket.Username},
+		"display_name": {ticket.DisplayName},
+		"email":        {ticket.Email},
+		"avatar":       {ticket.Avatar},
+		"timestamp":    {strconv.FormatInt(ticket.Timestamp, 10)},
+		"nonce":        {ticket.Nonce},
+		"signature":    {ticket.Signature},
+	}
+
+	info, err := uc.resolveUser(newTestContext("?" + query.Encode()))
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("signed ticket rejected: %v", err)
 	}
 	if info.ExternalID != "123" {
 		t.Errorf("external id = %q, want 123", info.ExternalID)
 	}
-	// Answer requires a display name; fall back to username rather than blank.
+}
+
+// Answer requires a display name; fall back to username rather than blank.
+func TestResolveUserFallsBackToUsername(t *testing.T) {
+	uc := &UserCenter{Config: &Config{HMACSecret: testSecret}, Nonces: NewNonceCache()}
+	ticket := mintTicket("123", time.Now(), "nonce-fallback")
+	ticket.DisplayName = ""
+	mac := hmac.New(sha256.New, []byte(testSecret))
+	mac.Write([]byte(ticket.signingPayload()))
+	ticket.Signature = hex.EncodeToString(mac.Sum(nil))
+
+	query := url.Values{
+		"user_id":   {ticket.UserID},
+		"username":  {ticket.Username},
+		"email":     {ticket.Email},
+		"timestamp": {strconv.FormatInt(ticket.Timestamp, 10)},
+		"nonce":     {ticket.Nonce},
+		"signature": {ticket.Signature},
+	}
+
+	info, err := uc.resolveUser(newTestContext("?" + query.Encode()))
+	if err != nil {
+		t.Fatalf("signed ticket rejected: %v", err)
+	}
 	if info.DisplayName != "alice" {
 		t.Errorf("display name = %q, want alice fallback", info.DisplayName)
 	}
