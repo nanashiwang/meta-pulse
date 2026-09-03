@@ -54,6 +54,7 @@ type rewardGrantModel struct {
 	Status             string     `gorm:"column:status"`
 	SourceRef          string     `gorm:"column:source_ref"`
 	Reason             string     `gorm:"column:reason"`
+	BudgetType         string     `gorm:"column:budget_type"`
 	SettledAt          *time.Time `gorm:"column:settled_at"`
 	ReversedAt         *time.Time `gorm:"column:reversed_at"`
 	CreatedAt          time.Time  `gorm:"column:created_at"`
@@ -149,8 +150,34 @@ func (r *rewardRepository) FindGrantByAction(ctx context.Context, periodID, user
 	return &grant, nil
 }
 
+func (r *rewardRepository) FindGrantByID(ctx context.Context, grantID uint64) (*ports.RewardGrant, error) {
+	var model rewardGrantModel
+	err := r.db.WithContext(ctx).Where("id = ?", grantID).Take(&model).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ports.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find reward grant by id: %w", err)
+	}
+	grant := rewardGrantFromModel(model)
+	return &grant, nil
+}
+
+func (r *rewardRepository) UpdateGrantStatus(ctx context.Context, grantID uint64, status string, settledAt, reversedAt *time.Time) error {
+	result := r.db.WithContext(ctx).Model(&rewardGrantModel{}).Where("id = ?", grantID).Updates(map[string]any{
+		"status": status, "settled_at": settledAt, "reversed_at": reversedAt,
+	})
+	if result.Error != nil {
+		return fmt.Errorf("update reward grant status: %w", result.Error)
+	}
+	if result.RowsAffected != 1 {
+		return ports.ErrNotFound
+	}
+	return nil
+}
+
 func (r *rewardRepository) CreateGrant(ctx context.Context, grant ports.RewardGrant) (ports.RewardGrant, error) {
-	model := rewardGrantModel{ID: grant.ID, GrantID: grant.GrantID, PeriodID: grant.PeriodID, UserID: grant.UserID, ActionID: grant.ActionID, TriggerType: grant.TriggerType, RewardDefinitionID: grant.RewardDefinitionID, RewardType: grant.RewardType, Amount: grant.Amount, RandomValue: grant.RandomValue, ConfigVersion: grant.ConfigVersion, Status: grant.Status, SourceRef: grant.SourceRef, Reason: grant.Reason, SettledAt: grant.SettledAt, ReversedAt: grant.ReversedAt, CreatedAt: grant.CreatedAt}
+	model := rewardGrantModel{ID: grant.ID, GrantID: grant.GrantID, PeriodID: grant.PeriodID, UserID: grant.UserID, ActionID: grant.ActionID, TriggerType: grant.TriggerType, RewardDefinitionID: grant.RewardDefinitionID, RewardType: grant.RewardType, Amount: grant.Amount, RandomValue: grant.RandomValue, ConfigVersion: grant.ConfigVersion, Status: grant.Status, SourceRef: grant.SourceRef, Reason: grant.Reason, BudgetType: grant.BudgetType, SettledAt: grant.SettledAt, ReversedAt: grant.ReversedAt, CreatedAt: grant.CreatedAt}
 	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
 			return ports.RewardGrant{}, ports.ErrConflict
@@ -219,9 +246,85 @@ func rewardBudgetFromModel(model rewardBudgetModel) ports.RewardBudget {
 }
 
 func rewardGrantFromModel(model rewardGrantModel) ports.RewardGrant {
-	return ports.RewardGrant{ID: model.ID, GrantID: model.GrantID, PeriodID: model.PeriodID, UserID: model.UserID, ActionID: model.ActionID, TriggerType: model.TriggerType, RewardDefinitionID: model.RewardDefinitionID, RewardType: model.RewardType, Amount: model.Amount, RandomValue: model.RandomValue, ConfigVersion: model.ConfigVersion, Status: model.Status, SourceRef: model.SourceRef, Reason: model.Reason, SettledAt: model.SettledAt, ReversedAt: model.ReversedAt, CreatedAt: model.CreatedAt}
+	return ports.RewardGrant{ID: model.ID, GrantID: model.GrantID, PeriodID: model.PeriodID, UserID: model.UserID, ActionID: model.ActionID, TriggerType: model.TriggerType, RewardDefinitionID: model.RewardDefinitionID, RewardType: model.RewardType, Amount: model.Amount, RandomValue: model.RandomValue, ConfigVersion: model.ConfigVersion, Status: model.Status, SourceRef: model.SourceRef, Reason: model.Reason, BudgetType: model.BudgetType, SettledAt: model.SettledAt, ReversedAt: model.ReversedAt, CreatedAt: model.CreatedAt}
 }
 
 func idempotencyFromModel(model idempotencyModel) ports.IdempotencyRecord {
 	return ports.IdempotencyRecord{ID: model.ID, Scope: model.Scope, Key: model.IdempotencyKey, PayloadHash: model.PayloadHash, ResponseStatus: model.ResponseStatus, ResponseJSON: model.ResponseJSON, ResourceType: model.ResourceType, ResourceID: model.ResourceID, ExpiresAt: model.ExpiresAt}
+}
+
+func (r *rewardRepository) FindOutboxByGrant(ctx context.Context, grantID uint64) (*ports.SettlementOutbox, error) {
+	var model settlementOutboxModel
+	err := r.db.WithContext(ctx).Where("reward_grant_id = ?", grantID).Take(&model).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ports.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find settlement outbox: %w", err)
+	}
+	outbox := settlementOutboxFromModel(model)
+	return &outbox, nil
+}
+
+func (r *rewardRepository) ClaimDue(ctx context.Context, now time.Time, limit int, leaseUntil time.Time) ([]ports.SettlementOutbox, error) {
+	if limit <= 0 || limit > 5000 {
+		return nil, errors.New("settlement batch size must be between 1 and 5000")
+	}
+	var models []settlementOutboxModel
+	err := r.db.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
+		Where("status IN ? AND next_attempt_at <= ? AND (leased_until IS NULL OR leased_until < ?)", []string{"pending", "retry"}, now, now).
+		Order("id ASC").Limit(limit).Find(&models).Error
+	if err != nil {
+		return nil, fmt.Errorf("claim settlement outbox: %w", err)
+	}
+	result := make([]ports.SettlementOutbox, 0, len(models))
+	for i := range models {
+		model := &models[i]
+		model.Status = "processing"
+		model.LeasedUntil = &leaseUntil
+		model.Attempts++
+		if err := r.db.WithContext(ctx).Model(&settlementOutboxModel{}).Where("id = ?", model.ID).Updates(map[string]any{
+			"status": model.Status, "leased_until": model.LeasedUntil, "attempts": model.Attempts,
+		}).Error; err != nil {
+			return nil, fmt.Errorf("lease settlement outbox: %w", err)
+		}
+		result = append(result, settlementOutboxFromModel(*model))
+	}
+	return result, nil
+}
+
+func (r *rewardRepository) ListForReconciliation(ctx context.Context, limit int) ([]ports.SettlementOutbox, error) {
+	if limit <= 0 || limit > 5000 {
+		return nil, errors.New("reconciliation batch size must be between 1 and 5000")
+	}
+	var models []settlementOutboxModel
+	if err := r.db.WithContext(ctx).Where("status IN ?", []string{"processing", "retry", "dead"}).Order("id ASC").Limit(limit).Find(&models).Error; err != nil {
+		return nil, fmt.Errorf("list reconciliation outbox: %w", err)
+	}
+	result := make([]ports.SettlementOutbox, len(models))
+	for i, model := range models {
+		result[i] = settlementOutboxFromModel(model)
+	}
+	return result, nil
+}
+
+func (r *rewardRepository) SaveOutbox(ctx context.Context, outbox ports.SettlementOutbox) error {
+	if outbox.ID == 0 {
+		return fmt.Errorf("%w: invalid settlement outbox", ports.ErrConflict)
+	}
+	result := r.db.WithContext(ctx).Model(&settlementOutboxModel{}).Where("id = ?", outbox.ID).Updates(map[string]any{
+		"status": outbox.Status, "attempts": outbox.Attempts, "next_attempt_at": outbox.NextAttemptAt,
+		"leased_until": outbox.LeasedUntil, "last_error": outbox.LastError, "completed_at": outbox.CompletedAt,
+	})
+	if result.Error != nil {
+		return fmt.Errorf("save settlement outbox: %w", result.Error)
+	}
+	if result.RowsAffected != 1 {
+		return ports.ErrNotFound
+	}
+	return nil
+}
+
+func settlementOutboxFromModel(model settlementOutboxModel) ports.SettlementOutbox {
+	return ports.SettlementOutbox{ID: model.ID, RewardGrantID: model.RewardGrantID, Operation: model.Operation, PayloadHash: model.PayloadHash, PayloadJSON: model.PayloadJSON, Status: model.Status, Attempts: model.Attempts, NextAttemptAt: model.NextAttemptAt, LeasedUntil: model.LeasedUntil, LastError: model.LastError, CompletedAt: model.CompletedAt, CreatedAt: model.CreatedAt}
 }

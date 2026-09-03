@@ -163,7 +163,7 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 		grant := ports.RewardGrant{
 			GrantID: grantID, PeriodID: activity.ID, UserID: command.UserID, ActionID: command.ActionID,
 			TriggerType: command.TriggerType, RewardDefinitionID: definition.ID, RewardType: definition.RewardType,
-			Amount: definition.Amount, TransferableQuota: false, RandomValue: reward.RandomHex(randomBytes),
+			Amount: definition.Amount, TransferableQuota: false, BudgetType: s.cfg.BudgetType, RandomValue: reward.RandomHex(randomBytes),
 			ConfigVersion: activity.ConfigVersion, Status: RewardStatusPending, SourceRef: grantID,
 			Reason: "shadow mode", CreatedAt: s.cfg.Now(),
 		}

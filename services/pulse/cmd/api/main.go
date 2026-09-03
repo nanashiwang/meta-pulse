@@ -65,7 +65,7 @@ func main() {
 		logger.Error("initialize request nonce store", "error", err)
 		os.Exit(1)
 	}
-	action, err := service.NewActionService(unit, service.ActionConfig{RandomSecret: []byte(cfg.RewardRandomSecret), ShadowMode: true})
+	action, err := service.NewActionService(unit, service.ActionConfig{RandomSecret: []byte(cfg.RewardRandomSecret), ShadowMode: cfg.RewardShadowMode})
 	if err != nil {
 		logger.Error("initialize action service", "error", err)
 		os.Exit(1)

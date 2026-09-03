@@ -54,6 +54,25 @@ func (m *memoryRewardStore) SaveBudget(_ context.Context, budget ports.RewardBud
 	m.budgets[budgetKey(budget.PeriodID, budget.BudgetType)] = budget
 	return nil
 }
+func (m *memoryRewardStore) FindGrantByID(_ context.Context, grantID uint64) (*ports.RewardGrant, error) {
+	for _, grant := range m.grants {
+		if grant.ID == grantID {
+			copy := grant
+			return &copy, nil
+		}
+	}
+	return nil, ports.ErrNotFound
+}
+func (m *memoryRewardStore) UpdateGrantStatus(_ context.Context, grantID uint64, status string, settledAt, reversedAt *time.Time) error {
+	for i := range m.grants {
+		if m.grants[i].ID == grantID {
+			m.grants[i].Status, m.grants[i].SettledAt, m.grants[i].ReversedAt = status, settledAt, reversedAt
+			return nil
+		}
+	}
+	return ports.ErrNotFound
+}
+
 func (m *memoryRewardStore) FindGrantByAction(_ context.Context, periodID, userID uint64, actionID string) (*ports.RewardGrant, error) {
 	for _, grant := range m.grants {
 		if grant.PeriodID == periodID && grant.UserID == userID && grant.ActionID == actionID {

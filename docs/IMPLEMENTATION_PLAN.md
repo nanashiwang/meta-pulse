@@ -19,8 +19,9 @@
 ✅ M2 Usage Ingest 与等级  只读日志游标、统一 Mapper、事务记账、退款复核、等级 Profile 已落地
 🟡 M2.5 回测框架  只读回放、范围过滤、异常/覆盖率、倍率对比已落地；真实 LOG_DB 样本待环境接入
 🟡 M3 只读入口  Pulse 侧身份派生 summary/profile 已落地；new-api/YuanHeng/论坛接入待跨仓库推进
-🟡 M4 Shadow Mode  Action、幂等、确定性随机、Ticket/Budget/Grant/Outbox 已落地；Settlement 仍禁发
-⬜ M5-M7          见下文
+🟡 M4 Shadow Mode  Action、幂等、确定性随机、Ticket/Budget/Grant/Outbox 已落地；真实 MySQL 恢复验收待 Compose
+🟡 M5 Settlement  Pulse Benefit Client、Outbox 退避、Query/Reconcile/Rollback 已落地；new-api 接收端待跨仓库接入
+⬜ M6-M7          见下文
 ```
 
 本次已启动 M0 第一批：`services/pulse/` 已从 HTTP 桩升级为可装配的 API/Worker 基础，新增 16 张核心表 migration、依赖健康检查、结构化日志、Prometheus registry、UnitOfWork 事务边界和服务签名校验。`docs/OVERVIEW.md` 为未跟踪文件，本计划不依赖它，也不覆盖或删除它。
@@ -251,13 +252,15 @@ type UnitOfWork interface {
 ### M5｜Settlement 与 Benefit API
 
 - [ ] new-api Grant / Query / Rollback 内部接口；
-- [ ] HMAC 服务认证、时间窗、nonce、来源绑定；
-- [ ] Benefit payload fingerprint 和 conflict；
-- [ ] 使用 `GrantUserQuotaTx`，奖励额度 `transferable_quota=0`；
-- [ ] Outbox 指数退避、dead 状态、人工重试；
-- [ ] timeout 必须先 Query 原 `source_ref`；
-- [ ] Benefit Reconciliation；
-- [ ] rollback 只追加 reversal，行为可审计。
+- [x] Pulse Benefit Client 使用 HMAC 服务认证、时间窗、nonce、来源绑定；
+- [x] Benefit payload fingerprint 和 conflict 错误已进入统一契约；
+- [ ] 使用 `GrantUserQuotaTx`，奖励额度 `transferable_quota=0`（需 new-api 接收端）；
+- [x] Outbox 指数退避、dead 状态、`reward-retry` 人工重试入口；
+- [x] timeout 必须先 Query 原 `source_ref`，禁止更换 source_ref；
+- [x] Benefit Reconciliation 可重复查询并收敛状态；
+- [x] rollback 调用原 source_ref，Pulse 侧只更新可审计状态；new-api 侧必须以 reversal 记录落账。
+
+当前实现不会把 `shadow` Outbox 发送到 new-api；只有关闭 `PULSE_REWARD_SHADOW_MODE` 且 new-api 接收端完成验收后才会处理 pending Outbox。
 
 **出口：**同一 Benefit 重放 100 次只到账一次；不同 payload 进入 conflict；new-api 成功但 Pulse 超时可恢复；禁止换 source_ref 有测试保护。
 

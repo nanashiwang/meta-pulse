@@ -29,6 +29,7 @@ type RewardGrant struct {
 	RewardType         string
 	Amount             int64
 	TransferableQuota  bool
+	BudgetType         string
 	RandomValue        string
 	ConfigVersion      string
 	Status             string
@@ -71,6 +72,8 @@ type RewardRepository interface {
 	GetBudgetForUpdate(ctx context.Context, periodID uint64, budgetType string) (RewardBudget, error)
 	SaveBudget(ctx context.Context, budget RewardBudget) error
 	FindGrantByAction(ctx context.Context, periodID, userID uint64, actionID string) (*RewardGrant, error)
+	FindGrantByID(ctx context.Context, grantID uint64) (*RewardGrant, error)
+	UpdateGrantStatus(ctx context.Context, grantID uint64, status string, settledAt, reversedAt *time.Time) error
 	CreateGrant(ctx context.Context, grant RewardGrant) (RewardGrant, error)
 	CreateOutbox(ctx context.Context, outbox SettlementOutbox) (SettlementOutbox, error)
 }
@@ -78,4 +81,10 @@ type RewardRepository interface {
 type IdempotencyRepository interface {
 	GetOrCreateForUpdate(ctx context.Context, scope, key, payloadHash string) (IdempotencyRecord, error)
 	Save(ctx context.Context, record IdempotencyRecord) error
+}
+
+type SettlementRepository interface {
+	ClaimDue(ctx context.Context, now time.Time, limit int, leaseUntil time.Time) ([]SettlementOutbox, error)
+	ListForReconciliation(ctx context.Context, limit int) ([]SettlementOutbox, error)
+	SaveOutbox(ctx context.Context, outbox SettlementOutbox) error
 }

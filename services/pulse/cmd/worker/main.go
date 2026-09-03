@@ -61,6 +61,16 @@ func main() {
 		logger.Error("initialize usage ingest", "error", err)
 		os.Exit(1)
 	}
+	benefitClient, err := newapi.NewBenefitClient(cfg.NewAPIInternalURL, []byte(cfg.ServiceHMACSecret), nil)
+	if err != nil {
+		logger.Error("initialize benefit client", "error", err)
+		os.Exit(1)
+	}
+	settlement, err := service.NewSettlementService(unit, benefitClient, service.SettlementConfig{BatchSize: cfg.SettlementBatchSize})
+	if err != nil {
+		logger.Error("initialize settlement service", "error", err)
+		os.Exit(1)
+	}
 
 	readiness := health.NewChecker(map[string]health.Pinger{"mysql": database, "redis": cache})
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -80,6 +90,18 @@ func main() {
 		}
 		if result.Fetched > 0 {
 			logger.Info("usage ingest batch completed", "fetched", result.Fetched, "accepted", result.Accepted, "replayed", result.Replayed, "conflicts", result.Conflicts, "manual_review", result.ManualReview)
+		}
+		settlementResult, settlementErr := settlement.ProcessBatch(checkCtx)
+		if settlementErr != nil {
+			logger.Warn("settlement batch failed", "error", settlementErr)
+		} else if settlementResult.Claimed > 0 {
+			logger.Info("settlement batch completed", "claimed", settlementResult.Claimed, "completed", settlementResult.Completed, "retried", settlementResult.Retried, "dead", settlementResult.Dead, "failed", settlementResult.Failed)
+		}
+		reconciliation, reconciliationErr := settlement.Reconcile(checkCtx)
+		if reconciliationErr != nil {
+			logger.Warn("settlement reconciliation failed", "error", reconciliationErr)
+		} else if reconciliation.Settled > 0 {
+			logger.Info("settlement reconciliation completed", "checked", reconciliation.Checked, "settled", reconciliation.Settled, "unchanged", reconciliation.Unchanged, "failed", reconciliation.Failed)
 		}
 	}
 

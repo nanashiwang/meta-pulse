@@ -45,11 +45,93 @@ func main() {
 			logger.Error("backtest failed", "error", err)
 			os.Exit(1)
 		}
-	case "reconcile", "period-close", "reward-retry":
+	case "reward-retry":
+		if err := runSettlement(); err != nil {
+			logger.Error("reward retry failed", "error", err)
+			os.Exit(1)
+		}
+	case "reconcile":
+		if err := runReconcile(); err != nil {
+			logger.Error("reconciliation failed", "error", err)
+			os.Exit(1)
+		}
+	case "period-close":
 		fmt.Printf("meta-pulse tool %s: command scaffold; implementation pending\n", os.Args[1])
 	default:
 		usage()
 	}
+}
+
+func runReconcile() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	if err := cfg.ValidateWorker(); err != nil {
+		return err
+	}
+	database, err := mysqlstore.Open(cfg.PulseDBDSN)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+	unit, err := mysqlstore.NewUnitOfWork(database)
+	if err != nil {
+		return err
+	}
+	client, err := newapi.NewBenefitClient(cfg.NewAPIInternalURL, []byte(cfg.ServiceHMACSecret), nil)
+	if err != nil {
+		return err
+	}
+	settlement, err := service.NewSettlementService(unit, client, service.SettlementConfig{BatchSize: cfg.SettlementBatchSize})
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+	report, err := settlement.Reconcile(ctx)
+	encoded, encodeErr := json.MarshalIndent(report, "", "  ")
+	if encodeErr != nil {
+		return encodeErr
+	}
+	fmt.Println(string(encoded))
+	return err
+}
+
+func runSettlement() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	if err := cfg.ValidateWorker(); err != nil {
+		return err
+	}
+	database, err := mysqlstore.Open(cfg.PulseDBDSN)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+	unit, err := mysqlstore.NewUnitOfWork(database)
+	if err != nil {
+		return err
+	}
+	client, err := newapi.NewBenefitClient(cfg.NewAPIInternalURL, []byte(cfg.ServiceHMACSecret), nil)
+	if err != nil {
+		return err
+	}
+	settlement, err := service.NewSettlementService(unit, client, service.SettlementConfig{BatchSize: cfg.SettlementBatchSize})
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+	report, err := settlement.ProcessBatch(ctx)
+	encoded, encodeErr := json.MarshalIndent(report, "", "  ")
+	if encodeErr != nil {
+		return encodeErr
+	}
+	fmt.Println(string(encoded))
+	return err
 }
 
 func runBacktest(args []string) error {

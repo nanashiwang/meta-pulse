@@ -23,6 +23,7 @@ type Config struct {
 	UserBFFHMACSecret    string
 	AdminHMACSecret      string
 	RewardRandomSecret   string
+	RewardShadowMode     bool
 	IngestBatchSize      int
 	SettlementBatchSize  int
 	TicketThresholdMilli int64
@@ -45,6 +46,10 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	rewardShadowMode, err := getenvBool("PULSE_REWARD_SHADOW_MODE", true)
+	if err != nil {
+		return Config{}, err
+	}
 
 	cfg := Config{
 		Environment:          strings.ToLower(getenv("PULSE_ENV", "development")),
@@ -59,6 +64,7 @@ func Load() (Config, error) {
 		UserBFFHMACSecret:    os.Getenv("PULSE_USER_BFF_HMAC_SECRET"),
 		AdminHMACSecret:      os.Getenv("PULSE_ADMIN_HMAC_SECRET"),
 		RewardRandomSecret:   getenv("PULSE_REWARD_RANDOM_SECRET", "replace-me"),
+		RewardShadowMode:     rewardShadowMode,
 		IngestBatchSize:      ingestBatchSize,
 		SettlementBatchSize:  settlementBatchSize,
 		TicketThresholdMilli: int64(ticketThresholdMilli),
@@ -140,6 +146,18 @@ func getenvInt(key string, fallback int, allowZero bool) (int, error) {
 	parsed, err := strconv.Atoi(value)
 	if err != nil || parsed < 0 || (!allowZero && parsed == 0) {
 		return 0, fmt.Errorf("invalid %s: must be %s integer", key, map[bool]string{true: "a non-negative", false: "a positive"}[allowZero])
+	}
+	return parsed, nil
+}
+
+func getenvBool(key string, fallback bool) (bool, error) {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback, nil
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, fmt.Errorf("invalid %s: must be true or false", key)
 	}
 	return parsed, nil
 }
