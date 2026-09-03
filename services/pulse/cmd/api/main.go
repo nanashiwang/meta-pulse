@@ -1,30 +1,81 @@
 package main
 
 import (
-	"log"
+	"context"
+	"errors"
+	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/nanashiwang/meta-pulse/internal/app"
+	"github.com/nanashiwang/meta-pulse/internal/config"
+	"github.com/nanashiwang/meta-pulse/internal/health"
+	"github.com/nanashiwang/meta-pulse/internal/observability"
+	mysqlstore "github.com/nanashiwang/meta-pulse/internal/store/mysql"
+	redisstore "github.com/nanashiwang/meta-pulse/internal/store/redis"
 )
 
 func main() {
-	addr := os.Getenv("PULSE_HTTP_ADDR")
-	if addr == "" {
-		addr = ":8088"
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	cfg, err := config.Load()
+	if err != nil {
+		logger.Error("invalid configuration", "error", err)
+		os.Exit(1)
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"ok","service":"meta-pulse-api"}`))
-	})
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"ok","service":"meta-pulse-api"}`))
-	})
+	database, err := mysqlstore.Open(cfg.PulseDBDSN)
+	if err != nil {
+		logger.Error("initialize pulse database", "error", err)
+		os.Exit(1)
+	}
+	defer database.Close()
 
-	log.Printf("meta-pulse-api bootstrap listening on %s", addr)
-	log.Printf("NOTE: business HTTP routes will be implemented with Gin according to docs/ARCHITECTURE.md")
-	if err := http.ListenAndServe(addr, mux); err != nil {
-		log.Fatal(err)
+	cache, err := redisstore.Open(cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB)
+	if err != nil {
+		logger.Error("initialize redis", "error", err)
+		os.Exit(1)
+	}
+	defer cache.Close()
+
+	readiness := health.NewChecker(map[string]health.Pinger{
+		"mysql": database,
+		"redis": cache,
+	})
+	metrics := observability.NewMetrics()
+	server := &http.Server{
+		Addr:              cfg.HTTPAddr,
+		Handler:           app.NewRouter(logger, readiness, metrics),
+		ReadHeaderTimeout: 5 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	serverErrors := make(chan error, 1)
+	go func() {
+		logger.Info("meta-pulse-api started", "addr", cfg.HTTPAddr, "environment", cfg.Environment)
+		serverErrors <- server.ListenAndServe()
+	}()
+
+	select {
+	case <-ctx.Done():
+		logger.Info("meta-pulse-api shutting down")
+	case err := <-serverErrors:
+		if !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("meta-pulse-api stopped unexpectedly", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		logger.Error("graceful shutdown failed", "error", err)
+		os.Exit(1)
 	}
 }

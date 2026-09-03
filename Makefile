@@ -1,5 +1,5 @@
 .PHONY: help fmt vet test build build-pulse build-forum build-blog \
-        run-api run-worker up down clean
+        run-api run-worker migrate-up migrate-status up down clean
 
 # The repo root is not a Go module, so `./...` does not resolve across the
 # workspace. Every Go target lists module paths explicitly.
@@ -13,6 +13,8 @@ help:
 	@echo "  make vet          go vet all modules"
 	@echo "  make test         go test all modules"
 	@echo "  make build        build pulse binaries + forum image + blog"
+	@echo "  make migrate-up   apply Pulse Goose migrations"
+	@echo "  make migrate-status show Pulse migration status"
 	@echo "  make up           docker compose up"
 	@echo ""
 	@echo "Tracks: services/pulse (A) | sites/blog (B) | services/forum* (C)"
@@ -46,6 +48,12 @@ run-api:
 
 run-worker:
 	go run ./services/pulse/cmd/worker
+
+migrate-up:
+	go run ./services/pulse/cmd/tool migrate-up
+
+migrate-status:
+	go run ./services/pulse/cmd/tool migrate-status
 
 up:
 	docker compose up -d

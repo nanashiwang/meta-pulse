@@ -1,8 +1,8 @@
 # Database Migrations
 
-Meta Pulse 使用独立 MySQL 8.0+ 逻辑库。
+Meta Pulse 使用独立 MySQL 8.0+ 逻辑库。SQL 文件采用 Goose 注释格式，并按数字顺序执行。
 
-正式 migration 必须与 `docs/ARCHITECTURE.md` 一致，并优先保证以下核心表：
+首个 migration `00001_initial_schema.sql` 创建 16 张核心表：
 
 ```text
 pulse_period

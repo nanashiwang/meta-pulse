@@ -101,6 +101,6 @@ Apache Answer 源码不进入仓库，通过官方镜像与 Go module 引入。
 
 ## 当前状态
 
-**开发启动｜完整项目架构已冻结｜社区层已规划｜M0 待启动。**
+**开发启动｜完整项目架构已冻结｜社区层已规划｜P0/M0 第一批已启动。**
 
 实现可以并行拆分，但不得改变 `docs/ARCHITECTURE.md` 定义的系统边界、事实源和工程红线，以及 `docs/COMMUNITY.md` 定义的社区层边界。推进顺序与每个里程碑的出口标准见 `docs/IMPLEMENTATION_PLAN.md`。

@@ -13,12 +13,12 @@
 ✅ Monorepo 骨架  services/{pulse,forum,forum-plugin} + sites/blog + deploy
 ✅ 论坛插件       UserCenter、等级展示、Ticket 验签代码与测试已存在
 ✅ new-api 调研   已确认登录、2FA、LOG_DB、BenefitChangeRecord、额度发放边界
-⬜ P0 接入契约     new-api SSO / BFF / Benefit API 尚未实现
-⬜ M0 地基         Pulse migration、数据库、Redis、装配尚未实现
+🟡 P0 接入契约     Pulse 侧签名/Nonce 骨架已落地；new-api SSO / BFF / Benefit API 待实现
+🟡 M0 地基         配置、Gin、健康检查、GORM/Redis、Goose migration、指标已落地；真实环境验收待完成
 ⬜ M1-M7          见下文
 ```
 
-当前 `services/pulse/` 仍是配置和三个命令入口的骨架；`go.mod` 尚未接入业务依赖。`docs/OVERVIEW.md` 为未跟踪文件，本计划不依赖它，也不覆盖或删除它。
+本次已启动 M0 第一批：`services/pulse/` 已从 HTTP 桩升级为可装配的 API/Worker 基础，新增 16 张核心表 migration、依赖健康检查、结构化日志、Prometheus registry、UnitOfWork 事务边界和服务签名校验。`docs/OVERVIEW.md` 为未跟踪文件，本计划不依赖它，也不覆盖或删除它。
 
 ## 2. 已确认的跨仓库事实
 
@@ -160,20 +160,22 @@ type UnitOfWork interface {
 - [ ] 统一服务签名覆盖 method、path、user、timestamp、nonce、body hash；
 - [ ] 定义 Benefit API 的 grant/query/rollback、payload fingerprint、conflict 和错误码；
 - [ ] 定义 Usage Mapper：consume、refund、correction、异步 task 退款、差额结算；
-- [ ] 生产密钥不进入 Git，支持轮换和 fail closed。
+- [ ] 生产密钥不进入 Git，支持轮换和 fail closed；
+- [x] Pulse 侧实现规范化 `method/path/user/timestamp/nonce/body_hash` 验签、时间窗和重放拒绝，生产 Nonce 适配 Redis 原子 `SETNX`。
 
 **出口：**登录、2FA、论坛 SSO、Ticket 重放、Cookie 隔离、BFF 越权和签名重放测试通过；P0 未完成前论坛不得开放公网，Pulse 奖励不得上线。
 
 ### M0｜Pulse 地基
 
-- [ ] Goose SQL migration 与 16 张核心表；
-- [ ] MySQL、Redis 连接与健康检查；
-- [ ] GORM store、ports、UnitOfWork、手工依赖装配；
-- [ ] Gin 路由骨架；
-- [ ] 结构化日志、Prometheus registry；
-- [ ] `.env.example` 与 `config.go` 一致，必填项缺失时启动失败；
-- [ ] 校验 LOG_DB 使用只读账号、Pulse 无 new-api 主库写权限；
-- [ ] 明确 Period 时间边界、时区、日志归属时间和水位线策略。
+- [x] Goose SQL migration 与 16 张核心表；
+- [x] MySQL、Redis 连接与健康检查；
+- [x] GORM store、ports、UnitOfWork、手工依赖装配；
+- [x] Gin 路由骨架；
+- [x] 结构化日志、Prometheus registry；
+- [x] `.env.example` 与 `config.go` 一致，必填项缺失时启动失败；
+- [ ] 验证 LOG_DB 使用只读账号、Pulse 无 new-api 主库写权限；
+- [ ] 明确 Period 时间边界、时区、日志归属时间和水位线策略；
+- [ ] 使用真实 MySQL/Redis Compose 完成迁移与 `/readyz` 验收。
 
 **出口：**Compose 服务健康；16 张表迁移完成；DB/Redis 断开时 `readyz` 失败；服务重启不影响 new-api。
 

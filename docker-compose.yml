@@ -45,6 +45,11 @@ services:
       PULSE_ADMIN_HMAC_SECRET: ${PULSE_ADMIN_HMAC_SECRET:-}
     ports:
       - "8088:8088"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1:8088/readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     depends_on:
       mysql:
         condition: service_healthy

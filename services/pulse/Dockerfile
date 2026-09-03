@@ -12,6 +12,7 @@ RUN go mod download
 
 COPY services/pulse/cmd ./cmd
 COPY services/pulse/internal ./internal
+COPY services/pulse/migrations ./migrations
 
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/meta-pulse-api ./cmd/api && \
     CGO_ENABLED=0 GOOS=linux go build -o /out/meta-pulse-worker ./cmd/worker && \

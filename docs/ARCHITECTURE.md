@@ -220,29 +220,22 @@ Runtime：Docker / Docker Compose / Nginx。
 
 ```text
 meta-pulse/
-├── cmd/
-│   ├── api/main.go
-│   ├── worker/main.go
-│   └── tool/main.go
-├── internal/
-│   ├── app/
-│   ├── config/
-│   ├── domain/
-│   ├── service/
-│   ├── adapter/newapi/
-│   ├── store/mysql/
-│   ├── transport/http/
-│   ├── job/
-│   ├── security/
-│   └── observability/
-├── migrations/
-├── tests/
-├── tools/
-│   ├── backfill/
-│   ├── backtest/
-│   ├── reconcile/
-│   └── ledger-check/
-└── docs/
+├── services/pulse/
+│   ├── cmd/{api,worker,tool}/
+│   ├── internal/
+│   │   ├── app/              依赖装配与 HTTP 生命周期
+│   │   ├── config/           配置校验
+│   │   ├── domain/           纯领域逻辑（后续里程碑补齐）
+│   │   ├── ports/            应用接口与 UnitOfWork
+│   │   ├── store/mysql/      Pulse DB GORM 实现
+│   │   ├── store/redis/      Redis 运行时能力
+│   │   ├── transport/http/   Gin 中间件与路由适配
+│   │   ├── security/         HMAC、时间窗、Nonce
+│   │   └── observability/    结构化日志与 Prometheus
+│   └── migrations/           Goose SQL migration
+├── services/forum-plugin/    Answer UserCenter 插件
+├── sites/blog/               VitePress
+└── deploy/                   Docker / Nginx
 ```
 
 ### `meta-pulse-api`
