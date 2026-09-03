@@ -11,18 +11,18 @@
 ```text
 ✅ 架构文档       ARCHITECTURE.md / COMMUNITY.md / AGENTS.md
 ✅ Monorepo 骨架  services/{pulse,forum,forum-plugin} + sites/blog + deploy
-✅ 论坛插件       UserCenter、等级展示、Ticket 验签代码与测试已存在
+✅ 论坛插件       UserCenter、等级展示、SSO Ticket 验签、共享 Nonce 已落地
 ✅ new-api 调研   已确认登录、2FA、LOG_DB、BenefitChangeRecord、额度发放边界
-🟡 P0 接入契约     Pulse 侧签名/Nonce 骨架已落地；new-api SSO / BFF / Benefit API 待实现
+🟡 P0 接入契约     new-api SSO / BFF / Benefit API、Pulse 验签与轮换已落地；真实部署验收待完成
 🟡 M0 地基         配置、Gin、健康检查、GORM/Redis、Goose migration、指标已落地；真实环境验收待完成
 ✅ M1 Ledger 记账内核    领域账本、账户快照、幂等冲突、重建与 ledger-check 已落地
 ✅ M2 Usage Ingest 与等级  只读日志游标、统一 Mapper、事务记账、退款复核、等级 Profile 已落地
 🟡 M2.5 回测框架  只读回放、范围过滤、异常/覆盖率、倍率对比已落地；真实 LOG_DB 样本待环境接入
-🟡 M3 只读入口  Pulse 侧 summary/profile/奖励历史已落地；new-api/YuanHeng/论坛接入待跨仓库推进
+✅ M3 只读入口  new-api BFF/UI、YuanHeng 隔离 WebView、论坛等级降级与 Pulse 只读接口已落地；发布灰度待环境验收
 🟡 M4 Shadow Mode  Action、幂等、确定性随机、Ticket/Budget/Grant/Outbox 已落地；真实 MySQL 恢复验收待 Compose
-🟡 M5 Settlement  Pulse Benefit Client、Outbox 退避、Query/Reconcile/Rollback 已落地；new-api 接收端待跨仓库接入
+🟡 M5 Settlement  Pulse Benefit Client、Outbox 退避、Query/Reconcile/Rollback 与 new-api 接收端已落地；真实额度到账验收待完成
 ✅ M6 周期与运营       Period Close、稳定周期奖励、Holdout 固化、人工调整审计、日指标聚合已落地；真实 MySQL 中断恢复待 Compose 验收
-✅ M7 内容奖励         Pulse 侧候选采集、人工审核、独立预算、限额、幂等、结算与撤销已落地；Answer 真实 schema/SSO 与 new-api Benefit 接收端待跨仓库验收
+✅ M7 内容奖励         Pulse 侧候选采集、人工审核、独立预算、限额、幂等、结算与撤销已落地；Answer 真实 schema/SSO 与 Benefit 端到端验收待完成
 ```
 
 本次已启动 M0 第一批：`services/pulse/` 已从 HTTP 桩升级为可装配的 API/Worker 基础，新增 16 张核心表 migration、依赖健康检查、结构化日志、Prometheus registry、UnitOfWork 事务边界和服务签名校验。`docs/OVERVIEW.md` 为未跟踪文件，本计划不依赖它，也不覆盖或删除它。
@@ -156,21 +156,21 @@ type UnitOfWork interface {
 
 **负责人：new-api + Meta Pulse + 论坛插件 + 部署配置。M0 前置。**
 
-- [ ] new-api 实现 `/forum/sso/start`，使用 `next` 语义，禁止开放重定向；
-- [ ] new-api 从 session 读取用户资料并签发 Login Ticket；
-- [ ] Ticket 具备 TTL、未来时间拒绝、HMAC 验签、单次 nonce、callback allowlist；
-- [ ] 论坛插件将登录入口切换到 SSO Bridge；
-- [ ] Nonce 改为 Redis 或数据库原子消费，不能只依赖进程内存；
+- [x] new-api 实现 `/forum/sso/start`，使用固定登录回跳，禁止开放重定向；
+- [x] new-api 从 session 读取用户资料并签发 Login Ticket；
+- [x] Ticket 具备 TTL、未来时间拒绝、HMAC 验签、单次 nonce、固定 callback allowlist；
+- [x] 论坛插件将登录入口切换到 SSO Bridge；
+- [x] Nonce 使用 Redis 原子消费，进程内存实现仅保留给测试；
 - [x] 论坛固定使用独立 HTTPS 子域；Nginx 仅向 Answer 转发 `visit` Cookie，旧 `/forum/*` 只重定向；
-- [ ] new-api 实现 Pulse Signed BFF，浏览器访问 new-api，用户 ID 由 session 派生；
+- [x] new-api 实现 Pulse Signed BFF，浏览器访问 new-api，用户 ID 由 session 派生；
 - [x] 更新 Nginx/网关：对外 `/api/pulse/*` 只进入 new-api BFF，Pulse/Answer 均不发布宿主机端口；
-- [ ] 统一服务签名覆盖 method、path、user、timestamp、nonce、body hash；
-- [ ] 定义 Benefit API 的 grant/query/rollback、payload fingerprint、conflict 和错误码；
-- [ ] 定义 Usage Mapper：consume、refund、correction、异步 task 退款、差额结算；
-- [ ] 生产密钥不进入 Git，支持轮换和 fail closed；
+- [x] 统一服务签名覆盖 method、path、user、timestamp、nonce、body hash；
+- [x] 定义 Benefit API 的 grant/query/rollback、payload fingerprint、conflict 和错误码；
+- [x] 定义 Usage Mapper：consume、refund、correction、异步 task 退款、差额结算；不确定关联进入人工复核；
+- [x] 生产密钥不进入 Git，支持 current/previous 平滑轮换和 fail closed；审计、限流及轮换演练待部署验收；
 - [x] Pulse 侧实现规范化 `method/path/user/timestamp/nonce/body_hash` 验签、时间窗和重放拒绝，生产 Nonce 适配 Redis 原子 `SETNX`。
 
-**出口：**登录、2FA、论坛 SSO、Ticket 重放、Cookie 隔离、BFF 越权和签名重放测试通过；P0 未完成前论坛不得开放公网，Pulse 奖励不得上线。
+**代码出口：**登录、2FA、论坛 SSO、Ticket 重放、Cookie 隔离、BFF 越权和签名重放回归测试通过。真实域名、跨实例、轮换演练和公网门禁属于部署验收；P0 外部验收完成前论坛不得开放公网，Pulse 奖励不得上线。
 
 ### M0｜Pulse 地基
 
@@ -181,7 +181,7 @@ type UnitOfWork interface {
 - [x] 结构化日志、Prometheus registry；
 - [x] `.env.example` 与 `config.go` 一致，必填项缺失时启动失败；
 - [ ] 验证 LOG_DB 使用只读账号、Pulse 无 new-api 主库写权限；
-- [ ] 明确 Period 时间边界、时区、日志归属时间和水位线策略；
+- [x] 明确 Period 使用半开区间 `[start,end)`、Asia/Shanghai（UTC+8），按日志 `created_at` 归属，Ingest 时间仅用于水位线；
 - [ ] 使用真实 MySQL/Redis Compose 完成迁移与 `/readyz` 验收。
 
 **出口：**Compose 服务健康；16 张表迁移完成；DB/Redis 断开时 `readyz` 失败；服务重启不影响 new-api。
@@ -225,15 +225,15 @@ type UnitOfWork interface {
 
 ### M3｜只读产品入口
 
-- [ ] new-api `/api/pulse/*` BFF；
-- [ ] new-api `/console/pulse` 页面与路由；
+- [x] new-api `/api/pulse/*` BFF；
+- [x] new-api `/console/pulse` 页面与路由；
 - [x] Pulse 提供只读 `/v1/internal/me/summary`，用户由已验签 Principal 派生，不接受浏览器 user_id；
 - [x] Pulse profile/summary 返回当前 Period、贡献值、可用券、等级和当前周期 Ledger；
 - [x] Pulse 奖励历史只读投影 `/v1/internal/me/rewards`，仅返回当前 Principal 的安全字段；
-- [ ] YuanHeng 通过隔离 WebView 打开 `/console/pulse`；
-- [ ] YuanHeng session/API Token 改用 OS 安全存储，用户名密码不落盘；
-- [ ] 论坛展示 Pulse 等级，Pulse 故障时降级；
-- [ ] 只读灰度、无 Pulse Action。
+- [x] YuanHeng 通过隔离 WebView 打开 `/console/pulse`；
+- [x] YuanHeng session/API Token 改用 OS 安全存储，用户名密码不落盘；
+- [x] 论坛展示 Pulse 等级，Pulse 故障时降级；
+- [x] 只读灰度入口保持无 Pulse Action；正式灰度仍需部署验收。
 
 **出口：**用户能看到数据；浏览器、桌面端、论坛均不能越过 new-api 身份边界；Pulse 故障不影响登录、模型调用、充值和论坛浏览。
 
@@ -252,10 +252,10 @@ type UnitOfWork interface {
 
 ### M5｜Settlement 与 Benefit API
 
-- [ ] new-api Grant / Query / Rollback 内部接口；
+- [x] new-api Grant / Query / Rollback 内部接口；
 - [x] Pulse Benefit Client 使用 HMAC 服务认证、时间窗、nonce、来源绑定；
 - [x] Benefit payload fingerprint 和 conflict 错误已进入统一契约；
-- [ ] 使用 `GrantUserQuotaTx`，奖励额度 `transferable_quota=0`（需 new-api 接收端）；
+- [x] 使用 `GrantUserQuotaTx`，奖励额度 `transferable_quota=0`；
 - [x] Outbox 指数退避、dead 状态、`reward-retry` 人工重试入口；
 - [x] timeout 必须先 Query 原 `source_ref`，禁止更换 source_ref；
 - [x] Benefit Reconciliation 可重复查询并收敛状态；
@@ -295,11 +295,11 @@ type UnitOfWork interface {
 
 ### new-api
 
-- [ ] Forum SSO Bridge 与 Login Ticket；
-- [ ] Pulse BFF，服务端派生 user ID；
-- [ ] Pulse Internal Benefit API；
-- [ ] Benefit 重复请求 payload 比较与 conflict；
-- [ ] `/console/pulse` 路由、页面和导航入口；
+- [x] Forum SSO Bridge 与 Login Ticket；
+- [x] Pulse BFF，服务端派生 user ID；
+- [x] Pulse Internal Benefit API；
+- [x] Benefit 重复请求 payload 比较与 conflict；
+- [x] `/console/pulse` 路由、页面和导航入口；
 - [ ] 明确 `LOG_CONSUME_ENABLED` 的生产门禁；
 - [ ] 明确 refund/task/correction 关联字段；
 - [ ] 评估增加 Provider 成本快照；
@@ -307,30 +307,30 @@ type UnitOfWork interface {
 
 ### YuanHeng Desktop
 
-- [ ] 复用 new-api 登录、2FA、session、`New-Api-User` 方式；
-- [ ] 通过隔离 WebView 打开控制台 Pulse 页面；
-- [ ] 不直接访问 Pulse、不存 Pulse 密钥；
-- [ ] session Cookie、API Token 迁移 OS 安全存储；
-- [ ] session 过期、重新登录、退出登录状态联动；
-- [ ] 不持久化用户名密码。
+- [x] 复用 new-api 登录、2FA、session、`New-Api-User` 方式；
+- [x] 通过隔离 WebView 打开控制台 Pulse 页面；
+- [x] 不直接访问 Pulse、不存 Pulse 密钥；
+- [x] session Cookie、API Token 迁移 OS 安全存储；
+- [x] session 过期、重新登录、退出登录状态联动；
+- [x] 不持久化用户名密码。
 
 ### Meta Pulse
 
-- [ ] M0-M6 主线；
-- [ ] new-api LOG_DB 只读适配器；
-- [ ] new-api Benefit 客户端；
-- [ ] BFF 签名校验；
-- [ ] 论坛 profile 与 content 只读适配器；
-- [ ] 对账、回放、回测、指标和告警。
+- [x] M0-M6 主线代码、迁移和回归测试；真实 MySQL/Compose 验收仍待完成；
+- [x] new-api LOG_DB 只读适配器；
+- [x] new-api Benefit 客户端；
+- [x] BFF 签名校验；
+- [x] 论坛 profile 与 content 只读适配器；
+- [x] 对账、回放、回测、指标和告警；真实样本与数据库权限验收仍待完成。
 
 ### 论坛与博客
 
-- [ ] Answer 继续使用插件，不 Fork 上游；
-- [ ] 论坛切换到 new-api SSO；
-- [ ] Nonce 使用共享原子存储；
-- [ ] Pulse 不可用时论坛降级；
-- [ ] M5 前仅展示等级/徽章，不发内容额度；
-- [ ] 博客独立使用 VitePress，内容不接入经济账本。
+- [x] Answer 继续使用插件，不 Fork 上游；
+- [x] 论坛切换到 new-api SSO；
+- [x] Nonce 使用共享 Redis 原子存储；
+- [x] Pulse 不可用时论坛降级；
+- [x] M5 前仅展示等级/徽章，不发内容额度；
+- [x] 博客独立使用 VitePress，内容不接入经济账本。
 
 ## 7. 待决策事项
 
@@ -338,9 +338,9 @@ type UnitOfWork interface {
 
 当前 new-api 日志只有用户收费 `quota`，没有 Provider 成本。建议先以估算倍率完成回测，同时预留成本快照字段；若正式目标是 Margin-aware，最终应补充不可变成本快照。
 
-### D2｜Period 口径（M0 前）
+### D2｜Period 口径（已决策）
 
-建议：全局统一周期、UTC+8、按日志 `created_at` 归属，Ingest 时间只用于水位线和延迟指标。
+全局统一周期使用半开区间 `[start,end)`、Asia/Shanghai（UTC+8）；按日志 `created_at` 归属，Ingest 时间只用于水位线和延迟指标。实现与测试已对齐。
 
 ### D3｜Refund / Correction 口径（M2 前）
 
@@ -358,7 +358,19 @@ type UnitOfWork interface {
 
 论坛先以纯荣誉模式观察内容质量和灌水率，再确定额度档位、付费门槛和限额。
 
-## 8. 测试底线
+## 8. 当前未冒充完成的外部验收
+
+以下项目已有代码、测试或验收脚本，但必须接入真实部署配置后才能勾选完成：
+
+- 真实 MySQL/Redis Compose：迁移、`/readyz`、重启、唯一约束、事务回滚和并发锁；
+- new-api `LOG_DB` 只读账号、Pulse 独立数据库及无主库写权限；
+- 真实 LOG_DB 回放、参数定标和 Provider 成本快照决策；
+- Answer 真实 schema、SSO、等级降级和跨实例 Nonce；
+- new-api Benefit 真实到账、重放 100 次、timeout Query、rollback 及密钥轮换演练。
+
+本机当前 Docker Hub 返回镜像授权服务不可用，不能以失败的拉取结果或内存 fake 代替上述验收。
+
+## 9. 测试底线
 
 以下测试必须长期保留：
 
@@ -377,7 +389,7 @@ type UnitOfWork interface {
 
 内存 fake 不能替代真实 MySQL 唯一约束测试；所有人工调整、冲正、rollback 都必须有审计断言。
 
-## 9. 推进顺序
+## 10. 推进顺序
 
 ```text
 P0 跨仓库身份/服务契约与 Cookie 安全
@@ -403,7 +415,7 @@ M7 内容奖励
 
 博客和 Answer 基础部署可以并行，但论坛公网开放必须等待 P0；内容奖励必须等待 M5，并经过纯荣誉观察期。
 
-## 10. 工程约束
+## 11. 工程约束
 
 - 仓库根不是 Go module，Go 命令必须显式列出模块路径；
 - domain 不依赖 Gin、GORM、Redis 或 new-api SDK；
