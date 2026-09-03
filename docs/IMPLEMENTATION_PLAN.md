@@ -17,7 +17,8 @@
 🟡 M0 地基         配置、Gin、健康检查、GORM/Redis、Goose migration、指标已落地；真实环境验收待完成
 ✅ M1 Ledger 记账内核    领域账本、账户快照、幂等冲突、重建与 ledger-check 已落地
 ✅ M2 Usage Ingest 与等级  只读日志游标、统一 Mapper、事务记账、退款复核、等级 Profile 已落地
-⬜ M2.5-M7       见下文
+🟡 M2.5 回测框架  只读回放、范围过滤、异常/覆盖率、倍率对比已落地；真实 LOG_DB 样本待环境接入
+⬜ M3-M7          见下文
 ```
 
 本次已启动 M0 第一批：`services/pulse/` 已从 HTTP 桩升级为可装配的 API/Worker 基础，新增 16 张核心表 migration、依赖健康检查、结构化日志、Prometheus registry、UnitOfWork 事务边界和服务签名校验。`docs/OVERVIEW.md` 为未跟踪文件，本计划不依赖它，也不覆盖或删除它。
@@ -208,11 +209,13 @@ type UnitOfWork interface {
 
 ### M2.5｜真实日志回测
 
-- [ ] 用真实 LOG_DB 样本回放消费、退款、task、结算失败数据；
-- [ ] 输出用户覆盖率、贡献值、券产出、异常率和数据缺口；
-- [ ] 对比人工倍率、模型倍率、渠道倍率的结果；
-- [ ] 标定 Ticket Threshold、Reward 权重、预算上限；
+- [ ] 用真实 LOG_DB 样本回放消费、退款、task、结算失败数据（当前仓库已提供只读回放命令，待配置只读 LOG_DB 后执行）；
+- [x] 输出用户覆盖率、贡献值、券产出、异常率和数据缺口；
+- [x] 对比人工倍率、模型倍率、渠道倍率的结果；
+- [ ] 基于真实报告标定 Ticket Threshold、Reward 权重、预算上限；
 - [ ] 决定采用估算毛利，还是让 new-api 增加不可变成本快照。
+
+当前实现：`meta-pulse-tool backtest --from ... --to ...` 使用与 Ingest 相同的 LOG_DB Mapper，范围按 `[from,to)`，只读 Pulse DB，不推进生产游标、不写 Ledger/Account。由于当前环境未提供可验证的真实 LOG_DB 样本，真实回放与参数定标不能伪造完成。
 
 **出口：**得到可审计的活动成本 / 贡献毛利数字；M4 参数必须引用回测报告。
 

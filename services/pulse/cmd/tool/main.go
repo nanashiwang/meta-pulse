@@ -11,6 +11,7 @@ import (
 
 	"github.com/nanashiwang/meta-pulse/internal/adapter/newapi"
 	"github.com/nanashiwang/meta-pulse/internal/config"
+	"github.com/nanashiwang/meta-pulse/internal/domain/money"
 	"github.com/nanashiwang/meta-pulse/internal/service"
 	mysqlstore "github.com/nanashiwang/meta-pulse/internal/store/mysql"
 	"github.com/nanashiwang/meta-pulse/migrations"
@@ -39,11 +40,83 @@ func main() {
 			logger.Error("backfill failed", "error", err)
 			os.Exit(1)
 		}
-	case "backtest", "reconcile", "period-close", "reward-retry":
+	case "backtest":
+		if err := runBacktest(os.Args[2:]); err != nil {
+			logger.Error("backtest failed", "error", err)
+			os.Exit(1)
+		}
+	case "reconcile", "period-close", "reward-retry":
 		fmt.Printf("meta-pulse tool %s: command scaffold; implementation pending\n", os.Args[1])
 	default:
 		usage()
 	}
+}
+
+func runBacktest(args []string) error {
+	flags := flag.NewFlagSet("backtest", flag.ContinueOnError)
+	fromValue := flags.String("from", "", "start time in RFC3339 (inclusive)")
+	toValue := flags.String("to", "", "end time in RFC3339 (exclusive)")
+	manualMultiplier := flags.Int64("manual-multiplier-bps", 10000, "manual comparison multiplier in basis points")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	parseTime := func(name, value string) (time.Time, error) {
+		if value == "" {
+			return time.Time{}, nil
+		}
+		parsed, err := time.Parse(time.RFC3339, value)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("invalid --%s: %w", name, err)
+		}
+		return parsed, nil
+	}
+	from, err := parseTime("from", *fromValue)
+	if err != nil {
+		return err
+	}
+	to, err := parseTime("to", *toValue)
+	if err != nil {
+		return err
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	database, err := mysqlstore.Open(cfg.PulseDBDSN)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+	reader, err := newapi.OpenLogReader(cfg.NewAPILogDSN)
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+	source, err := newapi.NewLogSource(reader, "new-api-log")
+	if err != nil {
+		return err
+	}
+	unit, err := mysqlstore.NewUnitOfWork(database)
+	if err != nil {
+		return err
+	}
+	backtest, err := service.NewBacktestService(unit, source, service.BacktestConfig{
+		BatchSize:            cfg.IngestBatchSize,
+		TicketThresholdMilli: cfg.TicketThresholdMilli,
+		ManualMultiplierBps:  money.Bps(*manualMultiplier),
+	})
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+	report, runErr := backtest.Run(ctx, from, to)
+	encoded, encodeErr := json.MarshalIndent(report, "", "  ")
+	if encodeErr != nil {
+		return encodeErr
+	}
+	fmt.Println(string(encoded))
+	return runErr
 }
 
 func runBackfill(args []string) error {
