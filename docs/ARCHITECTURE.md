@@ -770,7 +770,7 @@ Pulse 不保存：
 
 只使用 new-api `user_id` 作为 opaque principal。
 
-Pulse 对 new-api LOG_DB 使用只读账号，并且无权限直接写 new-api 用户余额表。new-api session Cookie 不得转发给 Pulse 或论坛；YuanHeng 的 Cookie 必须隔离在 new-api WebView / 客户端安全存储边界内。若论坛暂时与 new-api 共用 hostname，边缘层必须阻止 `Path=/` 的 session Cookie 进入 `/forum/`；长期建议论坛使用独立子域。
+Pulse 对 new-api LOG_DB 使用只读账号，并且无权限直接写 new-api 用户余额表。new-api session Cookie 不得转发给 Pulse 或论坛；YuanHeng 的 Cookie 必须隔离在 new-api WebView / 客户端安全存储边界内。论坛固定使用 `forum.<主域>` 独立子域，网关只向 Answer 转发其 `visit` Cookie；旧 `/forum/*` 仅重定向，不再代理。
 
 ## 29. 对账与可观测性
 
@@ -856,7 +856,8 @@ Redis
 - NEWAPI_LOG_DSN 用户：new-api LOG_DB read only；
 - Internal Benefit API：内网/localhost + HMAC；
 - Pulse 原始用户 API：仅内网，由 new-api Signed BFF 代理；
-- 对外 `/api/pulse/*`：由 new-api BFF 接管，不把浏览器请求直接转发为 Pulse 原始请求；
+- 对外 `/api/pulse/*`：由 new-api BFF 接管并清除浏览器提交的 Pulse 服务签名头，不把浏览器请求直接转发为 Pulse 原始请求；
+- 论坛固定使用独立 HTTPS 子域；网关对 Answer 使用 Cookie allowlist，Login Ticket callback query 不进入边缘 access log；
 - Secret 仅存服务器 Secret / 密码管理器，不写 GitHub。
 
 ## 32. `opensource-loyalty` 复用边界

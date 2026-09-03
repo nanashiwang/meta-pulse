@@ -83,7 +83,7 @@ Answer
   → PersonalBranding 徽章渲染
 ```
 
-`next` 只能指向固定 SSO 路由；callback 只能使用固定配置或严格 allowlist，禁止开放重定向。浏览器和 YuanHeng 的 new-api session Cookie 不得转发给 Answer；论坛最好使用独立子域，若暂时共用路径，边缘层必须剥离 new-api 的 session Cookie。
+`next` 只能指向固定 SSO 路由；callback 固定为 `https://forum.yourdomain.com/api/user-center/login/callback`（正式环境替换域名），禁止开放重定向。浏览器和 YuanHeng 的 new-api session Cookie 不得转发给 Answer；论坛固定使用独立子域，网关只向 Answer 转发其 `visit` Cookie。
 
 ### Login Ticket 验签
 
@@ -108,7 +108,7 @@ signature = hex(HMAC-SHA256(shared_secret, payload))
 | `user_id` 必须是大于 0 的规范十进制整数 | `0`、负数、前导零或带符号身份绕过 |
 | secret 为空时拒绝 | 未配置时 fail closed——空密钥的 HMAC 仍是合法 HMAC |
 
-new-api 已提供签发入口；论坛公网开放前仍须完成共享 Redis、固定 HTTPS callback 与网关 Cookie 隔离验收。
+new-api 已提供签发入口，插件使用共享 Redis 原子消费 nonce；固定 HTTPS callback 与网关 Cookie allowlist 已落地。论坛公网开放前仍须在正式域名执行端到端登录、重放和降级验收。
 
 插件 `Description()` 中的两个关键开关：
 
@@ -230,16 +230,16 @@ Answer 至今没有长文/文章类型（已核对 1.4 / 1.5 / 1.6 / 2.0 release
 
 ## 8. 域名与路由
 
-公共入口可以继续按路径统一路由，但**不得以共享 Cookie 换取便利**。安全优先的目标拓扑是论坛独立子域；过渡期若继续使用单 hostname，必须由边缘层隔离 session Cookie：
+公网固定采用论坛独立子域，不再使用同 hostname 反向代理 Answer：
 
 ```text
-yourdomain.com/                new-api 控制台
-yourdomain.com/blog/           VitePress 静态站
-yourdomain.com/console/pulse   Meta Pulse UI（由 new-api 提供）
-forum.yourdomain.com/          Apache Answer
+https://yourdomain.com/                new-api 控制台
+https://yourdomain.com/blog/           VitePress 静态站
+https://yourdomain.com/console/pulse   Meta Pulse UI（由 new-api 提供）
+https://forum.yourdomain.com/          Apache Answer
 ```
 
-过渡期的 `yourdomain.com/forum/` 仍可代理到 Answer，但必须剥离 new-api 的 `Path=/` session Cookie。`/api/pulse/` 只能由 new-api BFF 处理；Pulse 原始 API 不对公网暴露。具体网关配置在 P0 落地时同步更新。
+`yourdomain.com/forum/*` 只做 308 跳转。论坛虚拟主机采用 Cookie allowlist，只向 Answer 转发其 `visit` Cookie，即使 new-api 被误配为父域 Cookie，`session` 也不会进入论坛上游。`/api/pulse/*` 明确代理到 new-api BFF，并清除浏览器提交的 Pulse 服务签名头；部署配置中不存在 Pulse 公网上游，Compose 也不发布 Pulse/Answer 宿主机端口。Login Ticket callback query 不写入边缘 access log，并返回 `Referrer-Policy: no-referrer`。详见 `deploy/nginx/`。
 
 ## 9. 引流闭环
 

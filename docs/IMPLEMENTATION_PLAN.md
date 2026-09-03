@@ -161,9 +161,9 @@ type UnitOfWork interface {
 - [ ] Ticket 具备 TTL、未来时间拒绝、HMAC 验签、单次 nonce、callback allowlist；
 - [ ] 论坛插件将登录入口切换到 SSO Bridge；
 - [ ] Nonce 改为 Redis 或数据库原子消费，不能只依赖进程内存；
-- [ ] 确定论坛域名与 Cookie 隔离方案；同域临时方案必须在 Nginx 剥离 new-api session；
+- [x] 论坛固定使用独立 HTTPS 子域；Nginx 仅向 Answer 转发 `visit` Cookie，旧 `/forum/*` 只重定向；
 - [ ] new-api 实现 Pulse Signed BFF，浏览器访问 new-api，用户 ID 由 session 派生；
-- [ ] 更新 Nginx/网关：对外 `/api/pulse/*` 只进入 new-api BFF，Pulse 原始 API 不暴露；
+- [x] 更新 Nginx/网关：对外 `/api/pulse/*` 只进入 new-api BFF，Pulse/Answer 均不发布宿主机端口；
 - [ ] 统一服务签名覆盖 method、path、user、timestamp、nonce、body hash；
 - [ ] 定义 Benefit API 的 grant/query/rollback、payload fingerprint、conflict 和错误码；
 - [ ] 定义 Usage Mapper：consume、refund、correction、异步 task 退款、差额结算；
@@ -346,9 +346,9 @@ type UnitOfWork interface {
 
 必须确认：退款是否有稳定原消费关联；没有关联时如何进入 correction、人工对账和后续冲正，禁止把无法确认的退款直接计入用户贡献。
 
-### D4｜Cookie 拓扑（P0 前）
+### D4｜Cookie 拓扑（已决策）
 
-建议论坛使用独立子域；若暂时沿用路径路由，必须在边缘层阻止 new-api session Cookie 进入论坛。
+论坛固定使用 `forum.<主域>` 独立 HTTPS 子域；旧 `/forum/*` 仅做 308 跳转。网关以 Cookie allowlist 方式只向 Answer 转发 `visit`，并禁止 Pulse/Answer 容器直接发布宿主机端口。
 
 ### D5｜Ticket Debt 展示（M3 前）
 

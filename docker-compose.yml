@@ -45,8 +45,9 @@ services:
       PULSE_ADMIN_HMAC_SECRET: ${PULSE_ADMIN_HMAC_SECRET:-}
       PULSE_REWARD_RANDOM_SECRET: ${PULSE_REWARD_RANDOM_SECRET:-replace-me}
       PULSE_REWARD_SHADOW_MODE: ${PULSE_REWARD_SHADOW_MODE:-true}
-    ports:
-      - "8088:8088"
+    # Internal-only: browsers reach Pulse through new-api's signed BFF.
+    expose:
+      - "8088"
     healthcheck:
       test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1:8088/readyz"]
       interval: 10s
@@ -116,8 +117,9 @@ services:
       context: .
       dockerfile: services/forum/Dockerfile
     restart: unless-stopped
-    ports:
-      - "9080:80"
+    # Internal-only: the HTTPS gateway is the sole public Answer entry.
+    expose:
+      - "80"
     volumes:
       - forum_data:/data
     depends_on:

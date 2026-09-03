@@ -85,7 +85,7 @@ meta-pulse/
 │       └── user-center-pulse/       身份委托 + 等级徽章插件
 ├── sites/
 │   └── blog/                        Track B｜VitePress 博客
-├── deploy/nginx/                    单域名路由
+├── deploy/nginx/                    HTTPS 分域网关与 Cookie 隔离
 └── docs/
 ```
 
