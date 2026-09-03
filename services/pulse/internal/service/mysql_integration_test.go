@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/nanashiwang/meta-pulse/internal/domain/ledger"
+	"github.com/nanashiwang/meta-pulse/internal/domain/usage"
 	mysqlstore "github.com/nanashiwang/meta-pulse/internal/store/mysql"
 	"github.com/nanashiwang/meta-pulse/migrations"
 )
@@ -312,5 +313,132 @@ WHERE user_id = ? AND period_id = ? AND asset_type = 'contribution'`, userID, pe
 	}
 	if expired != 1 || grants != 1 || outboxes != 1 {
 		t.Fatalf("replayed close duplicates expired=%d grants=%d outboxes=%d", expired, grants, outboxes)
+	}
+}
+
+func TestMySQLUsageReplayAndConflictAreAtomic(t *testing.T) {
+	database, sqlDB := openMySQLIntegration(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		t.Fatalf("load Asia/Shanghai: %v", err)
+	}
+	// Use a historical instant so active periods created by other integration
+	// tests cannot make FindActiveAt ambiguous. Remove leftovers from a prior
+	// failed run before creating this test fixture.
+	if _, err := sqlDB.ExecContext(ctx, `
+DELETE FROM pulse_period WHERE period_key LIKE 'integration-usage-%'`); err != nil {
+		t.Fatalf("remove stale usage integration periods: %v", err)
+	}
+	now := time.Date(2000, 1, 1, 12, 0, 0, 0, loc)
+	userID := uint64(920000000 + time.Now().UnixNano()%1000000)
+	periodKey := fmt.Sprintf("integration-usage-%d", time.Now().UnixNano())
+	eventID := periodKey + ":consume"
+	startsAt := now.Add(-time.Minute)
+	endsAt := now.Add(time.Hour)
+	var periodID uint64
+	if _, err := sqlDB.ExecContext(ctx, `
+INSERT INTO pulse_period (period_key, status, starts_at, ends_at, timezone, config_version, random_version)
+VALUES (?, 'active', ?, ?, 'Asia/Shanghai', 'integration-v1', 'hmac-v1')`, periodKey, startsAt, endsAt); err != nil {
+		t.Fatalf("insert period: %v", err)
+	}
+	if err := sqlDB.QueryRowContext(ctx, `SELECT id FROM pulse_period WHERE period_key = ?`, periodKey).Scan(&periodID); err != nil {
+		t.Fatalf("read period id: %v", err)
+	}
+	t.Cleanup(func() {
+		for _, table := range []string{"pulse_ingest_conflict", "pulse_usage_event", "pulse_ledger_entry", "pulse_account", "pulse_user_period_stat", "pulse_economics_rule"} {
+			_, _ = sqlDB.Exec(`DELETE FROM `+table+` WHERE period_id = ?`, periodID)
+		}
+		_, _ = sqlDB.Exec(`DELETE FROM pulse_period WHERE id = ?`, periodID)
+	})
+	if _, err := sqlDB.ExecContext(ctx, `
+INSERT INTO pulse_economics_rule (period_id, rule_key, priority, model_pattern, eligible, multiplier_bps, config_version)
+VALUES (?, 'integration-default', 0, 'gpt-*', 1, 10000, 'integration-v1')`, periodID); err != nil {
+		t.Fatalf("insert economics rule: %v", err)
+	}
+
+	event := usage.Event{
+		SourceSystem:    "new-api-log",
+		SourceEventID:   eventID,
+		CursorValue:     eventID,
+		PayloadHash:     fmt.Sprintf("%064d", 4),
+		UserID:          userID,
+		EventType:       usage.EventConsume,
+		SourceCreatedAt: now,
+		QuotaDelta:      1500,
+		ModelName:       "gpt-4o",
+		ChannelID:       2,
+	}
+	source := staticUsageSource{events: []usage.Event{event}}
+	unit, err := mysqlstore.NewUnitOfWork(database)
+	if err != nil {
+		t.Fatalf("create unit of work: %v", err)
+	}
+	ingest, err := NewUsageIngestService(unit, source, UsageIngestConfig{BatchSize: 10, TicketThresholdMilli: 1000})
+	if err != nil {
+		t.Fatalf("create usage ingest service: %v", err)
+	}
+
+	first, err := ingest.IngestBatch(ctx)
+	if err != nil {
+		t.Fatalf("first usage ingest: %v", err)
+	}
+	if first.Accepted != 1 || first.TicketsMinted != 1 {
+		t.Fatalf("first usage result=%+v", first)
+	}
+	for i := 0; i < 99; i++ {
+		replayed, replayErr := ingest.IngestBatch(ctx)
+		if replayErr != nil {
+			t.Fatalf("usage replay %d: %v", i, replayErr)
+		}
+		if replayed.Replayed != 1 || replayed.Accepted != 0 || replayed.Conflicts != 0 {
+			t.Fatalf("usage replay %d result=%+v", i, replayed)
+		}
+	}
+
+	var usageCount, contributionEntries, ticketEntries int
+	if err := sqlDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM pulse_usage_event WHERE source_system = ? AND source_event_id = ?`, event.SourceSystem, event.SourceEventID).Scan(&usageCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM pulse_ledger_entry WHERE source_type = 'usage' AND source_ref = ? AND asset_type = 'contribution'`, event.SourceSystem+":"+event.SourceEventID).Scan(&contributionEntries); err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM pulse_ledger_entry WHERE source_type = 'usage' AND source_ref = ? AND asset_type = 'ticket'`, event.SourceSystem+":"+event.SourceEventID).Scan(&ticketEntries); err != nil {
+		t.Fatal(err)
+	}
+	if usageCount != 1 || contributionEntries != 1 || ticketEntries != 1 {
+		t.Fatalf("replay created duplicates usage=%d contribution=%d ticket=%d", usageCount, contributionEntries, ticketEntries)
+	}
+	var contributionBalance, ticketBalance int64
+	if err := sqlDB.QueryRowContext(ctx, `SELECT balance FROM pulse_account WHERE user_id = ? AND period_id = ? AND asset_type = 'contribution'`, userID, periodID).Scan(&contributionBalance); err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlDB.QueryRowContext(ctx, `SELECT balance FROM pulse_account WHERE user_id = ? AND period_id = ? AND asset_type = 'ticket'`, userID, periodID).Scan(&ticketBalance); err != nil {
+		t.Fatal(err)
+	}
+	if contributionBalance != 1500 || ticketBalance != 1 {
+		t.Fatalf("replay changed balances contribution=%d ticket=%d", contributionBalance, ticketBalance)
+	}
+
+	changed := event
+	changed.PayloadHash = fmt.Sprintf("%064d", 5)
+	var conflictResult IngestResult
+	if err := ingest.processOne(ctx, changed, &conflictResult); err != nil {
+		t.Fatalf("conflicting usage ingest: %v", err)
+	}
+	if conflictResult.Conflicts != 1 {
+		t.Fatalf("conflict result=%+v", conflictResult)
+	}
+	var conflicts, entries int
+	if err := sqlDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM pulse_ingest_conflict WHERE source_system = ? AND source_event_id = ?`, event.SourceSystem, event.SourceEventID).Scan(&conflicts); err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM pulse_ledger_entry WHERE user_id = ? AND period_id = ?`, userID, periodID).Scan(&entries); err != nil {
+		t.Fatal(err)
+	}
+	if conflicts != 1 || entries != 2 {
+		t.Fatalf("conflict mutated accounting conflicts=%d ledger_entries=%d", conflicts, entries)
 	}
 }

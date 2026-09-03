@@ -201,7 +201,7 @@ type UnitOfWork interface {
 
 - [x] LOG_DB 只读 cursor、批量读取、断点续跑；
 - [x] 共用 Mapper 实现实时 Ingest 和 Backfill；
-- [x] `source_system + source_event_id` 幂等；
+- [x] `source_system + source_event_id` 幂等（真实 MySQL 重放 100 次与 payload conflict 已验收）；
 - [x] payload hash 不一致写 `pulse_ingest_conflict`，不静默覆盖；
 - [x] 单事务完成 UsageEvent、Contribution Ledger、Account、Ticket Entitlement、Ticket Ledger、UserPeriodStat；
 - [x] Economics Rule 保存命中规则、倍率、eligibility、版本快照；
@@ -376,7 +376,7 @@ type UnitOfWork interface {
 
 | 场景 | 里程碑 | 要求 |
 |---|---|---|
-| Usage 重放 100 次 | M2 | 真实 MySQL 唯一约束 |
+| Usage 重放 100 次 | M2 | 真实 MySQL 唯一约束（已验收） |
 | Action 重放 100 次 | M4 | 一个 Grant、一个随机结果（真实 MySQL 已验收） |
 | Benefit 重放 100 次 | M5 | 只到账一次 |
 | Period Close 重跑 | M6 | 不重复发放（真实 MySQL 已验收） |
