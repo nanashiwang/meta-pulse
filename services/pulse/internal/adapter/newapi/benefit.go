@@ -48,11 +48,11 @@ func NewBenefitClient(baseURL string, secret []byte, client *http.Client) (*Bene
 }
 
 func (c *BenefitClient) Grant(ctx context.Context, request ports.BenefitGrantRequest) (ports.BenefitGrantResponse, error) {
-	if request.UserID == 0 || request.Amount < 0 || request.SourceRef == "" || request.TransferableQuota {
+	if request.GrantID == "" || request.GrantID != request.SourceRef || request.UserID == 0 || request.Amount <= 0 || request.TransferableQuota || len(request.PayloadHash) != sha256.Size*2 {
 		return ports.BenefitGrantResponse{}, errors.New("invalid benefit grant request")
 	}
 	var response benefitResponse
-	if err := c.post(ctx, "/internal/pulse/benefits/grant", request.UserID, request, &response); err != nil {
+	if err := c.post(ctx, "/api/internal/pulse/benefits/grant", request.UserID, request, &response); err != nil {
 		return ports.BenefitGrantResponse{}, err
 	}
 	return ports.BenefitGrantResponse{Applied: response.applied(), SourceRef: response.SourceRef}, nil
@@ -63,7 +63,7 @@ func (c *BenefitClient) Query(ctx context.Context, sourceRef string) (ports.Bene
 		return ports.BenefitState{}, errors.New("benefit source ref is empty")
 	}
 	var response benefitResponse
-	if err := c.post(ctx, "/internal/pulse/benefits/query", 1, map[string]string{"source_ref": sourceRef}, &response); err != nil {
+	if err := c.post(ctx, "/api/internal/pulse/benefits/query", 1, map[string]string{"source_ref": sourceRef}, &response); err != nil {
 		if errors.Is(err, ErrBenefitNotFound) {
 			return ports.BenefitState{Applied: false, SourceRef: sourceRef}, nil
 		}
@@ -77,7 +77,7 @@ func (c *BenefitClient) Rollback(ctx context.Context, sourceRef, reason string) 
 		return ports.BenefitState{}, errors.New("benefit rollback request is incomplete")
 	}
 	var response benefitResponse
-	if err := c.post(ctx, "/internal/pulse/benefits/rollback", 1, map[string]string{"source_ref": sourceRef, "reason": reason}, &response); err != nil {
+	if err := c.post(ctx, "/api/internal/pulse/benefits/rollback", 1, map[string]string{"source_ref": sourceRef, "reason": reason}, &response); err != nil {
 		return ports.BenefitState{}, err
 	}
 	return ports.BenefitState{Applied: response.applied(), SourceRef: response.SourceRef}, nil

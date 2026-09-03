@@ -123,7 +123,7 @@ func TestSettlementSuccessMovesReservedBudgetAndClosesOutbox(t *testing.T) {
 	if budget.ReservedAmount != 0 || budget.SettledAmount != 10 {
 		t.Fatalf("budget=%+v", budget)
 	}
-	if client.lastGrant.TransferableQuota || client.lastGrant.SourceRef != "pg_test" {
+	if client.lastGrant.TransferableQuota || client.lastGrant.GrantID != "pg_test" || client.lastGrant.SourceRef != "pg_test" || client.lastGrant.PayloadHash != outboxes.outboxes[0].PayloadHash {
 		t.Fatalf("benefit request=%+v", client.lastGrant)
 	}
 }
@@ -181,6 +181,21 @@ func TestSettlementRejectsTamperedPayload(t *testing.T) {
 	client := &fakeBenefitClient{}
 	service, _, outboxes, _ := settlementFixture(t, client)
 	outboxes.outboxes[0].PayloadJSON = []byte(`{"user_id":9,"amount":999,"source_ref":"pg_test","reward_type":"quota"}`)
+	report, err := service.ProcessBatch(context.Background())
+	if err != nil || report.Dead != 1 || client.grantCalls != 0 {
+		t.Fatalf("report=%+v err=%v client=%+v", report, err, client)
+	}
+}
+
+func TestSettlementRejectsMismatchedGrantIDWithValidPayloadHash(t *testing.T) {
+	client := &fakeBenefitClient{}
+	service, _, outboxes, _ := settlementFixture(t, client)
+	payload, err := json.Marshal(settlementPayload{GrantID: "other-grant", UserID: 9, Amount: 10, SourceRef: "pg_test", RewardType: "quota"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	outboxes.outboxes[0].PayloadJSON = payload
+	outboxes.outboxes[0].PayloadHash = sha256Hex(payload)
 	report, err := service.ProcessBatch(context.Background())
 	if err != nil || report.Dead != 1 || client.grantCalls != 0 {
 		t.Fatalf("report=%+v err=%v client=%+v", report, err, client)

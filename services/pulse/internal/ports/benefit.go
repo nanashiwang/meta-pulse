@@ -8,6 +8,7 @@ import (
 var ErrBenefitPayloadConflict = errors.New("new-api benefit payload conflict")
 
 type BenefitGrantRequest struct {
+	GrantID           string `json:"grant_id"`
 	UserID            uint64 `json:"user_id"`
 	Amount            int64  `json:"amount"`
 	TransferableQuota bool   `json:"transferable_quota"`

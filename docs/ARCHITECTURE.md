@@ -532,19 +532,23 @@ Worker 再异步调用 new-api Benefit。
 新增内部接口：
 
 ```text
-POST /api/internal/pulse/benefits/quota
-GET  /api/internal/pulse/benefits/quota/:source_ref
-POST /api/internal/pulse/benefits/quota/:source_ref/rollback
+POST /api/internal/pulse/benefits/grant
+POST /api/internal/pulse/benefits/query
+GET  /api/internal/pulse/benefits/query/:source_ref
+POST /api/internal/pulse/benefits/rollback
 ```
 
 Grant 示例：
 
 ```json
 {
+  "grant_id": "reward_grant_01J...",
   "user_id": 123,
+  "amount": 50000,
+  "transferable_quota": false,
   "source_ref": "reward_grant_01J...",
-  "quota_delta": 50000,
-  "reason": "pulse_instant_reward"
+  "reward_type": "newapi_quota",
+  "payload_hash": "<settlement payload sha256>"
 }
 ```
 

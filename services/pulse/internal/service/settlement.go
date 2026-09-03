@@ -168,7 +168,7 @@ func (s *SettlementService) loadSettlement(ctx context.Context, outbox ports.Set
 	if err != nil {
 		return ports.RewardGrant{}, ports.BenefitGrantRequest{}, err
 	}
-	if grant.SourceRef == "" || grant.UserID == 0 || grant.Amount < 0 || strings.TrimSpace(grant.BudgetType) == "" || grant.Status != RewardStatusPending {
+	if grant.GrantID == "" || grant.SourceRef == "" || grant.UserID == 0 || grant.Amount <= 0 || strings.TrimSpace(grant.BudgetType) == "" || grant.Status != RewardStatusPending {
 		return ports.RewardGrant{}, ports.BenefitGrantRequest{}, ErrInvalidSettlementPayload
 	}
 	if sha256Hex(outbox.PayloadJSON) != outbox.PayloadHash {
@@ -177,10 +177,10 @@ func (s *SettlementService) loadSettlement(ctx context.Context, outbox ports.Set
 	if err := json.Unmarshal(outbox.PayloadJSON, &payload); err != nil {
 		return ports.RewardGrant{}, ports.BenefitGrantRequest{}, fmt.Errorf("%w: %v", ErrInvalidSettlementPayload, err)
 	}
-	if payload.UserID != grant.UserID || payload.Amount != grant.Amount || payload.SourceRef != grant.SourceRef || payload.TransferableQuota || payload.RewardType != grant.RewardType {
+	if payload.GrantID != grant.GrantID || payload.GrantID != payload.SourceRef || payload.UserID != grant.UserID || payload.Amount != grant.Amount || payload.SourceRef != grant.SourceRef || payload.TransferableQuota || payload.RewardType != grant.RewardType {
 		return ports.RewardGrant{}, ports.BenefitGrantRequest{}, ErrInvalidSettlementPayload
 	}
-	return grant, ports.BenefitGrantRequest{UserID: payload.UserID, Amount: payload.Amount, TransferableQuota: false, SourceRef: payload.SourceRef, RewardType: payload.RewardType, PayloadHash: outbox.PayloadHash}, nil
+	return grant, ports.BenefitGrantRequest{GrantID: payload.GrantID, UserID: payload.UserID, Amount: payload.Amount, TransferableQuota: false, SourceRef: payload.SourceRef, RewardType: payload.RewardType, PayloadHash: outbox.PayloadHash}, nil
 }
 
 type settlementPayload struct {

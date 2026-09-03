@@ -2,6 +2,7 @@ package newapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -15,11 +16,18 @@ import (
 func TestBenefitClientSignsGrantAndDecodesResponse(t *testing.T) {
 	secret := []byte("benefit-secret")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/internal/pulse/benefits/grant" || r.Method != http.MethodPost {
+		if r.URL.Path != "/api/internal/pulse/benefits/grant" || r.Method != http.MethodPost {
 			t.Fatalf("request=%s %s", r.Method, r.URL.Path)
 		}
 		if r.Header.Get(security.HeaderRole) != "pulse-settlement" || r.Header.Get(security.HeaderSignature) == "" || r.Header.Get(security.HeaderNonce) == "" {
 			t.Fatalf("missing signed headers: %+v", r.Header)
+		}
+		var request ports.BenefitGrantRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		if request.GrantID != "pg_1" || request.SourceRef != "pg_1" || request.PayloadHash != strings.Repeat("a", 64) {
+			t.Fatalf("request=%+v", request)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"applied","source_ref":"pg_1"}`))
@@ -29,7 +37,7 @@ func TestBenefitClientSignsGrantAndDecodesResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := client.Grant(context.Background(), ports.BenefitGrantRequest{UserID: 9, Amount: 10, SourceRef: "pg_1", RewardType: "quota"})
+	result, err := client.Grant(context.Background(), ports.BenefitGrantRequest{GrantID: "pg_1", UserID: 9, Amount: 10, SourceRef: "pg_1", RewardType: "quota", PayloadHash: strings.Repeat("a", 64)})
 	if err != nil || !result.Applied || result.SourceRef != "pg_1" {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
@@ -38,10 +46,10 @@ func TestBenefitClientSignsGrantAndDecodesResponse(t *testing.T) {
 func TestBenefitClientMapsConflictAndNotFound(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/internal/pulse/benefits/grant":
+		case "/api/internal/pulse/benefits/grant":
 			w.WriteHeader(http.StatusConflict)
 			_, _ = w.Write([]byte(`{"message":"different payload"}`))
-		case "/internal/pulse/benefits/query":
+		case "/api/internal/pulse/benefits/query":
 			w.WriteHeader(http.StatusNotFound)
 		default:
 			w.WriteHeader(http.StatusInternalServerError)
@@ -52,7 +60,7 @@ func TestBenefitClientMapsConflictAndNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = client.Grant(context.Background(), ports.BenefitGrantRequest{UserID: 9, Amount: 10, SourceRef: "pg_1", RewardType: "quota"})
+	_, err = client.Grant(context.Background(), ports.BenefitGrantRequest{GrantID: "pg_1", UserID: 9, Amount: 10, SourceRef: "pg_1", RewardType: "quota", PayloadHash: strings.Repeat("a", 64)})
 	if !errors.Is(err, ErrBenefitConflict) {
 		t.Fatalf("grant err=%v", err)
 	}
@@ -67,7 +75,7 @@ func TestBenefitClientRejectsTransferableQuota(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = client.Grant(context.Background(), ports.BenefitGrantRequest{UserID: 1, Amount: 1, SourceRef: "x", TransferableQuota: true})
+	_, err = client.Grant(context.Background(), ports.BenefitGrantRequest{GrantID: "x", UserID: 1, Amount: 1, SourceRef: "x", TransferableQuota: true, PayloadHash: strings.Repeat("a", 64)})
 	if err == nil || !strings.Contains(err.Error(), "invalid benefit grant") {
 		t.Fatalf("err=%v", err)
 	}
