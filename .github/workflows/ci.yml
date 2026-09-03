@@ -23,7 +23,7 @@ jobs:
 
       - name: Check formatting
         run: |
-          files=$(gofmt -l ./cmd ./internal)
+          files=$(find cmd internal -name '*.go' -print0 | xargs -0 gofmt -l)
           if [ -n "$files" ]; then
             echo "The following files are not gofmt-formatted:"
             echo "$files"
