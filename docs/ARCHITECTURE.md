@@ -134,6 +134,28 @@ Meta Pulse = 调用之后的增长与权益系统
 
 > **Pulse 可以停，new-api 不能停。Pulse 故障不得影响模型请求、计费、充值和余额。**
 
+### 跨仓库身份链路
+
+new-api 是唯一身份事实源。浏览器和 YuanHeng Desktop 复用 new-api 的登录与 2FA：
+
+```text
+POST /api/user/login
+        ↓（需要时）
+POST /api/user/login/2fa
+        ↓
+new-api session Cookie + New-Api-User
+```
+
+Cookie 只发给 new-api；YuanHeng 可在隔离 WebView 中打开控制台页面，但不得保存密码、向 Pulse 发送 Cookie，或自行声明可信 `user_id`。用户访问 Pulse 的路径必须是：
+
+```text
+浏览器 / YuanHeng
+        ↓ session
+new-api Signed BFF（服务端从 session 派生 user_id）
+        ↓ HMAC 服务签名
+Meta Pulse 原始 API（仅内网）
+```
+
 ## 6. 总体系统架构
 
 ```text
@@ -177,6 +199,8 @@ Meta Pulse = 调用之后的增长与权益系统
 ```
 
 不做分布式事务；Pulse → new-api 使用 **Transactional Outbox + 幂等 Benefit Receiver + Reconciliation** 实现最终一致。
+
+浏览器和桌面端不能直连 Pulse 原始 API。对外只暴露 new-api BFF；`meta-pulse-api` 的用户 ID、角色和请求体均来自已验签的服务调用。Pulse 停止时，new-api 的模型请求、登录、计费、充值和余额链路仍必须可用。
 
 ## 7. 技术栈
 
@@ -281,6 +305,19 @@ UNIQUE(source_system, source_event_id)
 同一事件重放 N 次只处理一次；同 ID 但 payload hash 不同进入 `pulse_ingest_conflict`，不得静默覆盖。
 
 Backfill 与实时 Ingest 必须共用同一 Mapper 和同一业务逻辑。
+
+### new-api LOG_DB 映射边界
+
+Pulse 使用 new-api LOG_DB 只读账号，仅读取业务必需字段：
+
+```text
+logs.id       → source_event_id（稳定事件 ID）
+logs.user_id  → opaque principal
+logs.type     → consume / refund 分类
+logs.quota    → 用户侧计费额度
+```
+
+当前 new-api 中 `LogTypeConsume = 2`、`LogTypeRefund = 6`。`quota` 是用户收费事实，不等同于 Provider 成本；在成本快照接入前，不能把它宣称为真实毛利。异步任务退款、差额结算和缺少原消费关联的退款必须由 Mapper 明确分类，无法确认时进入冲突/人工对账，不得直接改变贡献值。
 
 ## 11. Economics Engine
 
@@ -526,7 +563,14 @@ target_type = user_quota
 target_id   = user_id
 ```
 
-使用 new-api 已有 BenefitChangeRecord 去重语义保证同一 Reward 最多到账一次。
+new-api 的 Benefit Receiver 必须以 `source_ref` 唯一定位，并持久化请求的 payload fingerprint：
+
+```text
+同 source_ref + 同 payload → 返回第一次结果
+同 source_ref + 不同 payload → conflict，不得吞掉 duplicate
+```
+
+现有 `BenefitChangeRecord` / `GrantUserQuotaTx` 可作为落地基础，但只处理数据库 duplicate 不足以满足上述语义，必须补充 payload 比较、审计记录和明确错误码。同一 Reward 最多到账一次；奖励额度建议 `transferable_quota = 0`，避免把活动额度再次转移。
 
 发生 timeout 时必须先 `GET Benefit(source_ref)`：存在则标记 settled；不存在才使用原 source_ref 重试。禁止生成新 source_ref 绕过幂等。
 
@@ -636,6 +680,10 @@ X-Pulse-Nonce
 X-Pulse-Signature
 ```
 
+签名内容至少覆盖规范化的 `method + path + user_id + timestamp + nonce + body_hash`；时间窗、Nonce、来源和密钥版本都必须校验。`X-Pulse-User-Id` 只能由 new-api BFF 服务端从 session 派生，Pulse 不信任浏览器传值。
+
+以下用户 API 是 Pulse 原始 API，只允许内网的 new-api BFF、Worker 或受控管理端访问；浏览器和 YuanHeng 不得直接调用：
+
 用户 API：
 
 ```text
@@ -723,7 +771,7 @@ Pulse 不保存：
 
 只使用 new-api `user_id` 作为 opaque principal。
 
-Pulse 对 new-api LOG_DB 使用只读账号，并且无权限直接写 new-api 用户余额表。
+Pulse 对 new-api LOG_DB 使用只读账号，并且无权限直接写 new-api 用户余额表。new-api session Cookie 不得转发给 Pulse 或论坛；YuanHeng 的 Cookie 必须隔离在 new-api WebView / 客户端安全存储边界内。若论坛暂时与 new-api 共用 hostname，边缘层必须阻止 `Path=/` 的 session Cookie 进入 `/forum/`；长期建议论坛使用独立子域。
 
 ## 29. 对账与可观测性
 
@@ -808,6 +856,8 @@ Redis
 - Pulse DB 用户：Pulse DB read/write；
 - NEWAPI_LOG_DSN 用户：new-api LOG_DB read only；
 - Internal Benefit API：内网/localhost + HMAC；
+- Pulse 原始用户 API：仅内网，由 new-api Signed BFF 代理；
+- 对外 `/api/pulse/*`：由 new-api BFF 接管，不把浏览器请求直接转发为 Pulse 原始请求；
 - Secret 仅存服务器 Secret / 密码管理器，不写 GitHub。
 
 ## 32. `opensource-loyalty` 复用边界
@@ -877,7 +927,8 @@ meta-pulse-forum   社区内容
 - 内容奖励使用独立 `budget_type = content_reward`，不计入贡献毛利占比分母；
 - 新增表：`pulse_content_candidate`、`pulse_content_award`、`pulse_user_level`；
 - 新增只读接口：`GET /v1/internal/users/:user_id/profile`；
-- 论坛登录回调由 new-api 签发 HMAC Login Ticket，插件验签后方可信任 `user_id`（该接口是 Pulse 的跨仓库前置项）。
+- 论坛登录入口统一为 new-api `/forum/sso/start`，未登录时使用 `/login?next=...`；new-api 从 session 读取用户后签发短期、单次 Login Ticket，插件验签并原子消费 nonce 后方可信任 `user_id`；
+- 论坛登录回调参数在验签前一律不可信，Pulse 故障时论坛登录和浏览必须降级而不是阻断（该接口是 Pulse 的跨仓库前置项）。
 
 ## 35. 最终工程范围
 

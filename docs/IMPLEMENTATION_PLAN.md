@@ -1,59 +1,141 @@
 # Meta Pulse 实施计划
 
-本文档是 `docs/ARCHITECTURE.md`（系统基线）与 `docs/COMMUNITY.md`（社区层）之上的**工程执行计划**：目录职责、里程碑出口标准、跨仓库依赖与待决策清单。
+本文档是 `docs/ARCHITECTURE.md`（系统基线）与 `docs/COMMUNITY.md`（社区层）之上的工程执行清单。目标不是先把页面做出来，而是先打通身份、日志、记账、预算和结算边界，再逐步开放奖励。
 
-架构文档回答「系统边界是什么」，本文档回答「按什么顺序建、每步做完的标志是什么」。
+```text
+先定义跨仓库契约 → 再建 Pulse 地基 → 再接真实日志 → 再展示 → 再发奖 → 最后做内容奖励
+```
 
 ## 1. 当前状态
 
 ```text
-✅ 架构冻结          ARCHITECTURE.md / COMMUNITY.md / AGENTS.md
-✅ Monorepo 骨架     services/{pulse,forum,forum-plugin} + sites/blog + deploy
-✅ UserCenter 插件   身份委托 + 等级徽章 + 签名校验（41 项测试）
-⬜ M0 地基           migration + 建表 + GORM/Redis 接入 + 装配
-⬜ M1..M6            见第 4 节
+✅ 架构文档       ARCHITECTURE.md / COMMUNITY.md / AGENTS.md
+✅ Monorepo 骨架  services/{pulse,forum,forum-plugin} + sites/blog + deploy
+✅ 论坛插件       UserCenter、等级展示、Ticket 验签代码与测试已存在
+✅ new-api 调研   已确认登录、2FA、LOG_DB、BenefitChangeRecord、额度发放边界
+⬜ P0 接入契约     new-api SSO / BFF / Benefit API 尚未实现
+⬜ M0 地基         Pulse migration、数据库、Redis、装配尚未实现
+⬜ M1-M7          见下文
 ```
 
-`services/pulse/` 目前只有 `config.go` 与三个 main 空壳；`go.mod` 无依赖。**M0 是所有后续工作的前置。**
+当前 `services/pulse/` 仍是配置和三个命令入口的骨架；`go.mod` 尚未接入业务依赖。`docs/OVERVIEW.md` 为未跟踪文件，本计划不依赖它，也不覆盖或删除它。
 
-## 2. 目录职责
+## 2. 已确认的跨仓库事实
 
-架构文档给出了目录树，本节补充两个它未定义、但决定代码可测性的抽象。
+### 2.1 身份事实源
+
+new-api 的登录入口为：
+
+```text
+POST /api/user/login
+POST /api/user/login/2fa（启用 2FA 时）
+```
+
+登录完成后由 new-api session Cookie 保存用户身份；受保护 API 同时要求 `New-Api-User`，且该 ID 必须与 session 中的用户一致。
+
+YuanHeng Desktop 已采用：
+
+```text
+登录 → 捕获 Set-Cookie → 处理 pending 2FA session → 保存正式 session
+     → Cookie + New-Api-User 查询用户/模型 → 创建或复用本机 API Token
+```
+
+结论：Pulse 不实现登录，不接收密码、Cookie 或客户端自报的可信 `user_id`。
+
+### 2.2 Usage 事实源
+
+new-api 的 `LOG_DB` 中：
+
+```text
+LogTypeConsume = 2
+LogTypeRefund  = 6
+Log.id         = 稳定日志主键
+Log.user_id    = 用户 ID
+Log.quota      = 用户侧计费额度
+```
+
+Pulse 使用独立只读账号读取 `LOG_SQL_DSN` 指向的日志库。`quota` 是第一阶段的 Eligible Paid Usage；Provider 实际成本目前不是日志事实源，必须在回测阶段明确采用“估算毛利”还是扩展 new-api 记录成本快照。
+
+普通消费、异步任务退款、差额结算的关联字段并不完全统一，不能仅凭 `refund` 类型推断因果关系；必须在 M2 前完成 Mapper 契约与异常样本回放。
+
+### 2.3 Benefit 事实边界
+
+new-api 已有 `BenefitChangeRecord` 唯一索引和 `GrantUserQuotaTx`，但现有重复记录处理只吞掉 duplicate，未比较请求 payload。因此 Pulse 专用 Benefit API 必须补齐：
+
+```text
+同 key + 同 payload    → 返回第一次结果
+同 key + 不同 payload  → conflict
+```
+
+Pulse 奖励必须通过 new-api Internal Benefit API 发放，建议 `transferable_quota = 0`，禁止直接写 `users.quota`。
+
+## 3. 跨仓库目标链路
+
+### 3.1 用户控制台 / YuanHeng
+
+```text
+浏览器或 YuanHeng 隔离 WebView
+        ↓ session Cookie（仅发给 new-api）
+new-api Session Auth / Signed BFF
+        ↓ 服务端派生 user_id，并签名调用
+Meta Pulse 用户 API
+```
+
+浏览器和桌面端都不直接访问 Pulse 原始 API，也不直接向 Pulse 传 session Cookie。
+
+### 3.2 论坛登录
+
+```text
+Answer
+  → new-api /forum/sso/start
+  → 未登录：/login?next=/forum/sso/start
+  → 已登录：new-api 从 session 读取用户并签发短期单次 Login Ticket
+  → 302 到固定 Answer callback
+  → 插件验签、消费 nonce、建立论坛会话
+```
+
+Ticket 的用户字段必须由 new-api 服务端读取，不能由浏览器提交后直接签名。Callback 地址使用固定配置或严格 allowlist，禁止开放重定向。Nonce 必须使用跨实例可共享的原子存储。
+
+### 3.3 奖励结算
+
+```text
+Pulse DB 事务：Ticket Spend + Budget Reservation + Reward Grant + Outbox
+        ↓
+Pulse Worker 调用 new-api Benefit API
+        ↓ timeout 时先 Query(source_ref)，不得换 source_ref
+new-api 在自己的事务内变更用户额度并写 BenefitChangeRecord
+```
+
+## 4. 目录职责
 
 ```text
 services/pulse/internal/
-├── app/              手工依赖装配：app.NewAPI(cfg) / app.NewWorker(cfg)
-├── config/           环境变量加载（已存在）
-├── domain/           纯 Go，零框架依赖，全部可单测
-│   ├── money/          Milli / Bps 定点类型
-│   ├── period/         draft→active→settling→closed 状态机
-│   ├── economics/      规则匹配 + 贡献值计算
-│   ├── ledger/         Entry / Operation / Asset 与记账规则
-│   ├── ticket/         entitlement = floor(net/threshold) + debt
-│   ├── reward/         权重表 + random_value → 选奖（纯函数）
-│   ├── budget/         预占 / 释放 / hard cap
-│   ├── experiment/     SHA256 bucket 分组
-│   ├── level/          lifetime_contribution → 等级
-│   ├── idem/           幂等 key 构造 + payload fingerprint
-│   └── random/         版本化 HMAC 派生
-├── ports/            ★ service 依赖的接口
-├── service/          事务编排：ingest / pulse / settlement / periodclose / query / admin / content
-├── store/mysql/      GORM 实现 ports，不含业务判断
-├── adapter/newapi/
-│   ├── logsource/      只读 LOG_DB 游标 + Mapper
-│   └── benefit/        Internal Benefit API 客户端
-├── adapter/forum/    只读论坛 DB 游标（Content Candidate）
-├── transport/http/   router + middleware + handler + dto
-├── job/              worker jobs + Redis lease 调度
-├── security/         HMAC 校验、nonce
-└── observability/    metrics / log / trace
+├── app/              手工依赖装配：API / Worker / Tool
+├── config/           环境变量加载与启动校验
+├── domain/           纯 Go 领域逻辑，零 Gin/GORM/Redis/new-api 依赖
+│   ├── money/        Milli / Bps 定点类型
+│   ├── period/       draft → active → settling → closed
+│   ├── economics/    规则匹配与贡献计算
+│   ├── ledger/       append-only 分录、冲正、调整
+│   ├── ticket/       产券、欠券、消费、过期
+│   ├── reward/       权重表与确定性选奖
+│   ├── budget/       预占、释放、hard cap
+│   ├── experiment/   稳定分组
+│   ├── level/        终身等级
+│   ├── idem/         幂等键与 payload fingerprint
+│   └── random/       版本化 HMAC 随机
+├── ports/            service 所依赖的接口
+├── service/          事务编排，不直接处理 HTTP
+├── store/mysql/      GORM 持久化，不复制业务判断
+├── adapter/newapi/   LOG_DB 只读游标与 Benefit API 客户端
+├── adapter/forum/    论坛 DB 只读游标
+├── transport/http/   Gin 路由、鉴权、handler、DTO
+├── job/              Worker 任务与租约
+├── security/         HMAC、时间窗、Nonce、allowlist
+└── observability/    日志、指标、追踪
 ```
 
-### 两个补充抽象
-
-**`ports/` 包.** 架构文档定义了依赖方向 `service → domain → interfaces`，但未指定接口定义位置。放在 `ports/` 使 service 完全不依赖 GORM，测试可用内存实现驱动——这是 AGENTS.md 第 11 节那批回归测试能否写得动的前提。
-
-**`UnitOfWork` 抽象.** 事务边界必须由 service 控制：Ingest 与 Pulse Action 都要求「一个事务跨 6 张表」。若 store 层自行开事务，必然出现半记账状态。
+事务边界由 service 控制，统一使用：
 
 ```go
 type UnitOfWork interface {
@@ -61,226 +143,253 @@ type UnitOfWork interface {
 }
 ```
 
-### `domain/money` 使用 distinct type
+## 5. 里程碑与出口标准
 
-```go
-type Milli int64  // 1 contribution = 1000 milli
-type Bps   int32  // 10000 = 1.00x
-```
+### P0｜跨仓库接入契约与安全门禁
 
-不用裸 `int64`。这是把 AGENTS.md 第 14 条（禁止浮点做账）交给编译器执行，而非依赖 code review。
+**负责人：new-api + Meta Pulse + 论坛插件 + 部署配置。M0 前置。**
 
-## 3. 技术选型
+- [ ] new-api 实现 `/forum/sso/start`，使用 `next` 语义，禁止开放重定向；
+- [ ] new-api 从 session 读取用户资料并签发 Login Ticket；
+- [ ] Ticket 具备 TTL、未来时间拒绝、HMAC 验签、单次 nonce、callback allowlist；
+- [ ] 论坛插件将登录入口切换到 SSO Bridge；
+- [ ] Nonce 改为 Redis 或数据库原子消费，不能只依赖进程内存；
+- [ ] 确定论坛域名与 Cookie 隔离方案；同域临时方案必须在 Nginx 剥离 new-api session；
+- [ ] new-api 实现 Pulse Signed BFF，浏览器访问 new-api，用户 ID 由 session 派生；
+- [ ] 更新 Nginx/网关：对外 `/api/pulse/*` 只进入 new-api BFF，Pulse 原始 API 不暴露；
+- [ ] 统一服务签名覆盖 method、path、user、timestamp、nonce、body hash；
+- [ ] 定义 Benefit API 的 grant/query/rollback、payload fingerprint、conflict 和错误码；
+- [ ] 定义 Usage Mapper：consume、refund、correction、异步 task 退款、差额结算；
+- [ ] 生产密钥不进入 Git，支持轮换和 fail closed。
 
-| 项 | 选择 | 理由 |
-|---|---|---|
-| Migration | **goose** | 纯 SQL 文件、可嵌入二进制、支持 up/down；Pulse 需要审计友好的 DDL，ORM automigrate 不可接受 |
-| ORM | GORM | 架构文档已定 |
-| HTTP | Gin | 架构文档已定；与 Answer 一致 |
-| 测试 | 标准库 + testcontainers | Ledger 不变量必须对真实 MySQL 验证，唯一约束在内存实现里测不出来 |
-| Metrics | prometheus/client_golang | 架构文档第 29 节指标均为 Prometheus 风格 |
+**出口：**登录、2FA、论坛 SSO、Ticket 重放、Cookie 隔离、BFF 越权和签名重放测试通过；P0 未完成前论坛不得开放公网，Pulse 奖励不得上线。
 
-## 4. 里程碑
+### M0｜Pulse 地基
 
-推进原则：**先把账算对并可见，再开始发钱。**
+- [ ] Goose SQL migration 与 16 张核心表；
+- [ ] MySQL、Redis 连接与健康检查；
+- [ ] GORM store、ports、UnitOfWork、手工依赖装配；
+- [ ] Gin 路由骨架；
+- [ ] 结构化日志、Prometheus registry；
+- [ ] `.env.example` 与 `config.go` 一致，必填项缺失时启动失败；
+- [ ] 校验 LOG_DB 使用只读账号、Pulse 无 new-api 主库写权限；
+- [ ] 明确 Period 时间边界、时区、日志归属时间和水位线策略。
 
-### M0｜地基
+**出口：**Compose 服务健康；16 张表迁移完成；DB/Redis 断开时 `readyz` 失败；服务重启不影响 new-api。
 
-- goose 接入 + 16 张核心表 DDL（含全部唯一约束）
-- GORM / Redis 连接与健康检查
-- `app/` 装配、`ports/` 接口骨架、`UnitOfWork` 实现
-- Gin 路由骨架替换标准库 mux
-- 结构化日志 + Prometheus registry
-- `.env.example` 与 `config.go` 对齐校验（缺失必填项启动即失败）
+### M1｜Ledger 记账内核
 
-**出口**：`docker compose up` 全部服务健康；16 张表建成；`/healthz` 与 `/readyz` 反映真实依赖状态（DB/Redis 断开时 readyz 失败）。
+- [ ] `domain/money` 使用 `Milli` / `Bps`，禁止 float 做账；
+- [ ] Contribution / Ticket Ledger append-only；
+- [ ] reversal / adjustment 只能追加，历史金额禁止 UPDATE；
+- [ ] Account 作为派生快照；
+- [ ] 账本重建与 `ledger-check` 工具；
+- [ ] Ledger、Account、幂等键的数据库唯一约束。
 
-### M1｜记账内核
+**出口：**`SUM(ledger.amount) = account.balance`；账户可由分录完整重建；历史金额 UPDATE 被拒绝。
 
-- `domain/money` 定点类型
-- `domain/ledger` 记账规则（append-only、reversal/adjustment）
-- `pulse_ledger_entry` / `pulse_account` 读写
-- `tools/ledger-check` 对账工具
+### M2｜Usage Ingest 与等级
 
-**出口**：`SUM(ledger.amount) = account.balance` 不变量测试通过；账本可从 entry 完整重建 account；历史金额 UPDATE 被 store 层拒绝。
+- [ ] LOG_DB 只读 cursor、批量读取、断点续跑；
+- [ ] 共用 Mapper 实现实时 Ingest 和 Backfill；
+- [ ] `source_system + source_event_id` 幂等；
+- [ ] payload hash 不一致写 `pulse_ingest_conflict`，不静默覆盖；
+- [ ] 单事务完成 UsageEvent、Contribution Ledger、Account、Ticket Entitlement、Ticket Ledger、UserPeriodStat；
+- [ ] Economics Rule 保存命中规则、倍率、eligibility、版本快照；
+- [ ] 处理异步任务退款与差额结算；不确定关联时进入人工对账队列；
+- [ ] 终身净贡献等级与只读 profile API；
+- [ ] `tools/backfill` 支持 dry-run、范围、报告和重复执行。
 
-### M2｜Ingest 链路
+**出口：**同一 Usage 重放 100 次只产生一次业务记账；同 ID 不同 payload 进入 conflict；历史日志可回放；论坛 profile API 可用。
 
-- LOG_DB 只读游标 + `pulse_worker_cursor`
-- Usage Mapper（consume / refund / correction）
-- `domain/economics` 规则匹配与贡献值计算
-- 单事务：UsageEvent → Contribution Ledger → Account → Ticket Entitlement → Ticket Ledger → Ticket Account → UserPeriodStat
-- `pulse_ingest_conflict` 冲突落库
-- `tools/backfill` 复用同一 Mapper
-- `domain/level` 等级计算 + `pulse_user_level`
+### M2.5｜真实日志回测
 
-**出口**：同一 usage 重放 100 次只记一次账；同 ID 不同 payload 进入 conflict 表且不静默覆盖；历史数据可全量回放；`GET /v1/internal/users/:id/profile` 可用（论坛插件依赖此接口）。
+- [ ] 用真实 LOG_DB 样本回放消费、退款、task、结算失败数据；
+- [ ] 输出用户覆盖率、贡献值、券产出、异常率和数据缺口；
+- [ ] 对比人工倍率、模型倍率、渠道倍率的结果；
+- [ ] 标定 Ticket Threshold、Reward 权重、预算上限；
+- [ ] 决定采用估算毛利，还是让 new-api 增加不可变成本快照。
 
-### M2.5｜Backtest
+**出口：**得到可审计的活动成本 / 贡献毛利数字；M4 参数必须引用回测报告。
 
-- `tools/backtest`：用真实历史日志跑经济模型
-- 标定贡献倍率、Ticket 阈值、Budget 上限
+### M3｜只读产品入口
 
-**出口**：得到真实的「活动成本 / 贡献毛利」占比数字。**M4 的经济参数必须以此为依据，而非拍脑袋。**
+- [ ] new-api `/api/pulse/*` BFF；
+- [ ] new-api `/console/pulse` 页面与路由；
+- [ ] 当前 Period、贡献值、券、等级、Ledger、奖励历史；
+- [ ] YuanHeng 通过隔离 WebView 打开 `/console/pulse`；
+- [ ] YuanHeng session/API Token 改用 OS 安全存储，用户名密码不落盘；
+- [ ] 论坛展示 Pulse 等级，Pulse 故障时降级；
+- [ ] 只读灰度、无 Pulse Action。
 
-### M3｜只读 API + UI
+**出口：**用户能看到数据；浏览器、桌面端、论坛均不能越过 new-api 身份边界；Pulse 故障不影响登录、模型调用、充值和论坛浏览。
 
-- Signed BFF 鉴权中间件（HMAC + nonce + 时间窗）
-- `GET /v1/period/current`、`/v1/me/summary`、`/v1/me/ledger`
-- new-api `/console/pulse` 只读页面
+### M4｜Reward 内核与 Shadow Mode
 
-**出口**：可灰度上线。用户能看到贡献值、券数与等级，但尚不能开启脉冲。此时经济模型已用线上真实数据二次验证。
+- [ ] API mutation 必须使用 Idempotency-Key；
+- [ ] 版本化 HMAC 确定性随机，保存 random value 和 config version；
+- [ ] 一个 Action 只能消费一张 Ticket、生成一个 Grant 和一个随机结果；
+- [ ] Budget reservation 与 hard cap；
+- [ ] 单事务写入 Ticket Spend、Budget Reservation、Reward Grant、Settlement Outbox；
+- [ ] 先只生成 `pending` Grant，不真实发额度；
+- [ ] 并发、响应丢失、DB 重启测试。
 
-### M4｜Reward 内核
+**出口：**同一 Action 重放 100 次只有一个 Grant；并发不超扣券、不超预算；网络失败不重新随机。
 
-- `pulse_idempotency` + Idempotency-Key 中间件
-- `domain/random` 版本化 HMAC 确定性随机
-- `domain/budget` 预占与 hard cap
-- Pulse Action 单事务：Idempotency → Ticket Spend → Budget Reservation → Reward Grant → Settlement Outbox
-- Grant 停留在 `pending`，暂不结算
+### M5｜Settlement 与 Benefit API
 
-**出口**：同一 Action 重放 100 次只产生一个 Grant 与一个随机值；并发 Pulse 不超扣券、不超预算；DB commit 后 HTTP 响应丢失可用同 key 恢复。
+- [ ] new-api Grant / Query / Rollback 内部接口；
+- [ ] HMAC 服务认证、时间窗、nonce、来源绑定；
+- [ ] Benefit payload fingerprint 和 conflict；
+- [ ] 使用 `GrantUserQuotaTx`，奖励额度 `transferable_quota=0`；
+- [ ] Outbox 指数退避、dead 状态、人工重试；
+- [ ] timeout 必须先 Query 原 `source_ref`；
+- [ ] Benefit Reconciliation；
+- [ ] rollback 只追加 reversal，行为可审计。
 
-### M5｜Settlement
-
-- new-api Internal Benefit API（**跨仓库，见第 5 节**）
-- Outbox worker + 指数退避重试
-- timeout 时先 `GET Benefit(source_ref)` 再决定重试
-- Benefit Reconciliation job
-
-**出口**：同一 Benefit 重放 100 次只增加一次额度；Benefit 成功但 Pulse timeout 可通过 Query 自愈；禁止换 source_ref 的行为有测试守护。
+**出口：**同一 Benefit 重放 100 次只到账一次；不同 payload 进入 conflict；new-api 成功但 Pulse 超时可恢复；禁止换 source_ref 有测试保护。
 
 ### M6｜周期与运营
 
-- Period Close 可重入状态机
-- Period Reward（`period_reward:{period_id}:{user_id}`）
-- `domain/experiment` Holdout 分组
-- Admin API + `pulse_audit_log`
-- `pulse_metric_daily` 固化 + 告警接入
+- [ ] Period Close：active → settling → closed，可重入；
+- [ ] Watermark 确认、Ledger/Account 对账、周期奖励、券过期；
+- [ ] Period Reward 使用稳定 action ID；
+- [ ] Holdout 稳定分组；
+- [ ] Admin、Audit Log、冲突处理、人工财务调整；
+- [ ] 日指标、告警、Settlement 堆积和预算预警；
+- [ ] close 中断后的恢复测试。
 
-**出口**：同一 Period Close 重跑不重复发放；中途崩溃可续跑；Holdout 分组稳定可复现。
+**出口：**Period Close 重跑不重复发放；中途崩溃可继续；预算、账本、奖励和 Benefit 可对账。
 
-### M7｜内容奖励（依赖 M5）
+### M7｜内容奖励
 
-- 论坛 DB 只读游标 → `pulse_content_candidate`
-- Admin 审核界面（approve + 档位 + reason → audit log）
-- `budget_type = content_reward` 独立预算线
-- 付费门槛校验 + 双层限额
-- `content_award:{type}:{id}:{version}` 幂等
-- 撤销路径：`settled → reversed` + Benefit rollback
+- [ ] 论坛 DB 只读游标与 Content Candidate；
+- [ ] 人工审核、档位、reason、Audit Log；
+- [ ] 独立 `content_reward` budget；
+- [ ] 付费门槛、单用户上限、全站日上限；
+- [ ] `content_award:{type}:{id}:{version}` 幂等；
+- [ ] 删除/抄袭后的 settled → reversed；
+- [ ] 内容不产生 contribution 或 ticket。
 
-**出口**：防刷四道闸全部生效；内容奖励不产生 contribution/ticket；不计入贡献毛利占比分母。
+**出口：**四道防刷闸全部生效；内容奖励与忠诚度预算、账本、贡献值完全隔离。
 
-## 5. 跨仓库依赖（new-api）
+## 6. 跨仓库任务清单
 
-以下改动在 new-api 仓库完成，**是 Pulse 的关键路径**：
+### new-api
 
-| 改动 | 被谁依赖 | 优先级 |
+- [ ] Forum SSO Bridge 与 Login Ticket；
+- [ ] Pulse BFF，服务端派生 user ID；
+- [ ] Pulse Internal Benefit API；
+- [ ] Benefit 重复请求 payload 比较与 conflict；
+- [ ] `/console/pulse` 路由、页面和导航入口；
+- [ ] 明确 `LOG_CONSUME_ENABLED` 的生产门禁；
+- [ ] 明确 refund/task/correction 关联字段；
+- [ ] 评估增加 Provider 成本快照；
+- [ ] Benefit 与 SSO 服务密钥轮换、审计和限流。
+
+### YuanHeng Desktop
+
+- [ ] 复用 new-api 登录、2FA、session、`New-Api-User` 方式；
+- [ ] 通过隔离 WebView 打开控制台 Pulse 页面；
+- [ ] 不直接访问 Pulse、不存 Pulse 密钥；
+- [ ] session Cookie、API Token 迁移 OS 安全存储；
+- [ ] session 过期、重新登录、退出登录状态联动；
+- [ ] 不持久化用户名密码。
+
+### Meta Pulse
+
+- [ ] M0-M6 主线；
+- [ ] new-api LOG_DB 只读适配器；
+- [ ] new-api Benefit 客户端；
+- [ ] BFF 签名校验；
+- [ ] 论坛 profile 与 content 只读适配器；
+- [ ] 对账、回放、回测、指标和告警。
+
+### 论坛与博客
+
+- [ ] Answer 继续使用插件，不 Fork 上游；
+- [ ] 论坛切换到 new-api SSO；
+- [ ] Nonce 使用共享原子存储；
+- [ ] Pulse 不可用时论坛降级；
+- [ ] M5 前仅展示等级/徽章，不发内容额度；
+- [ ] 博客独立使用 VitePress，内容不接入经济账本。
+
+## 7. 待决策事项
+
+### D1｜毛利事实源（M2.5 前）
+
+当前 new-api 日志只有用户收费 `quota`，没有 Provider 成本。建议先以估算倍率完成回测，同时预留成本快照字段；若正式目标是 Margin-aware，最终应补充不可变成本快照。
+
+### D2｜Period 口径（M0 前）
+
+建议：全局统一周期、UTC+8、按日志 `created_at` 归属，Ingest 时间只用于水位线和延迟指标。
+
+### D3｜Refund / Correction 口径（M2 前）
+
+必须确认：退款是否有稳定原消费关联；没有关联时如何进入 correction、人工对账和后续冲正，禁止把无法确认的退款直接计入用户贡献。
+
+### D4｜Cookie 拓扑（P0 前）
+
+建议论坛使用独立子域；若暂时沿用路径路由，必须在边缘层阻止 new-api session Cookie 进入论坛。
+
+### D5｜Ticket Debt 展示（M3 前）
+
+技术上保留 debt，产品上决定显示“欠券/抵扣中”还是只显示可用券，避免用户误认为系统漏发。
+
+### D6｜内容奖励档位（M7 前）
+
+论坛先以纯荣誉模式观察内容质量和灌水率，再确定额度档位、付费门槛和限额。
+
+## 8. 测试底线
+
+以下测试必须长期保留：
+
+| 场景 | 里程碑 | 要求 |
 |---|---|---|
-| Signed BFF 转发（HMAC 头） | M3 | 高 |
-| **Login Ticket 签发** | 论坛插件 | **高，见下** |
-| Internal Benefit API（grant/query/rollback） | M5 | 高 |
-| `/console/pulse` 前端页面 | M3 | 中 |
-| BenefitChangeRecord 去重语义 | M5 | 高 |
+| Usage 重放 100 次 | M2 | 真实 MySQL 唯一约束 |
+| Action 重放 100 次 | M4 | 一个 Grant、一个随机结果 |
+| Benefit 重放 100 次 | M5 | 只到账一次 |
+| Period Close 重跑 | M6 | 不重复发放 |
+| 并发 Pulse | M4 | 不超扣 Ticket、不超 Budget |
+| DB commit 后响应丢失 | M4 | 同 key 可恢复 |
+| Benefit 成功但 Pulse timeout | M5 | Query/Reconciliation 恢复 |
+| Ledger/Account 重建 | M1 | 可重建、可对账 |
+| Login Ticket 重放 | P0 | 单次 nonce、过期拒绝 |
+| BFF 越权/签名重放 | P0 | 浏览器不能伪造身份 |
 
-### Login Ticket 签发（P0）
+内存 fake 不能替代真实 MySQL 唯一约束测试；所有人工调整、冲正、rollback 都必须有审计断言。
 
-论坛插件的 `LoginCallback` 通过**浏览器重定向**到达，query 参数完全由攻击者控制。new-api 必须签发单次有效的签名 ticket：
-
-```text
-GET /forum/answer/api/v1/user-center/login/callback
-    ?user_id=<id>
-    &username=<name>
-    &display_name=<name>
-    &email=<email>
-    &avatar=<url>
-    &timestamp=<unix>
-    &nonce=<random>
-    &signature=<hmac>
-```
-
-签名算法（与 `services/forum-plugin/user-center-pulse/ticket.go` 一致）：
+## 9. 推进顺序
 
 ```text
-payload   = user_id \n username \n display_name \n email \n avatar \n timestamp \n nonce
-signature = hex(HMAC-SHA256(shared_secret, payload))
+P0 跨仓库身份/服务契约与 Cookie 安全
+  ↓
+M0 Pulse 地基
+  ↓
+M1 Ledger
+  ↓
+M2 Usage Ingest
+  ↓
+M2.5 真实回测
+  ↓
+M3 new-api UI + YuanHeng 入口 + 论坛等级
+  ↓
+M4 Reward Shadow Mode
+  ↓
+M5 真实 Benefit Settlement
+  ↓
+M6 Period / Admin / Experiment
+  ↓
+M7 内容奖励
 ```
 
-约束：
+博客和 Answer 基础部署可以并行，但论坛公网开放必须等待 P0；内容奖励必须等待 M5，并经过纯荣誉观察期。
 
-- 字段以换行连接，防止字段边界歧义导致签名移植；
-- TTL 2 分钟，双向校验（过期与未来时间戳均拒绝）；
-- nonce 单次有效，插件侧维护重放缓存；
-- `shared_secret` 与 `PULSE_SERVICE_HMAC_SECRET` 同源，不进仓库。
+## 10. 工程约束
 
-**未实现此接口前，论坛不得开放公网访问。**
-
-## 6. 待决策事项
-
-以下问题影响表结构或经济模型，需在对应里程碑前确认。
-
-### D1｜贡献毛利的事实源（影响 M0 表结构）
-
-new-api `logs` 表只有对用户收费的 `quota`，**没有上游供应商成本**。因此「贡献毛利」在系统内无事实源，只能由人工维护的倍率表近似。
-
-含义：
-
-- `pulse_economics_rule` 实质是**人工维护的毛利率表**，必须版本化 + 可审计；
-- 「活动成本/贡献毛利 8%–12%」在 M2.5 回放之前是估计值。
-
-**待定**：是否在 new-api 侧补充渠道成本字段。若补充，Economics 可基于真实毛利；若不补充，需接受近似并在文档中明示。
-
-### D2｜Period 时间边界（影响 M0 表结构）
-
-未定义：
-
-- 全局统一周期，还是按用户注册时间滚动？
-- 起止时区？
-- 跨周期 usage 归属按 log `created_at` 还是 ingest 时间？
-
-直接决定 `pulse_user_period_stat` 与 watermark 设计。**建议：全局统一周期 + UTC+8 + 按 log `created_at` 归属**，理由是运营口径简单、水位线易于推进。
-
-### D3｜Ticket Debt 的产品表述（影响 M3 UI）
-
-技术方案已定（欠券、新券先抵债、显示 `max(balance, 0)`），但用户看到券数不涨会产生客服问询。需产品侧决定展示方式。
-
-### D4｜内容奖励档位（影响 M7，依赖 M5 观察窗口）
-
-兑换档位、付费门槛、单周期与单日限额的具体数值，应在论坛以纯荣誉模式运行一段时间、观察真实内容质量与灌水比例后确定。
-
-## 7. 测试策略
-
-AGENTS.md 第 11 节列出的回归场景必须长期保留。落位如下：
-
-| 场景 | 里程碑 | 方式 |
-|---|---|---|
-| 同一 Usage 重放 100 次只记一次账 | M2 | testcontainers + 真实唯一约束 |
-| 同一 Action 重放 100 次只产生一个 Reward | M4 | testcontainers |
-| 同一 Benefit 重放 100 次只加一次额度 | M5 | fake Benefit server + 幂等断言 |
-| 同一 Period Close 重跑不重复发放 | M6 | testcontainers |
-| 并发 Pulse 不超扣券、不超 Budget | M4 | 并发测试 + 行锁 |
-| DB commit 后响应丢失可恢复 | M4 | 注入式故障测试 |
-| Benefit 成功但 Pulse timeout 可恢复 | M5 | fake server 延迟注入 |
-| Ledger 与 Account 可重建可对账 | M1 | 属性测试 |
-
-**唯一约束必须对真实 MySQL 验证。** 内存实现测不出 `UNIQUE(source_system, source_event_id)` 是否真的建了。
-
-## 8. 并行推进
-
-```text
-Track A｜Pulse    M0 → M1 → M2 → M2.5 → M3 → M4 → M5 → M6 → M7
-Track B｜博客     立即：VitePress + 种子内容（不阻塞任何人）
-Track C｜论坛     立即：Answer 部署 + zh-CN
-                     └─ 插件接入（依赖 M2 的 profile 接口 + new-api Login Ticket）
-                          └─ 内容奖励（依赖 M5 + M7）
-Track D｜new-api  Login Ticket（P0）→ Signed BFF → Benefit API → /console/pulse
-```
-
-论坛在 M5 之前以**纯荣誉模式**运行：徽章、头衔、精华，不涉及 quota。这既规避了未验证经济模型下的成本风险，也提供了观察窗口用于确定 D4 的档位。
-
-## 9. 工程约束提醒
-
-- 仓库根不是 Go module，`./...` 无法跨模块解析；所有 Go 命令须显式列模块路径（见 Makefile）；
-- 插件当前编译 against Answer v1.7.1（v2.0.2 的 `go.mod` 模块路径未加 `/v2` 后缀，Go 工具链无法解析）；
-- Answer 每次升级需重新构建镜像（Go 静态插件机制）；
-- 任何改变系统边界、事实源、幂等语义、状态机或认证边界的改动，必须同步更新 `ARCHITECTURE.md`（AGENTS.md 第 12 节）。
+- 仓库根不是 Go module，Go 命令必须显式列出模块路径；
+- domain 不依赖 Gin、GORM、Redis 或 new-api SDK；
+- Redis 只做缓存、nonce、限流、短锁和租约，不能成为事实源；
+- 不用浮点做金额、贡献值、余额、预算或券账；
+- Period active 后冻结核心经济配置；
+- 任何改变系统边界、事实源、幂等、结算、身份或状态机的实现，都必须同步更新架构文档。

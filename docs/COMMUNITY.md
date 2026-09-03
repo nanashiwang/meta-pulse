@@ -69,25 +69,27 @@ Answer v2.0.2 的 `go.mod` 仍声明 v1 模块路径（`github.com/apache/answer
 
 ## 4. 身份边界
 
-论坛不拥有身份。全部身份委托给 new-api：
+论坛不拥有身份。全部身份委托给 new-api；插件的登录入口必须走 SSO Bridge，不得把浏览器直接送到一个可由参数声明用户的登录接口：
 
 ```text
-Browser → new-api Session
-            ↓ (UserCenter LoginRedirectURL)
-        new-api 签发 Login Ticket（HMAC 签名 + 时间窗 + nonce）
-            ↓ 浏览器重定向携带 ticket
-        Answer LoginCallback → 插件验签
-            ↓ external_id = new-api user_id
-        Answer 调 Pulse 只读接口取等级
-            ↓
-        PersonalBranding 徽章渲染
+Answer
+  → new-api /forum/sso/start
+  → 未登录：/login?next=/forum/sso/start
+  → 已登录：new-api 从 session 读取用户并签发短期单次 Login Ticket
+  → 302 到固定 Answer callback
+  → 插件验签、原子消费 nonce、建立论坛会话
+  → external_id = new-api user_id
+  → Answer 调 Pulse 只读接口取等级
+  → PersonalBranding 徽章渲染
 ```
+
+`next` 只能指向固定 SSO 路由；callback 只能使用固定配置或严格 allowlist，禁止开放重定向。浏览器和 YuanHeng 的 new-api session Cookie 不得转发给 Answer；论坛最好使用独立子域，若暂时共用路径，边缘层必须剥离 new-api 的 session Cookie。
 
 ### Login Ticket 验签
 
 `LoginCallback` 由**浏览器重定向**到达，因此 query 参数在验签通过前全部是攻击者可控的。若直接信任 `user_id`，任何人访问 `?user_id=1&username=admin` 即可登录为任意用户——这正是 AGENTS.md 第 13 条禁止的情况。
 
-new-api 签发、插件校验的 ticket：
+new-api 签发、插件校验的 ticket。Ticket 中的用户字段只能来自 new-api 服务端 session，不能由浏览器提交后直接签名：
 
 ```text
 payload   = user_id \n username \n display_name \n email \n avatar \n timestamp \n nonce
@@ -100,7 +102,7 @@ signature = hex(HMAC-SHA256(shared_secret, payload))
 |---|---|
 | 字段以换行连接 | 字段边界歧义导致的签名移植（`ab`+`c` 与 `a`+`bc`） |
 | TTL 2 分钟，双向校验 | 陈旧 ticket 重放；伪造的未来时间戳 |
-| nonce 单次有效，验签成功后才消耗 | ticket 落在浏览器历史/Referer/代理日志中被重放；以及攻击者抢先烧掉他人 nonce 的骚扰 |
+| nonce 单次有效，验签成功后原子消费 | ticket 落在浏览器历史/Referer/代理日志中被重放；以及攻击者抢先烧掉他人 nonce 的骚扰 |
 | secret 为空时拒绝 | 未配置时 fail closed——空密钥的 HMAC 仍是合法 HMAC |
 
 **new-api 未实现签发接口前，论坛不得开放公网访问。**
@@ -121,7 +123,7 @@ GET /v1/internal/users/:user_id/profile
 → { level, level_name, lifetime_contribution_milli, suspended }
 ```
 
-**Pulse 不可用时论坛必须继续工作。** 插件的 `UserStatus` 与 `PersonalBranding` 在 Pulse 请求失败时分别降级为「可用」和「无徽章」，绝不阻断登录或锁定账号。
+**Pulse 不可用时论坛必须继续工作。** 插件的 `UserStatus` 与 `PersonalBranding` 在 Pulse 请求失败时分别降级为「可用」和「无徽章」，绝不阻断登录或锁定账号。论坛登录本身只依赖 new-api SSO，不同步依赖 Pulse。
 
 ## 5. 等级系统
 
@@ -223,16 +225,16 @@ Answer 至今没有长文/文章类型（已核对 1.4 / 1.5 / 1.6 / 2.0 release
 
 ## 8. 域名与路由
 
-单一 hostname，按路径切分，集中积累搜索权重并共享 Cookie 域：
+公共入口可以继续按路径统一路由，但**不得以共享 Cookie 换取便利**。安全优先的目标拓扑是论坛独立子域；过渡期若继续使用单 hostname，必须由边缘层隔离 session Cookie：
 
 ```text
 yourdomain.com/                new-api 控制台
 yourdomain.com/blog/           VitePress 静态站
-yourdomain.com/forum/          Apache Answer
-yourdomain.com/console/pulse   Meta Pulse UI
+yourdomain.com/console/pulse   Meta Pulse UI（由 new-api 提供）
+forum.yourdomain.com/          Apache Answer
 ```
 
-配置见 `deploy/nginx/meta-pulse.conf`。其中 `/api/pulse/` 显式拒绝外部访问——浏览器只能经由 new-api 的 signed BFF 到达 Pulse。
+过渡期的 `yourdomain.com/forum/` 仍可代理到 Answer，但必须剥离 new-api 的 `Path=/` session Cookie。`/api/pulse/` 只能由 new-api BFF 处理；Pulse 原始 API 不对公网暴露。具体网关配置在 P0 落地时同步更新。
 
 ## 9. 引流闭环
 
