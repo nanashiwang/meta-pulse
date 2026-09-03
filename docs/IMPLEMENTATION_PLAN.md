@@ -15,7 +15,8 @@
 ✅ new-api 调研   已确认登录、2FA、LOG_DB、BenefitChangeRecord、额度发放边界
 🟡 P0 接入契约     Pulse 侧签名/Nonce 骨架已落地；new-api SSO / BFF / Benefit API 待实现
 🟡 M0 地基         配置、Gin、健康检查、GORM/Redis、Goose migration、指标已落地；真实环境验收待完成
-⬜ M1-M7          见下文
+✅ M1 Ledger 记账内核    领域账本、账户快照、幂等冲突、重建与 ledger-check 已落地
+⬜ M2-M7          见下文
 ```
 
 本次已启动 M0 第一批：`services/pulse/` 已从 HTTP 桩升级为可装配的 API/Worker 基础，新增 16 张核心表 migration、依赖健康检查、结构化日志、Prometheus registry、UnitOfWork 事务边界和服务签名校验。`docs/OVERVIEW.md` 为未跟踪文件，本计划不依赖它，也不覆盖或删除它。
@@ -181,12 +182,12 @@ type UnitOfWork interface {
 
 ### M1｜Ledger 记账内核
 
-- [ ] `domain/money` 使用 `Milli` / `Bps`，禁止 float 做账；
-- [ ] Contribution / Ticket Ledger append-only；
-- [ ] reversal / adjustment 只能追加，历史金额禁止 UPDATE；
-- [ ] Account 作为派生快照；
-- [ ] 账本重建与 `ledger-check` 工具；
-- [ ] Ledger、Account、幂等键的数据库唯一约束。
+- [x] `domain/money` 使用 `Milli` / `Bps`，禁止 float 做账；
+- [x] Contribution / Ticket Ledger append-only；
+- [x] reversal / adjustment 只能追加，历史金额禁止 UPDATE；
+- [x] Account 作为派生快照；
+- [x] 账本重建与 `ledger-check` 工具；
+- [x] Ledger、Account、幂等键的数据库唯一约束。
 
 **出口：**`SUM(ledger.amount) = account.balance`；账户可由分录完整重建；历史金额 UPDATE 被拒绝。
 

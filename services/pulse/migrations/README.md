@@ -2,7 +2,7 @@
 
 Meta Pulse 使用独立 MySQL 8.0+ 逻辑库。SQL 文件采用 Goose 注释格式，并按数字顺序执行。
 
-首个 migration `00001_initial_schema.sql` 创建 16 张核心表：
+首个 migration `00001_initial_schema.sql` 创建 16 张核心表；`00002_ledger_payload_hash.sql` 补充账本 payload 指纹和 append-only 数据库保护：
 
 ```text
 pulse_period
@@ -41,6 +41,7 @@ pulse_usage_event:
 
 pulse_ledger_entry:
   UNIQUE(operation, idempotency_key)
+  payload_hash：用于同 key 不同 payload 的 conflict 判断
 
 pulse_account:
   UNIQUE(user_id, period_id, asset_type)

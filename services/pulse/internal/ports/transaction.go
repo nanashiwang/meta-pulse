@@ -4,13 +4,13 @@ package ports
 
 import "context"
 
-// Repositories is deliberately empty in M0. M1 adds typed repository ports;
-// keeping the transaction boundary now prevents each store from opening its
-// own partial transaction later.
-type Repositories struct{}
+type Repositories struct {
+	Ledger  LedgerRepository
+	Account AccountRepository
+}
 
 // UnitOfWork is the only transaction boundary exposed to services. The
-// callback is invoked with repositories bound to one Pulse DB transaction.
+// callback receives repositories bound to one Pulse DB transaction.
 type UnitOfWork interface {
 	Do(context.Context, func(Repositories) error) error
 }

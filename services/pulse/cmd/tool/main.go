@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -25,11 +26,38 @@ func main() {
 			logger.Error("migration command failed", "error", err)
 			os.Exit(1)
 		}
-	case "backfill", "backtest", "reconcile", "ledger-check", "period-close", "reward-retry":
+	case "ledger-check":
+		if err := runLedgerCheck(); err != nil {
+			logger.Error("ledger check failed", "error", err)
+			os.Exit(1)
+		}
+	case "backfill", "backtest", "reconcile", "period-close", "reward-retry":
 		fmt.Printf("meta-pulse tool %s: command scaffold; implementation pending\n", os.Args[1])
 	default:
 		usage()
 	}
+}
+
+func runLedgerCheck() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	database, err := mysqlstore.Open(cfg.PulseDBDSN)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	report, checkErr := database.CheckLedger(ctx)
+	encoded, encodeErr := json.MarshalIndent(report, "", "  ")
+	if encodeErr != nil {
+		return encodeErr
+	}
+	fmt.Println(string(encoded))
+	return checkErr
 }
 
 func runMigration(up bool) error {

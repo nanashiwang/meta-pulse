@@ -374,6 +374,8 @@ ticket_adjustment
 - 历史金额禁止 UPDATE；
 - 修正必须追加 reversal / adjustment；
 - 每条业务 mutation 具有稳定 idempotency key；
+- `pulse_ledger_entry.payload_hash` 持久化请求指纹，同 key 不同 payload 必须 conflict；
+- Ledger 表由数据库 append-only trigger 拒绝 UPDATE/DELETE，应用层只允许 INSERT；
 - `pulse_account` 只是 Ledger 快照。
 
 必须满足：
@@ -734,7 +736,7 @@ pulse_audit_log
 
 ```text
 pulse_usage_event: UNIQUE(source_system, source_event_id)
-pulse_ledger_entry: UNIQUE(operation, idempotency_key)
+pulse_ledger_entry: UNIQUE(operation, idempotency_key)，并保存 payload_hash
 pulse_account: UNIQUE(user_id, period_id, asset_type)
 pulse_reward_grant: UNIQUE(period_id, user_id, action_id)
 pulse_settlement_outbox: UNIQUE(reward_grant_id)

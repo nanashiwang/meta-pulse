@@ -15,10 +15,10 @@ func TestEmbeddedMigrationsAreDiscoverable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("collect migrations: %v", err)
 	}
-	if len(found) != 1 {
-		t.Fatalf("found %d migrations, want 1", len(found))
+	if len(found) != 2 {
+		t.Fatalf("found %d migrations, want 2", len(found))
 	}
-	if found[0].Version != 1 {
-		t.Fatalf("migration version = %d, want 1", found[0].Version)
+	if found[0].Version != 1 || found[1].Version != 2 {
+		t.Fatalf("migration versions = %d/%d, want 1/2", found[0].Version, found[1].Version)
 	}
 }

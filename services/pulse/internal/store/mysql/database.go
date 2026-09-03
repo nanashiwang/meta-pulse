@@ -27,7 +27,7 @@ func Open(dsn string) (*DB, error) {
 	if dsn == "" {
 		return nil, fmt.Errorf("pulse database DSN is empty")
 	}
-	gormDB, err := gorm.Open(gormmysql.Open(dsn), &gorm.Config{DisableAutomaticPing: true})
+	gormDB, err := gorm.Open(gormmysql.Open(dsn), &gorm.Config{DisableAutomaticPing: true, TranslateError: true})
 	if err != nil {
 		return nil, fmt.Errorf("open pulse database: %w", err)
 	}

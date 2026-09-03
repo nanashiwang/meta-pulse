@@ -28,7 +28,7 @@ func (u *UnitOfWork) Do(ctx context.Context, fn func(ports.Repositories) error) 
 	if fn == nil {
 		return fmt.Errorf("unit of work callback is nil")
 	}
-	return u.db.WithContext(ctx).Transaction(func(_ *gorm.DB) error {
-		return fn(ports.Repositories{})
+	return u.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return fn(newRepositories(tx))
 	})
 }
