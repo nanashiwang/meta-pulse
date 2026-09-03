@@ -1,0 +1,211 @@
+package pulse_user_center
+
+import (
+	"embed"
+	"fmt"
+	"net/http"
+	"strconv"
+
+	"github.com/apache/answer-plugins/util"
+	"github.com/apache/answer/plugin"
+	"github.com/gin-gonic/gin"
+	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/i18n"
+	"github.com/segmentfault/pacman/log"
+)
+
+//go:embed info.yaml
+var Info embed.FS
+
+// UserCenter delegates all forum identity to new-api.
+//
+// Two deliberate constraints, both from docs/COMMUNITY.md:
+//
+//   - EnabledOriginalUserSystem is false: the forum has no independent
+//     registration path, so a browser can never assert a user_id the way
+//     AGENTS.md invariant 13 forbids.
+//   - RankAgentEnabled is false: Answer's native rank gates moderation
+//     privileges (voting, editing, closing). Handing that to Pulse would let
+//     paid spend buy community governance power. The two reputations stay
+//     separate and are only displayed side by side.
+type UserCenter struct {
+	Config *Config
+	Client *PulseClient
+}
+
+func init() {
+	plugin.Register(&UserCenter{
+		Config: &Config{},
+	})
+}
+
+func (uc *UserCenter) Info() plugin.Info {
+	info := &util.Info{}
+	info.GetInfo(Info)
+
+	return plugin.Info{
+		Name:        plugin.MakeTranslator(i18n.InfoName),
+		SlugName:    info.SlugName,
+		Description: plugin.MakeTranslator(i18n.InfoDescription),
+		Author:      info.Author,
+		Version:     info.Version,
+		Link:        info.Link,
+	}
+}
+
+func (uc *UserCenter) Description() plugin.UserCenterDesc {
+	return plugin.UserCenterDesc{
+		Name:        "Meta Pulse",
+		DisplayName: plugin.MakeTranslator(i18n.InfoName),
+		Icon:        "",
+		Url:         uc.Config.NewAPIBaseURL,
+
+		LoginRedirectURL:  uc.Config.NewAPIBaseURL + "/login?redirect_to=forum",
+		SignUpRedirectURL: uc.Config.NewAPIBaseURL + "/register?redirect_to=forum",
+
+		RankAgentEnabled:          false,
+		UserStatusAgentEnabled:    true,
+		UserRoleAgentEnabled:      false,
+		MustAuthEmailEnabled:      false,
+		EnabledOriginalUserSystem: false,
+	}
+}
+
+func (uc *UserCenter) ControlCenterItems() []plugin.ControlCenter {
+	return []plugin.ControlCenter{
+		{
+			Name:  "Meta Pulse",
+			Label: "Meta Pulse",
+			Url:   uc.Config.NewAPIBaseURL + "/console/pulse",
+		},
+		{
+			Name:  "Console",
+			Label: "API Console",
+			Url:   uc.Config.NewAPIBaseURL + "/console",
+		},
+	}
+}
+
+// LoginCallback resolves a new-api session into a forum user.
+//
+// The signature is verified by new-api's signed BFF before the request reaches
+// us; here we only map the trusted headers onto Answer's user model.
+func (uc *UserCenter) LoginCallback(ctx *plugin.GinContext) (*plugin.UserCenterBasicUserInfo, error) {
+	return uc.resolveUser(ctx)
+}
+
+// SignUpCallback is identical to login: accounts are always created upstream in
+// new-api, never in the forum.
+func (uc *UserCenter) SignUpCallback(ctx *plugin.GinContext) (*plugin.UserCenterBasicUserInfo, error) {
+	return uc.resolveUser(ctx)
+}
+
+func (uc *UserCenter) resolveUser(ctx *gin.Context) (*plugin.UserCenterBasicUserInfo, error) {
+	externalID := ctx.Query("user_id")
+	if externalID == "" {
+		return nil, fmt.Errorf("missing user_id in user center callback")
+	}
+	if _, err := strconv.ParseInt(externalID, 10, 64); err != nil {
+		return nil, fmt.Errorf("invalid user_id in user center callback")
+	}
+
+	userInfo := &plugin.UserCenterBasicUserInfo{
+		ExternalID:  externalID,
+		Username:    ctx.Query("username"),
+		DisplayName: ctx.Query("display_name"),
+		Email:       ctx.Query("email"),
+		Avatar:      ctx.Query("avatar"),
+		Status:      plugin.UserStatusAvailable,
+	}
+	if userInfo.DisplayName == "" {
+		userInfo.DisplayName = userInfo.Username
+	}
+	return userInfo, nil
+}
+
+func (uc *UserCenter) UserInfo(externalID string) (*plugin.UserCenterBasicUserInfo, error) {
+	return &plugin.UserCenterBasicUserInfo{
+		ExternalID: externalID,
+		Status:     uc.UserStatus(externalID),
+	}, nil
+}
+
+// UserStatus mirrors suspension from Pulse. A Pulse outage returns "available"
+// rather than locking every forum account.
+func (uc *UserCenter) UserStatus(externalID string) plugin.UserStatus {
+	profile, err := uc.Client.GetUserProfile(externalID)
+	if err != nil {
+		log.Debugf("pulse user status unavailable for %s: %v", externalID, err)
+		return plugin.UserStatusAvailable
+	}
+	if profile.Suspended {
+		return plugin.UserStatusSuspended
+	}
+	return plugin.UserStatusAvailable
+}
+
+func (uc *UserCenter) UserList(externalIDs []string) ([]*plugin.UserCenterBasicUserInfo, error) {
+	users := make([]*plugin.UserCenterBasicUserInfo, 0, len(externalIDs))
+	for _, externalID := range externalIDs {
+		users = append(users, &plugin.UserCenterBasicUserInfo{
+			ExternalID: externalID,
+			Status:     plugin.UserStatusAvailable,
+		})
+	}
+	return users, nil
+}
+
+func (uc *UserCenter) UserSettings(externalID string) (*plugin.SettingInfo, error) {
+	return &plugin.SettingInfo{
+		ProfileSettingRedirectURL: uc.Config.NewAPIBaseURL + "/console/personal",
+		AccountSettingRedirectURL: uc.Config.NewAPIBaseURL + "/console/personal",
+	}, nil
+}
+
+// PersonalBranding renders the Pulse level as a profile badge.
+//
+// This is the whole point of the integration: paid usage earns a level in
+// Pulse, and the level becomes visible social standing in the forum.
+func (uc *UserCenter) PersonalBranding(externalID string) []*plugin.PersonalBranding {
+	if !uc.Config.LevelBadgeEnabled {
+		return nil
+	}
+
+	profile, err := uc.Client.GetUserProfile(externalID)
+	if err != nil {
+		log.Debugf("pulse branding unavailable for %s: %v", externalID, err)
+		return nil
+	}
+
+	return []*plugin.PersonalBranding{
+		{
+			Name:  "pulse_level",
+			Label: profile.LevelName,
+			Url:   uc.Config.NewAPIBaseURL + "/console/pulse",
+		},
+		{
+			Name:  "pulse_contribution",
+			Label: formatContribution(profile.LifetimeContributionMi),
+			Url:   uc.Config.NewAPIBaseURL + "/console/pulse",
+		},
+	}
+}
+
+func (uc *UserCenter) AfterLogin(externalID, accessToken string) {
+	log.Debugf("pulse user center: user %s logged in", externalID)
+}
+
+func (uc *UserCenter) RegisterUnAuthRouter(r *gin.RouterGroup) {}
+
+func (uc *UserCenter) RegisterAuthUserRouter(r *gin.RouterGroup) {}
+
+func (uc *UserCenter) RegisterAuthAdminRouter(r *gin.RouterGroup) {
+	r.GET("/pulse/health", func(ctx *gin.Context) {
+		ctx.JSON(http.StatusOK, gin.H{"pulse_base_url": uc.Config.PulseBaseURL})
+	})
+}
+
+// formatContribution renders fixed-point contribution_milli for display only.
+// Never use this value for accounting; Pulse's ledger is the source of truth.
+func formatContribution(milli int64) string {
+	return strconv.FormatInt(milli/1000, 10)
+}

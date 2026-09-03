@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   go:
+    name: Go (pulse + forum plugin)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -18,12 +19,14 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22.x'
+          go-version: '1.25.x'
           cache: true
 
+      # Checks every Go file in the workspace, not a hardcoded directory list,
+      # so new modules cannot silently escape formatting checks.
       - name: Check formatting
         run: |
-          files=$(find cmd internal -name '*.go' -print0 | xargs -0 gofmt -l)
+          files=$(gofmt -l services)
           if [ -n "$files" ]; then
             echo "The following files are not gofmt-formatted:"
             echo "$files"
@@ -31,10 +34,35 @@ jobs:
           fi
 
       - name: Vet
-        run: go vet ./...
+        run: go vet ./services/pulse/... ./services/forum-plugin/user-center-pulse/...
 
       - name: Test
-        run: go test ./...
+        run: go test ./services/pulse/... ./services/forum-plugin/user-center-pulse/...
 
       - name: Build
-        run: make build
+        run: make build-pulse
+
+  blog:
+    name: Blog
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install
+        working-directory: sites/blog
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build
+        working-directory: sites/blog
+        run: pnpm build

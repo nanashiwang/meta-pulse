@@ -1,0 +1,267 @@
+# Meta Pulse 社区｜论坛与博客架构
+
+本文档定义 Meta Pulse 的社区层：论坛（Apache Answer）、博客（VitePress）以及两者与 Pulse 主线的集成边界。
+
+`docs/ARCHITECTURE.md` 仍是系统基线；本文档只在其之上追加社区相关的边界，不改变任何既有不变量。
+
+## 1. 为什么要社区层
+
+元衡 C 端 API 业务的获客高度依赖价格比较，缺少自有流量入口。社区层解决三件事：
+
+1. **搜索引流**：技术内容被搜索收录，带来非价格驱动的自然流量；
+2. **等级落地**：Pulse 等级在论坛中成为可见的社会身份，否则等级只是控制台里的一个数字；
+3. **内容资产**：模型评测、故障复盘、接入教程同时是 B 端能力（Provider Health、模型情报）的对外展示面。
+
+## 2. 三个服务，三个数据库
+
+```text
+new-api            身份 + 资金事实源
+meta-pulse         贡献值 / 券 / 等级事实源
+meta-pulse-forum   社区内容（Apache Answer）
+```
+
+数据库彼此独立，账号权限独立：
+
+| 数据库 | 归属 | Pulse 的权限 |
+|---|---|---|
+| `new_api` | new-api | 只读（LOG_DB） |
+| `meta_pulse` | Pulse | 读写 |
+| `meta_pulse_forum` | Answer | 只读 |
+
+符合 `ARCHITECTURE.md` 第 31 节「服务独立、数据库独立、权限独立」。
+
+## 3. 选型：Apache Answer
+
+选定 [Apache Answer](https://answer.apache.org/)（ASF 顶级项目，Apache-2.0）。
+
+| 诉求 | Answer 的能力 |
+|---|---|
+| 技术栈一致 | Go + Gin + MySQL + React，与 meta-pulse 相同 |
+| SEO | `internal/router/template_router.go` 提供真实服务端渲染：`/questions/:id/:title`、`/tags/:tag`、`/users/:username`、`/sitemap.xml`、`/sitemap/:page`、`/robots.txt`、`/opensearch.xml` |
+| 等级展示 | `plugin/user_center.go` 的 `PersonalBranding(externalID)` 接口 |
+| 中文 | 内置 `zh_CN.yaml` / `zh_TW.yaml` |
+
+未选用的方案：
+
+- **Discourse**：Rails + PostgreSQL + Sidekiq，引入第二套技术栈，运维最重；
+- **Flarum**：2.0 长期停留在 RC，核心 SEO 依赖扩展，无限滚动不利于长帖收录；
+- **NodeBB**：额外承担 MongoDB 运维。
+
+### 不 Fork
+
+Answer 源码不进入本仓库。仓库只维护 **UserCenter 插件 + 构建定义 + 部署编排**，Answer 本体通过官方镜像与 Go module 引入。
+
+理由与 `ARCHITECTURE.md` 第 32 节对 `opensource-loyalty` 的处理一致：Fork 一个上游活跃项目意味着永久承担合并成本，而我们需要的只是一个插件。
+
+### 已知成本
+
+Go 没有动态插件机制，Answer 官方采用重编译方式集成插件。因此：
+
+- 插件必须通过 `answer build --with <module>` 编译进二进制；
+- 需要自建镜像与 CI；
+- **Answer 每次升级都要重新构建镜像**。这是持续性运维负担，不是一次性成本。
+
+### 版本约束
+
+Answer v2.0.2 的 `go.mod` 仍声明 v1 模块路径（`github.com/apache/answer`，无 `/v2` 后缀），Go 工具链无法将其解析为 v2 模块。
+
+**插件当前编译against v1.7.1。** 升级到 v2.x 需等待上游修正模块路径，或改用 vendor 方式。
+
+## 4. 身份边界
+
+论坛不拥有身份。全部身份委托给 new-api：
+
+```text
+Browser → new-api Session
+            ↓ (UserCenter LoginRedirectURL)
+        Answer LoginCallback
+            ↓ external_id = new-api user_id
+        Answer 调 Pulse 只读接口取等级
+            ↓
+        PersonalBranding 徽章渲染
+```
+
+插件 `Description()` 中的两个关键开关：
+
+| 开关 | 取值 | 原因 |
+|---|---|---|
+| `EnabledOriginalUserSystem` | `false` | 论坛无独立注册通道，浏览器无法自行声明 `user_id`（AGENTS.md 第 13 条） |
+| `RankAgentEnabled` | `false` | Answer 内部 rank 同时管控投票/编辑/关帖权限。接管它等于让付费额度直接兑换社区治理权——充值大户不应自动获得删帖权 |
+
+两套声望各自独立生长，仅在个人页并列展示。
+
+Pulse 侧只需新增一个只读接口：
+
+```text
+GET /v1/internal/users/:user_id/profile
+→ { level, level_name, lifetime_contribution_milli, suspended }
+```
+
+**Pulse 不可用时论坛必须继续工作。** 插件的 `UserStatus` 与 `PersonalBranding` 在 Pulse 请求失败时分别降级为「可用」和「无徽章」，绝不阻断登录或锁定账号。
+
+## 5. 等级系统
+
+等级基于**终身累计净贡献**，而非单周期贡献：
+
+```text
+level = f(lifetime_net_contribution_milli)
+```
+
+周期贡献是活动指标、会归零；等级是身份，必须只涨不掉，否则用户不会在意它。
+
+展示位置：
+
+- new-api 控制台：等级 + 进度条；
+- 论坛个人页：`PersonalBranding` 徽章；
+- 论坛楼层：头衔；
+- 内容奖励档位：同等质量下高等级用户档位更高（等级唯一的经济效力）。
+
+## 6. 内容奖励
+
+### 数据流
+
+内容奖励与脉冲奖励**共用后半段，绝不共用前半段**：
+
+```text
+Usage Event → Contribution → Ticket → Pulse Action ─┐
+                                                     ├→ Reward Grant → Outbox → Benefit
+Content Candidate → 人工审核 → Content Award ────────┘
+```
+
+两条路径在 `pulse_reward_grant` 汇合，复用同一套 Budget / Settlement / Reconciliation / 状态机，因此只有一条到账路径、一套对账口径。
+
+### 硬约束：内容不产生 contribution 或 ticket
+
+`Contribution = Eligible Paid Usage × Contribution Multiplier` 这一定义承载了整个 margin-aware 经济基础。若发帖能产生 contribution：
+
+- 贡献值不再对应真实毛利；
+- `活动成本 / 贡献毛利` 指标失真；
+- 等级退化为灌水排行榜。
+
+因此内容奖励直接生成 Reward Grant，**跳过账本前半段**。
+
+### 独立预算线
+
+```text
+pulse_reward_budget.budget_type = content_reward
+```
+
+内容奖励在会计上属于**市场获客成本**，不是忠诚度返还成本，必须排除在 8%–12% 毛利占比的分母之外。
+
+### 防刷四道闸
+
+人工审核只能判断内容质量，无法判断账号是否为规模化注册的小号。因此四道闸缺一不可：
+
+| 闸 | 规则 | 落点 |
+|---|---|---|
+| 付费门槛 | 累计真实付费消耗 ≥ 门槛才有兑换资格；未达标内容仍可获荣誉，但不生成 Grant | 审核时校验 |
+| 人工审核 | 运营显式 approve + 选择档位 + 填写 reason | 写 `pulse_audit_log` |
+| 双层限额 | 单用户单周期上限 + 全站单日上限 | Budget 引擎 |
+| 可撤销 | 内容删除/抄袭 → `settled → reversed`，走 Benefit rollback | 复用 Grant 状态机 |
+
+第一道闸保留了「权益只来自真实付费使用」这条原则：**内容质量决定能不能拿，付费历史决定拿不拿得到。**
+
+### 幂等
+
+```text
+action_id = content_award:{content_type}:{content_id}:{award_version}
+```
+
+稳定且可重放。`award_version` 用于「追加奖励」场景（如后期评为精华）。
+
+### 采集方式
+
+不用插件推送，用只读游标拉取，与现有 Usage Ingest 完全同构：
+
+```text
+meta-pulse-worker
+  ├─ 只读 NEWAPI_LOG_DSN  → Usage Ingest
+  └─ 只读 FORUM_DB_DSN    → Content Candidate Ingest
+```
+
+复用 `pulse_worker_cursor` 与整套 job 基础设施；Answer 无需知道 Pulse 存在；任一侧故障不影响另一侧。
+
+审核动作在 Pulse Admin 完成（预算与审计在 Pulse 侧），Answer 只负责内容本身。
+
+### 新增表
+
+```text
+pulse_content_candidate
+pulse_content_award
+pulse_user_level
+```
+
+## 7. 博客
+
+Answer 至今没有长文/文章类型（已核对 1.4 / 1.5 / 1.6 / 2.0 release notes）。用置顶问题模拟博客语义不对，也无法输出 `Article` 结构化数据。
+
+因此博客独立为 VitePress 静态站：内容是营销资产、更新频率低，SSG 在 SEO、首屏与成本上均优于动态渲染。
+
+## 8. 域名与路由
+
+单一 hostname，按路径切分，集中积累搜索权重并共享 Cookie 域：
+
+```text
+yourdomain.com/                new-api 控制台
+yourdomain.com/blog/           VitePress 静态站
+yourdomain.com/forum/          Apache Answer
+yourdomain.com/console/pulse   Meta Pulse UI
+```
+
+配置见 `deploy/nginx/meta-pulse.conf`。其中 `/api/pulse/` 显式拒绝外部访问——浏览器只能经由 new-api 的 signed BFF 到达 Pulse。
+
+## 9. 引流闭环
+
+社区不是附属品，而是漏斗入口：
+
+```text
+搜索/分享 → 博客文章（含可直接运行的调用示例）
+              ↓
+          注册送额度
+              ↓
+          真实付费调用
+              ↓
+          贡献值 → 等级
+              ↓
+          论坛徽章/头衔 → 内容产出 → 更多搜索流量
+```
+
+## 10. 冷启动
+
+新论坛的主要失败原因是无内容可收录。上线前需准备 30–50 篇种子内容，博客与论坛共用选题：
+
+- 模型能力/价格横评；
+- 各模型踩坑实录；
+- Provider 稳定性周报；
+- API 接入教程。
+
+## 11. 依赖关系
+
+```text
+Track A｜Pulse 主线   M0 → M1 → M2 → M2.5 → M3 → M4 → M5 → M6
+Track B｜博客         立即启动：VitePress + 种子内容
+Track C｜论坛         立即启动：Answer 部署 + zh-CN
+                          └─ UserCenter 插件（依赖 M2：需真实贡献值数据）
+                               └─ 内容奖励（依赖 M4/M5：需 Reward + Settlement）
+Track D｜new-api      Signed BFF → Internal Benefit API → /console/pulse
+```
+
+关键依赖点两个：
+
+1. **UserCenter 插件依赖 M2** — 需要真实贡献值才有等级可展示；
+2. **内容兑换依赖 M5** — Settlement 打通后才能真正发放额度。
+
+在 M5 之前，**论坛以纯荣誉模式运行**（徽章、头衔、精华，不涉及 quota）。这同时是观察窗口：先看真实内容质量与灌水比例，再确定兑换档位。
+
+## 12. 工程红线（社区层追加）
+
+在 `ARCHITECTURE.md` 第 33 节基础上追加：
+
+1. 论坛不得拥有独立注册通道，身份一律来自 new-api；
+2. 论坛内容不得产生 contribution 或 ticket；
+3. 内容奖励使用独立 budget type，不计入贡献毛利占比分母；
+4. 内容奖励必须经人工审核并写入 `pulse_audit_log`；
+5. Pulse 故障不得阻断论坛登录或浏览；
+6. 不开启 `RankAgentEnabled`，付费等级不得兑换社区治理权限；
+7. Pulse 对论坛数据库只读；
+8. Answer 源码不进入本仓库。

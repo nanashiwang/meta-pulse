@@ -29,7 +29,9 @@ services:
       retries: 10
 
   pulse-api:
-    build: .
+    build:
+      context: .
+      dockerfile: services/pulse/Dockerfile
     restart: unless-stopped
     environment:
       PULSE_ENV: development
@@ -50,7 +52,9 @@ services:
         condition: service_healthy
 
   pulse-worker:
-    build: .
+    build:
+      context: .
+      dockerfile: services/pulse/Dockerfile
     restart: unless-stopped
     entrypoint: ["meta-pulse-worker"]
     environment:
@@ -68,5 +72,42 @@ services:
       redis:
         condition: service_healthy
 
+  # Forum database is a separate logical DB with its own account, per
+  # ARCHITECTURE.md section 31 (services/databases/permissions stay independent).
+  forum-mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: meta_pulse_forum
+      MYSQL_USER: forum
+      MYSQL_PASSWORD: ${FORUM_DB_PASSWORD:?set FORUM_DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${FORUM_DB_ROOT_PASSWORD:?set FORUM_DB_ROOT_PASSWORD}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - forum_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${FORUM_DB_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Apache Answer rebuilt with the Pulse user center plugin compiled in.
+  forum:
+    build:
+      context: .
+      dockerfile: services/forum/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "9080:80"
+    volumes:
+      - forum_data:/data
+    depends_on:
+      forum-mysql:
+        condition: service_healthy
+
 volumes:
   pulse_mysql_data:
+  forum_mysql_data:
+  forum_data:

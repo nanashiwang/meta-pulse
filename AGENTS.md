@@ -6,7 +6,8 @@
 
 1. `README.md`
 2. `docs/ARCHITECTURE.md`
-3. 本文件
+3. `docs/COMMUNITY.md`（涉及论坛/博客时）
+4. 本文件
 
 `docs/ARCHITECTURE.md` 是系统架构基线。实现可以拆分，但不得擅自改变其中的系统边界、事实源和工程红线。
 
@@ -41,6 +42,9 @@ Meta Pulse = 调用之后的增长与权益系统
 14. 金额、贡献值、Ledger Balance 禁止用 float 做账。
 15. Pulse 不持有 new-api 用户余额表写权限。
 16. 所有人工财务型调整必须可审计。
+17. 论坛内容不得产生 contribution 或 ticket。
+18. 论坛不得拥有独立注册通道；身份一律来自 new-api。
+19. Pulse 故障不得阻断论坛登录或浏览。
 
 ## 3. 技术栈
 
@@ -53,6 +57,19 @@ Meta Pulse = 调用之后的增长与权益系统
 - Redis 7+
 
 前端 UI 在 new-api 现有 React 18 / Vite / Semi Design 控制台中薄接入。
+
+社区层：Apache Answer（论坛，不 Fork，仅维护插件）+ VitePress（博客）。
+
+仓库为 monorepo：
+
+```text
+services/pulse/                Pulse 主线
+services/forum/                Answer 构建定义
+services/forum-plugin/         UserCenter 插件
+sites/blog/                    VitePress 博客
+```
+
+Go 工作区通过根目录 `go.work` 管理。仓库根不是 Go module，`./...` 无法跨模块解析，构建命令须显式列出模块路径。
 
 ## 4. 分层规则
 

@@ -1,0 +1,14 @@
+{
+  "name": "meta-pulse-blog",
+  "version": "0.1.0",
+  "private": true,
+  "description": "元衡技术博客 — SEO 引流入口",
+  "scripts": {
+    "dev": "vitepress dev docs",
+    "build": "vitepress build docs",
+    "preview": "vitepress preview docs"
+  },
+  "devDependencies": {
+    "vitepress": "^1.6.3"
+  }
+}

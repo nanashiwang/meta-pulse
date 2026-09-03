@@ -49,6 +49,8 @@ Meta Pulse = 调用之后的增长与权益系统
 
 Meta Pulse 负责 Usage Event、贡献值、脉冲券、经济规则、10 天周期、Reward、Budget、Experiment、增长分析和奖励结算状态。
 
+论坛与博客构成社区层，负责搜索引流、等级展示和内容沉淀；论坛身份完全委托给 new-api，详见 [docs/COMMUNITY.md](docs/COMMUNITY.md)。
+
 硬原则：
 
 > **Pulse 故障不得影响 new-api 模型调用、计费、充值和余额。**
@@ -61,40 +63,43 @@ Meta Pulse 负责 Usage Event、贡献值、脉冲券、经济规则、10 天周
 - MySQL 8.0+
 - Redis 7+
 - React 18 / Vite / Semi Design（用户页面复用 new-api 前端）
+- Apache Answer（论坛）/ VitePress（博客）
 - Docker / Docker Compose / Nginx
 
 ## 仓库结构
 
+Monorepo，三条 track 并行推进：
+
 ```text
 meta-pulse/
-├── cmd/
-│   ├── api/
-│   ├── worker/
-│   └── tool/
-├── internal/
-│   ├── config/
-│   ├── domain/
-│   ├── service/
-│   ├── adapter/newapi/
-│   ├── store/mysql/
-│   ├── transport/http/
-│   ├── job/
-│   ├── security/
-│   └── observability/
-├── migrations/
-├── tests/
-├── tools/
+├── go.work                          Go 工作区（pulse + forum plugin）
+├── services/
+│   ├── pulse/                       Track A｜Pulse 主线
+│   │   ├── cmd/{api,worker,tool}/
+│   │   ├── internal/
+│   │   ├── migrations/
+│   │   └── Dockerfile
+│   ├── forum/                       Track C｜论坛构建定义
+│   │   └── Dockerfile               重编译 Answer + 插件
+│   └── forum-plugin/
+│       └── user-center-pulse/       身份委托 + 等级徽章插件
+├── sites/
+│   └── blog/                        Track B｜VitePress 博客
+├── deploy/nginx/                    单域名路由
 └── docs/
 ```
+
+Apache Answer 源码不进入仓库，通过官方镜像与 Go module 引入。
 
 ## 文档
 
 - [完整项目架构](docs/ARCHITECTURE.md)
+- [社区架构（论坛 + 博客）](docs/COMMUNITY.md)
 - [工程约束](AGENTS.md)
-- [数据库迁移说明](migrations/README.md)
+- [数据库迁移说明](services/pulse/migrations/README.md)
 
 ## 当前状态
 
-**开发启动｜完整项目架构已冻结。**
+**开发启动｜完整项目架构已冻结｜社区层已规划。**
 
-实现可以并行拆分，但不得改变 `docs/ARCHITECTURE.md` 定义的系统边界、事实源和工程红线。
+实现可以并行拆分，但不得改变 `docs/ARCHITECTURE.md` 定义的系统边界、事实源和工程红线，以及 `docs/COMMUNITY.md` 定义的社区层边界。

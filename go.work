@@ -1,0 +1,8 @@
+// Answer v1.7.1 pulls in a Go 1.25 toolchain requirement, so the workspace
+// floor is 1.25 even though services/pulse itself targets 1.22.
+go 1.25.0
+
+use (
+	./services/forum-plugin/user-center-pulse
+	./services/pulse
+)

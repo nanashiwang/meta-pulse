@@ -1,0 +1,41 @@
+plugin:
+  pulse_user_center:
+    backend:
+      info:
+        name:
+          other: 元衡用户中心
+        description:
+          other: 将论坛身份委托给 new-api，并在个人页展示元衡脉冲等级徽章
+      config:
+        newapi_base_url:
+          title:
+            other: new-api 基础地址
+          description:
+            other: new-api 控制台地址，用于登录与注册跳转。
+        pulse_base_url:
+          title:
+            other: Meta Pulse 内部地址
+          description:
+            other: meta-pulse-api 地址，仅调用只读的用户档案接口。
+        hmac_secret:
+          title:
+            other: 服务间 HMAC 密钥
+          description:
+            other: 用于签名请求到 new-api 与 Meta Pulse 的共享密钥，禁止提交到仓库。
+        level_badge_enabled:
+          label:
+            other: 显示脉冲等级徽章
+          title:
+            other: 等级徽章
+          description:
+            other: 在用户个人页展示其脉冲等级与终身累计贡献值。
+      control_center:
+        pulse:
+          other: 元衡脉冲
+        console:
+          other: API 控制台
+      branding:
+        level:
+          other: 等级
+        contribution:
+          other: 贡献值

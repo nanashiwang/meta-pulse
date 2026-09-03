@@ -1,30 +1,57 @@
-.PHONY: fmt test build build-api build-worker build-tool run-api run-worker clean
+.PHONY: help fmt vet test build build-pulse build-forum build-blog \
+        run-api run-worker up down clean
+
+# The repo root is not a Go module, so `./...` does not resolve across the
+# workspace. Every Go target lists module paths explicitly.
+GO_MODULES := ./services/pulse/... ./services/forum-plugin/user-center-pulse/...
+GO_DIRS := services/pulse services/forum-plugin
+
+help:
+	@echo "Meta Pulse monorepo"
+	@echo ""
+	@echo "  make fmt          gofmt all Go sources"
+	@echo "  make vet          go vet all modules"
+	@echo "  make test         go test all modules"
+	@echo "  make build        build pulse binaries + forum image + blog"
+	@echo "  make up           docker compose up"
+	@echo ""
+	@echo "Tracks: services/pulse (A) | sites/blog (B) | services/forum* (C)"
 
 fmt:
-	find cmd internal -name '*.go' -print0 | xargs -0 gofmt -w
+	gofmt -w $(GO_DIRS)
+
+vet:
+	go vet $(GO_MODULES)
 
 test:
-	go test ./...
+	go test $(GO_MODULES)
 
-build: build-api build-worker build-tool
+build: build-pulse build-blog
 
-build-api:
+build-pulse:
 	mkdir -p bin
-	go build -o bin/meta-pulse-api ./cmd/api
+	go build -o bin/meta-pulse-api ./services/pulse/cmd/api
+	go build -o bin/meta-pulse-worker ./services/pulse/cmd/worker
+	go build -o bin/meta-pulse-tool ./services/pulse/cmd/tool
 
-build-worker:
-	mkdir -p bin
-	go build -o bin/meta-pulse-worker ./cmd/worker
+# Rebuilds Answer with the Pulse user center plugin compiled in.
+build-forum:
+	docker build -f services/forum/Dockerfile -t meta-pulse-forum:dev .
 
-build-tool:
-	mkdir -p bin
-	go build -o bin/meta-pulse-tool ./cmd/tool
+build-blog:
+	cd sites/blog && pnpm install --frozen-lockfile && pnpm build
 
 run-api:
-	go run ./cmd/api
+	go run ./services/pulse/cmd/api
 
 run-worker:
-	go run ./cmd/worker
+	go run ./services/pulse/cmd/worker
+
+up:
+	docker compose up -d
+
+down:
+	docker compose down
 
 clean:
-	rm -rf bin
+	rm -rf bin sites/blog/docs/.vitepress/dist

@@ -854,8 +854,30 @@ Redis
 16. Holdout 必须稳定可复现。
 17. 所有人工财务调整必须进入 Audit Log。
 18. Pulse 无 new-api 用户余额直接写权限。
+19. 论坛内容不得产生 contribution 或 ticket。
+20. 论坛不得拥有独立注册通道。
+21. Pulse 故障不得阻断论坛登录或浏览。
 
-## 34. 最终工程范围
+## 34. 社区层
+
+论坛（Apache Answer）与博客（VitePress）构成社区层，承担搜索引流、等级展示与内容沉淀。
+
+边界摘要（完整定义见 `docs/COMMUNITY.md`）：
+
+```text
+new-api            身份 + 资金事实源
+meta-pulse         贡献值 / 券 / 等级事实源
+meta-pulse-forum   社区内容
+```
+
+- 论坛身份完全委托 new-api，无独立注册通道；
+- Pulse 对论坛数据库只读，新增 Content Candidate Ingest 游标；
+- 内容奖励直接生成 Reward Grant，**不产生 contribution 或 ticket**；
+- 内容奖励使用独立 `budget_type = content_reward`，不计入贡献毛利占比分母；
+- 新增表：`pulse_content_candidate`、`pulse_content_award`、`pulse_user_level`；
+- 新增只读接口：`GET /v1/internal/users/:user_id/profile`。
+
+## 35. 最终工程范围
 
 ```text
 Usage Ingestion
