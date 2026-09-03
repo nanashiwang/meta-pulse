@@ -32,6 +32,7 @@ pulse_audit_log
 5. 唯一约束必须承载幂等语义，不只依靠应用层判断。
 6. 任何 destructive migration 必须先有备份、回滚和数据校验方案。
 7. active Period 的历史经济配置不得通过 migration 被批量覆盖。
+8. `00002_ledger_payload_hash.sql` 创建 append-only trigger；启用 MySQL binary logging 时，DBA 须在迁移前配置 `log_bin_trust_function_creators=1`，或使用具备等效迁移权限的受控发布流程。
 
 ## 最低唯一约束
 

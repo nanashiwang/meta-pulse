@@ -14,7 +14,7 @@
 ✅ 论坛插件       UserCenter、等级展示、SSO Ticket 验签、共享 Nonce 已落地
 ✅ new-api 调研   已确认登录、2FA、LOG_DB、BenefitChangeRecord、额度发放边界
 🟡 P0 接入契约     new-api SSO / BFF / Benefit API、Pulse 验签与轮换已落地；真实部署验收待完成
-🟡 M0 地基         配置、Gin、健康检查、GORM/Redis、Goose migration、指标已落地；真实环境验收待完成
+🟡 M0 地基         配置、Gin、健康检查、GORM/Redis、Goose migration、指标已落地；本地 MySQL/Redis Compose 验收完成，LOG_DB 权限验收待完成
 ✅ M1 Ledger 记账内核    领域账本、账户快照、幂等冲突、重建与 ledger-check 已落地
 ✅ M2 Usage Ingest 与等级  只读日志游标、统一 Mapper、事务记账、退款复核、等级 Profile 已落地
 🟡 M2.5 回测框架  只读回放、范围过滤、异常/覆盖率、倍率对比已落地；真实 LOG_DB 样本待环境接入
@@ -182,7 +182,7 @@ type UnitOfWork interface {
 - [x] `.env.example` 与 `config.go` 一致，必填项缺失时启动失败；
 - [ ] 验证 LOG_DB 使用只读账号、Pulse 无 new-api 主库写权限；
 - [x] 明确 Period 使用半开区间 `[start,end)`、Asia/Shanghai（UTC+8），按日志 `created_at` 归属，Ingest 时间仅用于水位线；
-- [ ] 使用真实 MySQL/Redis Compose 完成迁移与 `/readyz` 验收。
+- [x] 使用真实 MySQL/Redis Compose 完成迁移与 `/readyz` 验收；已验证 MySQL/Redis 断开返回 503，恢复后重新 ready。
 
 **出口：**Compose 服务健康；16 张表迁移完成；DB/Redis 断开时 `readyz` 失败；服务重启不影响 new-api。
 

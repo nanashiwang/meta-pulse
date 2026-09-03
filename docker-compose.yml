@@ -10,6 +10,11 @@ services:
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
+      # 00002 creates an append-only trigger. This server setting lets the
+      # least-privileged pulse user create it during local bootstrap while
+      # keeping binary logging enabled. Production DBAs must configure the
+      # equivalent setting before running migrations.
+      - --log-bin-trust-function-creators=1
     volumes:
       - pulse_mysql_data:/var/lib/mysql
     healthcheck:

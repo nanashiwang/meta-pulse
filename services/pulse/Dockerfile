@@ -19,6 +19,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /out/meta-pulse-api ./cmd/api && \
     CGO_ENABLED=0 GOOS=linux go build -o /out/meta-pulse-tool ./cmd/tool
 
 FROM alpine:3.20
+RUN apk add --no-cache ca-certificates tzdata
 RUN addgroup -S pulse && adduser -S -G pulse pulse
 WORKDIR /app
 COPY --from=builder /out/ /usr/local/bin/
