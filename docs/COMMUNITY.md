@@ -122,10 +122,12 @@ Pulse 侧只需新增一个只读接口：
 
 ```text
 GET /v1/internal/users/:user_id/profile
-→ { level, level_name, lifetime_contribution_milli, suspended }
+→ { user_id, level: { key, name }, lifetime_contribution_milli }
 ```
 
-**Pulse 不可用时论坛必须继续工作。** 插件的 `UserStatus` 与 `PersonalBranding` 在 Pulse 请求失败时分别降级为「可用」和「无徽章」，绝不阻断登录或锁定账号。论坛登录本身只依赖 new-api SSO，不同步依赖 Pulse。
+`level` 使用稳定的嵌套对象契约；插件展示 `level.name`，业务判断可使用 `level.key`。Pulse 当前不提供账户封禁事实，论坛 `UserStatus` 固定保持可用；后续如需同步封禁，应从身份事实源 new-api 单独定义契约，不得由 Pulse 推断。
+
+**Pulse 不可用时论坛必须继续工作。** 插件的 `PersonalBranding` 在 Pulse 请求失败时降级为「无徽章」，绝不阻断登录或锁定账号。论坛登录本身只依赖 new-api SSO，不同步依赖 Pulse。
 
 ## 5. 等级系统
 

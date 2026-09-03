@@ -29,11 +29,15 @@ const (
 // Meta Pulse remains the source of truth for levels and contribution; the forum
 // never writes back. See docs/COMMUNITY.md for why this direction is enforced.
 type UserProfile struct {
-	UserID                 int64  `json:"user_id"`
-	Level                  int    `json:"level"`
-	LevelName              string `json:"level_name"`
-	LifetimeContributionMi int64  `json:"lifetime_contribution_milli"`
-	Suspended              bool   `json:"suspended"`
+	UserID                 int64        `json:"user_id"`
+	Level                  ProfileLevel `json:"level"`
+	LifetimeContributionMi int64        `json:"lifetime_contribution_milli"`
+}
+
+// ProfileLevel is the stable level projection shared with Pulse's profile API.
+type ProfileLevel struct {
+	Key  string `json:"key"`
+	Name string `json:"name"`
 }
 
 // PulseClient talks to meta-pulse-api's internal read-only endpoint.

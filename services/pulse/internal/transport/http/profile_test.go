@@ -2,6 +2,7 @@ package transporthttp
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -28,7 +29,18 @@ func TestProfileRouteRequiresAuthAndDoesNotTrustClientIdentity(t *testing.T) {
 	if response.Code != http.StatusOK || response.Body.String() == "" {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
-	if response.Body.String() == `{"user_id":99}` {
-		t.Fatal("handler trusted client path identity")
+	var body struct {
+		UserID               uint64 `json:"user_id"`
+		LifetimeContribution int64  `json:"lifetime_contribution_milli"`
+		Level                struct {
+			Key  string `json:"key"`
+			Name string `json:"name"`
+		} `json:"level"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.UserID != 7 || body.LifetimeContribution != 2000 || body.Level.Key != "pulse" || body.Level.Name != "脉冲者" {
+		t.Fatalf("unexpected profile contract: %+v", body)
 	}
 }

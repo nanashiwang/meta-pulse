@@ -144,17 +144,9 @@ func (uc *UserCenter) UserInfo(externalID string) (*plugin.UserCenterBasicUserIn
 	}, nil
 }
 
-// UserStatus mirrors suspension from Pulse. A Pulse outage returns "available"
-// rather than locking every forum account.
-func (uc *UserCenter) UserStatus(externalID string) plugin.UserStatus {
-	profile, err := uc.Client.GetUserProfile(externalID)
-	if err != nil {
-		log.Debugf("pulse user status unavailable for %s: %v", externalID, err)
-		return plugin.UserStatusAvailable
-	}
-	if profile.Suspended {
-		return plugin.UserStatusSuspended
-	}
+// UserStatus deliberately does not derive account suspension from Pulse.
+// new-api owns identity state; Pulse only supplies non-authoritative branding.
+func (uc *UserCenter) UserStatus(string) plugin.UserStatus {
 	return plugin.UserStatusAvailable
 }
 
@@ -194,7 +186,7 @@ func (uc *UserCenter) PersonalBranding(externalID string) []*plugin.PersonalBran
 	return []*plugin.PersonalBranding{
 		{
 			Name:  "pulse_level",
-			Label: profile.LevelName,
+			Label: profile.Level.Name,
 			Url:   uc.Config.NewAPIBaseURL + "/console/pulse",
 		},
 		{

@@ -32,7 +32,7 @@ func TestPulseClientSignsCanonicalForumRequest(t *testing.T) {
 			t.Fatal("signature does not cover the canonical Pulse request")
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(w, `{"user_id":42,"level":3,"level_name":"L3","lifetime_contribution_milli":12000}`)
+		_, _ = fmt.Fprint(w, `{"user_id":42,"level":{"key":"pulse","name":"脉冲者"},"lifetime_contribution_milli":12000}`)
 	}))
 	defer server.Close()
 
@@ -44,7 +44,7 @@ func TestPulseClientSignsCanonicalForumRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if profile.UserID != 42 || profile.Level != 3 {
+	if profile.UserID != 42 || profile.Level.Key != "pulse" || profile.Level.Name != "脉冲者" {
 		t.Fatalf("profile=%+v", profile)
 	}
 }
@@ -59,7 +59,7 @@ func TestPulseClientFailsClosedWithoutServiceSecret(t *testing.T) {
 func TestPulseClientRejectsProfileIdentityMismatch(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(w, `{"user_id":99,"level":3}`)
+		_, _ = fmt.Fprint(w, `{"user_id":99,"level":{"key":"pulse","name":"脉冲者"}}`)
 	}))
 	defer server.Close()
 	client := NewPulseClient(&Config{PulseBaseURL: server.URL, PulseHMACSecret: "secret"})
