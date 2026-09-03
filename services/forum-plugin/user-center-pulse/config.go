@@ -14,7 +14,8 @@ import (
 type Config struct {
 	NewAPIBaseURL     string `json:"newapi_base_url"`
 	PulseBaseURL      string `json:"pulse_base_url"`
-	HMACSecret        string `json:"hmac_secret"`
+	SSOHMACSecret     string `json:"sso_hmac_secret"`
+	PulseHMACSecret   string `json:"pulse_hmac_secret"`
 	LevelBadgeEnabled bool   `json:"level_badge_enabled"`
 }
 
@@ -43,15 +44,26 @@ func (uc *UserCenter) ConfigFields() []plugin.ConfigField {
 			Value: uc.Config.PulseBaseURL,
 		},
 		{
-			Name:        "hmac_secret",
+			Name:        "sso_hmac_secret",
 			Type:        plugin.ConfigTypeInput,
-			Title:       plugin.MakeTranslator(i18n.ConfigHMACSecretTitle),
-			Description: plugin.MakeTranslator(i18n.ConfigHMACSecretDescription),
+			Title:       plugin.MakeTranslator(i18n.ConfigSSOHMACSecretTitle),
+			Description: plugin.MakeTranslator(i18n.ConfigSSOHMACSecretDescription),
 			Required:    true,
 			UIOptions: plugin.ConfigFieldUIOptions{
 				InputType: plugin.InputTypePassword,
 			},
-			Value: uc.Config.HMACSecret,
+			Value: uc.Config.SSOHMACSecret,
+		},
+		{
+			Name:        "pulse_hmac_secret",
+			Type:        plugin.ConfigTypeInput,
+			Title:       plugin.MakeTranslator(i18n.ConfigPulseHMACSecretTitle),
+			Description: plugin.MakeTranslator(i18n.ConfigPulseHMACSecretDescription),
+			Required:    true,
+			UIOptions: plugin.ConfigFieldUIOptions{
+				InputType: plugin.InputTypePassword,
+			},
+			Value: uc.Config.PulseHMACSecret,
 		},
 		{
 			Name:        "level_badge_enabled",

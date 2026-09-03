@@ -926,7 +926,7 @@ meta-pulse-forum   社区内容
 - 内容奖励使用独立 `budget_type = content_reward`，不计入贡献毛利占比分母；
 - 新增表：`pulse_content_candidate`、`pulse_content_award`、`pulse_user_level`；
 - 新增只读接口：`GET /v1/internal/users/:user_id/profile`；
-- 论坛登录入口统一为 new-api `/forum/sso/start`，未登录时使用 `/login?next=...`；new-api 从 session 读取用户后签发短期、单次 Login Ticket，插件验签并原子消费 nonce 后方可信任 `user_id`；
+- 论坛登录入口统一为 new-api `/api/forum/sso/start`，未登录时使用 `/login?next=...`；new-api 从 session 读取用户后签发短期、单次 Login Ticket，插件验签并原子消费 nonce 后方可信任 `user_id`；
 - 论坛登录回调参数在验签前一律不可信，Pulse 故障时论坛登录和浏览必须降级而不是阻断（该接口是 Pulse 的跨仓库前置项）。
 
 ## 35. 最终工程范围

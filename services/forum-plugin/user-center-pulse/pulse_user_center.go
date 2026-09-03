@@ -62,8 +62,8 @@ func (uc *UserCenter) Description() plugin.UserCenterDesc {
 		Icon:        "",
 		Url:         uc.Config.NewAPIBaseURL,
 
-		LoginRedirectURL:  uc.Config.NewAPIBaseURL + "/login?redirect_to=forum",
-		SignUpRedirectURL: uc.Config.NewAPIBaseURL + "/register?redirect_to=forum",
+		LoginRedirectURL:  uc.Config.NewAPIBaseURL + "/api/forum/sso/start",
+		SignUpRedirectURL: uc.Config.NewAPIBaseURL + "/register?next=%2Fapi%2Fforum%2Fsso%2Fstart",
 
 		RankAgentEnabled:          false,
 		UserStatusAgentEnabled:    true,
@@ -121,7 +121,7 @@ func (uc *UserCenter) resolveUser(ctx *gin.Context) (*plugin.UserCenterBasicUser
 		Signature:   ctx.Query("signature"),
 	}
 
-	if err := ticket.Verify(uc.Config.HMACSecret, uc.Nonces, time.Now()); err != nil {
+	if err := ticket.Verify(uc.Config.SSOHMACSecret, uc.Nonces, time.Now()); err != nil {
 		log.Warnf("rejected user center login callback: %v", err)
 		return nil, fmt.Errorf("login verification failed")
 	}

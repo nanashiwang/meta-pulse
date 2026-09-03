@@ -43,7 +43,7 @@ func TestDescriptionEnforcesIdentityBoundaries(t *testing.T) {
 // authenticate anyone. Before signature verification existed, the first case
 // here logged the attacker in as user 1.
 func TestResolveUserRejectsUnsignedCallback(t *testing.T) {
-	uc := &UserCenter{Config: &Config{HMACSecret: testSecret}, Nonces: NewNonceCache()}
+	uc := &UserCenter{Config: &Config{SSOHMACSecret: testSecret}, Nonces: NewNonceCache()}
 
 	for _, tc := range []struct {
 		name  string
@@ -63,7 +63,7 @@ func TestResolveUserRejectsUnsignedCallback(t *testing.T) {
 }
 
 func TestResolveUserAcceptsSignedTicket(t *testing.T) {
-	uc := &UserCenter{Config: &Config{HMACSecret: testSecret}, Nonces: NewNonceCache()}
+	uc := &UserCenter{Config: &Config{SSOHMACSecret: testSecret}, Nonces: NewNonceCache()}
 	ticket := mintTicket("123", time.Now(), "nonce-resolve")
 
 	query := url.Values{
@@ -88,7 +88,7 @@ func TestResolveUserAcceptsSignedTicket(t *testing.T) {
 
 // Answer requires a display name; fall back to username rather than blank.
 func TestResolveUserFallsBackToUsername(t *testing.T) {
-	uc := &UserCenter{Config: &Config{HMACSecret: testSecret}, Nonces: NewNonceCache()}
+	uc := &UserCenter{Config: &Config{SSOHMACSecret: testSecret}, Nonces: NewNonceCache()}
 	ticket := mintTicket("123", time.Now(), "nonce-fallback")
 	ticket.DisplayName = ""
 	mac := hmac.New(sha256.New, []byte(testSecret))

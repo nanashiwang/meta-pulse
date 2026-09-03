@@ -73,8 +73,8 @@ Answer v2.0.2 的 `go.mod` 仍声明 v1 模块路径（`github.com/apache/answer
 
 ```text
 Answer
-  → new-api /forum/sso/start
-  → 未登录：/login?next=/forum/sso/start
+  → new-api /api/forum/sso/start
+  → 未登录：/login?next=/api/forum/sso/start
   → 已登录：new-api 从 session 读取用户并签发短期单次 Login Ticket
   → 302 到固定 Answer callback
   → 插件验签、原子消费 nonce、建立论坛会话
@@ -95,6 +95,8 @@ new-api 签发、插件校验的 ticket。Ticket 中的用户字段只能来自 
 payload   = user_id \n username \n display_name \n email \n avatar \n timestamp \n nonce
 signature = hex(HMAC-SHA256(shared_secret, payload))
 ```
+
+登录 Ticket 使用独立的 `PULSE_FORUM_SSO_SECRET`；论坛读取等级时则以 `forum` 角色、完整 canonical request 和 `PULSE_SERVICE_HMAC_SECRET` 调用 Pulse。两个密钥分开配置，不向浏览器暴露，也不复用。
 
 四项约束：
 

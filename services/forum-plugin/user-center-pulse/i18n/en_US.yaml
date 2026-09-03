@@ -17,11 +17,16 @@ plugin:
             other: Meta Pulse Internal Base URL
           description:
             other: Base URL of meta-pulse-api. Only the read-only profile endpoint is called.
-        hmac_secret:
+        sso_hmac_secret:
           title:
-            other: Service HMAC Secret
+            other: Forum SSO HMAC Secret
           description:
-            other: Shared secret used to sign requests to new-api and Meta Pulse. Never commit this value.
+            other: Must match new-api PULSE_FORUM_SSO_SECRET and is only used to verify Login Tickets.
+        pulse_hmac_secret:
+          title:
+            other: Pulse Service HMAC Secret
+          description:
+            other: Must match Pulse PULSE_SERVICE_HMAC_SECRET and is only used to sign read-only profile requests.
         level_badge_enabled:
           label:
             other: Show Meta Pulse level badges

@@ -17,11 +17,16 @@ plugin:
             other: Meta Pulse 内部地址
           description:
             other: meta-pulse-api 地址，仅调用只读的用户档案接口。
-        hmac_secret:
+        sso_hmac_secret:
           title:
-            other: 服务间 HMAC 密钥
+            other: 论坛 SSO HMAC 密钥
           description:
-            other: 用于签名请求到 new-api 与 Meta Pulse 的共享密钥，禁止提交到仓库。
+            other: 与 new-api 的 PULSE_FORUM_SSO_SECRET 相同，仅用于 Login Ticket 验签。
+        pulse_hmac_secret:
+          title:
+            other: Pulse 服务 HMAC 密钥
+          description:
+            other: 与 Pulse 的 PULSE_SERVICE_HMAC_SECRET 相同，仅用于签名只读档案请求。
         level_badge_enabled:
           label:
             other: 显示脉冲等级徽章
