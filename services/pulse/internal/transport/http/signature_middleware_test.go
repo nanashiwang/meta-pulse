@@ -80,3 +80,25 @@ func setSignature(req *http.Request, now time.Time, secret []byte) {
 	_, _ = mac.Write([]byte(canonical))
 	req.Header.Set(security.HeaderSignature, hex.EncodeToString(mac.Sum(nil)))
 }
+
+func TestSignedRequestWithSecretsAcceptsPreviousSecret(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	now := time.Now().Truncate(time.Second)
+	previous := []byte("previous-bff-secret")
+	req := httptest.NewRequest(http.MethodGet, "http://pulse/v1/me/summary", nil)
+	setSignature(req, now, previous)
+
+	router := gin.New()
+	router.Use(SignedRequestWithSecrets(func(role string) [][]byte {
+		if role == "user-bff" {
+			return [][]byte{[]byte("current-bff-secret"), previous}
+		}
+		return nil
+	}, &clockNonceStore{now: now}, time.Minute))
+	router.GET("/v1/me/summary", func(c *gin.Context) { c.Status(http.StatusNoContent) })
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, req)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusNoContent)
+	}
+}

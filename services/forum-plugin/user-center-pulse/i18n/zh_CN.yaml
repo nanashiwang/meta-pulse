@@ -22,6 +22,11 @@ plugin:
             other: 论坛 SSO HMAC 密钥
           description:
             other: 与 new-api 的 PULSE_FORUM_SSO_SECRET 相同，仅用于 Login Ticket 验签。
+        sso_hmac_secret_previous:
+          title:
+            other: 论坛 SSO 旧 HMAC 密钥（轮换期间）
+          description:
+            other: 轮换期间临时填写旧密钥；所有 new-api 实例和登录请求切换完成后清空。
         pulse_hmac_secret:
           title:
             other: Pulse 服务 HMAC 密钥

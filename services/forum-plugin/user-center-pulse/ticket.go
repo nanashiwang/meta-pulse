@@ -74,7 +74,21 @@ func (t *LoginTicket) validateSignedFields() error {
 
 // Verify checks the ticket signature, freshness, and single use.
 func (t *LoginTicket) Verify(ctx context.Context, secret string, nonces LoginTicketNonceStore, now time.Time) error {
-	if secret == "" {
+	return t.VerifyWithSecrets(ctx, []string{secret}, nonces, now)
+}
+
+// VerifyWithSecrets accepts the active SSO secret followed by an optional
+// previous secret during a controlled rotation window. The nonce is consumed
+// only after the ticket authenticates with one of the configured keys.
+func (t *LoginTicket) VerifyWithSecrets(ctx context.Context, secrets []string, nonces LoginTicketNonceStore, now time.Time) error {
+	configured := false
+	for _, secret := range secrets {
+		if strings.TrimSpace(secret) != "" {
+			configured = true
+			break
+		}
+	}
+	if !configured {
 		return fmt.Errorf("hmac secret not configured")
 	}
 	if t.UserID == "" || t.Nonce == "" || t.Signature == "" {
@@ -98,17 +112,24 @@ func (t *LoginTicket) Verify(ctx context.Context, secret string, nonces LoginTic
 		return fmt.Errorf("login ticket expired or not yet valid")
 	}
 
-	mac := hmac.New(sha256.New, []byte(secret))
-	_, _ = mac.Write([]byte(t.signingPayload()))
-	expected := mac.Sum(nil)
-
 	got, err := hex.DecodeString(t.Signature)
 	if err != nil {
 		return fmt.Errorf("malformed login ticket signature")
 	}
-	// Constant-time compare: a byte-by-byte comparison leaks how much of the
-	// signature was correct through timing.
-	if !hmac.Equal(expected, got) {
+	matched := false
+	for _, secret := range secrets {
+		secret = strings.TrimSpace(secret)
+		if secret == "" {
+			continue
+		}
+		mac := hmac.New(sha256.New, []byte(secret))
+		_, _ = mac.Write([]byte(t.signingPayload()))
+		if hmac.Equal(mac.Sum(nil), got) {
+			matched = true
+			break
+		}
+	}
+	if !matched {
 		return fmt.Errorf("invalid login ticket signature")
 	}
 

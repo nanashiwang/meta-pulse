@@ -73,3 +73,29 @@ func TestVerifyRequestRejectsTimeAndMissingSecret(t *testing.T) {
 		t.Fatalf("missing secret error = %v, want %v", err, ErrMissingSecret)
 	}
 }
+
+func TestVerifyRequestAcceptsPreviousSecretDuringRotation(t *testing.T) {
+	now := time.Now().Truncate(time.Second)
+	current := []byte("current-secret")
+	previous := []byte("previous-secret")
+	nonces := NewMemoryNonceStore()
+	req := signedRequest(http.MethodGet, "http://pulse/v1/me/summary", "123", "user-bff", "n-rotation", "", now, previous)
+
+	if _, err := VerifyRequestWithSecrets(req, [][]byte{current, previous}, now, time.Minute, nonces); err != nil {
+		t.Fatalf("request signed by previous secret rejected: %v", err)
+	}
+}
+
+func TestVerifyRequestDoesNotClaimNonceWhenAllRotationSecretsFail(t *testing.T) {
+	now := time.Now().Truncate(time.Second)
+	nonces := NewMemoryNonceStore()
+	req := signedRequest(http.MethodGet, "http://pulse/v1/me/summary", "123", "user-bff", "n-rotation-invalid", "", now, []byte("old-secret"))
+
+	if _, err := VerifyRequestWithSecrets(req, [][]byte{[]byte("current-secret"), []byte("previous-secret")}, now, time.Minute, nonces); err == nil {
+		t.Fatal("request signed by unknown secret was accepted")
+	}
+	valid := signedRequest(http.MethodGet, "http://pulse/v1/me/summary", "123", "user-bff", "n-rotation-invalid", "", now, []byte("previous-secret"))
+	if _, err := VerifyRequestWithSecrets(valid, [][]byte{[]byte("current-secret"), []byte("previous-secret")}, now, time.Minute, nonces); err != nil {
+		t.Fatalf("valid retry after failed signature was rejected: %v", err)
+	}
+}

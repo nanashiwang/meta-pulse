@@ -69,3 +69,22 @@ func TestLoadRejectsInvalidIntegerInsteadOfFallingBack(t *testing.T) {
 		t.Fatalf("Load() error = %v, want invalid integer", err)
 	}
 }
+
+func TestValidateRejectsDuplicatePreviousSecret(t *testing.T) {
+	cfg := validConfig()
+	cfg.ServiceHMACSecret = "same-secret"
+	cfg.ServiceHMACSecretPrevious = " same-secret "
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "PULSE_SERVICE_HMAC_SECRET") {
+		t.Fatalf("duplicate rotation secret error = %v", err)
+	}
+}
+
+func TestSecretPairsKeepActiveBeforePrevious(t *testing.T) {
+	cfg := validConfig()
+	cfg.ServiceHMACSecret = "active"
+	cfg.ServiceHMACSecretPrevious = "previous"
+	secrets := cfg.ServiceHMACSecrets()
+	if len(secrets) != 2 || string(secrets[0]) != "active" || string(secrets[1]) != "previous" {
+		t.Fatalf("unexpected secret order: %#v", secrets)
+	}
+}

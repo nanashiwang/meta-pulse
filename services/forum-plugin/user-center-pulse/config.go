@@ -15,12 +15,13 @@ import (
 // The HMAC secret is never committed; it is entered at runtime and stored by
 // Answer's own plugin config storage.
 type Config struct {
-	NewAPIBaseURL     string `json:"newapi_base_url"`
-	PulseBaseURL      string `json:"pulse_base_url"`
-	SSOHMACSecret     string `json:"sso_hmac_secret"`
-	PulseHMACSecret   string `json:"pulse_hmac_secret"`
-	NonceRedisURL     string `json:"nonce_redis_url"`
-	LevelBadgeEnabled bool   `json:"level_badge_enabled"`
+	NewAPIBaseURL         string `json:"newapi_base_url"`
+	PulseBaseURL          string `json:"pulse_base_url"`
+	SSOHMACSecret         string `json:"sso_hmac_secret"`
+	SSOHMACSecretPrevious string `json:"sso_hmac_secret_previous"`
+	PulseHMACSecret       string `json:"pulse_hmac_secret"`
+	NonceRedisURL         string `json:"nonce_redis_url"`
+	LevelBadgeEnabled     bool   `json:"level_badge_enabled"`
 }
 
 func (uc *UserCenter) ConfigFields() []plugin.ConfigField {
@@ -57,6 +58,16 @@ func (uc *UserCenter) ConfigFields() []plugin.ConfigField {
 				InputType: plugin.InputTypePassword,
 			},
 			Value: uc.Config.SSOHMACSecret,
+		},
+		{
+			Name:        "sso_hmac_secret_previous",
+			Type:        plugin.ConfigTypeInput,
+			Title:       plugin.MakeTranslator(i18n.ConfigSSOHMACSecretPreviousTitle),
+			Description: plugin.MakeTranslator(i18n.ConfigSSOHMACSecretPreviousDescription),
+			UIOptions: plugin.ConfigFieldUIOptions{
+				InputType: plugin.InputTypePassword,
+			},
+			Value: uc.Config.SSOHMACSecretPrevious,
 		},
 		{
 			Name:        "pulse_hmac_secret",

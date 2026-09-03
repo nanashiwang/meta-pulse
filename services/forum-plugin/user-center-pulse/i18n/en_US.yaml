@@ -22,6 +22,11 @@ plugin:
             other: Forum SSO HMAC Secret
           description:
             other: Must match new-api PULSE_FORUM_SSO_SECRET and is only used to verify Login Tickets.
+        sso_hmac_secret_previous:
+          title:
+            other: Previous Forum SSO HMAC Secret (rotation)
+          description:
+            other: Keep the previous secret only during rotation; clear it after every new-api instance and login request has switched.
         pulse_hmac_secret:
           title:
             other: Pulse Service HMAC Secret

@@ -118,7 +118,11 @@ func (uc *UserCenter) resolveUser(ctx *gin.Context) (*plugin.UserCenterBasicUser
 		Signature:   ctx.Query("signature"),
 	}
 
-	if err := ticket.Verify(ctx.Request.Context(), uc.Config.SSOHMACSecret, uc.Nonces, time.Now()); err != nil {
+	secrets := []string{uc.Config.SSOHMACSecret}
+	if previous := uc.Config.SSOHMACSecretPrevious; previous != "" && previous != uc.Config.SSOHMACSecret {
+		secrets = append(secrets, previous)
+	}
+	if err := ticket.VerifyWithSecrets(ctx.Request.Context(), secrets, uc.Nonces, time.Now()); err != nil {
 		log.Warnf("rejected user center login callback: %v", err)
 		return nil, fmt.Errorf("login verification failed")
 	}

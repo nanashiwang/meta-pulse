@@ -10,8 +10,10 @@ const (
 	ConfigPulseBaseURLTitle       = "plugin.pulse_user_center.backend.config.pulse_base_url.title"
 	ConfigPulseBaseURLDescription = "plugin.pulse_user_center.backend.config.pulse_base_url.description"
 
-	ConfigSSOHMACSecretTitle       = "plugin.pulse_user_center.backend.config.sso_hmac_secret.title"
-	ConfigSSOHMACSecretDescription = "plugin.pulse_user_center.backend.config.sso_hmac_secret.description"
+	ConfigSSOHMACSecretTitle               = "plugin.pulse_user_center.backend.config.sso_hmac_secret.title"
+	ConfigSSOHMACSecretDescription         = "plugin.pulse_user_center.backend.config.sso_hmac_secret.description"
+	ConfigSSOHMACSecretPreviousTitle       = "plugin.pulse_user_center.backend.config.sso_hmac_secret_previous.title"
+	ConfigSSOHMACSecretPreviousDescription = "plugin.pulse_user_center.backend.config.sso_hmac_secret_previous.description"
 
 	ConfigPulseHMACSecretTitle       = "plugin.pulse_user_center.backend.config.pulse_hmac_secret.title"
 	ConfigPulseHMACSecretDescription = "plugin.pulse_user_center.backend.config.pulse_hmac_secret.description"

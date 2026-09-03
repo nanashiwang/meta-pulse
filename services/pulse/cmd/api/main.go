@@ -106,14 +106,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	profileAuth := transporthttp.SignedRequest(func(role string) []byte {
+	profileAuth := transporthttp.SignedRequestWithSecrets(func(role string) [][]byte {
 		switch role {
 		case "new-api":
-			return []byte(cfg.UserBFFHMACSecret)
+			return cfg.UserBFFHMACSecrets()
 		case "forum", "worker", "service":
-			return []byte(cfg.ServiceHMACSecret)
+			return cfg.ServiceHMACSecrets()
 		case "admin":
-			return []byte(cfg.AdminHMACSecret)
+			return cfg.AdminHMACSecrets()
 		default:
 			return nil
 		}

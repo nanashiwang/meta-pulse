@@ -21,8 +21,11 @@ type Config struct {
 	ForumDBDSN                  string
 	NewAPIInternalURL           string
 	ServiceHMACSecret           string
+	ServiceHMACSecretPrevious   string
 	UserBFFHMACSecret           string
+	UserBFFHMACSecretPrevious   string
 	AdminHMACSecret             string
+	AdminHMACSecretPrevious     string
 	RewardRandomSecret          string
 	RewardShadowMode            bool
 	IngestBatchSize             int
@@ -98,8 +101,11 @@ func Load() (Config, error) {
 		ForumDBDSN:                  os.Getenv("FORUM_DB_DSN"),
 		NewAPIInternalURL:           os.Getenv("NEWAPI_INTERNAL_BASE_URL"),
 		ServiceHMACSecret:           os.Getenv("PULSE_SERVICE_HMAC_SECRET"),
+		ServiceHMACSecretPrevious:   os.Getenv("PULSE_SERVICE_HMAC_SECRET_PREVIOUS"),
 		UserBFFHMACSecret:           os.Getenv("PULSE_USER_BFF_HMAC_SECRET"),
+		UserBFFHMACSecretPrevious:   os.Getenv("PULSE_USER_BFF_HMAC_SECRET_PREVIOUS"),
 		AdminHMACSecret:             os.Getenv("PULSE_ADMIN_HMAC_SECRET"),
+		AdminHMACSecretPrevious:     os.Getenv("PULSE_ADMIN_HMAC_SECRET_PREVIOUS"),
 		RewardRandomSecret:          getenv("PULSE_REWARD_RANDOM_SECRET", "replace-me"),
 		RewardShadowMode:            rewardShadowMode,
 		IngestBatchSize:             ingestBatchSize,
@@ -163,8 +169,51 @@ func (cfg Config) Validate() error {
 				errs = append(errs, fmt.Errorf("%s must be at least %d bytes and cannot use a placeholder in production", name, minimumProductionSecretLength))
 			}
 		}
+		for name, secret := range map[string]string{
+			"PULSE_SERVICE_HMAC_SECRET_PREVIOUS":  cfg.ServiceHMACSecretPrevious,
+			"PULSE_USER_BFF_HMAC_SECRET_PREVIOUS": cfg.UserBFFHMACSecretPrevious,
+			"PULSE_ADMIN_HMAC_SECRET_PREVIOUS":    cfg.AdminHMACSecretPrevious,
+		} {
+			if secret != "" && (len(secret) < minimumProductionSecretLength || secret == "replace-me") {
+				errs = append(errs, fmt.Errorf("%s must be at least %d bytes and cannot use a placeholder in production", name, minimumProductionSecretLength))
+			}
+		}
+	}
+	for currentName, pair := range map[string][2]string{
+		"PULSE_SERVICE_HMAC_SECRET":  {cfg.ServiceHMACSecret, cfg.ServiceHMACSecretPrevious},
+		"PULSE_USER_BFF_HMAC_SECRET": {cfg.UserBFFHMACSecret, cfg.UserBFFHMACSecretPrevious},
+		"PULSE_ADMIN_HMAC_SECRET":    {cfg.AdminHMACSecret, cfg.AdminHMACSecretPrevious},
+	} {
+		if strings.TrimSpace(pair[1]) != "" && strings.TrimSpace(pair[0]) == strings.TrimSpace(pair[1]) {
+			errs = append(errs, fmt.Errorf("%s and its previous secret must differ", currentName))
+		}
 	}
 	return errors.Join(errs...)
+}
+
+func secretPair(current, previous string) [][]byte {
+	current = strings.TrimSpace(current)
+	previous = strings.TrimSpace(previous)
+	if current == "" {
+		return nil
+	}
+	secrets := [][]byte{[]byte(current)}
+	if previous != "" && previous != current {
+		secrets = append(secrets, []byte(previous))
+	}
+	return secrets
+}
+
+func (cfg Config) ServiceHMACSecrets() [][]byte {
+	return secretPair(cfg.ServiceHMACSecret, cfg.ServiceHMACSecretPrevious)
+}
+
+func (cfg Config) UserBFFHMACSecrets() [][]byte {
+	return secretPair(cfg.UserBFFHMACSecret, cfg.UserBFFHMACSecretPrevious)
+}
+
+func (cfg Config) AdminHMACSecrets() [][]byte {
+	return secretPair(cfg.AdminHMACSecret, cfg.AdminHMACSecretPrevious)
 }
 
 func (cfg Config) ValidateWorker() error {

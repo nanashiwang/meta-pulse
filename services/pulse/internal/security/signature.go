@@ -91,7 +91,21 @@ type Principal struct {
 // VerifyRequest validates the canonical HMAC contract and claims the nonce only
 // after all cryptographic and timestamp checks succeed.
 func VerifyRequest(req *http.Request, secret []byte, now time.Time, allowedSkew time.Duration, nonces NonceStore) (Principal, error) {
-	if len(secret) == 0 {
+	return VerifyRequestWithSecrets(req, [][]byte{secret}, now, allowedSkew, nonces)
+}
+
+// VerifyRequestWithSecrets accepts the active secret followed by an optional
+// previous secret during an intentional rotation window. The nonce is claimed
+// only after one of the supplied keys authenticates the complete request.
+func VerifyRequestWithSecrets(req *http.Request, secrets [][]byte, now time.Time, allowedSkew time.Duration, nonces NonceStore) (Principal, error) {
+	configured := false
+	for _, secret := range secrets {
+		if len(secret) > 0 {
+			configured = true
+			break
+		}
+	}
+	if !configured {
 		return Principal{}, ErrMissingSecret
 	}
 	if req == nil || req.URL == nil {
@@ -140,9 +154,19 @@ func VerifyRequest(req *http.Request, secret []byte, now time.Time, allowedSkew 
 		return Principal{}, fmt.Errorf("%w: malformed signature", ErrInvalid)
 	}
 
-	mac := hmac.New(sha256.New, secret)
-	_, _ = mac.Write([]byte(canonical))
-	if !hmac.Equal(provided, mac.Sum(nil)) {
+	matched := false
+	for _, secret := range secrets {
+		if len(secret) == 0 {
+			continue
+		}
+		mac := hmac.New(sha256.New, secret)
+		_, _ = mac.Write([]byte(canonical))
+		if hmac.Equal(provided, mac.Sum(nil)) {
+			matched = true
+			break
+		}
+	}
+	if !matched {
 		return Principal{}, ErrInvalid
 	}
 	if nonces == nil {

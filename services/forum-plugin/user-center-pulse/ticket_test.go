@@ -257,3 +257,12 @@ func TestTicketFailsClosedWhenNonceStoreUnavailable(t *testing.T) {
 		t.Fatal("ticket was accepted without a shared nonce store")
 	}
 }
+
+func TestPreviousSecretAcceptedDuringRotation(t *testing.T) {
+	now := time.Now()
+	ticket := mintTicket("123", now, "nonce-rotation")
+
+	if err := ticket.VerifyWithSecrets(context.Background(), []string{"active-secret", testSecret}, NewNonceCache(), now); err != nil {
+		t.Fatalf("ticket signed by previous secret rejected: %v", err)
+	}
+}
