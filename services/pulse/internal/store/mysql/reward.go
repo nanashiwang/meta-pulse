@@ -151,8 +151,20 @@ func (r *rewardRepository) FindGrantByAction(ctx context.Context, periodID, user
 }
 
 func (r *rewardRepository) FindGrantByID(ctx context.Context, grantID uint64) (*ports.RewardGrant, error) {
+	return r.findGrantByID(ctx, grantID, false)
+}
+
+func (r *rewardRepository) FindGrantByIDForUpdate(ctx context.Context, grantID uint64) (*ports.RewardGrant, error) {
+	return r.findGrantByID(ctx, grantID, true)
+}
+
+func (r *rewardRepository) findGrantByID(ctx context.Context, grantID uint64, lock bool) (*ports.RewardGrant, error) {
 	var model rewardGrantModel
-	err := r.db.WithContext(ctx).Where("id = ?", grantID).Take(&model).Error
+	query := r.db.WithContext(ctx)
+	if lock {
+		query = query.Clauses(clause.Locking{Strength: "UPDATE"})
+	}
+	err := query.Where("id = ?", grantID).Take(&model).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ports.ErrNotFound
 	}

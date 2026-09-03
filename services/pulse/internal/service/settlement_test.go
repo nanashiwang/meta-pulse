@@ -167,6 +167,14 @@ func TestSettlementRollbackReleasesBudgetAndMarksGrant(t *testing.T) {
 	if budget.SettledAmount != 0 || budget.ReleasedAmount != 10 {
 		t.Fatalf("budget=%+v", budget)
 	}
+	// A retry after the local commit must be a no-op. In particular it must
+	// not call new-api again or release the same budget amount twice.
+	if err := service.Rollback(context.Background(), grant.ID, "fraud review retry"); err != nil {
+		t.Fatal(err)
+	}
+	if client.rollbackCalls != 1 || rewards.budgets[budgetKey(4, ActionBudgetType)].ReleasedAmount != 10 {
+		t.Fatalf("rollback was not idempotent: client=%+v budget=%+v", client, rewards.budgets[budgetKey(4, ActionBudgetType)])
+	}
 }
 
 func TestSettlementRejectsTamperedPayload(t *testing.T) {

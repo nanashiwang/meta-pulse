@@ -7,15 +7,18 @@ import (
 
 func validConfig() Config {
 	return Config{
-		Environment:          "development",
-		HTTPAddr:             ":8088",
-		PulseDBDSN:           "pulse:secret@tcp(mysql:3306)/meta_pulse",
-		RedisAddr:            "redis:6379",
-		IngestBatchSize:      500,
-		SettlementBatchSize:  100,
-		PeriodCloseBatchSize: 20,
-		TicketThresholdMilli: 1000,
-		RewardRandomSecret:   strings.Repeat("r", 32),
+		Environment:                "development",
+		HTTPAddr:                   ":8088",
+		PulseDBDSN:                 "pulse:secret@tcp(mysql:3306)/meta_pulse",
+		RedisAddr:                  "redis:6379",
+		IngestBatchSize:            500,
+		SettlementBatchSize:        100,
+		PeriodCloseBatchSize:       20,
+		ContentIngestBatchSize:     100,
+		ContentMaxUserPeriodAmount: 100,
+		ContentMaxDailyAmount:      1000,
+		TicketThresholdMilli:       1000,
+		RewardRandomSecret:         strings.Repeat("r", 32),
 	}
 }
 

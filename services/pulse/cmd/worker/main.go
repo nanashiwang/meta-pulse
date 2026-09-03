@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/nanashiwang/meta-pulse/internal/adapter/forum"
 	"github.com/nanashiwang/meta-pulse/internal/adapter/newapi"
 	"github.com/nanashiwang/meta-pulse/internal/config"
 	"github.com/nanashiwang/meta-pulse/internal/health"
@@ -89,6 +90,28 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Forum ingestion is deliberately optional and isolated. A missing or
+	// unavailable forum database disables only content candidates; usage
+	// ingestion, settlement, period close, and metrics keep running.
+	var contentIngest *service.ContentIngestService
+	var forumReader *forum.Reader
+	if cfg.ForumDBDSN != "" {
+		forumReader, err = forum.OpenReader(cfg.ForumDBDSN)
+		if err != nil {
+			logger.Warn("content ingest disabled: forum database unavailable", "error", err)
+		} else {
+			contentIngest, err = service.NewContentIngestService(unit, forumReader, service.ContentIngestConfig{BatchSize: cfg.ContentIngestBatchSize})
+			if err != nil {
+				logger.Error("initialize content ingest service", "error", err)
+				_ = forumReader.Close()
+				forumReader = nil
+			}
+		}
+	}
+	if forumReader != nil {
+		defer forumReader.Close()
+	}
+
 	readiness := health.NewChecker(map[string]health.Pinger{"mysql": database, "redis": cache})
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -100,14 +123,17 @@ func main() {
 	runBatch := func() {
 		checkCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 		defer cancel()
-		result, err := ingest.IngestBatch(checkCtx)
-		if err != nil {
-			logger.Warn("usage ingest failed", "error", err, "fetched", result.Fetched)
-			return
+
+		usageResult, usageErr := ingest.IngestBatch(checkCtx)
+		if usageErr != nil {
+			logger.Warn("usage ingest failed", "error", usageErr, "fetched", usageResult.Fetched)
+		} else if usageResult.Fetched > 0 {
+			logger.Info("usage ingest batch completed", "fetched", usageResult.Fetched, "accepted", usageResult.Accepted, "replayed", usageResult.Replayed, "conflicts", usageResult.Conflicts, "manual_review", usageResult.ManualReview)
 		}
-		if result.Fetched > 0 {
-			logger.Info("usage ingest batch completed", "fetched", result.Fetched, "accepted", result.Accepted, "replayed", result.Replayed, "conflicts", result.Conflicts, "manual_review", result.ManualReview)
-		}
+
+		// Core settlement is independent of usage and forum reads. A failed
+		// source must not prevent already persisted outbox records from being
+		// reconciled.
 		settlementResult, settlementErr := settlement.ProcessBatch(checkCtx)
 		if settlementErr != nil {
 			logger.Warn("settlement batch failed", "error", settlementErr)
@@ -131,6 +157,16 @@ func main() {
 			logger.Warn("operational metrics aggregation failed", "error", metricsErr)
 		} else if metricsSnapshot.LedgerMismatchCount > 0 || metricsSnapshot.SettlementDeadCount > 0 {
 			logger.Warn("pulse operational alert", "ledger_mismatches", metricsSnapshot.LedgerMismatchCount, "settlement_dead", metricsSnapshot.SettlementDeadCount, "open_conflicts", metricsSnapshot.OpenConflictCount)
+		}
+
+		if contentIngest != nil {
+			contentResult, contentErr := contentIngest.IngestBatch(checkCtx)
+			if contentErr != nil {
+				// Content is a sidecar projection; never return or panic here.
+				logger.Warn("content ingest failed", "error", contentErr, "fetched", contentResult.Fetched)
+			} else if contentResult.Fetched > 0 {
+				logger.Info("content ingest batch completed", "fetched", contentResult.Fetched, "accepted", contentResult.Accepted, "replayed", contentResult.Replayed, "conflicts", contentResult.Conflicts)
+			}
 		}
 	}
 

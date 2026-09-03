@@ -352,21 +352,37 @@ func (s *SettlementService) Rollback(ctx context.Context, grantID uint64, reason
 		return errors.New("invalid settlement rollback request")
 	}
 	var grant ports.RewardGrant
+	var alreadyReversed bool
 	if err := s.unit.Do(ctx, func(repos ports.Repositories) error {
 		if repos.Reward == nil {
 			return errors.New("reward repository is not initialized")
 		}
-		found, err := repos.Reward.FindGrantByID(ctx, grantID)
+		var found *ports.RewardGrant
+		var err error
+		if locker, ok := repos.Reward.(interface {
+			FindGrantByIDForUpdate(context.Context, uint64) (*ports.RewardGrant, error)
+		}); ok {
+			found, err = locker.FindGrantByIDForUpdate(ctx, grantID)
+		} else {
+			found, err = repos.Reward.FindGrantByID(ctx, grantID)
+		}
 		if err != nil {
 			return err
 		}
 		grant = *found
+		if grant.Status == GrantStatusReversed {
+			alreadyReversed = true
+			return nil
+		}
 		if grant.Status != GrantStatusSettled {
 			return errors.New("only settled grant can be rolled back")
 		}
 		return nil
 	}); err != nil {
 		return err
+	}
+	if alreadyReversed {
+		return nil
 	}
 	state, err := s.client.Rollback(ctx, grant.SourceRef, reason)
 	if err != nil || !state.Applied || !sameSourceRef(state.SourceRef, grant.SourceRef) {
@@ -377,23 +393,45 @@ func (s *SettlementService) Rollback(ctx context.Context, grantID uint64, reason
 	}
 	now := s.cfg.Now()
 	return s.unit.Do(ctx, func(repos ports.Repositories) error {
-		budget, err := repos.Reward.GetBudgetForUpdate(ctx, grant.PeriodID, grant.BudgetType)
+		// The external rollback is idempotent by source_ref, but the local
+		// budget mutation must happen exactly once. Re-lock and re-check the
+		// grant after the network call so concurrent retries cannot release the
+		// same reserved amount twice.
+		var current *ports.RewardGrant
+		var err error
+		if locker, ok := repos.Reward.(interface {
+			FindGrantByIDForUpdate(context.Context, uint64) (*ports.RewardGrant, error)
+		}); ok {
+			current, err = locker.FindGrantByIDForUpdate(ctx, grant.ID)
+		} else {
+			current, err = repos.Reward.FindGrantByID(ctx, grant.ID)
+		}
 		if err != nil {
 			return err
 		}
-		if budget.SettledAmount < grant.Amount || budget.Version == math.MaxUint64 {
+		if current.Status == GrantStatusReversed {
+			return nil
+		}
+		if current.Status != GrantStatusSettled {
+			return errors.New("only settled grant can be rolled back")
+		}
+		budget, err := repos.Reward.GetBudgetForUpdate(ctx, current.PeriodID, current.BudgetType)
+		if err != nil {
+			return err
+		}
+		if budget.SettledAmount < current.Amount || budget.Version == math.MaxUint64 {
 			return errors.New("settlement rollback budget is inconsistent")
 		}
-		budget.SettledAmount -= grant.Amount
-		if budget.ReleasedAmount > math.MaxInt64-grant.Amount {
+		budget.SettledAmount -= current.Amount
+		if budget.ReleasedAmount > math.MaxInt64-current.Amount {
 			return errors.New("settlement rollback budget overflow")
 		}
-		budget.ReleasedAmount += grant.Amount
+		budget.ReleasedAmount += current.Amount
 		budget.Version++
 		if err := repos.Reward.SaveBudget(ctx, budget); err != nil {
 			return err
 		}
-		if err := repos.Reward.UpdateGrantStatus(ctx, grant.ID, GrantStatusReversed, nil, &now); err != nil {
+		if err := repos.Reward.UpdateGrantStatus(ctx, current.ID, GrantStatusReversed, nil, &now); err != nil {
 			return err
 		}
 		return nil

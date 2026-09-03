@@ -191,3 +191,183 @@ FROM pulse_reward_budget`).Row().Scan(&snapshot.BudgetReservedAmount, &snapshot.
 	}
 	return snapshot, nil
 }
+
+type contentCandidateModel struct {
+	ID              uint64     `gorm:"column:id;primaryKey"`
+	SourceSystem    string     `gorm:"column:source_system"`
+	SourceContentID string     `gorm:"column:source_content_id"`
+	ContentType     string     `gorm:"column:content_type"`
+	AuthorUserID    uint64     `gorm:"column:author_user_id"`
+	PeriodID        uint64     `gorm:"column:period_id"`
+	Title           string     `gorm:"column:title"`
+	SourceCreatedAt time.Time  `gorm:"column:source_created_at"`
+	PayloadHash     string     `gorm:"column:payload_hash"`
+	CursorValue     string     `gorm:"column:cursor_value"`
+	Status          string     `gorm:"column:status"`
+	ReviewActorType string     `gorm:"column:review_actor_type"`
+	ReviewActorID   string     `gorm:"column:review_actor_id"`
+	ReviewReason    string     `gorm:"column:review_reason"`
+	ReviewedAt      *time.Time `gorm:"column:reviewed_at"`
+	CreatedAt       time.Time  `gorm:"column:created_at"`
+}
+
+func (contentCandidateModel) TableName() string { return "pulse_content_candidate" }
+
+type contentAwardModel struct {
+	ID           uint64    `gorm:"column:id;primaryKey"`
+	CandidateID  uint64    `gorm:"column:candidate_id"`
+	AwardVersion uint64    `gorm:"column:award_version"`
+	ActionID     string    `gorm:"column:action_id"`
+	PeriodID     uint64    `gorm:"column:period_id"`
+	UserID       uint64    `gorm:"column:user_id"`
+	Amount       int64     `gorm:"column:amount"`
+	RewardType   string    `gorm:"column:reward_type"`
+	BudgetType   string    `gorm:"column:budget_type"`
+	GrantID      string    `gorm:"column:grant_id"`
+	Status       string    `gorm:"column:status"`
+	Reason       string    `gorm:"column:reason"`
+	CreatedAt    time.Time `gorm:"column:created_at"`
+}
+
+func (contentAwardModel) TableName() string { return "pulse_content_award" }
+
+type contentRepository struct{ db *gorm.DB }
+
+func contentCandidateFromModel(model contentCandidateModel) ports.ContentCandidate {
+	return ports.ContentCandidate{ID: model.ID, SourceSystem: model.SourceSystem, SourceContentID: model.SourceContentID, ContentType: model.ContentType, AuthorUserID: model.AuthorUserID, PeriodID: model.PeriodID, Title: model.Title, SourceCreatedAt: model.SourceCreatedAt, PayloadHash: model.PayloadHash, CursorValue: model.CursorValue, Status: model.Status, ReviewActorType: model.ReviewActorType, ReviewActorID: model.ReviewActorID, ReviewReason: model.ReviewReason, ReviewedAt: model.ReviewedAt, CreatedAt: model.CreatedAt}
+}
+
+func contentAwardFromModel(model contentAwardModel) ports.ContentAward {
+	return ports.ContentAward{ID: model.ID, CandidateID: model.CandidateID, AwardVersion: model.AwardVersion, ActionID: model.ActionID, PeriodID: model.PeriodID, UserID: model.UserID, Amount: model.Amount, RewardType: model.RewardType, BudgetType: model.BudgetType, GrantID: model.GrantID, Status: model.Status, Reason: model.Reason, CreatedAt: model.CreatedAt}
+}
+
+func (r *contentRepository) FindCandidateBySource(ctx context.Context, sourceSystem, sourceContentID string) (*ports.ContentCandidate, error) {
+	var model contentCandidateModel
+	err := r.db.WithContext(ctx).Where("source_system = ? AND source_content_id = ?", sourceSystem, sourceContentID).Take(&model).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ports.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find content candidate: %w", err)
+	}
+	candidate := contentCandidateFromModel(model)
+	return &candidate, nil
+}
+
+func (r *contentRepository) FindCandidateForUpdate(ctx context.Context, candidateID uint64) (*ports.ContentCandidate, error) {
+	var model contentCandidateModel
+	err := r.db.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", candidateID).Take(&model).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ports.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("lock content candidate: %w", err)
+	}
+	candidate := contentCandidateFromModel(model)
+	return &candidate, nil
+}
+
+func (r *contentRepository) CreateCandidate(ctx context.Context, candidate ports.ContentCandidate) (ports.ContentCandidate, error) {
+	if candidate.SourceSystem == "" || candidate.SourceContentID == "" || candidate.ContentType == "" || candidate.AuthorUserID == 0 || candidate.PayloadHash == "" || candidate.CursorValue == "" || candidate.Status == "" {
+		return ports.ContentCandidate{}, errors.New("invalid content candidate")
+	}
+	model := contentCandidateModel{ID: candidate.ID, SourceSystem: candidate.SourceSystem, SourceContentID: candidate.SourceContentID, ContentType: candidate.ContentType, AuthorUserID: candidate.AuthorUserID, PeriodID: candidate.PeriodID, Title: candidate.Title, SourceCreatedAt: candidate.SourceCreatedAt, PayloadHash: candidate.PayloadHash, CursorValue: candidate.CursorValue, Status: candidate.Status, CreatedAt: candidate.CreatedAt}
+	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			return ports.ContentCandidate{}, ports.ErrConflict
+		}
+		return ports.ContentCandidate{}, fmt.Errorf("create content candidate: %w", err)
+	}
+	candidate.ID = model.ID
+	if candidate.CreatedAt.IsZero() {
+		candidate.CreatedAt = model.CreatedAt
+	}
+	return candidate, nil
+}
+
+func (r *contentRepository) ReviewCandidate(ctx context.Context, candidateID uint64, status, actorType, actorID, reason string, reviewedAt time.Time) error {
+	if candidateID == 0 || status == "" || actorType == "" || actorID == "" || reason == "" {
+		return errors.New("invalid content review")
+	}
+	result := r.db.WithContext(ctx).Model(&contentCandidateModel{}).Where("id = ?", candidateID).Updates(map[string]any{"status": status, "review_actor_type": actorType, "review_actor_id": actorID, "review_reason": reason, "reviewed_at": reviewedAt})
+	if result.Error != nil {
+		return fmt.Errorf("review content candidate: %w", result.Error)
+	}
+	if result.RowsAffected != 1 {
+		return ports.ErrNotFound
+	}
+	return nil
+}
+
+func (r *contentRepository) FindAwardByAction(ctx context.Context, actionID string) (*ports.ContentAward, error) {
+	return r.findAwardByAction(ctx, actionID, false)
+}
+
+func (r *contentRepository) FindAwardByActionForUpdate(ctx context.Context, actionID string) (*ports.ContentAward, error) {
+	return r.findAwardByAction(ctx, actionID, true)
+}
+
+func (r *contentRepository) findAwardByAction(ctx context.Context, actionID string, lock bool) (*ports.ContentAward, error) {
+	var model contentAwardModel
+	query := r.db.WithContext(ctx)
+	if lock {
+		query = query.Clauses(clause.Locking{Strength: "UPDATE"})
+	}
+	err := query.Where("action_id = ?", actionID).Take(&model).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ports.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find content award: %w", err)
+	}
+	award := contentAwardFromModel(model)
+	return &award, nil
+}
+
+func (r *contentRepository) CreateAward(ctx context.Context, award ports.ContentAward) (ports.ContentAward, error) {
+	if award.CandidateID == 0 || award.AwardVersion == 0 || award.ActionID == "" || award.PeriodID == 0 || award.UserID == 0 || award.Amount < 0 || award.RewardType == "" || award.BudgetType == "" || award.Status == "" || award.Reason == "" {
+		return ports.ContentAward{}, errors.New("invalid content award")
+	}
+	model := contentAwardModel{ID: award.ID, CandidateID: award.CandidateID, AwardVersion: award.AwardVersion, ActionID: award.ActionID, PeriodID: award.PeriodID, UserID: award.UserID, Amount: award.Amount, RewardType: award.RewardType, BudgetType: award.BudgetType, GrantID: award.GrantID, Status: award.Status, Reason: award.Reason, CreatedAt: award.CreatedAt}
+	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			return ports.ContentAward{}, ports.ErrConflict
+		}
+		return ports.ContentAward{}, fmt.Errorf("create content award: %w", err)
+	}
+	award.ID = model.ID
+	if award.CreatedAt.IsZero() {
+		award.CreatedAt = model.CreatedAt
+	}
+	return award, nil
+}
+
+func (r *contentRepository) UpdateAwardStatus(ctx context.Context, actionID, status string) error {
+	if actionID == "" || status == "" {
+		return errors.New("invalid content award status")
+	}
+	result := r.db.WithContext(ctx).Model(&contentAwardModel{}).Where("action_id = ?", actionID).Updates(map[string]any{"status": status})
+	if result.Error != nil {
+		return fmt.Errorf("update content award status: %w", result.Error)
+	}
+	if result.RowsAffected != 1 {
+		return ports.ErrNotFound
+	}
+	return nil
+}
+
+func (r *contentRepository) SumUserActiveAwards(ctx context.Context, userID, periodID uint64) (int64, error) {
+	var total int64
+	if err := r.db.WithContext(ctx).Model(&contentAwardModel{}).Where("user_id = ? AND period_id = ? AND status IN ?", userID, periodID, []string{ports.ContentAwardPending}).Select("COALESCE(SUM(amount), 0)").Scan(&total).Error; err != nil {
+		return 0, fmt.Errorf("sum user content awards: %w", err)
+	}
+	return total, nil
+}
+
+func (r *contentRepository) SumDailyActiveAwards(ctx context.Context, day time.Time) (int64, error) {
+	var total int64
+	if err := r.db.WithContext(ctx).Model(&contentAwardModel{}).Where("DATE(created_at) = DATE(?) AND status IN ?", day, []string{ports.ContentAwardPending}).Select("COALESCE(SUM(amount), 0)").Scan(&total).Error; err != nil {
+		return 0, fmt.Errorf("sum daily content awards: %w", err)
+	}
+	return total, nil
+}

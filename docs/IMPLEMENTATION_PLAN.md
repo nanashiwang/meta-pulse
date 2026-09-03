@@ -22,7 +22,7 @@
 🟡 M4 Shadow Mode  Action、幂等、确定性随机、Ticket/Budget/Grant/Outbox 已落地；真实 MySQL 恢复验收待 Compose
 🟡 M5 Settlement  Pulse Benefit Client、Outbox 退避、Query/Reconcile/Rollback 已落地；new-api 接收端待跨仓库接入
 ✅ M6 周期与运营       Period Close、稳定周期奖励、Holdout 固化、人工调整审计、日指标聚合已落地；真实 MySQL 中断恢复待 Compose 验收
-⬜ M7 内容奖励         见下文
+✅ M7 内容奖励         Pulse 侧候选采集、人工审核、独立预算、限额、幂等、结算与撤销已落地；Answer 真实 schema/SSO 与 new-api Benefit 接收端待跨仓库验收
 ```
 
 本次已启动 M0 第一批：`services/pulse/` 已从 HTTP 桩升级为可装配的 API/Worker 基础，新增 16 张核心表 migration、依赖健康检查、结构化日志、Prometheus registry、UnitOfWork 事务边界和服务签名校验。`docs/OVERVIEW.md` 为未跟踪文件，本计划不依赖它，也不覆盖或删除它。
@@ -279,17 +279,17 @@ type UnitOfWork interface {
 
 **出口：**Period Close 重跑不重复发放；中途崩溃可继续；预算、账本、奖励和 Benefit 可对账。真实 MySQL 唯一约束、事务回滚和故障恢复仍须在 Compose 环境完成。
 
-### M7｜内容奖励
+### M7｜内容奖励 ✅（Pulse 侧完成）
 
-- [ ] 论坛 DB 只读游标与 Content Candidate；
-- [ ] 人工审核、档位、reason、Audit Log；
-- [ ] 独立 `content_reward` budget；
-- [ ] 付费门槛、单用户上限、全站日上限；
-- [ ] `content_award:{type}:{id}:{version}` 幂等；
-- [ ] 删除/抄袭后的 settled → reversed；
-- [ ] 内容不产生 contribution 或 ticket。
+- [x] 论坛 DB 只读游标与 Content Candidate：Worker 通过可选 `FORUM_DB_DSN` 读取 Answer 问题元数据，只复制必要字段，不复制正文；论坛库不可用时仅停用内容采集；
+- [x] 人工审核、档位、reason、Audit Log：管理员请求必须使用已签名 `admin` Principal，actor 不从 JSON 读取；
+- [x] 独立 `content_reward` budget：内容奖励汇入通用 Reward Grant/Settlement，但预算线与 loyalty、period_reward 隔离；
+- [x] 付费门槛、单用户上限、全站日上限；未达标/超限只写审核与资格结果，不生成 Grant；
+- [x] `content_award:{type}:{id}:{version}` 幂等，并校验同 action 的 payload 冲突；
+- [x] 删除/抄袭后的 settled → reversed：撤销复用原 Grant/source_ref，Benefit rollback 与本地状态更新均可重试；
+- [x] 内容不产生 contribution 或 ticket。
 
-**出口：**四道防刷闸全部生效；内容奖励与忠诚度预算、账本、贡献值完全隔离。
+**出口：**四道防刷闸全部生效；内容奖励与忠诚度预算、账本、贡献值完全隔离。Pulse 侧代码、迁移、管理路由和回归测试已完成；正式 Answer 数据库只读账号、真实 schema、SSO 及 new-api Benefit 接收端属于跨仓库部署验收，不在本仓库内冒充完成。
 
 ## 6. 跨仓库任务清单
 

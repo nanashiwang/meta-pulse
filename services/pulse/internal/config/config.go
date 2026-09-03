@@ -18,6 +18,7 @@ type Config struct {
 	RedisPassword               string
 	RedisDB                     int
 	NewAPILogDSN                string
+	ForumDBDSN                  string
 	NewAPIInternalURL           string
 	ServiceHMACSecret           string
 	UserBFFHMACSecret           string
@@ -29,6 +30,10 @@ type Config struct {
 	PeriodCloseBatchSize        int
 	PeriodCloseRequireWatermark bool
 	PeriodRewardsEnabled        bool
+	ContentIngestBatchSize      int
+	ContentMinPaidContribution  int64
+	ContentMaxUserPeriodAmount  int64
+	ContentMaxDailyAmount       int64
 	TicketThresholdMilli        int64
 }
 
@@ -65,6 +70,22 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	contentIngestBatchSize, err := getenvInt("PULSE_CONTENT_INGEST_BATCH_SIZE", 100, false)
+	if err != nil {
+		return Config{}, err
+	}
+	contentMinPaidContribution, err := getenvInt64("PULSE_CONTENT_MIN_PAID_CONTRIBUTION_MILLI", 1000, true)
+	if err != nil {
+		return Config{}, err
+	}
+	contentMaxUserPeriodAmount, err := getenvInt64("PULSE_CONTENT_MAX_USER_PERIOD_AMOUNT", 100, false)
+	if err != nil {
+		return Config{}, err
+	}
+	contentMaxDailyAmount, err := getenvInt64("PULSE_CONTENT_MAX_DAILY_AMOUNT", 1000, false)
+	if err != nil {
+		return Config{}, err
+	}
 
 	cfg := Config{
 		Environment:                 strings.ToLower(getenv("PULSE_ENV", "development")),
@@ -74,6 +95,7 @@ func Load() (Config, error) {
 		RedisPassword:               os.Getenv("PULSE_REDIS_PASSWORD"),
 		RedisDB:                     redisDB,
 		NewAPILogDSN:                os.Getenv("NEWAPI_LOG_DSN"),
+		ForumDBDSN:                  os.Getenv("FORUM_DB_DSN"),
 		NewAPIInternalURL:           os.Getenv("NEWAPI_INTERNAL_BASE_URL"),
 		ServiceHMACSecret:           os.Getenv("PULSE_SERVICE_HMAC_SECRET"),
 		UserBFFHMACSecret:           os.Getenv("PULSE_USER_BFF_HMAC_SECRET"),
@@ -85,6 +107,10 @@ func Load() (Config, error) {
 		PeriodCloseBatchSize:        periodCloseBatchSize,
 		PeriodCloseRequireWatermark: periodCloseRequireWatermark,
 		PeriodRewardsEnabled:        periodRewardsEnabled,
+		ContentIngestBatchSize:      contentIngestBatchSize,
+		ContentMinPaidContribution:  contentMinPaidContribution,
+		ContentMaxUserPeriodAmount:  contentMaxUserPeriodAmount,
+		ContentMaxDailyAmount:       contentMaxDailyAmount,
 		TicketThresholdMilli:        int64(ticketThresholdMilli),
 	}
 	if err := cfg.Validate(); err != nil {
@@ -118,6 +144,9 @@ func (cfg Config) Validate() error {
 	}
 	if cfg.PeriodCloseBatchSize <= 0 {
 		errs = append(errs, errors.New("PULSE_PERIOD_CLOSE_BATCH_SIZE must be positive"))
+	}
+	if cfg.ContentIngestBatchSize <= 0 || cfg.ContentMinPaidContribution < 0 || cfg.ContentMaxUserPeriodAmount <= 0 || cfg.ContentMaxDailyAmount <= 0 {
+		errs = append(errs, errors.New("content reward limits must be valid"))
 	}
 	if cfg.TicketThresholdMilli <= 0 {
 		errs = append(errs, errors.New("PULSE_TICKET_THRESHOLD_MILLI must be positive"))
@@ -165,6 +194,18 @@ func getenvInt(key string, fallback int, allowZero bool) (int, error) {
 		return fallback, nil
 	}
 	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 0 || (!allowZero && parsed == 0) {
+		return 0, fmt.Errorf("invalid %s: must be %s integer", key, map[bool]string{true: "a non-negative", false: "a positive"}[allowZero])
+	}
+	return parsed, nil
+}
+
+func getenvInt64(key string, fallback int64, allowZero bool) (int64, error) {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback, nil
+	}
+	parsed, err := strconv.ParseInt(value, 10, 64)
 	if err != nil || parsed < 0 || (!allowZero && parsed == 0) {
 		return 0, fmt.Errorf("invalid %s: must be %s integer", key, map[bool]string{true: "a non-negative", false: "a positive"}[allowZero])
 	}

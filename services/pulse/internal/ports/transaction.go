@@ -20,6 +20,7 @@ type Repositories struct {
 	Audit       AuditRepository
 	Experiment  ExperimentRepository
 	Metric      MetricRepository
+	Content     ContentRepository
 	Operations  OperationsRepository
 }
 

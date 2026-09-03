@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/nanashiwang/meta-pulse/internal/adapter/newapi"
 	"github.com/nanashiwang/meta-pulse/internal/app"
 	"github.com/nanashiwang/meta-pulse/internal/config"
 	"github.com/nanashiwang/meta-pulse/internal/domain/level"
@@ -70,6 +71,36 @@ func main() {
 		logger.Error("initialize action service", "error", err)
 		os.Exit(1)
 	}
+
+	// Content awards share the normal Grant/Settlement path. The API only
+	// needs the settlement dependency for reversal; an empty new-api URL keeps
+	// local shadow-mode development usable without making Pulse depend on it
+	// for startup or for the read-only/admin route.
+	var rollback service.GrantRollbacker
+	if cfg.NewAPIInternalURL != "" && cfg.ServiceHMACSecret != "" {
+		benefitClient, clientErr := newapi.NewBenefitClient(cfg.NewAPIInternalURL, []byte(cfg.ServiceHMACSecret), nil)
+		if clientErr != nil {
+			logger.Error("initialize content benefit client", "error", clientErr)
+			os.Exit(1)
+		}
+		settlement, settlementErr := service.NewSettlementService(unit, benefitClient, service.SettlementConfig{BatchSize: cfg.SettlementBatchSize})
+		if settlementErr != nil {
+			logger.Error("initialize content settlement service", "error", settlementErr)
+			os.Exit(1)
+		}
+		rollback = settlement
+	}
+	content, err := service.NewContentAwardService(unit, service.ContentAwardConfig{
+		MinPaidContributionMilli: cfg.ContentMinPaidContribution,
+		MaxUserPeriodAmount:      cfg.ContentMaxUserPeriodAmount,
+		MaxDailyAmount:           cfg.ContentMaxDailyAmount,
+		ShadowMode:               cfg.RewardShadowMode,
+	}, rollback)
+	if err != nil {
+		logger.Error("initialize content award service", "error", err)
+		os.Exit(1)
+	}
+
 	profileAuth := transporthttp.SignedRequest(func(role string) []byte {
 		switch role {
 		case "new-api":
@@ -85,7 +116,7 @@ func main() {
 	metrics := observability.NewMetrics()
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           app.NewRouterWithProfileSummaryAndAction(logger, readiness, profile, profile, action, profileAuth, metrics),
+		Handler:           app.NewRouterWithProfileSummaryActionAndContent(logger, readiness, profile, profile, action, content, profileAuth, metrics),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
