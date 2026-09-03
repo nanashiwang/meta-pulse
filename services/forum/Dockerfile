@@ -4,7 +4,7 @@
 # (Go has no dynamic plugin loading), so we rebuild Answer with our plugin via
 # `answer build --with`. Upstream stays a dependency, never a fork.
 
-FROM apache/answer:v1.7.1 AS answer-base
+FROM apache/answer:1.7.1 AS answer-base
 
 FROM golang:1.25-alpine AS builder
 
