@@ -16,6 +16,11 @@ type Repositories struct {
 	Reward      RewardRepository
 	Idempotency IdempotencyRepository
 	Settlement  SettlementRepository
+	PeriodAdmin PeriodAdminRepository
+	Audit       AuditRepository
+	Experiment  ExperimentRepository
+	Metric      MetricRepository
+	Operations  OperationsRepository
 }
 
 // UnitOfWork is the only transaction boundary exposed to services. The

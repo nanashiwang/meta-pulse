@@ -968,3 +968,17 @@ Ledger Check
 项目最终原则：
 
 > **用户真实调用产生平台价值，平台将其中一部分价值转化为用户可感知的权益；所有权益必须可追溯、可重放、可对账、可纠错、可控制成本，同时永远不能威胁元衡 API 主业务的稳定性。**
+
+## 36. M6 周期与运营实现
+
+Pulse 的周期关闭由 Worker 异步执行，严格遵循：
+
+```text
+draft → active → settling → closed
+```
+
+关闭前必须确认 Usage Cursor 的 `watermark_at >= period.ends_at`；随后在同一个 Pulse DB 事务内完成 Ledger/Account 重建校验、未消费 Ticket 过期、周期奖励 Grant/Outbox 写入和最终状态迁移。事务中断会整体回滚，重跑通过稳定 action id `period_reward:{period_id}:{user_id}` 和 `ticket-expire:{period_id}:{user_id}` 收敛，不重新随机、不重复扣券。周期奖励使用独立 `period_reward` Budget，强制 `transferable_quota=0`，并校验不可变 `config_version`。
+
+人工财务调整必须携带操作人、原因和 request id；调整只追加 `contribution_adjustment` / `ticket_adjustment` Ledger 分录，并在同一事务追加 `pulse_audit_log`。历史分录和金额不得 UPDATE。实验分组先由版本化 HMAC 稳定计算，再由 `(experiment_id, user_id)` 唯一记录固化，后续配置变化不得覆盖历史 cohort。
+
+运营指标是可丢失、可重建的诊断投影，不是经济事实源。Worker 从 Pulse 持久化表聚合 ingest lag、开放冲突、Ledger mismatch、Settlement retry/dead 和 Budget reserved/hard cap 到 `pulse_metric_daily`，并输出异常告警日志；Prometheus 同时提供 HTTP、周期、结算和预算指标。指标聚合失败不得阻断用量记账或结算。

@@ -13,6 +13,7 @@ func validConfig() Config {
 		RedisAddr:            "redis:6379",
 		IngestBatchSize:      500,
 		SettlementBatchSize:  100,
+		PeriodCloseBatchSize: 20,
 		TicketThresholdMilli: 1000,
 		RewardRandomSecret:   strings.Repeat("r", 32),
 	}

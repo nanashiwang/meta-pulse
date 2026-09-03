@@ -11,22 +11,25 @@ import (
 const minimumProductionSecretLength = 32
 
 type Config struct {
-	Environment          string
-	HTTPAddr             string
-	PulseDBDSN           string
-	RedisAddr            string
-	RedisPassword        string
-	RedisDB              int
-	NewAPILogDSN         string
-	NewAPIInternalURL    string
-	ServiceHMACSecret    string
-	UserBFFHMACSecret    string
-	AdminHMACSecret      string
-	RewardRandomSecret   string
-	RewardShadowMode     bool
-	IngestBatchSize      int
-	SettlementBatchSize  int
-	TicketThresholdMilli int64
+	Environment                 string
+	HTTPAddr                    string
+	PulseDBDSN                  string
+	RedisAddr                   string
+	RedisPassword               string
+	RedisDB                     int
+	NewAPILogDSN                string
+	NewAPIInternalURL           string
+	ServiceHMACSecret           string
+	UserBFFHMACSecret           string
+	AdminHMACSecret             string
+	RewardRandomSecret          string
+	RewardShadowMode            bool
+	IngestBatchSize             int
+	SettlementBatchSize         int
+	PeriodCloseBatchSize        int
+	PeriodCloseRequireWatermark bool
+	PeriodRewardsEnabled        bool
+	TicketThresholdMilli        int64
 }
 
 func Load() (Config, error) {
@@ -50,24 +53,39 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	periodCloseBatchSize, err := getenvInt("PULSE_PERIOD_CLOSE_BATCH_SIZE", 20, false)
+	if err != nil {
+		return Config{}, err
+	}
+	periodCloseRequireWatermark, err := getenvBool("PULSE_PERIOD_CLOSE_REQUIRE_WATERMARK", true)
+	if err != nil {
+		return Config{}, err
+	}
+	periodRewardsEnabled, err := getenvBool("PULSE_PERIOD_REWARDS_ENABLED", false)
+	if err != nil {
+		return Config{}, err
+	}
 
 	cfg := Config{
-		Environment:          strings.ToLower(getenv("PULSE_ENV", "development")),
-		HTTPAddr:             getenv("PULSE_HTTP_ADDR", ":8088"),
-		PulseDBDSN:           os.Getenv("PULSE_DB_DSN"),
-		RedisAddr:            getenv("PULSE_REDIS_ADDR", "127.0.0.1:6379"),
-		RedisPassword:        os.Getenv("PULSE_REDIS_PASSWORD"),
-		RedisDB:              redisDB,
-		NewAPILogDSN:         os.Getenv("NEWAPI_LOG_DSN"),
-		NewAPIInternalURL:    os.Getenv("NEWAPI_INTERNAL_BASE_URL"),
-		ServiceHMACSecret:    os.Getenv("PULSE_SERVICE_HMAC_SECRET"),
-		UserBFFHMACSecret:    os.Getenv("PULSE_USER_BFF_HMAC_SECRET"),
-		AdminHMACSecret:      os.Getenv("PULSE_ADMIN_HMAC_SECRET"),
-		RewardRandomSecret:   getenv("PULSE_REWARD_RANDOM_SECRET", "replace-me"),
-		RewardShadowMode:     rewardShadowMode,
-		IngestBatchSize:      ingestBatchSize,
-		SettlementBatchSize:  settlementBatchSize,
-		TicketThresholdMilli: int64(ticketThresholdMilli),
+		Environment:                 strings.ToLower(getenv("PULSE_ENV", "development")),
+		HTTPAddr:                    getenv("PULSE_HTTP_ADDR", ":8088"),
+		PulseDBDSN:                  os.Getenv("PULSE_DB_DSN"),
+		RedisAddr:                   getenv("PULSE_REDIS_ADDR", "127.0.0.1:6379"),
+		RedisPassword:               os.Getenv("PULSE_REDIS_PASSWORD"),
+		RedisDB:                     redisDB,
+		NewAPILogDSN:                os.Getenv("NEWAPI_LOG_DSN"),
+		NewAPIInternalURL:           os.Getenv("NEWAPI_INTERNAL_BASE_URL"),
+		ServiceHMACSecret:           os.Getenv("PULSE_SERVICE_HMAC_SECRET"),
+		UserBFFHMACSecret:           os.Getenv("PULSE_USER_BFF_HMAC_SECRET"),
+		AdminHMACSecret:             os.Getenv("PULSE_ADMIN_HMAC_SECRET"),
+		RewardRandomSecret:          getenv("PULSE_REWARD_RANDOM_SECRET", "replace-me"),
+		RewardShadowMode:            rewardShadowMode,
+		IngestBatchSize:             ingestBatchSize,
+		SettlementBatchSize:         settlementBatchSize,
+		PeriodCloseBatchSize:        periodCloseBatchSize,
+		PeriodCloseRequireWatermark: periodCloseRequireWatermark,
+		PeriodRewardsEnabled:        periodRewardsEnabled,
+		TicketThresholdMilli:        int64(ticketThresholdMilli),
 	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
@@ -97,6 +115,9 @@ func (cfg Config) Validate() error {
 	}
 	if cfg.SettlementBatchSize <= 0 {
 		errs = append(errs, errors.New("PULSE_SETTLEMENT_BATCH_SIZE must be positive"))
+	}
+	if cfg.PeriodCloseBatchSize <= 0 {
+		errs = append(errs, errors.New("PULSE_PERIOD_CLOSE_BATCH_SIZE must be positive"))
 	}
 	if cfg.TicketThresholdMilli <= 0 {
 		errs = append(errs, errors.New("PULSE_TICKET_THRESHOLD_MILLI must be positive"))

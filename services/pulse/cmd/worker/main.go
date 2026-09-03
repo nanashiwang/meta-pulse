@@ -71,6 +71,23 @@ func main() {
 		logger.Error("initialize settlement service", "error", err)
 		os.Exit(1)
 	}
+	periodCloser, err := service.NewPeriodCloseService(unit, service.PeriodCloseConfig{
+		BatchSize: cfg.PeriodCloseBatchSize, CursorName: service.DefaultUsageCursorName,
+		SourceSystem: "new-api-log", RequireWatermark: cfg.PeriodCloseRequireWatermark,
+		EnablePeriodRewards: cfg.PeriodRewardsEnabled, RandomSecret: []byte(cfg.RewardRandomSecret),
+		ShadowMode: cfg.RewardShadowMode,
+	})
+	if err != nil {
+		logger.Error("initialize period close service", "error", err)
+		os.Exit(1)
+	}
+	metricsAggregation, err := service.NewMetricsAggregationService(unit, service.MetricsAggregationConfig{
+		CursorName: service.DefaultUsageCursorName, SourceSystem: "new-api-log",
+	})
+	if err != nil {
+		logger.Error("initialize metrics aggregation service", "error", err)
+		os.Exit(1)
+	}
 
 	readiness := health.NewChecker(map[string]health.Pinger{"mysql": database, "redis": cache})
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -102,6 +119,18 @@ func main() {
 			logger.Warn("settlement reconciliation failed", "error", reconciliationErr)
 		} else if reconciliation.Settled > 0 {
 			logger.Info("settlement reconciliation completed", "checked", reconciliation.Checked, "settled", reconciliation.Settled, "unchanged", reconciliation.Unchanged, "failed", reconciliation.Failed)
+		}
+		periodReport, periodErr := periodCloser.RunOnce(checkCtx)
+		if periodErr != nil {
+			logger.Warn("period close failed", "error", periodErr)
+		} else if periodReport.Checked > 0 {
+			logger.Info("period close completed", "checked", periodReport.Checked, "closed", periodReport.Closed, "deferred", periodReport.Deferred, "failed", periodReport.Failed, "tickets_expired", periodReport.TicketsExpired, "rewards_created", periodReport.RewardsCreated)
+		}
+		metricsSnapshot, metricsErr := metricsAggregation.Aggregate(checkCtx)
+		if metricsErr != nil {
+			logger.Warn("operational metrics aggregation failed", "error", metricsErr)
+		} else if metricsSnapshot.LedgerMismatchCount > 0 || metricsSnapshot.SettlementDeadCount > 0 {
+			logger.Warn("pulse operational alert", "ledger_mismatches", metricsSnapshot.LedgerMismatchCount, "settlement_dead", metricsSnapshot.SettlementDeadCount, "open_conflicts", metricsSnapshot.OpenConflictCount)
 		}
 	}
 

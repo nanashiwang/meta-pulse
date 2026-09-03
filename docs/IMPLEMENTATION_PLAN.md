@@ -21,7 +21,8 @@
 🟡 M3 只读入口  Pulse 侧身份派生 summary/profile 已落地；new-api/YuanHeng/论坛接入待跨仓库推进
 🟡 M4 Shadow Mode  Action、幂等、确定性随机、Ticket/Budget/Grant/Outbox 已落地；真实 MySQL 恢复验收待 Compose
 🟡 M5 Settlement  Pulse Benefit Client、Outbox 退避、Query/Reconcile/Rollback 已落地；new-api 接收端待跨仓库接入
-⬜ M6-M7          见下文
+✅ M6 周期与运营       Period Close、稳定周期奖励、Holdout 固化、人工调整审计、日指标聚合已落地；真实 MySQL 中断恢复待 Compose 验收
+⬜ M7 内容奖励         见下文
 ```
 
 本次已启动 M0 第一批：`services/pulse/` 已从 HTTP 桩升级为可装配的 API/Worker 基础，新增 16 张核心表 migration、依赖健康检查、结构化日志、Prometheus registry、UnitOfWork 事务边界和服务签名校验。`docs/OVERVIEW.md` 为未跟踪文件，本计划不依赖它，也不覆盖或删除它。
@@ -266,15 +267,17 @@ type UnitOfWork interface {
 
 ### M6｜周期与运营
 
-- [ ] Period Close：active → settling → closed，可重入；
-- [ ] Watermark 确认、Ledger/Account 对账、周期奖励、券过期；
-- [ ] Period Reward 使用稳定 action ID；
-- [ ] Holdout 稳定分组；
-- [ ] Admin、Audit Log、冲突处理、人工财务调整；
-- [ ] 日指标、告警、Settlement 堆积和预算预警；
-- [ ] close 中断后的恢复测试。
+- [x] Period Close：active → settling → closed，可重入；
+- [x] Watermark 确认、Ledger/Account 对账、周期奖励、券过期；
+- [x] Period Reward 使用稳定 action ID；
+- [x] Holdout 稳定分组并持久化首次 assignment；
+- [x] Admin、Audit Log、冲突处理、人工财务调整；
+- [x] 日指标、告警、Settlement 堆积和预算预警；
+- [x] close 中断后的恢复测试（内存回归；真实 MySQL/Compose 仍需环境验收）。
 
-**出口：**Period Close 重跑不重复发放；中途崩溃可继续；预算、账本、奖励和 Benefit 可对账。
+当前实现：`PeriodCloseService` 在 watermark 到达后执行 Ledger/Account 对账、Ticket 过期、周期奖励和状态迁移；`AdminAdjustmentService` 只追加 adjustment 分录并同步 Audit Log；`ExperimentService` 固化 HMAC cohort；`MetricsAggregationService` 将运营快照写入 `pulse_metric_daily`，Worker 已接入周期关闭与指标聚合。
+
+**出口：**Period Close 重跑不重复发放；中途崩溃可继续；预算、账本、奖励和 Benefit 可对账。真实 MySQL 唯一约束、事务回滚和故障恢复仍须在 Compose 环境完成。
 
 ### M7｜内容奖励
 
