@@ -1,7 +1,10 @@
 package pulse_user_center
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
+	"time"
 
 	"github.com/apache/answer/plugin"
 	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/i18n"
@@ -16,6 +19,7 @@ type Config struct {
 	PulseBaseURL      string `json:"pulse_base_url"`
 	SSOHMACSecret     string `json:"sso_hmac_secret"`
 	PulseHMACSecret   string `json:"pulse_hmac_secret"`
+	NonceRedisURL     string `json:"nonce_redis_url"`
 	LevelBadgeEnabled bool   `json:"level_badge_enabled"`
 }
 
@@ -66,6 +70,17 @@ func (uc *UserCenter) ConfigFields() []plugin.ConfigField {
 			Value: uc.Config.PulseHMACSecret,
 		},
 		{
+			Name:        "nonce_redis_url",
+			Type:        plugin.ConfigTypeInput,
+			Title:       plugin.MakeTranslator(i18n.ConfigNonceRedisURLTitle),
+			Description: plugin.MakeTranslator(i18n.ConfigNonceRedisURLDescription),
+			Required:    true,
+			UIOptions: plugin.ConfigFieldUIOptions{
+				InputType: plugin.InputTypePassword,
+			},
+			Value: uc.Config.NonceRedisURL,
+		},
+		{
 			Name:        "level_badge_enabled",
 			Type:        plugin.ConfigTypeSwitch,
 			Title:       plugin.MakeTranslator(i18n.ConfigLevelBadgeEnabledTitle),
@@ -83,12 +98,22 @@ func (uc *UserCenter) ConfigReceiver(config []byte) error {
 	if err := json.Unmarshal(config, c); err != nil {
 		return err
 	}
+	nonces, err := NewRedisNonceStore(c.NonceRedisURL)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := nonces.Ping(ctx); err != nil {
+		_ = nonces.Close()
+		return fmt.Errorf("connect forum nonce redis: %w", err)
+	}
+	oldNonces := uc.Nonces
 	uc.Config = c
 	uc.Client = NewPulseClient(c)
-	// The nonce cache must survive a config change: clearing it would reopen
-	// the replay window every time an operator saves the settings form.
-	if uc.Nonces == nil {
-		uc.Nonces = NewNonceCache()
+	uc.Nonces = nonces
+	if closer, ok := oldNonces.(interface{ Close() error }); ok {
+		_ = closer.Close()
 	}
 	return nil
 }

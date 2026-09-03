@@ -1,6 +1,7 @@
 package pulse_user_center
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -15,6 +16,12 @@ import (
 // a redirect, short enough that a leaked URL in browser history or a referrer
 // header is useless.
 const ticketTTL = 2 * time.Minute
+
+// LoginTicketNonceStore atomically claims a signed ticket nonce. Production
+// implementations must be shared by every Answer instance.
+type LoginTicketNonceStore interface {
+	Claim(ctx context.Context, nonce string, expiresAt time.Time) (bool, error)
+}
 
 // LoginTicket is the only trusted way for the browser to assert an identity.
 //
@@ -53,7 +60,7 @@ func (t *LoginTicket) signingPayload() string {
 }
 
 // Verify checks the ticket signature, freshness, and single use.
-func (t *LoginTicket) Verify(secret string, seen *NonceCache, now time.Time) error {
+func (t *LoginTicket) Verify(ctx context.Context, secret string, nonces LoginTicketNonceStore, now time.Time) error {
 	if secret == "" {
 		return fmt.Errorf("hmac secret not configured")
 	}
@@ -63,16 +70,23 @@ func (t *LoginTicket) Verify(secret string, seen *NonceCache, now time.Time) err
 	if _, err := strconv.ParseInt(t.UserID, 10, 64); err != nil {
 		return fmt.Errorf("invalid user id in login ticket")
 	}
+	if nonces == nil {
+		return fmt.Errorf("login ticket nonce store not configured")
+	}
+	if ctx == nil {
+		return fmt.Errorf("login ticket context not configured")
+	}
 
 	// Reject stale tickets in both directions: an old ticket may have leaked,
 	// and a far-future one indicates a forged or clock-skewed timestamp.
-	age := now.Sub(time.Unix(t.Timestamp, 0))
+	issuedAt := time.Unix(t.Timestamp, 0)
+	age := now.Sub(issuedAt)
 	if age > ticketTTL || age < -ticketTTL {
 		return fmt.Errorf("login ticket expired or not yet valid")
 	}
 
 	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(t.signingPayload()))
+	_, _ = mac.Write([]byte(t.signingPayload()))
 	expected := mac.Sum(nil)
 
 	got, err := hex.DecodeString(t.Signature)
@@ -80,46 +94,54 @@ func (t *LoginTicket) Verify(secret string, seen *NonceCache, now time.Time) err
 		return fmt.Errorf("malformed login ticket signature")
 	}
 	// Constant-time compare: a byte-by-byte comparison leaks how much of the
-	// signature matched, which is enough to forge one byte at a time.
+	// signature was correct through timing.
 	if !hmac.Equal(expected, got) {
 		return fmt.Errorf("invalid login ticket signature")
 	}
 
-	// Signature verified; now burn the nonce so a captured URL cannot be
-	// replayed within its TTL window.
-	if !seen.Use(t.Nonce, now) {
+	unused, err := nonces.Claim(ctx, t.Nonce, issuedAt.Add(ticketTTL))
+	if err != nil {
+		return fmt.Errorf("login ticket nonce store unavailable: %w", err)
+	}
+	if !unused {
 		return fmt.Errorf("login ticket already used")
 	}
 	return nil
 }
 
-// NonceCache makes a verified ticket single-use.
-//
-// Entries are kept for ticketTTL only; after that the timestamp check rejects
-// the ticket anyway, so remembering it longer buys nothing and leaks memory.
+// NonceCache is a process-local implementation for unit tests only. Production
+// plugin setup always replaces it with RedisNonceStore.
 type NonceCache struct {
 	mu   sync.Mutex
 	seen map[string]time.Time
+	now  func() time.Time
 }
 
 func NewNonceCache() *NonceCache {
-	return &NonceCache{seen: make(map[string]time.Time)}
+	return &NonceCache{seen: make(map[string]time.Time), now: time.Now}
 }
 
-// Use records a nonce and reports whether it was previously unused.
-func (c *NonceCache) Use(nonce string, now time.Time) bool {
+func (c *NonceCache) Claim(ctx context.Context, nonce string, expiresAt time.Time) (bool, error) {
+	if ctx == nil {
+		return false, fmt.Errorf("nil context")
+	}
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	if c == nil || nonce == "" || c.now == nil || !expiresAt.After(c.now()) {
+		return false, nil
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-
-	for key, at := range c.seen {
-		if now.Sub(at) > ticketTTL {
+	now := c.now()
+	for key, expiry := range c.seen {
+		if !expiry.After(now) {
 			delete(c.seen, key)
 		}
 	}
-
-	if _, exists := c.seen[nonce]; exists {
-		return false
+	if expiry, exists := c.seen[nonce]; exists && expiry.After(now) {
+		return false, nil
 	}
-	c.seen[nonce] = now
-	return true
+	c.seen[nonce] = expiresAt
+	return true, nil
 }

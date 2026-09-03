@@ -1,9 +1,11 @@
 package pulse_user_center
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"strconv"
 	"strings"
 	"testing"
@@ -33,7 +35,7 @@ func TestValidTicketAccepted(t *testing.T) {
 	now := time.Now()
 	ticket := mintTicket("123", now, "nonce-1")
 
-	if err := ticket.Verify(testSecret, NewNonceCache(), now); err != nil {
+	if err := ticket.Verify(context.Background(), testSecret, NewNonceCache(), now); err != nil {
 		t.Fatalf("valid ticket rejected: %v", err)
 	}
 }
@@ -61,7 +63,7 @@ func TestForgedTicketRejected(t *testing.T) {
 			ticket := mintTicket("123", now, "nonce-"+tc.name)
 			tc.mutate(ticket)
 
-			if err := ticket.Verify(testSecret, NewNonceCache(), now); err == nil {
+			if err := ticket.Verify(context.Background(), testSecret, NewNonceCache(), now); err == nil {
 				t.Error("forged ticket accepted")
 			}
 		})
@@ -72,7 +74,7 @@ func TestWrongSecretRejected(t *testing.T) {
 	now := time.Now()
 	ticket := mintTicket("123", now, "nonce-secret")
 
-	if err := ticket.Verify("different-secret", NewNonceCache(), now); err == nil {
+	if err := ticket.Verify(context.Background(), "different-secret", NewNonceCache(), now); err == nil {
 		t.Error("ticket signed with a different secret was accepted")
 	}
 }
@@ -84,7 +86,7 @@ func TestEmptySecretRejected(t *testing.T) {
 	now := time.Now()
 	ticket := &LoginTicket{UserID: "123", Timestamp: now.Unix(), Nonce: "n", Signature: "ab"}
 
-	if err := ticket.Verify("", NewNonceCache(), now); err == nil {
+	if err := ticket.Verify(context.Background(), "", NewNonceCache(), now); err == nil {
 		t.Error("verification succeeded with no secret configured")
 	}
 }
@@ -93,13 +95,13 @@ func TestExpiredTicketRejected(t *testing.T) {
 	now := time.Now()
 
 	stale := mintTicket("123", now.Add(-ticketTTL-time.Second), "nonce-old")
-	if err := stale.Verify(testSecret, NewNonceCache(), now); err == nil {
+	if err := stale.Verify(context.Background(), testSecret, NewNonceCache(), now); err == nil {
 		t.Error("expired ticket accepted")
 	}
 
 	// A future timestamp means a forged or badly skewed clock.
 	future := mintTicket("123", now.Add(ticketTTL+time.Second), "nonce-future")
-	if err := future.Verify(testSecret, NewNonceCache(), now); err == nil {
+	if err := future.Verify(context.Background(), testSecret, NewNonceCache(), now); err == nil {
 		t.Error("future-dated ticket accepted")
 	}
 }
@@ -111,10 +113,10 @@ func TestTicketIsSingleUse(t *testing.T) {
 	nonces := NewNonceCache()
 	ticket := mintTicket("123", now, "nonce-replay")
 
-	if err := ticket.Verify(testSecret, nonces, now); err != nil {
+	if err := ticket.Verify(context.Background(), testSecret, nonces, now); err != nil {
 		t.Fatalf("first use rejected: %v", err)
 	}
-	if err := ticket.Verify(testSecret, nonces, now); err == nil {
+	if err := ticket.Verify(context.Background(), testSecret, nonces, now); err == nil {
 		t.Error("replayed ticket accepted")
 	}
 }
@@ -127,12 +129,12 @@ func TestFailedVerificationDoesNotBurnNonce(t *testing.T) {
 
 	forged := mintTicket("123", now, "nonce-shared")
 	forged.Signature = "deadbeef"
-	if err := forged.Verify(testSecret, nonces, now); err == nil {
+	if err := forged.Verify(context.Background(), testSecret, nonces, now); err == nil {
 		t.Fatal("forged ticket accepted")
 	}
 
 	legit := mintTicket("123", now, "nonce-shared")
-	if err := legit.Verify(testSecret, nonces, now); err != nil {
+	if err := legit.Verify(context.Background(), testSecret, nonces, now); err != nil {
 		t.Errorf("legitimate ticket rejected after a forgery attempt: %v", err)
 	}
 }
@@ -151,11 +153,17 @@ func TestFieldShiftingProducesDifferentPayload(t *testing.T) {
 func TestNonceCacheEvictsExpiredEntries(t *testing.T) {
 	now := time.Now()
 	nonces := NewNonceCache()
-	nonces.Use("old", now)
+	nonces.now = func() time.Time { return now }
+	if claimed, err := nonces.Claim(context.Background(), "old", now.Add(ticketTTL)); err != nil || !claimed {
+		t.Fatalf("claim old: claimed=%v err=%v", claimed, err)
+	}
 
 	// Well past the TTL, the entry is dropped. The timestamp check is what
 	// actually rejects such a ticket; this only bounds memory.
-	nonces.Use("trigger-sweep", now.Add(2*ticketTTL))
+	now = now.Add(2 * ticketTTL)
+	if claimed, err := nonces.Claim(context.Background(), "trigger-sweep", now.Add(ticketTTL)); err != nil || !claimed {
+		t.Fatalf("claim trigger: claimed=%v err=%v", claimed, err)
+	}
 
 	if len(nonces.seen) != 1 {
 		t.Errorf("cache holds %d entries, want 1 after eviction", len(nonces.seen))
@@ -165,16 +173,28 @@ func TestNonceCacheEvictsExpiredEntries(t *testing.T) {
 func TestNonceCacheIsConcurrencySafe(t *testing.T) {
 	now := time.Now()
 	nonces := NewNonceCache()
+	nonces.now = func() time.Time { return now }
 
+	type claimResult struct {
+		claimed bool
+		err     error
+	}
 	const goroutines = 50
-	results := make(chan bool, goroutines)
+	results := make(chan claimResult, goroutines)
 	for i := 0; i < goroutines; i++ {
-		go func() { results <- nonces.Use("contested", now) }()
+		go func() {
+			claimed, err := nonces.Claim(context.Background(), "contested", now.Add(ticketTTL))
+			results <- claimResult{claimed: claimed, err: err}
+		}()
 	}
 
 	accepted := 0
 	for i := 0; i < goroutines; i++ {
-		if <-results {
+		result := <-results
+		if result.err != nil {
+			t.Fatal(result.err)
+		}
+		if result.claimed {
 			accepted++
 		}
 	}
@@ -193,5 +213,22 @@ func TestSigningPayloadFieldCount(t *testing.T) {
 	}
 	if !strings.Contains(ticket.signingPayload(), strconv.FormatInt(ticket.Timestamp, 10)) {
 		t.Error("timestamp is not covered by the signature")
+	}
+}
+
+type failingNonceStore struct{}
+
+func (failingNonceStore) Claim(context.Context, string, time.Time) (bool, error) {
+	return false, errors.New("redis unavailable")
+}
+
+func TestTicketFailsClosedWhenNonceStoreUnavailable(t *testing.T) {
+	now := time.Now()
+	ticket := mintTicket("123", now, "nonce-store-down")
+	if err := ticket.Verify(context.Background(), testSecret, failingNonceStore{}, now); err == nil {
+		t.Fatal("ticket was accepted while the shared nonce store was unavailable")
+	}
+	if err := ticket.Verify(context.Background(), testSecret, nil, now); err == nil {
+		t.Fatal("ticket was accepted without a shared nonce store")
 	}
 }

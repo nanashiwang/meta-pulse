@@ -27,6 +27,11 @@ plugin:
             other: Pulse 服务 HMAC 密钥
           description:
             other: 与 Pulse 的 PULSE_SERVICE_HMAC_SECRET 相同，仅用于签名只读档案请求。
+        nonce_redis_url:
+          title:
+            other: Login Ticket Nonce Redis 地址
+          description:
+            other: 所有 Answer 实例共享的 Redis 连接地址，用于原子消费一次性登录凭证；不可用时登录会安全拒绝。
         level_badge_enabled:
           label:
             other: 显示脉冲等级徽章

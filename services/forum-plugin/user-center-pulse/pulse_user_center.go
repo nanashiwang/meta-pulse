@@ -31,14 +31,11 @@ var Info embed.FS
 type UserCenter struct {
 	Config *Config
 	Client *PulseClient
-	Nonces *NonceCache
+	Nonces LoginTicketNonceStore
 }
 
 func init() {
-	plugin.Register(&UserCenter{
-		Config: &Config{},
-		Nonces: NewNonceCache(),
-	})
+	plugin.Register(&UserCenter{Config: &Config{}})
 }
 
 func (uc *UserCenter) Info() plugin.Info {
@@ -121,7 +118,7 @@ func (uc *UserCenter) resolveUser(ctx *gin.Context) (*plugin.UserCenterBasicUser
 		Signature:   ctx.Query("signature"),
 	}
 
-	if err := ticket.Verify(uc.Config.SSOHMACSecret, uc.Nonces, time.Now()); err != nil {
+	if err := ticket.Verify(ctx.Request.Context(), uc.Config.SSOHMACSecret, uc.Nonces, time.Now()); err != nil {
 		log.Warnf("rejected user center login callback: %v", err)
 		return nil, fmt.Errorf("login verification failed")
 	}

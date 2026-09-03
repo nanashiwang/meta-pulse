@@ -16,6 +16,9 @@ const (
 	ConfigPulseHMACSecretTitle       = "plugin.pulse_user_center.backend.config.pulse_hmac_secret.title"
 	ConfigPulseHMACSecretDescription = "plugin.pulse_user_center.backend.config.pulse_hmac_secret.description"
 
+	ConfigNonceRedisURLTitle       = "plugin.pulse_user_center.backend.config.nonce_redis_url.title"
+	ConfigNonceRedisURLDescription = "plugin.pulse_user_center.backend.config.nonce_redis_url.description"
+
 	ConfigLevelBadgeEnabledLabel       = "plugin.pulse_user_center.backend.config.level_badge_enabled.label"
 	ConfigLevelBadgeEnabledTitle       = "plugin.pulse_user_center.backend.config.level_badge_enabled.title"
 	ConfigLevelBadgeEnabledDescription = "plugin.pulse_user_center.backend.config.level_badge_enabled.description"

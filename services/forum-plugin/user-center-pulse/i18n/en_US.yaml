@@ -27,6 +27,11 @@ plugin:
             other: Pulse Service HMAC Secret
           description:
             other: Must match Pulse PULSE_SERVICE_HMAC_SECRET and is only used to sign read-only profile requests.
+        nonce_redis_url:
+          title:
+            other: Login Ticket Nonce Redis URL
+          description:
+            other: Redis URL shared by every Answer instance to atomically consume one-time login tickets; login fails closed when unavailable.
         level_badge_enabled:
           label:
             other: Show Meta Pulse level badges

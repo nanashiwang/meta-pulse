@@ -104,10 +104,10 @@ signature = hex(HMAC-SHA256(shared_secret, payload))
 |---|---|
 | 字段以换行连接 | 字段边界歧义导致的签名移植（`ab`+`c` 与 `a`+`bc`） |
 | TTL 2 分钟，双向校验 | 陈旧 ticket 重放；伪造的未来时间戳 |
-| nonce 单次有效，验签成功后原子消费 | ticket 落在浏览器历史/Referer/代理日志中被重放；以及攻击者抢先烧掉他人 nonce 的骚扰 |
+| nonce 单次有效，验签成功后由共享 Redis `SET NX` 原子消费；Redis 不可用时 fail closed | ticket 落在浏览器历史/Referer/代理日志中被重放；多实例各自放行；以及攻击者抢先烧掉他人 nonce 的骚扰 |
 | secret 为空时拒绝 | 未配置时 fail closed——空密钥的 HMAC 仍是合法 HMAC |
 
-**new-api 未实现签发接口前，论坛不得开放公网访问。**
+new-api 已提供签发入口；论坛公网开放前仍须完成共享 Redis、固定 HTTPS callback 与网关 Cookie 隔离验收。
 
 插件 `Description()` 中的两个关键开关：
 
