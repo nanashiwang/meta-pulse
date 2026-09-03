@@ -19,7 +19,7 @@
 ✅ M2 Usage Ingest 与等级  只读日志游标、统一 Mapper、事务记账、退款复核、等级 Profile 已落地
 🟡 M2.5 回测框架  只读回放、范围过滤、异常/覆盖率、倍率对比已落地；真实 LOG_DB 样本待环境接入
 ✅ M3 只读入口  new-api BFF/UI、YuanHeng 隔离 WebView、论坛等级降级与 Pulse 只读接口已落地；发布灰度待环境验收
-🟡 M4 Shadow Mode  Action、幂等、确定性随机、Ticket/Budget/Grant/Outbox 已落地；真实 MySQL 恢复验收待 Compose
+✅ M4 Shadow Mode  Action、幂等、确定性随机、Ticket/Budget/Grant/Outbox 已落地；真实 MySQL 并发与提交恢复验收完成
 🟡 M5 Settlement  Pulse Benefit Client、Outbox 退避、Query/Reconcile/Rollback 与 new-api 接收端已落地；真实额度到账验收待完成
 ✅ M6 周期与运营       Period Close、稳定周期奖励、Holdout 固化、人工调整审计、日指标聚合已落地；真实 MySQL 中断恢复待 Compose 验收
 ✅ M7 内容奖励         Pulse 侧候选采集、人工审核、独立预算、限额、幂等、结算与撤销已落地；Answer 真实 schema/SSO 与 Benefit 端到端验收待完成
@@ -246,7 +246,7 @@ type UnitOfWork interface {
 - [x] 单事务写入 Ticket Spend、Budget Reservation、Reward Grant、Settlement Outbox；
 - [x] 先只生成 `pending` Grant，不真实发额度；Shadow outbox 不进入结算发送；
 - [x] 同一 Action/Idempotency-Key 重放 100 次及串行化并发测试；
-- [ ] 真实 MySQL 并发、commit 后响应丢失、DB 重启恢复测试（需 Compose 验收）。
+- [x] 真实 MySQL 并发、commit 后响应丢失、DB 重启恢复测试（已在 Compose MySQL 验收）。
 
 **出口：**同一 Action 重放 100 次只有一个 Grant；并发不超扣券、不超预算；网络失败不重新随机。
 
@@ -377,7 +377,7 @@ type UnitOfWork interface {
 | 场景 | 里程碑 | 要求 |
 |---|---|---|
 | Usage 重放 100 次 | M2 | 真实 MySQL 唯一约束 |
-| Action 重放 100 次 | M4 | 一个 Grant、一个随机结果 |
+| Action 重放 100 次 | M4 | 一个 Grant、一个随机结果（真实 MySQL 已验收） |
 | Benefit 重放 100 次 | M5 | 只到账一次 |
 | Period Close 重跑 | M6 | 不重复发放 |
 | 并发 Pulse | M4 | 不超扣 Ticket、不超 Budget |
