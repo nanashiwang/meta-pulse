@@ -18,7 +18,8 @@
 ✅ M1 Ledger 记账内核    领域账本、账户快照、幂等冲突、重建与 ledger-check 已落地
 ✅ M2 Usage Ingest 与等级  只读日志游标、统一 Mapper、事务记账、退款复核、等级 Profile 已落地
 🟡 M2.5 回测框架  只读回放、范围过滤、异常/覆盖率、倍率对比已落地；真实 LOG_DB 样本待环境接入
-⬜ M3-M7          见下文
+🟡 M3 只读入口  Pulse 侧身份派生 summary/profile 已落地；new-api/YuanHeng/论坛接入待跨仓库推进
+⬜ M4-M7          见下文
 ```
 
 本次已启动 M0 第一批：`services/pulse/` 已从 HTTP 桩升级为可装配的 API/Worker 基础，新增 16 张核心表 migration、依赖健康检查、结构化日志、Prometheus registry、UnitOfWork 事务边界和服务签名校验。`docs/OVERVIEW.md` 为未跟踪文件，本计划不依赖它，也不覆盖或删除它。
@@ -223,7 +224,9 @@ type UnitOfWork interface {
 
 - [ ] new-api `/api/pulse/*` BFF；
 - [ ] new-api `/console/pulse` 页面与路由；
-- [ ] 当前 Period、贡献值、券、等级、Ledger、奖励历史；
+- [x] Pulse 提供只读 `/v1/internal/me/summary`，用户由已验签 Principal 派生，不接受浏览器 user_id；
+- [x] Pulse profile/summary 返回当前 Period、贡献值、可用券、等级和当前周期 Ledger；
+- [ ] 奖励历史（待 M4 Reward Grant 读模型落地）；
 - [ ] YuanHeng 通过隔离 WebView 打开 `/console/pulse`；
 - [ ] YuanHeng session/API Token 改用 OS 安全存储，用户名密码不落盘；
 - [ ] 论坛展示 Pulse 等级，Pulse 故障时降级；
