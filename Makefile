@@ -1,7 +1,7 @@
 .PHONY: fmt test build build-api build-worker build-tool run-api run-worker clean
 
 fmt:
-	gofmt -w ./cmd ./internal 2>/dev/null || true
+	find cmd internal -name '*.go' -print0 | xargs -0 gofmt -w
 
 test:
 	go test ./...
