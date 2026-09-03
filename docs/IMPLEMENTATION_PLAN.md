@@ -21,7 +21,7 @@
 ✅ M3 只读入口  new-api BFF/UI、YuanHeng 隔离 WebView、论坛等级降级与 Pulse 只读接口已落地；发布灰度待环境验收
 ✅ M4 Shadow Mode  Action、幂等、确定性随机、Ticket/Budget/Grant/Outbox 已落地；真实 MySQL 并发与提交恢复验收完成
 🟡 M5 Settlement  Pulse Benefit Client、Outbox 退避、Query/Reconcile/Rollback 与 new-api 接收端已落地；真实额度到账验收待完成
-✅ M6 周期与运营       Period Close、稳定周期奖励、Holdout 固化、人工调整审计、日指标聚合已落地；真实 MySQL 中断恢复待 Compose 验收
+✅ M6 周期与运营       Period Close、稳定周期奖励、Holdout 固化、人工调整审计、日指标聚合已落地；真实 MySQL 中断恢复验收完成
 ✅ M7 内容奖励         Pulse 侧候选采集、人工审核、独立预算、限额、幂等、结算与撤销已落地；Answer 真实 schema/SSO 与 Benefit 端到端验收待完成
 ```
 
@@ -273,7 +273,7 @@ type UnitOfWork interface {
 - [x] Holdout 稳定分组并持久化首次 assignment；
 - [x] Admin、Audit Log、冲突处理、人工财务调整；
 - [x] 日指标、告警、Settlement 堆积和预算预警；
-- [x] close 中断后的恢复测试（内存回归；真实 MySQL/Compose 仍需环境验收）。
+- [x] close 中断后的恢复测试（真实 MySQL 事务回滚、重入和连接重启已验收；Compose 容器重启另行执行）。
 
 当前实现：`PeriodCloseService` 在 watermark 到达后执行 Ledger/Account 对账、Ticket 过期、周期奖励和状态迁移；`AdminAdjustmentService` 只追加 adjustment 分录并同步 Audit Log；`ExperimentService` 固化 HMAC cohort；`MetricsAggregationService` 将运营快照写入 `pulse_metric_daily`，Worker 已接入周期关闭与指标聚合。
 
@@ -379,7 +379,7 @@ type UnitOfWork interface {
 | Usage 重放 100 次 | M2 | 真实 MySQL 唯一约束 |
 | Action 重放 100 次 | M4 | 一个 Grant、一个随机结果（真实 MySQL 已验收） |
 | Benefit 重放 100 次 | M5 | 只到账一次 |
-| Period Close 重跑 | M6 | 不重复发放 |
+| Period Close 重跑 | M6 | 不重复发放（真实 MySQL 已验收） |
 | 并发 Pulse | M4 | 不超扣 Ticket、不超 Budget |
 | DB commit 后响应丢失 | M4 | 同 key 可恢复 |
 | Benefit 成功但 Pulse timeout | M5 | Query/Reconciliation 恢复 |
