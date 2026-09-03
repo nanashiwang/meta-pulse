@@ -190,7 +190,7 @@ func (s *ContentAwardService) ReviewAndAward(ctx context.Context, command Conten
 		if s.cfg.ShadowMode {
 			status = OutboxStatusShadow
 		}
-		if _, err := repos.Reward.CreateOutbox(ctx, ports.SettlementOutbox{RewardGrantID: persistedGrant.ID, Operation: "grant", PayloadHash: sha256HexBytes(payload), PayloadJSON: payload, Status: status, NextAttemptAt: s.cfg.Now(), CreatedAt: s.cfg.Now()}); err != nil {
+		if _, err := repos.Reward.CreateOutbox(ctx, ports.SettlementOutbox{RewardGrantID: persistedGrant.ID, Operation: "grant", PayloadHash: canonicalJSONHash(payload), PayloadJSON: payload, Status: status, NextAttemptAt: s.cfg.Now(), CreatedAt: s.cfg.Now()}); err != nil {
 			return err
 		}
 		if err := repos.Reward.SaveBudget(ctx, budget); err != nil {

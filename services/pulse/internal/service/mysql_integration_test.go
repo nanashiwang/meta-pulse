@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/nanashiwang/meta-pulse/internal/domain/ledger"
 	"github.com/nanashiwang/meta-pulse/internal/domain/usage"
+	"github.com/nanashiwang/meta-pulse/internal/ports"
 	mysqlstore "github.com/nanashiwang/meta-pulse/internal/store/mysql"
 	"github.com/nanashiwang/meta-pulse/migrations"
 )
@@ -43,14 +46,20 @@ func TestMySQLActionConcurrencyAndCommitRecovery(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
+	// Keep repeated local runs isolated: a failed test may leave its active
+	// fixture behind, which would make FindActiveAt intentionally reject an
+	// overlapping period. Integration schemas have no foreign keys by design.
+	if _, err := sqlDB.ExecContext(ctx, `DELETE FROM pulse_period WHERE period_key LIKE 'integration-action-%'`); err != nil {
+		t.Fatalf("remove stale action integration periods: %v", err)
+	}
 	userID := uint64(900000000 + time.Now().UnixNano()%1000000)
 	periodKey := fmt.Sprintf("integration-action-%d", time.Now().UnixNano())
 	startsAt := time.Now().Add(-time.Minute)
 	endsAt := time.Now().Add(time.Hour)
 	var periodID uint64
-	if err := sqlDB.QueryRowContext(ctx, `
+	if _, err := sqlDB.ExecContext(ctx, `
 INSERT INTO pulse_period (period_key, status, starts_at, ends_at, timezone, config_version, random_version)
-VALUES (?, 'active', ?, ?, 'Asia/Shanghai', 'integration-v1', 'hmac-v1')`, periodKey, startsAt, endsAt).Err(); err != nil {
+VALUES (?, 'active', ?, ?, 'Asia/Shanghai', 'integration-v1', 'hmac-v1')`, periodKey, startsAt, endsAt); err != nil {
 		t.Fatalf("insert period: %v", err)
 	}
 	if err := sqlDB.QueryRowContext(ctx, `SELECT id FROM pulse_period WHERE period_key = ?`, periodKey).Scan(&periodID); err != nil {
@@ -172,6 +181,9 @@ func TestMySQLPeriodCloseRollbackReentryAndRestart(t *testing.T) {
 	defer cancel()
 
 	dsn := os.Getenv("PULSE_INTEGRATION_DSN")
+	if _, err := sqlDB.ExecContext(ctx, `DELETE FROM pulse_period WHERE period_key LIKE 'integration-period-close-%'`); err != nil {
+		t.Fatalf("remove stale period-close integration periods: %v", err)
+	}
 	userID := uint64(910000000 + time.Now().UnixNano()%1000000)
 	periodKey := fmt.Sprintf("integration-period-close-%d", time.Now().UnixNano())
 	now := time.Now().UTC().Truncate(time.Microsecond)
@@ -198,7 +210,8 @@ VALUES (?, 'period_reward', 7, 0, 0, 0, 0)`, periodID); err != nil {
 	}
 	if _, err := sqlDB.ExecContext(ctx, `
 INSERT INTO pulse_worker_cursor (cursor_name, source_system, cursor_value, watermark_at, version)
-VALUES (?, 'new-api-log', ?, ?, 0)`, DefaultUsageCursorName, "integration-period-close", endsAt); err != nil {
+VALUES (?, 'new-api-log', ?, ?, 0)
+ON DUPLICATE KEY UPDATE cursor_value = VALUES(cursor_value), watermark_at = VALUES(watermark_at)`, DefaultUsageCursorName, "integration-period-close", endsAt); err != nil {
 		t.Fatalf("insert worker cursor: %v", err)
 	}
 
@@ -440,5 +453,193 @@ VALUES (?, 'integration-default', 0, 'gpt-*', 1, 10000, 'integration-v1')`, peri
 	}
 	if conflicts != 1 || entries != 2 {
 		t.Fatalf("conflict mutated accounting conflicts=%d ledger_entries=%d", conflicts, entries)
+	}
+}
+
+type mysqlIntegrationBenefitClient struct {
+	mu           sync.Mutex
+	grantCalls   int
+	queryCalls   int
+	grantErr     error
+	queryApplied bool
+}
+
+func (c *mysqlIntegrationBenefitClient) Grant(_ context.Context, request ports.BenefitGrantRequest) (ports.BenefitGrantResponse, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.grantCalls++
+	if c.grantErr != nil {
+		return ports.BenefitGrantResponse{}, c.grantErr
+	}
+	return ports.BenefitGrantResponse{Applied: true, SourceRef: request.SourceRef}, nil
+}
+
+func (c *mysqlIntegrationBenefitClient) Query(_ context.Context, sourceRef string) (ports.BenefitState, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.queryCalls++
+	return ports.BenefitState{Applied: c.queryApplied, SourceRef: sourceRef}, nil
+}
+
+func (c *mysqlIntegrationBenefitClient) Rollback(_ context.Context, sourceRef, _ string) (ports.BenefitState, error) {
+	return ports.BenefitState{Applied: true, SourceRef: sourceRef}, nil
+}
+
+func TestMySQLSettlementClaimAndQueryRecovery(t *testing.T) {
+	database, sqlDB := openMySQLIntegration(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	periodKey := fmt.Sprintf("integration-settlement-%d", time.Now().UnixNano())
+	userID := uint64(930000000 + time.Now().UnixNano()%1000000)
+	var periodID uint64
+	if _, err := sqlDB.ExecContext(ctx, `
+INSERT INTO pulse_period (period_key, status, starts_at, ends_at, timezone, config_version, random_version)
+VALUES (?, 'active', ?, ?, 'Asia/Shanghai', 'integration-v1', 'hmac-v1')`, periodKey, now.Add(-time.Hour), now.Add(time.Hour)); err != nil {
+		t.Fatalf("insert period: %v", err)
+	}
+	if err := sqlDB.QueryRowContext(ctx, `SELECT id FROM pulse_period WHERE period_key = ?`, periodKey).Scan(&periodID); err != nil {
+		t.Fatalf("read period id: %v", err)
+	}
+	t.Cleanup(func() {
+		for _, table := range []string{"pulse_settlement_outbox", "pulse_reward_grant", "pulse_reward_budget"} {
+			_, _ = sqlDB.Exec(`DELETE FROM `+table+` WHERE period_id = ?`, periodID)
+		}
+		_, _ = sqlDB.Exec(`DELETE FROM pulse_period WHERE id = ?`, periodID)
+	})
+	if _, err := sqlDB.ExecContext(ctx, `
+INSERT INTO pulse_reward_budget (period_id, budget_type, hard_cap, reserved_amount, settled_amount, released_amount, version)
+VALUES (?, 'loyalty', 100, 25, 0, 0, 1)`, periodID); err != nil {
+		t.Fatalf("insert reward budget: %v", err)
+	}
+
+	grantID := fmt.Sprintf("mysql-settlement-grant-%d", time.Now().UnixNano())
+	sourceRef := grantID
+	payload, err := json.Marshal(settlementPayload{GrantID: grantID, UserID: userID, Amount: 25, SourceRef: sourceRef, RewardType: "quota"})
+	if err != nil {
+		t.Fatalf("marshal settlement payload: %v", err)
+	}
+	if _, err := sqlDB.ExecContext(ctx, `
+INSERT INTO pulse_reward_grant (grant_id, period_id, user_id, action_id, trigger_type, reward_definition_id, reward_type, amount, random_value, config_version, status, source_ref, reason, budget_type)
+VALUES (?, ?, ?, ?, 'ticket', 1, 'quota', 25, ?, 'integration-v1', 'pending', ?, 'integration fixture', 'loyalty')`, grantID, periodID, userID, grantID+":action", fmt.Sprintf("%064d", 7), sourceRef); err != nil {
+		t.Fatalf("insert reward grant: %v", err)
+	}
+	var grantRowID uint64
+	if err := sqlDB.QueryRowContext(ctx, `SELECT id FROM pulse_reward_grant WHERE grant_id = ?`, grantID).Scan(&grantRowID); err != nil {
+		t.Fatalf("read reward grant id: %v", err)
+	}
+	if _, err := sqlDB.ExecContext(ctx, `
+INSERT INTO pulse_settlement_outbox (reward_grant_id, operation, payload_hash, payload_json, status, attempts, next_attempt_at)
+VALUES (?, 'grant', ?, ?, 'pending', 0, NOW(6) - INTERVAL 1 MINUTE)`, grantRowID, canonicalJSONHash(payload), payload); err != nil {
+		t.Fatalf("insert settlement outbox: %v", err)
+	}
+
+	client := &mysqlIntegrationBenefitClient{}
+	unit, err := mysqlstore.NewUnitOfWork(database)
+	if err != nil {
+		t.Fatalf("create unit of work: %v", err)
+	}
+	settlement, err := NewSettlementService(unit, client, SettlementConfig{BatchSize: 1, Lease: time.Minute, BaseBackoff: time.Second, MaxBackoff: time.Minute, MaxAttempts: 3, Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatalf("create settlement service: %v", err)
+	}
+
+	const callers = 100
+	reports := make([]SettlementReport, callers)
+	errorsFound := make([]error, callers)
+	var group sync.WaitGroup
+	group.Add(callers)
+	for i := 0; i < callers; i++ {
+		go func(index int) {
+			defer group.Done()
+			reports[index], errorsFound[index] = settlement.ProcessBatch(ctx)
+		}(i)
+	}
+	group.Wait()
+	claimed, completed := 0, 0
+	for i := range reports {
+		if errorsFound[i] != nil {
+			t.Fatalf("concurrent settlement %d failed: %v", i, errorsFound[i])
+		}
+		claimed += reports[i].Claimed
+		completed += reports[i].Completed
+	}
+	client.mu.Lock()
+	grantCalls, queryCalls := client.grantCalls, client.queryCalls
+	client.mu.Unlock()
+	if claimed != 1 || completed != 1 || grantCalls != 1 || queryCalls != 0 {
+		var debugStatus, debugError string
+		var debugGrantID, debugGrantSource, debugGrantType, debugBudget string
+		var debugAmount, debugUser uint64
+		var debugPayload, debugHash []byte
+		_ = sqlDB.QueryRowContext(ctx, `SELECT status, COALESCE(last_error, '') FROM pulse_settlement_outbox WHERE reward_grant_id = ?`, grantRowID).Scan(&debugStatus, &debugError)
+		_ = sqlDB.QueryRowContext(ctx, `SELECT grant_id, source_ref, reward_type, budget_type, amount, user_id FROM pulse_reward_grant WHERE id = ?`, grantRowID).Scan(&debugGrantID, &debugGrantSource, &debugGrantType, &debugBudget, &debugAmount, &debugUser)
+		_ = sqlDB.QueryRowContext(ctx, `SELECT payload_json, payload_hash FROM pulse_settlement_outbox WHERE reward_grant_id = ?`, grantRowID).Scan(&debugPayload, &debugHash)
+		t.Fatalf("concurrent settlement claimed=%d completed=%d grant_calls=%d query_calls=%d outbox=%q error=%q grant=%q/%q/%q/%q amount=%d user=%d payload=%s hash=%s", claimed, completed, grantCalls, queryCalls, debugStatus, debugError, debugGrantID, debugGrantSource, debugGrantType, debugBudget, debugAmount, debugUser, debugPayload, debugHash)
+	}
+
+	var grantStatus, outboxStatus string
+	if err := sqlDB.QueryRowContext(ctx, `SELECT status FROM pulse_reward_grant WHERE id = ?`, grantRowID).Scan(&grantStatus); err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlDB.QueryRowContext(ctx, `SELECT status FROM pulse_settlement_outbox WHERE reward_grant_id = ?`, grantRowID).Scan(&outboxStatus); err != nil {
+		t.Fatal(err)
+	}
+	if grantStatus != GrantStatusSettled || outboxStatus != OutboxStatusCompleted {
+		t.Fatalf("settlement states grant=%q outbox=%q", grantStatus, outboxStatus)
+	}
+
+	// A successful Benefit call followed by a Pulse-side timeout is recovered
+	// by querying the same source_ref; no new grant or source_ref is created.
+	secondUserID := userID + 1
+	secondGrantID := fmt.Sprintf("mysql-settlement-query-%d", time.Now().UnixNano())
+	secondPayload, err := json.Marshal(settlementPayload{GrantID: secondGrantID, UserID: secondUserID, Amount: 9, SourceRef: secondGrantID, RewardType: "quota"})
+	if err != nil {
+		t.Fatalf("marshal query recovery payload: %v", err)
+	}
+	if _, err := sqlDB.ExecContext(ctx, `UPDATE pulse_reward_budget SET reserved_amount = 9, version = 2 WHERE period_id = ? AND budget_type = 'loyalty'`, periodID); err != nil {
+		t.Fatalf("reserve query recovery budget: %v", err)
+	}
+	if _, err := sqlDB.ExecContext(ctx, `
+INSERT INTO pulse_reward_grant (grant_id, period_id, user_id, action_id, trigger_type, reward_definition_id, reward_type, amount, random_value, config_version, status, source_ref, reason, budget_type)
+VALUES (?, ?, ?, ?, 'ticket', 1, 'quota', 9, ?, 'integration-v1', 'pending', ?, 'integration query fixture', 'loyalty')`, secondGrantID, periodID, secondUserID, secondGrantID+":action", fmt.Sprintf("%064d", 8), secondGrantID); err != nil {
+		t.Fatalf("insert query recovery grant: %v", err)
+	}
+	var secondGrantRowID uint64
+	if err := sqlDB.QueryRowContext(ctx, `SELECT id FROM pulse_reward_grant WHERE grant_id = ?`, secondGrantID).Scan(&secondGrantRowID); err != nil {
+		t.Fatalf("read query recovery grant id: %v", err)
+	}
+	if _, err := sqlDB.ExecContext(ctx, `
+INSERT INTO pulse_settlement_outbox (reward_grant_id, operation, payload_hash, payload_json, status, attempts, next_attempt_at)
+VALUES (?, 'grant', ?, ?, 'pending', 0, NOW(6) - INTERVAL 1 MINUTE)`, secondGrantRowID, canonicalJSONHash(secondPayload), secondPayload); err != nil {
+		t.Fatalf("insert query recovery outbox: %v", err)
+	}
+	client.mu.Lock()
+	client.grantErr = errors.New("simulated benefit timeout")
+	client.queryApplied = true
+	client.mu.Unlock()
+	recovered, err := settlement.ProcessBatch(ctx)
+	if err != nil || recovered.Claimed != 1 || recovered.Completed != 1 || recovered.Retried != 0 {
+		t.Fatalf("query recovery report=%+v err=%v", recovered, err)
+	}
+	client.mu.Lock()
+	grantCalls, queryCalls = client.grantCalls, client.queryCalls
+	client.mu.Unlock()
+	if grantCalls != 2 || queryCalls != 1 {
+		t.Fatalf("query recovery calls grant=%d query=%d", grantCalls, queryCalls)
+	}
+	if err := sqlDB.QueryRowContext(ctx, `SELECT status FROM pulse_reward_grant WHERE id = ?`, secondGrantRowID).Scan(&grantStatus); err != nil {
+		t.Fatal(err)
+	}
+	if grantStatus != GrantStatusSettled {
+		t.Fatalf("query recovered grant status=%q", grantStatus)
+	}
+	var reserved, settled, budgetVersion int64
+	if err := sqlDB.QueryRowContext(ctx, `SELECT reserved_amount, settled_amount, version FROM pulse_reward_budget WHERE period_id = ? AND budget_type = 'loyalty'`, periodID).Scan(&reserved, &settled, &budgetVersion); err != nil {
+		t.Fatal(err)
+	}
+	if reserved != 0 || settled != 34 || budgetVersion != 3 {
+		t.Fatalf("settlement budget reserved=%d settled=%d version=%d", reserved, settled, budgetVersion)
 	}
 }

@@ -20,7 +20,7 @@
 🟡 M2.5 回测框架  只读回放、范围过滤、异常/覆盖率、倍率对比已落地；真实 LOG_DB 样本待环境接入
 ✅ M3 只读入口  new-api BFF/UI、YuanHeng 隔离 WebView、论坛等级降级与 Pulse 只读接口已落地；发布灰度待环境验收
 ✅ M4 Shadow Mode  Action、幂等、确定性随机、Ticket/Budget/Grant/Outbox 已落地；真实 MySQL 并发与提交恢复验收完成
-🟡 M5 Settlement  Pulse Benefit Client、Outbox 退避、Query/Reconcile/Rollback 与 new-api 接收端已落地；真实额度到账验收待完成
+🟡 M5 Settlement  Pulse Benefit Client、Outbox 退避、Query/Reconcile/Rollback 与 new-api 接收端已落地；Pulse 真实 MySQL 并发结算/Query 恢复已验收，真实额度到账待完成
 ✅ M6 周期与运营       Period Close、稳定周期奖励、Holdout 固化、人工调整审计、日指标聚合已落地；真实 MySQL 中断恢复验收完成
 ✅ M7 内容奖励         Pulse 侧候选采集、人工审核、独立预算、限额、幂等、结算与撤销已落地；Answer 真实 schema/SSO 与 Benefit 端到端验收待完成
 ```
@@ -259,6 +259,7 @@ type UnitOfWork interface {
 - [x] Outbox 指数退避、dead 状态、`reward-retry` 人工重试入口；
 - [x] timeout 必须先 Query 原 `source_ref`，禁止更换 source_ref；
 - [x] Benefit Reconciliation 可重复查询并收敛状态；
+- [x] 真实 MySQL Outbox 并发 Claim（100 个 Worker 仅一次 Grant）与 Benefit timeout 后原 `source_ref` Query 恢复已验收；
 - [x] rollback 调用原 source_ref，Pulse 侧只更新可审计状态；new-api 侧必须以 reversal 记录落账。
 
 当前实现不会把 `shadow` Outbox 发送到 new-api；只有关闭 `PULSE_REWARD_SHADOW_MODE` 且 new-api 接收端完成验收后才会处理 pending Outbox。

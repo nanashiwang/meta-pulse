@@ -201,3 +201,11 @@ func TestSettlementRejectsMismatchedGrantIDWithValidPayloadHash(t *testing.T) {
 		t.Fatalf("report=%+v err=%v client=%+v", report, err, client)
 	}
 }
+
+func TestCanonicalJSONHashIgnoresMySQLFormatting(t *testing.T) {
+	compact := []byte(`{"grant_id":"g1","user_id":9007199254740993,"amount":25,"transferable_quota":false}`)
+	normalized := []byte(`{ "amount": 25, "transferable_quota": false, "user_id": 9007199254740993, "grant_id": "g1" }`)
+	if canonicalJSONHash(compact) != canonicalJSONHash(normalized) {
+		t.Fatalf("canonical JSON hash changed with key order or whitespace")
+	}
+}

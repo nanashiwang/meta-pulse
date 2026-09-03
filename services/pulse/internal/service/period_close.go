@@ -243,7 +243,7 @@ func createPeriodRewards(ctx context.Context, repos ports.Repositories, activity
 		if cfg.ShadowMode {
 			outboxStatus = OutboxStatusShadow
 		}
-		if _, err := repos.Reward.CreateOutbox(ctx, ports.SettlementOutbox{RewardGrantID: persisted.ID, Operation: "grant", PayloadHash: sha256HexBytes(payload), PayloadJSON: payload, Status: outboxStatus, NextAttemptAt: cfg.Now(), CreatedAt: cfg.Now()}); err != nil {
+		if _, err := repos.Reward.CreateOutbox(ctx, ports.SettlementOutbox{RewardGrantID: persisted.ID, Operation: "grant", PayloadHash: canonicalJSONHash(payload), PayloadJSON: payload, Status: outboxStatus, NextAttemptAt: cfg.Now(), CreatedAt: cfg.Now()}); err != nil {
 			return created, err
 		}
 		created++

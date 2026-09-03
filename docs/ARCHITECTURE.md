@@ -562,7 +562,7 @@ target_type = user_quota
 target_id   = user_id
 ```
 
-new-api 的 Benefit Receiver 必须以 `source_ref` 唯一定位，并持久化请求的 payload fingerprint：
+new-api 的 Benefit Receiver 必须以 `source_ref` 唯一定位，并持久化请求的 payload fingerprint。Pulse Outbox 的 `payload_hash` 对 JSON 做稳定规范化（对象 key 排序、去除空白后再 hash），避免 MySQL JSON 列读回时的 key 顺序/空白变化造成误判；兼容历史 struct 字段序列化的记录时仍必须完成同一 payload 语义校验：
 
 ```text
 同 source_ref + 同 payload → 返回第一次结果

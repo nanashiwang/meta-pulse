@@ -1,12 +1,14 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"strings"
 	"time"
@@ -171,7 +173,12 @@ func (s *SettlementService) loadSettlement(ctx context.Context, outbox ports.Set
 	if grant.GrantID == "" || grant.SourceRef == "" || grant.UserID == 0 || grant.Amount <= 0 || strings.TrimSpace(grant.BudgetType) == "" || grant.Status != RewardStatusPending {
 		return ports.RewardGrant{}, ports.BenefitGrantRequest{}, ErrInvalidSettlementPayload
 	}
-	if sha256Hex(outbox.PayloadJSON) != outbox.PayloadHash {
+	// MySQL JSON columns may reorder object keys and normalize whitespace on
+	// read. Verify the canonical semantic JSON hash first, while accepting the
+	// legacy struct-order hash so rows written before this fix remain recoverable.
+	canonicalHash := canonicalJSONHash(outbox.PayloadJSON)
+	legacyHash := settlementLegacyPayloadHash(outbox.PayloadJSON)
+	if outbox.PayloadHash == "" || (canonicalHash != outbox.PayloadHash && legacyHash != outbox.PayloadHash) {
 		return ports.RewardGrant{}, ports.BenefitGrantRequest{}, ErrInvalidSettlementPayload
 	}
 	if err := json.Unmarshal(outbox.PayloadJSON, &payload); err != nil {
@@ -443,6 +450,43 @@ func isBenefitConflict(err error) bool           { return errors.Is(err, ports.E
 func sha256Hex(payload []byte) string {
 	digest := sha256.Sum256(payload)
 	return hex.EncodeToString(digest[:])
+}
+
+// canonicalJSONHash hashes JSON after decoding and re-encoding it.
+// encoding/json sorts object keys, making the hash stable across MySQL JSON
+// key ordering and whitespace normalization.
+func canonicalJSONHash(payload []byte) string {
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.UseNumber()
+	var value any
+	if err := decoder.Decode(&value); err != nil {
+		return sha256Hex(payload)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return sha256Hex(payload)
+	}
+	canonical, err := json.Marshal(value)
+	if err != nil {
+		return sha256Hex(payload)
+	}
+	return sha256Hex(canonical)
+}
+
+// settlementLegacyPayloadHash supports outbox rows written with the original
+// struct-field order before payload hashes became canonical. Re-marshalling
+// the known payload shape reconstructs that historical byte representation
+// even after MySQL has normalized the JSON column.
+func settlementLegacyPayloadHash(payload []byte) string {
+	var value settlementPayload
+	if err := json.Unmarshal(payload, &value); err != nil {
+		return ""
+	}
+	legacy, err := json.Marshal(value)
+	if err != nil {
+		return ""
+	}
+	return sha256Hex(legacy)
 }
 func truncateError(err error) string {
 	if err == nil {

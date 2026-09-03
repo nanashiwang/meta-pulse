@@ -179,13 +179,12 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 		if err != nil {
 			return err
 		}
-		payloadDigest := sha256.Sum256(payload)
 		outboxStatus := OutboxStatusPending
 		if s.cfg.ShadowMode {
 			outboxStatus = OutboxStatusShadow
 		}
 		if _, err := repos.Reward.CreateOutbox(ctx, ports.SettlementOutbox{
-			RewardGrantID: persistedGrant.ID, Operation: "grant", PayloadHash: hex.EncodeToString(payloadDigest[:]),
+			RewardGrantID: persistedGrant.ID, Operation: "grant", PayloadHash: canonicalJSONHash(payload),
 			PayloadJSON: payload, Status: outboxStatus, NextAttemptAt: s.cfg.Now(), CreatedAt: s.cfg.Now(),
 		}); err != nil {
 			return err
