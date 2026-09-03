@@ -16,7 +16,8 @@
 🟡 P0 接入契约     Pulse 侧签名/Nonce 骨架已落地；new-api SSO / BFF / Benefit API 待实现
 🟡 M0 地基         配置、Gin、健康检查、GORM/Redis、Goose migration、指标已落地；真实环境验收待完成
 ✅ M1 Ledger 记账内核    领域账本、账户快照、幂等冲突、重建与 ledger-check 已落地
-⬜ M2-M7          见下文
+✅ M2 Usage Ingest 与等级  只读日志游标、统一 Mapper、事务记账、退款复核、等级 Profile 已落地
+⬜ M2.5-M7       见下文
 ```
 
 本次已启动 M0 第一批：`services/pulse/` 已从 HTTP 桩升级为可装配的 API/Worker 基础，新增 16 张核心表 migration、依赖健康检查、结构化日志、Prometheus registry、UnitOfWork 事务边界和服务签名校验。`docs/OVERVIEW.md` 为未跟踪文件，本计划不依赖它，也不覆盖或删除它。
@@ -193,15 +194,15 @@ type UnitOfWork interface {
 
 ### M2｜Usage Ingest 与等级
 
-- [ ] LOG_DB 只读 cursor、批量读取、断点续跑；
-- [ ] 共用 Mapper 实现实时 Ingest 和 Backfill；
-- [ ] `source_system + source_event_id` 幂等；
-- [ ] payload hash 不一致写 `pulse_ingest_conflict`，不静默覆盖；
-- [ ] 单事务完成 UsageEvent、Contribution Ledger、Account、Ticket Entitlement、Ticket Ledger、UserPeriodStat；
-- [ ] Economics Rule 保存命中规则、倍率、eligibility、版本快照；
-- [ ] 处理异步任务退款与差额结算；不确定关联时进入人工对账队列；
-- [ ] 终身净贡献等级与只读 profile API；
-- [ ] `tools/backfill` 支持 dry-run、范围、报告和重复执行。
+- [x] LOG_DB 只读 cursor、批量读取、断点续跑；
+- [x] 共用 Mapper 实现实时 Ingest 和 Backfill；
+- [x] `source_system + source_event_id` 幂等；
+- [x] payload hash 不一致写 `pulse_ingest_conflict`，不静默覆盖；
+- [x] 单事务完成 UsageEvent、Contribution Ledger、Account、Ticket Entitlement、Ticket Ledger、UserPeriodStat；
+- [x] Economics Rule 保存命中规则、倍率、eligibility、版本快照；
+- [x] 处理异步任务退款与差额结算；不确定关联时进入人工对账队列；
+- [x] 终身净贡献等级与只读 profile API；
+- [x] `tools/backfill` 支持 dry-run、范围、报告和重复执行。
 
 **出口：**同一 Usage 重放 100 次只产生一次业务记账；同 ID 不同 payload 进入 conflict；历史日志可回放；论坛 profile API 可用。
 

@@ -48,13 +48,6 @@ type accountModel struct {
 
 func (accountModel) TableName() string { return "pulse_account" }
 
-func newRepositories(db *gorm.DB) ports.Repositories {
-	return ports.Repositories{
-		Ledger:  &ledgerRepository{db: db},
-		Account: &accountRepository{db: db},
-	}
-}
-
 func (r *ledgerRepository) FindByIdempotency(ctx context.Context, operation ledger.Operation, key string) (*ledger.Entry, error) {
 	var model ledgerEntryModel
 	err := r.db.WithContext(ctx).Where("operation = ? AND idempotency_key = ?", operation, key).Take(&model).Error
@@ -141,6 +134,18 @@ func (r *accountRepository) ReplaceFromLedger(ctx context.Context, previousVersi
 		return ports.ErrConflict
 	}
 	return nil
+}
+
+func (r *accountRepository) ListForUser(ctx context.Context, userID uint64) ([]ledger.Account, error) {
+	var models []accountModel
+	if err := r.db.WithContext(ctx).Where("user_id = ?", userID).Order("id ASC").Find(&models).Error; err != nil {
+		return nil, fmt.Errorf("list user accounts: %w", err)
+	}
+	accounts := make([]ledger.Account, len(models))
+	for i := range models {
+		accounts[i] = models[i].toDomain()
+	}
+	return accounts, nil
 }
 
 func (r *accountRepository) ListAll(ctx context.Context) ([]ledger.Account, error) {

@@ -7,12 +7,13 @@ import (
 
 func validConfig() Config {
 	return Config{
-		Environment:         "development",
-		HTTPAddr:            ":8088",
-		PulseDBDSN:          "pulse:secret@tcp(mysql:3306)/meta_pulse",
-		RedisAddr:           "redis:6379",
-		IngestBatchSize:     500,
-		SettlementBatchSize: 100,
+		Environment:          "development",
+		HTTPAddr:             ":8088",
+		PulseDBDSN:           "pulse:secret@tcp(mysql:3306)/meta_pulse",
+		RedisAddr:            "redis:6379",
+		IngestBatchSize:      500,
+		SettlementBatchSize:  100,
+		TicketThresholdMilli: 1000,
 	}
 }
 

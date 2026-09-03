@@ -8,8 +8,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/nanashiwang/meta-pulse/internal/adapter/newapi"
 	"github.com/nanashiwang/meta-pulse/internal/config"
 	"github.com/nanashiwang/meta-pulse/internal/health"
+	"github.com/nanashiwang/meta-pulse/internal/service"
 	mysqlstore "github.com/nanashiwang/meta-pulse/internal/store/mysql"
 	redisstore "github.com/nanashiwang/meta-pulse/internal/store/redis"
 )
@@ -38,6 +40,27 @@ func main() {
 		os.Exit(1)
 	}
 	defer cache.Close()
+	logReader, err := newapi.OpenLogReader(cfg.NewAPILogDSN)
+	if err != nil {
+		logger.Error("initialize new-api log reader", "error", err)
+		os.Exit(1)
+	}
+	defer logReader.Close()
+	source, err := newapi.NewLogSource(logReader, "new-api-log")
+	if err != nil {
+		logger.Error("initialize new-api usage source", "error", err)
+		os.Exit(1)
+	}
+	unit, err := mysqlstore.NewUnitOfWork(database)
+	if err != nil {
+		logger.Error("initialize unit of work", "error", err)
+		os.Exit(1)
+	}
+	ingest, err := service.NewUsageIngestService(unit, source, service.UsageIngestConfig{BatchSize: cfg.IngestBatchSize, SourceSystem: "new-api-log", TicketThresholdMilli: cfg.TicketThresholdMilli})
+	if err != nil {
+		logger.Error("initialize usage ingest", "error", err)
+		os.Exit(1)
+	}
 
 	readiness := health.NewChecker(map[string]health.Pinger{"mysql": database, "redis": cache})
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -47,6 +70,22 @@ func main() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
+	runBatch := func() {
+		checkCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		defer cancel()
+		result, err := ingest.IngestBatch(checkCtx)
+		if err != nil {
+			logger.Warn("usage ingest failed", "error", err, "fetched", result.Fetched)
+			return
+		}
+		if result.Fetched > 0 {
+			logger.Info("usage ingest batch completed", "fetched", result.Fetched, "accepted", result.Accepted, "replayed", result.Replayed, "conflicts", result.Conflicts, "manual_review", result.ManualReview)
+		}
+	}
+
+	// Run immediately on startup, then continue polling. No new-api relay
+	// request waits for this worker.
+	runBatch()
 	for {
 		checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		err := readiness.Check(checkCtx)
@@ -54,7 +93,7 @@ func main() {
 		if err != nil {
 			logger.Warn("worker dependencies not ready", "error", err)
 		} else {
-			logger.Info("worker heartbeat", "status", "ready")
+			runBatch()
 		}
 
 		select {

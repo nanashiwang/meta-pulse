@@ -11,19 +11,20 @@ import (
 const minimumProductionSecretLength = 32
 
 type Config struct {
-	Environment         string
-	HTTPAddr            string
-	PulseDBDSN          string
-	RedisAddr           string
-	RedisPassword       string
-	RedisDB             int
-	NewAPILogDSN        string
-	NewAPIInternalURL   string
-	ServiceHMACSecret   string
-	UserBFFHMACSecret   string
-	AdminHMACSecret     string
-	IngestBatchSize     int
-	SettlementBatchSize int
+	Environment          string
+	HTTPAddr             string
+	PulseDBDSN           string
+	RedisAddr            string
+	RedisPassword        string
+	RedisDB              int
+	NewAPILogDSN         string
+	NewAPIInternalURL    string
+	ServiceHMACSecret    string
+	UserBFFHMACSecret    string
+	AdminHMACSecret      string
+	IngestBatchSize      int
+	SettlementBatchSize  int
+	TicketThresholdMilli int64
 }
 
 func Load() (Config, error) {
@@ -39,21 +40,26 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	ticketThresholdMilli, err := getenvInt("PULSE_TICKET_THRESHOLD_MILLI", 1000, false)
+	if err != nil {
+		return Config{}, err
+	}
 
 	cfg := Config{
-		Environment:         strings.ToLower(getenv("PULSE_ENV", "development")),
-		HTTPAddr:            getenv("PULSE_HTTP_ADDR", ":8088"),
-		PulseDBDSN:          os.Getenv("PULSE_DB_DSN"),
-		RedisAddr:           getenv("PULSE_REDIS_ADDR", "127.0.0.1:6379"),
-		RedisPassword:       os.Getenv("PULSE_REDIS_PASSWORD"),
-		RedisDB:             redisDB,
-		NewAPILogDSN:        os.Getenv("NEWAPI_LOG_DSN"),
-		NewAPIInternalURL:   os.Getenv("NEWAPI_INTERNAL_BASE_URL"),
-		ServiceHMACSecret:   os.Getenv("PULSE_SERVICE_HMAC_SECRET"),
-		UserBFFHMACSecret:   os.Getenv("PULSE_USER_BFF_HMAC_SECRET"),
-		AdminHMACSecret:     os.Getenv("PULSE_ADMIN_HMAC_SECRET"),
-		IngestBatchSize:     ingestBatchSize,
-		SettlementBatchSize: settlementBatchSize,
+		Environment:          strings.ToLower(getenv("PULSE_ENV", "development")),
+		HTTPAddr:             getenv("PULSE_HTTP_ADDR", ":8088"),
+		PulseDBDSN:           os.Getenv("PULSE_DB_DSN"),
+		RedisAddr:            getenv("PULSE_REDIS_ADDR", "127.0.0.1:6379"),
+		RedisPassword:        os.Getenv("PULSE_REDIS_PASSWORD"),
+		RedisDB:              redisDB,
+		NewAPILogDSN:         os.Getenv("NEWAPI_LOG_DSN"),
+		NewAPIInternalURL:    os.Getenv("NEWAPI_INTERNAL_BASE_URL"),
+		ServiceHMACSecret:    os.Getenv("PULSE_SERVICE_HMAC_SECRET"),
+		UserBFFHMACSecret:    os.Getenv("PULSE_USER_BFF_HMAC_SECRET"),
+		AdminHMACSecret:      os.Getenv("PULSE_ADMIN_HMAC_SECRET"),
+		IngestBatchSize:      ingestBatchSize,
+		SettlementBatchSize:  settlementBatchSize,
+		TicketThresholdMilli: int64(ticketThresholdMilli),
 	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
@@ -83,6 +89,9 @@ func (cfg Config) Validate() error {
 	}
 	if cfg.SettlementBatchSize <= 0 {
 		errs = append(errs, errors.New("PULSE_SETTLEMENT_BATCH_SIZE must be positive"))
+	}
+	if cfg.TicketThresholdMilli <= 0 {
+		errs = append(errs, errors.New("PULSE_TICKET_THRESHOLD_MILLI must be positive"))
 	}
 
 	if cfg.Environment == "production" {

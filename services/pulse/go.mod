@@ -4,6 +4,7 @@ go 1.22
 
 require (
 	github.com/gin-gonic/gin v1.10.1
+	github.com/go-sql-driver/mysql v1.7.0
 	github.com/pressly/goose/v3 v3.20.0
 	github.com/prometheus/client_golang v1.22.0
 	github.com/redis/go-redis/v9 v9.7.0

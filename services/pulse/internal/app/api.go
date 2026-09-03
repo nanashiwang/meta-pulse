@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/nanashiwang/meta-pulse/internal/observability"
+	transporthttp "github.com/nanashiwang/meta-pulse/internal/transport/http"
 )
 
 const readinessTimeout = 2 * time.Second
@@ -18,6 +19,10 @@ type ReadinessChecker interface {
 }
 
 func NewRouter(logger *slog.Logger, readiness ReadinessChecker, metrics ...*observability.Metrics) *gin.Engine {
+	return NewRouterWithProfile(logger, readiness, nil, nil, metrics...)
+}
+
+func NewRouterWithProfile(logger *slog.Logger, readiness ReadinessChecker, profile transporthttp.ProfileReader, profileAuth gin.HandlerFunc, metrics ...*observability.Metrics) *gin.Engine {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -42,6 +47,9 @@ func NewRouter(logger *slog.Logger, readiness ReadinessChecker, metrics ...*obse
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "meta-pulse-api"})
 	})
+	if profile != nil && profileAuth != nil {
+		transporthttp.ProfileRoute(router.Group("/v1/internal"), profile, profileAuth)
+	}
 	return router
 }
 

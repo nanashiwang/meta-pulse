@@ -310,7 +310,7 @@ logs.type     → consume / refund 分类
 logs.quota    → 用户侧计费额度
 ```
 
-当前 new-api 中 `LogTypeConsume = 2`、`LogTypeRefund = 6`。`quota` 是用户收费事实，不等同于 Provider 成本；在成本快照接入前，不能把它宣称为真实毛利。异步任务退款、差额结算和缺少原消费关联的退款必须由 Mapper 明确分类，无法确认时进入冲突/人工对账，不得直接改变贡献值。
+当前 new-api 中 `LogTypeConsume = 2`、`LogTypeRefund = 6`。`quota` 是用户收费事实，不等同于 Provider 成本；在成本快照接入前，不能把它宣称为真实毛利。Pulse 使用 `(created_at, id)` 复合游标、UTC+8 的 `source_created_at` 半开周期归属，并在同一 Pulse 事务内提交事件、账本、券、统计和游标。异步任务退款、差额结算和缺少原消费关联的退款必须由 Mapper 明确分类；无法确认时记录 `manual_review` 与对账冲突，不得直接改变贡献值。
 
 ## 11. Economics Engine
 
@@ -337,7 +337,7 @@ Contribution = Eligible Paid Usage × Contribution Multiplier
 
 禁止使用 float 做账。
 
-每个 Usage Event 必须保存当时命中的规则、倍率、eligibility、contribution 快照，后续规则变更不得重算旧事件。
+每个 Usage Event 必须保存当时命中的规则、倍率、eligibility、contribution 快照，后续规则变更不得重算旧事件。事件同时保留 model/channel 与最小化 request/correlation 字段，供退款对账；不得保存 prompt、response、IP、Token 或 Cookie。
 
 ## 12. Ledger
 
