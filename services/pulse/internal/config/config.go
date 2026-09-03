@@ -22,6 +22,7 @@ type Config struct {
 	ServiceHMACSecret    string
 	UserBFFHMACSecret    string
 	AdminHMACSecret      string
+	RewardRandomSecret   string
 	IngestBatchSize      int
 	SettlementBatchSize  int
 	TicketThresholdMilli int64
@@ -57,6 +58,7 @@ func Load() (Config, error) {
 		ServiceHMACSecret:    os.Getenv("PULSE_SERVICE_HMAC_SECRET"),
 		UserBFFHMACSecret:    os.Getenv("PULSE_USER_BFF_HMAC_SECRET"),
 		AdminHMACSecret:      os.Getenv("PULSE_ADMIN_HMAC_SECRET"),
+		RewardRandomSecret:   getenv("PULSE_REWARD_RANDOM_SECRET", "replace-me"),
 		IngestBatchSize:      ingestBatchSize,
 		SettlementBatchSize:  settlementBatchSize,
 		TicketThresholdMilli: int64(ticketThresholdMilli),
@@ -99,6 +101,7 @@ func (cfg Config) Validate() error {
 			"PULSE_SERVICE_HMAC_SECRET":  cfg.ServiceHMACSecret,
 			"PULSE_USER_BFF_HMAC_SECRET": cfg.UserBFFHMACSecret,
 			"PULSE_ADMIN_HMAC_SECRET":    cfg.AdminHMACSecret,
+			"PULSE_REWARD_RANDOM_SECRET": cfg.RewardRandomSecret,
 		} {
 			if len(secret) < minimumProductionSecretLength || secret == "replace-me" {
 				errs = append(errs, fmt.Errorf("%s must be at least %d bytes and cannot use a placeholder in production", name, minimumProductionSecretLength))

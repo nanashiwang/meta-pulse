@@ -27,6 +27,10 @@ func NewRouterWithProfile(logger *slog.Logger, readiness ReadinessChecker, profi
 }
 
 func NewRouterWithProfileAndSummary(logger *slog.Logger, readiness ReadinessChecker, profile transporthttp.ProfileReader, summary transporthttp.SummaryReader, profileAuth gin.HandlerFunc, metrics ...*observability.Metrics) *gin.Engine {
+	return NewRouterWithProfileSummaryAndAction(logger, readiness, profile, summary, nil, profileAuth, metrics...)
+}
+
+func NewRouterWithProfileSummaryAndAction(logger *slog.Logger, readiness ReadinessChecker, profile transporthttp.ProfileReader, summary transporthttp.SummaryReader, action transporthttp.ActionExecutor, profileAuth gin.HandlerFunc, metrics ...*observability.Metrics) *gin.Engine {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -56,6 +60,9 @@ func NewRouterWithProfileAndSummary(logger *slog.Logger, readiness ReadinessChec
 	}
 	if summary != nil && profileAuth != nil {
 		transporthttp.SummaryRoute(router.Group("/v1/internal"), summary, profileAuth)
+	}
+	if action != nil && profileAuth != nil {
+		transporthttp.ActionRoute(router.Group("/v1/internal"), action, profileAuth)
 	}
 	return router
 }

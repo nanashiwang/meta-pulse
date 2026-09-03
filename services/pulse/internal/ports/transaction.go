@@ -5,14 +5,16 @@ package ports
 import "context"
 
 type Repositories struct {
-	Ledger     LedgerRepository
-	Account    AccountRepository
-	Usage      UsageRepository
-	Conflict   ConflictRepository
-	Cursor     CursorRepository
-	Period     PeriodRepository
-	Economics  EconomicsRepository
-	UserPeriod UserPeriodStatRepository
+	Ledger      LedgerRepository
+	Account     AccountRepository
+	Usage       UsageRepository
+	Conflict    ConflictRepository
+	Cursor      CursorRepository
+	Period      PeriodRepository
+	Economics   EconomicsRepository
+	UserPeriod  UserPeriodStatRepository
+	Reward      RewardRepository
+	Idempotency IdempotencyRepository
 }
 
 // UnitOfWork is the only transaction boundary exposed to services. The

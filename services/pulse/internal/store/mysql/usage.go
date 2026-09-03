@@ -114,14 +114,16 @@ func (userPeriodStatModel) TableName() string { return "pulse_user_period_stat" 
 
 func newRepositories(db *gorm.DB) ports.Repositories {
 	return ports.Repositories{
-		Ledger:     &ledgerRepository{db: db},
-		Account:    &accountRepository{db: db},
-		Usage:      &usageRepository{db: db},
-		Conflict:   &conflictRepository{db: db},
-		Cursor:     &cursorRepository{db: db},
-		Period:     &periodRepository{db: db},
-		Economics:  &economicsRepository{db: db},
-		UserPeriod: &userPeriodStatRepository{db: db},
+		Ledger:      &ledgerRepository{db: db},
+		Account:     &accountRepository{db: db},
+		Usage:       &usageRepository{db: db},
+		Conflict:    &conflictRepository{db: db},
+		Cursor:      &cursorRepository{db: db},
+		Period:      &periodRepository{db: db},
+		Economics:   &economicsRepository{db: db},
+		UserPeriod:  &userPeriodStatRepository{db: db},
+		Reward:      &rewardRepository{db: db},
+		Idempotency: &idempotencyRepository{db: db},
 	}
 }
 

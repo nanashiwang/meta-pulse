@@ -14,6 +14,7 @@ func validConfig() Config {
 		IngestBatchSize:      500,
 		SettlementBatchSize:  100,
 		TicketThresholdMilli: 1000,
+		RewardRandomSecret:   strings.Repeat("r", 32),
 	}
 }
 

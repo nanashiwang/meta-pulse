@@ -65,6 +65,11 @@ func main() {
 		logger.Error("initialize request nonce store", "error", err)
 		os.Exit(1)
 	}
+	action, err := service.NewActionService(unit, service.ActionConfig{RandomSecret: []byte(cfg.RewardRandomSecret), ShadowMode: true})
+	if err != nil {
+		logger.Error("initialize action service", "error", err)
+		os.Exit(1)
+	}
 	profileAuth := transporthttp.SignedRequest(func(role string) []byte {
 		switch role {
 		case "new-api":
@@ -80,7 +85,7 @@ func main() {
 	metrics := observability.NewMetrics()
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           app.NewRouterWithProfileAndSummary(logger, readiness, profile, profile, profileAuth, metrics),
+		Handler:           app.NewRouterWithProfileSummaryAndAction(logger, readiness, profile, profile, action, profileAuth, metrics),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}

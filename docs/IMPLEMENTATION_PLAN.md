@@ -19,7 +19,8 @@
 ✅ M2 Usage Ingest 与等级  只读日志游标、统一 Mapper、事务记账、退款复核、等级 Profile 已落地
 🟡 M2.5 回测框架  只读回放、范围过滤、异常/覆盖率、倍率对比已落地；真实 LOG_DB 样本待环境接入
 🟡 M3 只读入口  Pulse 侧身份派生 summary/profile 已落地；new-api/YuanHeng/论坛接入待跨仓库推进
-⬜ M4-M7          见下文
+🟡 M4 Shadow Mode  Action、幂等、确定性随机、Ticket/Budget/Grant/Outbox 已落地；Settlement 仍禁发
+⬜ M5-M7          见下文
 ```
 
 本次已启动 M0 第一批：`services/pulse/` 已从 HTTP 桩升级为可装配的 API/Worker 基础，新增 16 张核心表 migration、依赖健康检查、结构化日志、Prometheus registry、UnitOfWork 事务边界和服务签名校验。`docs/OVERVIEW.md` 为未跟踪文件，本计划不依赖它，也不覆盖或删除它。
@@ -236,13 +237,14 @@ type UnitOfWork interface {
 
 ### M4｜Reward 内核与 Shadow Mode
 
-- [ ] API mutation 必须使用 Idempotency-Key；
-- [ ] 版本化 HMAC 确定性随机，保存 random value 和 config version；
-- [ ] 一个 Action 只能消费一张 Ticket、生成一个 Grant 和一个随机结果；
-- [ ] Budget reservation 与 hard cap；
-- [ ] 单事务写入 Ticket Spend、Budget Reservation、Reward Grant、Settlement Outbox；
-- [ ] 先只生成 `pending` Grant，不真实发额度；
-- [ ] 并发、响应丢失、DB 重启测试。
+- [x] API mutation 必须使用 Idempotency-Key；
+- [x] 版本化 HMAC 确定性随机，保存 random value 和 config version；
+- [x] 一个 Action 只能消费一张 Ticket、生成一个 Grant 和一个随机结果；
+- [x] Budget reservation 与 hard cap；
+- [x] 单事务写入 Ticket Spend、Budget Reservation、Reward Grant、Settlement Outbox；
+- [x] 先只生成 `pending` Grant，不真实发额度；Shadow outbox 不进入结算发送；
+- [x] 同一 Action/Idempotency-Key 重放 100 次及串行化并发测试；
+- [ ] 真实 MySQL 并发、commit 后响应丢失、DB 重启恢复测试（需 Compose 验收）。
 
 **出口：**同一 Action 重放 100 次只有一个 Grant；并发不超扣券、不超预算；网络失败不重新随机。
 
