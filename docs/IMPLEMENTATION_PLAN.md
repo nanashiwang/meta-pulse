@@ -300,7 +300,7 @@ type UnitOfWork interface {
 - [x] Pulse Internal Benefit API；
 - [x] Benefit 重复请求 payload 比较与 conflict；
 - [x] `/console/pulse` 路由、页面和导航入口；
-- [ ] 明确 `LOG_CONSUME_ENABLED` 的生产门禁；
+- [x] 明确 `LOG_CONSUME_ENABLED` 的生产门禁：new-api 新增 `PULSE_USAGE_LOG_REQUIRED=true`，启用后拒绝后台和配置同步关闭消费日志；
 - [ ] 明确 refund/task/correction 关联字段；
 - [ ] 评估增加 Provider 成本快照；
 - [ ] Benefit 与 SSO 服务密钥轮换、审计和限流。
