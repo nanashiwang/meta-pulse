@@ -100,6 +100,11 @@ func main() {
 		logger.Error("initialize content award service", "error", err)
 		os.Exit(1)
 	}
+	rewardHistory, err := service.NewRewardHistoryService(unit)
+	if err != nil {
+		logger.Error("initialize reward history service", "error", err)
+		os.Exit(1)
+	}
 
 	profileAuth := transporthttp.SignedRequest(func(role string) []byte {
 		switch role {
@@ -116,7 +121,7 @@ func main() {
 	metrics := observability.NewMetrics()
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           app.NewRouterWithProfileSummaryActionAndContent(logger, readiness, profile, profile, action, content, profileAuth, metrics),
+		Handler:           app.NewRouterWithProfileSummaryActionContentAndHistory(logger, readiness, profile, profile, action, content, rewardHistory, profileAuth, metrics),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}

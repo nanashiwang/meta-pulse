@@ -137,6 +137,21 @@ func (r *rewardRepository) SaveBudget(ctx context.Context, budget ports.RewardBu
 	return nil
 }
 
+func (r *rewardRepository) ListGrantsForUser(ctx context.Context, userID uint64, limit int) ([]ports.RewardGrant, error) {
+	if userID == 0 || limit <= 0 || limit > 100 {
+		return nil, errors.New("invalid reward history query")
+	}
+	var models []rewardGrantModel
+	if err := r.db.WithContext(ctx).Where("user_id = ?", userID).Order("created_at DESC, id DESC").Limit(limit).Find(&models).Error; err != nil {
+		return nil, fmt.Errorf("list reward history: %w", err)
+	}
+	result := make([]ports.RewardGrant, len(models))
+	for i := range models {
+		result[i] = rewardGrantFromModel(models[i])
+	}
+	return result, nil
+}
+
 func (r *rewardRepository) FindGrantByAction(ctx context.Context, periodID, userID uint64, actionID string) (*ports.RewardGrant, error) {
 	var model rewardGrantModel
 	err := r.db.WithContext(ctx).Where("period_id = ? AND user_id = ? AND action_id = ?", periodID, userID, actionID).Take(&model).Error

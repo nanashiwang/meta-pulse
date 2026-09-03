@@ -1004,3 +1004,7 @@ Answer 只读元数据
 - 管理路由只接受已签名且角色为 `admin` 的 Principal，操作人从签名身份派生；浏览器提交的 `user_id`、`actor_id` 等字段一律不可信。`Idempotency-Key` 是审核/撤销请求的必填字段。
 
 Pulse 侧 M7 已具备本地实现和内存回归测试；跨仓库仍需在真实环境验收 Answer 表结构/只读权限、new-api Benefit rollback/idempotency 及论坛 SSO 降级链路。
+
+## 38. 用户奖励历史只读投影
+
+`GET /v1/internal/me/rewards` 由已验签 Principal 派生用户身份，查询 Pulse 内部 Grant 记录但只返回 `grant_id`、周期、action、奖励类型、额度、状态和创建时间。`budget_type`、`source_ref`、随机值、内部 payload 和管理审计字段不得进入该响应；`user_id` 查询参数即使出现也不会改变查询主体。该接口只读，不改变任何 Ledger、Budget、Grant 或 Settlement 状态。

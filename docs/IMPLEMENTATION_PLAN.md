@@ -18,7 +18,7 @@
 ✅ M1 Ledger 记账内核    领域账本、账户快照、幂等冲突、重建与 ledger-check 已落地
 ✅ M2 Usage Ingest 与等级  只读日志游标、统一 Mapper、事务记账、退款复核、等级 Profile 已落地
 🟡 M2.5 回测框架  只读回放、范围过滤、异常/覆盖率、倍率对比已落地；真实 LOG_DB 样本待环境接入
-🟡 M3 只读入口  Pulse 侧身份派生 summary/profile 已落地；new-api/YuanHeng/论坛接入待跨仓库推进
+🟡 M3 只读入口  Pulse 侧 summary/profile/奖励历史已落地；new-api/YuanHeng/论坛接入待跨仓库推进
 🟡 M4 Shadow Mode  Action、幂等、确定性随机、Ticket/Budget/Grant/Outbox 已落地；真实 MySQL 恢复验收待 Compose
 🟡 M5 Settlement  Pulse Benefit Client、Outbox 退避、Query/Reconcile/Rollback 已落地；new-api 接收端待跨仓库接入
 ✅ M6 周期与运营       Period Close、稳定周期奖励、Holdout 固化、人工调整审计、日指标聚合已落地；真实 MySQL 中断恢复待 Compose 验收
@@ -229,7 +229,7 @@ type UnitOfWork interface {
 - [ ] new-api `/console/pulse` 页面与路由；
 - [x] Pulse 提供只读 `/v1/internal/me/summary`，用户由已验签 Principal 派生，不接受浏览器 user_id；
 - [x] Pulse profile/summary 返回当前 Period、贡献值、可用券、等级和当前周期 Ledger；
-- [ ] 奖励历史（待 M4 Reward Grant 读模型落地）；
+- [x] Pulse 奖励历史只读投影 `/v1/internal/me/rewards`，仅返回当前 Principal 的安全字段；
 - [ ] YuanHeng 通过隔离 WebView 打开 `/console/pulse`；
 - [ ] YuanHeng session/API Token 改用 OS 安全存储，用户名密码不落盘；
 - [ ] 论坛展示 Pulse 等级，Pulse 故障时降级；

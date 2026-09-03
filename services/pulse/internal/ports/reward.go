@@ -67,6 +67,13 @@ type IdempotencyRecord struct {
 	ExpiresAt      *time.Time
 }
 
+// RewardHistoryRepository exposes only the user-safe read model needed by
+// the product/API layer. It is separate from mutation-oriented RewardRepository
+// so a read endpoint cannot accidentally gain mutation semantics.
+type RewardHistoryRepository interface {
+	ListGrantsForUser(ctx context.Context, userID uint64, limit int) ([]RewardGrant, error)
+}
+
 type RewardRepository interface {
 	ListDefinitions(ctx context.Context, periodID uint64) ([]reward.Definition, error)
 	GetBudgetForUpdate(ctx context.Context, periodID uint64, budgetType string) (RewardBudget, error)
