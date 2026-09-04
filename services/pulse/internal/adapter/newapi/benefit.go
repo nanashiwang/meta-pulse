@@ -46,6 +46,15 @@ func NewBenefitClient(baseURL string, secret []byte, client *http.Client) (*Bene
 	if client == nil {
 		client = &http.Client{Timeout: 10 * time.Second}
 	}
+	// Benefit requests carry a service signature and must never follow a
+	// redirect. A redirect could forward that signed request to an unintended
+	// host or path. Clone the caller's client so this safety policy does not
+	// mutate a client shared by other integrations.
+	clientCopy := *client
+	clientCopy.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	client = &clientCopy
 	parsed.Path = ""
 	parsed.RawPath = ""
 	return &BenefitClient{baseURL: parsed.String(), secret: append([]byte(nil), secret...), role: "pulse-settlement", http: client, now: time.Now}, nil

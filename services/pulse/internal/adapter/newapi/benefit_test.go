@@ -160,3 +160,31 @@ func TestBenefitClientRejectsOversizedResponse(t *testing.T) {
 		t.Fatalf("err=%v", err)
 	}
 }
+
+func TestBenefitClientNeverFollowsRedirects(t *testing.T) {
+	redirected := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/internal/pulse/benefits/query":
+			http.Redirect(w, r, "/unexpected", http.StatusFound)
+		case "/unexpected":
+			redirected = true
+			w.WriteHeader(http.StatusOK)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewBenefitClient(server.URL, []byte("benefit-secret"), server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.Query(context.Background(), "pg_1")
+	if err == nil || !strings.Contains(err.Error(), "status 302") {
+		t.Fatalf("redirect error=%v, want original 302 response", err)
+	}
+	if redirected {
+		t.Fatal("benefit client followed a redirect")
+	}
+}
