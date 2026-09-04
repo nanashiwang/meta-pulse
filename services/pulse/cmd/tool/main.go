@@ -316,7 +316,9 @@ func runAccessCheck() error {
 	if err != nil {
 		return err
 	}
-	if err := cfg.ValidateWorker(); err != nil {
+	// Permission checks must not require Benefit connectivity or its HMAC
+	// secret; those are unrelated to proving LOG_DB is read-only.
+	if err := cfg.ValidateLogReader(); err != nil {
 		return err
 	}
 	reader, err := newapi.OpenLogReader(cfg.NewAPILogDSN)

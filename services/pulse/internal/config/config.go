@@ -216,10 +216,17 @@ func (cfg Config) AdminHMACSecrets() [][]byte {
 	return secretPair(cfg.AdminHMACSecret, cfg.AdminHMACSecretPrevious)
 }
 
+func (cfg Config) ValidateLogReader() error {
+	if strings.TrimSpace(cfg.NewAPILogDSN) == "" {
+		return errors.New("NEWAPI_LOG_DSN is required for LOG_DB access")
+	}
+	return nil
+}
+
 func (cfg Config) ValidateWorker() error {
 	var errs []error
-	if strings.TrimSpace(cfg.NewAPILogDSN) == "" {
-		errs = append(errs, errors.New("NEWAPI_LOG_DSN is required for worker"))
+	if err := cfg.ValidateLogReader(); err != nil {
+		errs = append(errs, err)
 	}
 	if strings.TrimSpace(cfg.NewAPIInternalURL) == "" {
 		errs = append(errs, errors.New("NEWAPI_INTERNAL_BASE_URL is required for worker"))

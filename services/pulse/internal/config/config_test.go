@@ -48,6 +48,18 @@ func TestValidateProductionSecretsFailClosed(t *testing.T) {
 	}
 }
 
+func TestValidateLogReaderOnlyRequiresLogDSN(t *testing.T) {
+	cfg := validConfig()
+	cfg.NewAPILogDSN = "readonly@tcp(newapi-mysql:3306)/new_api"
+	if err := cfg.ValidateLogReader(); err != nil {
+		t.Fatalf("log reader should not require Benefit settings: %v", err)
+	}
+	cfg.NewAPILogDSN = ""
+	if err := cfg.ValidateLogReader(); err == nil || !strings.Contains(err.Error(), "NEWAPI_LOG_DSN") {
+		t.Fatalf("missing log DSN error = %v", err)
+	}
+}
+
 func TestValidateWorkerUsesReadOnlyIntegrationSettings(t *testing.T) {
 	cfg := validConfig()
 	if err := cfg.ValidateWorker(); err == nil {
