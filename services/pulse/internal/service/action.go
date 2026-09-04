@@ -133,6 +133,9 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 		if err != nil {
 			return err
 		}
+		if err := validateRewardDefinitions(definitions, activity.ConfigVersion); err != nil {
+			return err
+		}
 		randomBytes, err := reward.Derive(s.secret, activity.ID, command.UserID, command.ActionID, activity.ConfigVersion)
 		if err != nil {
 			return err
@@ -140,9 +143,6 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 		definition, err := reward.SelectWeighted(definitions, randomBytes)
 		if err != nil {
 			return err
-		}
-		if definition.Amount < 0 {
-			return errors.New("reward amount cannot be negative")
 		}
 		ticketAccount, err := repos.Account.GetOrCreateForUpdate(ctx, command.UserID, activity.ID, ledger.AssetTicket)
 		if err != nil {
@@ -234,6 +234,26 @@ func actionPayloadHash(command ActionCommand, periodID uint64, configVersion str
 	}{periodID, configVersion, command.UserID, command.ActionID, command.TriggerType})
 	digest := sha256.Sum256(payload)
 	return hex.EncodeToString(digest[:])
+}
+
+func validateRewardDefinitions(definitions []reward.Definition, configVersion string) error {
+	for _, definition := range definitions {
+		if !definition.Enabled {
+			continue
+		}
+		// A malformed enabled row must fail the whole immutable probability
+		// table. Silently skipping it would renormalize every other weight.
+		if !definition.Valid() || definition.Amount <= 0 {
+			return fmt.Errorf("invalid enabled reward definition %d", definition.ID)
+		}
+		if definition.ConfigVersion != configVersion {
+			return fmt.Errorf("reward definition %d config version mismatch", definition.ID)
+		}
+		if definition.TransferableQuota {
+			return fmt.Errorf("reward definition %d requests transferable quota", definition.ID)
+		}
+	}
+	return nil
 }
 
 func reserveBudget(budget *ports.RewardBudget, amount int64) error {

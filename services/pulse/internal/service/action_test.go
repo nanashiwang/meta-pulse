@@ -278,3 +278,31 @@ func TestActionRejectsOversizedDatabaseIdentifiers(t *testing.T) {
 		t.Fatalf("oversized action mutated state entries=%d grants=%d", len(store.entries), len(rewardStore.grants))
 	}
 }
+
+func TestActionFailsClosedForInvalidRewardTable(t *testing.T) {
+	tests := []struct {
+		name       string
+		definition reward.Definition
+	}{
+		{name: "zero amount", definition: reward.Definition{ID: 3, RewardKey: "zero", RewardType: "quota", Amount: 0, Weight: 1, ConfigVersion: "v1", Enabled: true}},
+		{name: "wrong version", definition: reward.Definition{ID: 3, RewardKey: "wrong-version", RewardType: "quota", Amount: 1, Weight: 1, ConfigVersion: "v2", Enabled: true}},
+		{name: "transferable", definition: reward.Definition{ID: 3, RewardKey: "transferable", RewardType: "quota", Amount: 1, Weight: 1, TransferableQuota: true, ConfigVersion: "v1", Enabled: true}},
+		{name: "zero weight", definition: reward.Definition{ID: 3, RewardKey: "zero-weight", RewardType: "quota", Amount: 1, Weight: 0, ConfigVersion: "v1", Enabled: true}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store, rewards, idem := setupActionStore()
+			// Include a valid row to verify an invalid enabled row is not silently
+			// skipped, which would change the configured probability table.
+			rewards.definitions = append(rewards.definitions, tt.definition)
+			action := newActionService(t, store, rewards, idem)
+			_, err := action.Execute(context.Background(), ActionCommand{UserID: 9, ActionID: "invalid-table", TriggerType: "pulse", IdempotencyKey: "invalid-table"})
+			if err == nil {
+				t.Fatal("invalid reward table was accepted")
+			}
+			if len(store.entries) != 0 || len(rewards.grants) != 0 || len(rewards.outboxes) != 0 || rewards.budgets[budgetKey(4, ActionBudgetType)].ReservedAmount != 0 {
+				t.Fatalf("invalid table mutated state entries=%d grants=%d outboxes=%d budget=%+v", len(store.entries), len(rewards.grants), len(rewards.outboxes), rewards.budgets[budgetKey(4, ActionBudgetType)])
+			}
+		})
+	}
+}

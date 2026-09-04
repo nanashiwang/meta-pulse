@@ -217,6 +217,9 @@ func createPeriodRewards(ctx context.Context, repos ports.Repositories, activity
 	if len(definitions) == 0 {
 		return 0, nil
 	}
+	if err := validateRewardDefinitions(definitions, activity.ConfigVersion); err != nil {
+		return 0, err
+	}
 	budget, err := repos.Reward.GetBudgetForUpdate(ctx, activity.ID, "period_reward")
 	if err != nil {
 		return 0, err
@@ -239,12 +242,6 @@ func createPeriodRewards(ctx context.Context, repos ports.Repositories, activity
 		definition, err := reward.SelectWeighted(definitions, randomBytes)
 		if err != nil {
 			return created, err
-		}
-		if definition.ConfigVersion != activity.ConfigVersion {
-			return created, fmt.Errorf("period %d reward definition %d config version mismatch", activity.ID, definition.ID)
-		}
-		if definition.TransferableQuota {
-			return created, fmt.Errorf("period %d reward definition %d requests transferable quota", activity.ID, definition.ID)
 		}
 		if err := reserveBudget(&budget, definition.Amount); err != nil {
 			return created, err

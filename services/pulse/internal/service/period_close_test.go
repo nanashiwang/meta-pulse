@@ -204,3 +204,19 @@ func TestPeriodCloseSkipsPeriodClosedAfterListing(t *testing.T) {
 		t.Fatalf("period=%+v transitions=%v", admin.periods[0], admin.transitions)
 	}
 }
+
+func TestPeriodCloseFailsClosedForInvalidRewardTable(t *testing.T) {
+	closer, ledgerStore, rewardStore, admin, now := setupPeriodClose(t, true)
+	rewardStore.definitions = append(rewardStore.definitions, reward.Definition{ID: 9, RewardKey: "wrong-version", RewardType: "quota", Amount: 10, Weight: 1, ConfigVersion: "v2", Enabled: true})
+	appendCloseAccountEntry(t, ledgerStore, ledger.Entry{UserID: 9, PeriodID: 4, AssetType: ledger.AssetContribution, Operation: ledger.OperationContributionEarn, Amount: 1000, SourceType: "usage", SourceRef: "event:1", IdempotencyKey: "contribution:event:1", PayloadHash: "hash-1", CreatedAt: now})
+	report, err := closer.RunOnce(context.Background())
+	if err != nil || report.Failed != 1 || report.Closed != 0 {
+		t.Fatalf("report=%+v err=%v", report, err)
+	}
+	if len(rewardStore.grants) != 0 || len(rewardStore.outboxes) != 0 || rewardStore.budgets[budgetKey(4, "period_reward")].ReservedAmount != 0 {
+		t.Fatalf("invalid table created rewards grants=%d outboxes=%d budget=%+v", len(rewardStore.grants), len(rewardStore.outboxes), rewardStore.budgets[budgetKey(4, "period_reward")])
+	}
+	if admin.periods[0].Status != period.StatusSettling {
+		t.Fatalf("memory fixture did not reach validation path: period=%+v", admin.periods[0])
+	}
+}
