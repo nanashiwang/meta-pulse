@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -199,5 +201,42 @@ func TestBacktestFailsWhenSourceCursorDoesNotAdvance(t *testing.T) {
 	_, err := newBacktest(t, store, stuckBacktestSource{event: backtestEvent("same", at, usage.EventConsume, 1)}).Run(context.Background(), time.Time{}, time.Time{})
 	if err == nil || err.Error() != "backtest source did not advance cursor" {
 		t.Fatalf("error=%v", err)
+	}
+}
+
+func TestBacktestFailsOnComparisonMultiplierOverflow(t *testing.T) {
+	store := newMemoryLedgerStore()
+	at := time.Unix(1_700_000_000, 0).UTC()
+	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, ConfigVersion: "v1", StartsAt: at.Add(-time.Hour), EndsAt: at.Add(time.Hour)}}
+	store.rules[4] = []economics.Rule{{ID: 1, Key: "default", Eligible: true, MultiplierBps: 1, ConfigVersion: "v1"}}
+	service, err := NewBacktestService(memoryUnit{store: store}, backtestSource{events: []usage.Event{backtestEvent("overflow", at, usage.EventConsume, math.MaxInt64)}}, BacktestConfig{
+		BatchSize: 10, TicketThresholdMilli: 1, ManualMultiplierBps: money.MaxBps,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Run(context.Background(), time.Time{}, time.Time{}); !errors.Is(err, ErrBacktestOverflow) {
+		t.Fatalf("error=%v, want backtest overflow", err)
+	}
+}
+
+func TestBacktestFailsInsteadOfSaturatingAggregate(t *testing.T) {
+	store := newMemoryLedgerStore()
+	at := time.Unix(1_700_000_000, 0).UTC()
+	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, ConfigVersion: "v1", StartsAt: at.Add(-time.Hour), EndsAt: at.Add(time.Hour)}}
+	store.rules[4] = []economics.Rule{{ID: 1, Key: "default", Eligible: true, MultiplierBps: money.BpsOne, ConfigVersion: "v1"}}
+	events := []usage.Event{
+		backtestEvent("max", at, usage.EventConsume, math.MaxInt64),
+		backtestEvent("extra", at.Add(time.Second), usage.EventConsume, 1),
+	}
+	if _, err := newBacktest(t, store, backtestSource{events: events}).Run(context.Background(), time.Time{}, time.Time{}); !errors.Is(err, ErrBacktestOverflow) {
+		t.Fatalf("error=%v, want backtest overflow", err)
+	}
+}
+
+func TestFinalTicketsFailsInsteadOfSaturating(t *testing.T) {
+	_, err := finalTickets(map[string]int64{"one": math.MaxInt64, "two": 1}, 1)
+	if !errors.Is(err, ErrBacktestOverflow) {
+		t.Fatalf("error=%v, want backtest overflow", err)
 	}
 }

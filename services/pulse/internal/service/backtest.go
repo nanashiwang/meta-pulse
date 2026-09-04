@@ -13,6 +13,8 @@ import (
 	"github.com/nanashiwang/meta-pulse/internal/ports"
 )
 
+var ErrBacktestOverflow = errors.New("backtest integer overflow")
+
 type BacktestConfig struct {
 	BatchSize            int
 	TicketThresholdMilli int64
@@ -92,7 +94,7 @@ func (s *BacktestService) Run(ctx context.Context, from, to time.Time) (Backtest
 			return report, err
 		}
 		if len(events) == 0 {
-			return s.finish(report, users, nets), nil
+			return s.finish(report, users, nets)
 		}
 		for _, event := range events {
 			report.Fetched++
@@ -107,7 +109,7 @@ func (s *BacktestService) Run(ctx context.Context, from, to time.Time) (Backtest
 				}
 			}
 			if !to.IsZero() && !event.SourceCreatedAt.Before(to) {
-				return s.finish(report, users, nets), nil
+				return s.finish(report, users, nets)
 			}
 			if !from.IsZero() && event.SourceCreatedAt.Before(from) {
 				continue
@@ -140,12 +142,16 @@ func (s *BacktestService) Run(ctx context.Context, from, to time.Time) (Backtest
 	}
 }
 
-func (s *BacktestService) finish(report BacktestReport, users map[uint64]struct{}, nets map[string]int64) BacktestReport {
+func (s *BacktestService) finish(report BacktestReport, users map[uint64]struct{}, nets map[string]int64) (BacktestReport, error) {
 	report.UniqueUsers = len(users)
 	report.CoverageBps = ratioBps(report.EligibleEvents, report.InRange)
 	report.AnomalyBps = ratioBps(report.ManualReviewEvents+report.NoActivePeriodEvents+report.NoMatchingRuleEvents+report.RefundCorrelationGaps, report.InRange)
-	report.FinalTicketEntitlement = finalTickets(nets, s.cfg.TicketThresholdMilli)
-	return report
+	finalTickets, err := finalTickets(nets, s.cfg.TicketThresholdMilli)
+	if err != nil {
+		return report, err
+	}
+	report.FinalTicketEntitlement = finalTickets
+	return report, nil
 }
 
 func (s *BacktestService) evaluate(ctx context.Context, event usage.Event, seenRequests, seenConsumes map[string]usage.Event, report *BacktestReport, nets map[string]int64) error {
@@ -183,21 +189,52 @@ func (s *BacktestService) evaluate(ctx context.Context, event usage.Event, seenR
 		}
 		if decision.Eligible {
 			report.EligibleEvents++
-			report.NetContributionMilli = addInt64(report.NetContributionMilli, int64(decision.Contribution))
+			var err error
+			report.NetContributionMilli, err = addBacktestInt64(report.NetContributionMilli, int64(decision.Contribution), "net contribution")
+			if err != nil {
+				return err
+			}
 			key := fmt.Sprintf("%d:%d", event.UserID, activity.ID)
-			nets[key] = addInt64(nets[key], int64(decision.Contribution))
+			nets[key], err = addBacktestInt64(nets[key], int64(decision.Contribution), "user-period contribution")
+			if err != nil {
+				return err
+			}
 			// quota is a user-side estimate, not provider cost. A refund reduces
 			// the estimate; provider cost remains unavailable from LOG_DB.
-			report.EstimatedCostQuota = addInt64(report.EstimatedCostQuota, event.QuotaDelta)
-			report.Comparison.ManualContributionMilli = addInt64(report.Comparison.ManualContributionMilli, contributionWithMultiplier(event.QuotaDelta, s.cfg.ManualMultiplierBps))
-			report.Comparison.ModelContributionMilli = addInt64(report.Comparison.ModelContributionMilli, compareRule(event, rules, true))
-			report.Comparison.ChannelContributionMilli = addInt64(report.Comparison.ChannelContributionMilli, compareRule(event, rules, false))
+			report.EstimatedCostQuota, err = addBacktestInt64(report.EstimatedCostQuota, event.QuotaDelta, "estimated cost quota")
+			if err != nil {
+				return err
+			}
+			manual, err := contributionWithMultiplier(event.QuotaDelta, s.cfg.ManualMultiplierBps)
+			if err != nil {
+				return fmt.Errorf("manual multiplier comparison: %w", err)
+			}
+			model, err := compareRule(event, rules, true)
+			if err != nil {
+				return fmt.Errorf("model multiplier comparison: %w", err)
+			}
+			channel, err := compareRule(event, rules, false)
+			if err != nil {
+				return fmt.Errorf("channel multiplier comparison: %w", err)
+			}
+			report.Comparison.ManualContributionMilli, err = addBacktestInt64(report.Comparison.ManualContributionMilli, manual, "manual comparison contribution")
+			if err != nil {
+				return err
+			}
+			report.Comparison.ModelContributionMilli, err = addBacktestInt64(report.Comparison.ModelContributionMilli, model, "model comparison contribution")
+			if err != nil {
+				return err
+			}
+			report.Comparison.ChannelContributionMilli, err = addBacktestInt64(report.Comparison.ChannelContributionMilli, channel, "channel comparison contribution")
+			if err != nil {
+				return err
+			}
 		}
 		return nil
 	})
 }
 
-func compareRule(event usage.Event, rules []economics.Rule, byModel bool) int64 {
+func compareRule(event usage.Event, rules []economics.Rule, byModel bool) (int64, error) {
 	candidates := make([]economics.Rule, 0, len(rules))
 	for _, candidate := range rules {
 		if byModel {
@@ -214,31 +251,31 @@ func compareRule(event usage.Event, rules []economics.Rule, byModel bool) int64 
 	}
 	rule, ok := economics.Select(candidates, event.ModelName, event.ChannelID)
 	if !ok || !rule.Eligible {
-		return 0
+		return 0, nil
 	}
 	return contributionWithMultiplier(event.QuotaDelta, rule.MultiplierBps)
 }
 
-func contributionWithMultiplier(quota int64, multiplier money.Bps) int64 {
+func contributionWithMultiplier(quota int64, multiplier money.Bps) (int64, error) {
 	value, err := money.Milli(quota).MultiplyBps(multiplier)
 	if err != nil {
-		return 0
+		return 0, fmt.Errorf("%w: %v", ErrBacktestOverflow, err)
 	}
-	return int64(value)
+	return int64(value), nil
 }
 
-func finalTickets(nets map[string]int64, threshold int64) int64 {
+func finalTickets(nets map[string]int64, threshold int64) (int64, error) {
 	var total int64
 	for _, net := range nets {
 		if net <= 0 {
 			continue
 		}
 		if net/threshold > math.MaxInt64-total {
-			return math.MaxInt64
+			return 0, fmt.Errorf("%w: final ticket entitlement", ErrBacktestOverflow)
 		}
 		total += net / threshold
 	}
-	return total
+	return total, nil
 }
 
 func ratioBps(numerator, denominator int) int64 {
@@ -290,12 +327,12 @@ func refundCorrelationMatches(ctx context.Context, repos ports.Repositories, eve
 	return err == nil && activity.ID == periodID
 }
 
-func addInt64(left, right int64) int64 {
+func addBacktestInt64(left, right int64, field string) (int64, error) {
 	if right > 0 && left > math.MaxInt64-right {
-		return math.MaxInt64
+		return 0, fmt.Errorf("%w: %s", ErrBacktestOverflow, field)
 	}
 	if right < 0 && left < math.MinInt64-right {
-		return math.MinInt64
+		return 0, fmt.Errorf("%w: %s", ErrBacktestOverflow, field)
 	}
-	return left + right
+	return left + right, nil
 }
