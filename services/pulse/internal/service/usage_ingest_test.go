@@ -136,3 +136,34 @@ func TestBackfillDryRunDoesNotWritePulseState(t *testing.T) {
 		t.Fatalf("report=%+v usage=%d ledger=%d cursor=%+v", report, len(store.usageEvents), len(store.entries), store.cursor)
 	}
 }
+
+func TestBackfillUsesHalfOpenEnd(t *testing.T) {
+	store := newMemoryLedgerStore()
+	start := time.Unix(1_700_000_000, 0).UTC()
+	boundary := start.Add(time.Hour)
+	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, StartsAt: start.Add(-time.Hour), EndsAt: boundary.Add(time.Hour)}}
+	store.rules[4] = []economics.Rule{{ID: 8, Key: "default", Eligible: true, MultiplierBps: 10000}}
+
+	inRange := ingestEvent("1", "hash-1", usage.EventConsume, 100)
+	inRange.SourceCreatedAt = start.Add(30 * time.Minute)
+	atBoundary := ingestEvent("2", "hash-2", usage.EventConsume, 200)
+	atBoundary.SourceCreatedAt = boundary
+	backfill, err := NewBackfillService(
+		newIngestService(t, store, cursorAwareSource{events: []usage.Event{inRange, atBoundary}}),
+		cursorAwareSource{events: []usage.Event{inRange, atBoundary}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := backfill.Run(context.Background(), BackfillOptions{From: start, To: boundary})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Fetched != 2 || report.InRange != 1 || report.Accepted != 1 {
+		t.Fatalf("report=%+v, want only the event before the end boundary", report)
+	}
+	if len(store.usageEvents) != 1 || store.usageEvents[0].SourceEventID != "1" {
+		t.Fatalf("usage events=%+v, want only event 1", store.usageEvents)
+	}
+}

@@ -66,7 +66,7 @@ func (s *BackfillService) Run(ctx context.Context, options BackfillOptions) (Bac
 		}
 		for _, event := range events {
 			report.Fetched++
-			if !options.To.IsZero() && event.SourceCreatedAt.After(options.To) {
+			if !options.To.IsZero() && !event.SourceCreatedAt.Before(options.To) {
 				return report, nil
 			}
 			if !options.From.IsZero() && event.SourceCreatedAt.Before(options.From) {
