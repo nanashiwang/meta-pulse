@@ -9,6 +9,7 @@ import (
 
 type PeriodAdminRepository interface {
 	ListDueForClose(ctx context.Context, now time.Time, limit int) ([]period.Period, error)
+	FindByIDForUpdate(ctx context.Context, periodID uint64) (period.Period, error)
 	Transition(ctx context.Context, periodID uint64, from, to period.Status, at time.Time) error
 }
 

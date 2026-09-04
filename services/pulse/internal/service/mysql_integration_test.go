@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/nanashiwang/meta-pulse/internal/domain/ledger"
+	"github.com/nanashiwang/meta-pulse/internal/domain/period"
 	"github.com/nanashiwang/meta-pulse/internal/domain/usage"
 	"github.com/nanashiwang/meta-pulse/internal/ports"
 	mysqlstore "github.com/nanashiwang/meta-pulse/internal/store/mysql"
@@ -326,6 +327,84 @@ WHERE user_id = ? AND period_id = ? AND asset_type = 'contribution'`, userID, pe
 	}
 	if expired != 1 || grants != 1 || outboxes != 1 {
 		t.Fatalf("replayed close duplicates expired=%d grants=%d outboxes=%d", expired, grants, outboxes)
+	}
+}
+
+func TestMySQLPeriodCloseConcurrentRecheck(t *testing.T) {
+	database, sqlDB := openMySQLIntegration(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	periodKey := fmt.Sprintf("integration-period-concurrent-%d", time.Now().UnixNano())
+	cursorName := fmt.Sprintf("integration-period-concurrent-cursor-%d", time.Now().UnixNano())
+	sourceSystem := "integration-period-close"
+	startsAt := now.Add(-time.Hour)
+	endsAt := now.Add(-time.Minute)
+	var periodID uint64
+	if _, err := sqlDB.ExecContext(ctx, `
+INSERT INTO pulse_period (period_key, status, starts_at, ends_at, timezone, config_version, random_version)
+VALUES (?, 'active', ?, ?, 'Asia/Shanghai', 'integration-v1', 'hmac-v1')`, periodKey, startsAt, endsAt); err != nil {
+		t.Fatalf("insert concurrent close period: %v", err)
+	}
+	if err := sqlDB.QueryRowContext(ctx, `SELECT id FROM pulse_period WHERE period_key = ?`, periodKey).Scan(&periodID); err != nil {
+		t.Fatalf("read concurrent close period: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = sqlDB.Exec(`DELETE FROM pulse_worker_cursor WHERE cursor_name = ? AND source_system = ?`, cursorName, sourceSystem)
+		_, _ = sqlDB.Exec(`DELETE FROM pulse_period WHERE id = ?`, periodID)
+	})
+	if _, err := sqlDB.ExecContext(ctx, `
+INSERT INTO pulse_worker_cursor (cursor_name, source_system, cursor_value, watermark_at, version)
+VALUES (?, ?, '', ?, 0)`, cursorName, sourceSystem, endsAt); err != nil {
+		t.Fatalf("insert concurrent close cursor: %v", err)
+	}
+
+	unit, err := mysqlstore.NewUnitOfWork(database)
+	if err != nil {
+		t.Fatalf("create concurrent close unit of work: %v", err)
+	}
+	newCloser := func() *PeriodCloseService {
+		closer, err := NewPeriodCloseService(unit, PeriodCloseConfig{
+			BatchSize: 1, CursorName: cursorName, SourceSystem: sourceSystem,
+			RequireWatermark: true, Now: func() time.Time { return now },
+		})
+		if err != nil {
+			t.Fatalf("create concurrent close service: %v", err)
+		}
+		return closer
+	}
+
+	reports := make([]PeriodCloseReport, 2)
+	errs := make([]error, 2)
+	var group sync.WaitGroup
+	group.Add(2)
+	for i := range reports {
+		go func(index int) {
+			defer group.Done()
+			reports[index], errs[index] = newCloser().RunOnce(ctx)
+		}(i)
+	}
+	group.Wait()
+
+	closed, failed, checked := 0, 0, 0
+	for i := range reports {
+		if errs[i] != nil {
+			t.Fatalf("concurrent period close %d returned error: %v", i, errs[i])
+		}
+		closed += reports[i].Closed
+		failed += reports[i].Failed
+		checked += reports[i].Checked
+	}
+	if closed != 1 || failed != 0 || checked < 1 {
+		t.Fatalf("concurrent close reports=%+v closed=%d failed=%d checked=%d", reports, closed, failed, checked)
+	}
+	var status string
+	if err := sqlDB.QueryRowContext(ctx, `SELECT status FROM pulse_period WHERE id = ?`, periodID).Scan(&status); err != nil {
+		t.Fatalf("read concurrent close status: %v", err)
+	}
+	if status != string(period.StatusClosed) {
+		t.Fatalf("concurrent close status=%q", status)
 	}
 }
 

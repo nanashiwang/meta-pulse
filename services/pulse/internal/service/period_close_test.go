@@ -14,9 +14,10 @@ import (
 )
 
 type periodAdminMemory struct {
-	periods         []period.Period
-	transitions     []string
-	failClosingOnce bool
+	periods           []period.Period
+	transitions       []string
+	failClosingOnce   bool
+	closeBeforeReRead bool
 }
 
 func (m *periodAdminMemory) ListDueForClose(_ context.Context, now time.Time, limit int) ([]period.Period, error) {
@@ -29,7 +30,24 @@ func (m *periodAdminMemory) ListDueForClose(_ context.Context, now time.Time, li
 			}
 		}
 	}
+	if m.closeBeforeReRead && len(result) > 0 {
+		m.closeBeforeReRead = false
+		for i := range m.periods {
+			if m.periods[i].ID == result[0].ID {
+				m.periods[i].Status = period.StatusClosed
+			}
+		}
+	}
 	return result, nil
+}
+
+func (m *periodAdminMemory) FindByIDForUpdate(_ context.Context, periodID uint64) (period.Period, error) {
+	for _, candidate := range m.periods {
+		if candidate.ID == periodID {
+			return candidate, nil
+		}
+	}
+	return period.Period{}, ports.ErrNotFound
 }
 
 func (m *periodAdminMemory) Transition(_ context.Context, periodID uint64, from, to period.Status, _ time.Time) error {
@@ -172,5 +190,17 @@ func TestPeriodCloseHardBudgetPreventsAnyReward(t *testing.T) {
 	report, err := closer.RunOnce(context.Background())
 	if err != nil || report.Failed != 1 || len(rewardStore.grants) != 0 || admin.periods[0].Status != period.StatusSettling {
 		t.Fatalf("report=%+v err=%v grants=%d period=%+v", report, err, len(rewardStore.grants), admin.periods[0])
+	}
+}
+
+func TestPeriodCloseSkipsPeriodClosedAfterListing(t *testing.T) {
+	closer, _, _, admin, _ := setupPeriodClose(t, false)
+	admin.closeBeforeReRead = true
+	report, err := closer.RunOnce(context.Background())
+	if err != nil || report.Checked != 1 || report.Closed != 0 || report.Failed != 0 {
+		t.Fatalf("report=%+v err=%v", report, err)
+	}
+	if admin.periods[0].Status != period.StatusClosed || len(admin.transitions) != 0 {
+		t.Fatalf("period=%+v transitions=%v", admin.periods[0], admin.transitions)
 	}
 }

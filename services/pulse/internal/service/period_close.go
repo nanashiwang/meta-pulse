@@ -100,6 +100,7 @@ func (s *PeriodCloseService) RunOnce(ctx context.Context) (PeriodCloseReport, er
 
 func (s *PeriodCloseService) closeOne(ctx context.Context, activity period.Period) (bool, int, int, error) {
 	var expired, rewards int
+	closed := false
 	err := s.unit.Do(ctx, func(repos ports.Repositories) error {
 		if repos.PeriodAdmin == nil || repos.Cursor == nil || repos.Account == nil || repos.Ledger == nil {
 			return errors.New("period close repositories are not initialized")
@@ -108,6 +109,20 @@ func (s *PeriodCloseService) closeOne(ctx context.Context, activity period.Perio
 		if err != nil {
 			return err
 		}
+		// ListDueForClose runs in a separate read transaction. Re-read and lock
+		// the period here so another worker cannot make decisions from the stale
+		// status returned by that listing transaction.
+		current, err := repos.PeriodAdmin.FindByIDForUpdate(ctx, activity.ID)
+		if err != nil {
+			return err
+		}
+		if current.Status == period.StatusClosed {
+			return nil
+		}
+		if current.Status != period.StatusActive && current.Status != period.StatusSettling {
+			return fmt.Errorf("period %d has unexpected close status %s", current.ID, current.Status)
+		}
+		activity = current
 		if s.cfg.RequireWatermark && (cursor.WatermarkAt == nil || cursor.WatermarkAt.Before(activity.EndsAt)) {
 			return ErrPeriodWatermarkNotReady
 		}
@@ -115,6 +130,7 @@ func (s *PeriodCloseService) closeOne(ctx context.Context, activity period.Perio
 			if err := repos.PeriodAdmin.Transition(ctx, activity.ID, period.StatusActive, period.StatusSettling, s.cfg.Now()); err != nil {
 				return err
 			}
+			activity.Status = period.StatusSettling
 		}
 		if err := reconcilePeriod(ctx, repos, activity.ID); err != nil {
 			return err
@@ -129,9 +145,13 @@ func (s *PeriodCloseService) closeOne(ctx context.Context, activity period.Perio
 				return err
 			}
 		}
-		return repos.PeriodAdmin.Transition(ctx, activity.ID, period.StatusSettling, period.StatusClosed, s.cfg.Now())
+		if err := repos.PeriodAdmin.Transition(ctx, activity.ID, period.StatusSettling, period.StatusClosed, s.cfg.Now()); err != nil {
+			return err
+		}
+		closed = true
+		return nil
 	})
-	return err == nil, expired, rewards, err
+	return closed, expired, rewards, err
 }
 
 func reconcilePeriod(ctx context.Context, repos ports.Repositories, periodID uint64) error {

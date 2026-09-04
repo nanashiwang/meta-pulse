@@ -70,6 +70,20 @@ func (r *periodAdminRepository) ListDueForClose(ctx context.Context, now time.Ti
 	return result, nil
 }
 
+func (r *periodAdminRepository) FindByIDForUpdate(ctx context.Context, periodID uint64) (period.Period, error) {
+	if periodID == 0 {
+		return period.Period{}, errors.New("invalid period id")
+	}
+	var model periodModel
+	if err := r.db.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", periodID).Take(&model).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return period.Period{}, ports.ErrNotFound
+		}
+		return period.Period{}, fmt.Errorf("find period for close: %w", err)
+	}
+	return model.toDomain(), nil
+}
+
 func (r *periodAdminRepository) Transition(ctx context.Context, periodID uint64, from, to period.Status, at time.Time) error {
 	if err := period.Transition(from, to); err != nil {
 		return err
