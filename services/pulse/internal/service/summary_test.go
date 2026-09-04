@@ -53,3 +53,22 @@ func TestProfileSummaryAllowsNoActivePeriod(t *testing.T) {
 		t.Fatalf("summary=%+v", summary)
 	}
 }
+
+func TestProfileSummaryClampsTicketDebtForProductView(t *testing.T) {
+	store := newMemoryLedgerStore()
+	at := time.Unix(1_700_000_000, 0).UTC()
+	store.periods = []period.Period{{ID: 4, Key: "2026-01", Status: period.StatusActive, StartsAt: at.Add(-time.Hour), EndsAt: at.Add(time.Hour), Timezone: "Asia/Shanghai", ConfigVersion: "v1"}}
+	store.accounts[accountKey(9, 4, ledger.AssetTicket)] = ledger.Account{ID: 3, UserID: 9, PeriodID: 4, AssetType: ledger.AssetTicket, Balance: -2}
+
+	profile, err := NewProfileService(memoryUnit{store: store}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary, err := profile.GetSummary(context.Background(), 9, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.AvailableTickets != 0 {
+		t.Fatalf("available tickets=%d, want 0 for ticket debt", summary.AvailableTickets)
+	}
+}

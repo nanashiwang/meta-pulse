@@ -68,7 +68,12 @@ func (s *ProfileService) GetSummary(ctx context.Context, userID uint64, at time.
 			case ledger.AssetContribution:
 				result.CurrentContribution = money.Milli(account.Balance)
 			case ledger.AssetTicket:
-				result.AvailableTickets = account.Balance
+				// Ticket debt is retained in the ledger so refunds cannot be
+				// abused, but the product-facing available count must never
+				// expose that debt as spendable tickets.
+				if account.Balance > 0 {
+					result.AvailableTickets = account.Balance
+				}
 			}
 		}
 		contributionEntries, err := repos.Ledger.ListAccountEntries(ctx, userID, active.ID, ledger.AssetContribution)
