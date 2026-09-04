@@ -197,8 +197,9 @@ func TestActionDifferentIdempotencyKeySameActionDoesNotSpendAgain(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first != second || len(store.entries) != 1 || len(rewardStore.grants) != 1 {
-		t.Fatalf("first=%+v second=%+v entries=%d grants=%d", first, second, len(store.entries), len(rewardStore.grants))
+	stat := store.stats["9:4"]
+	if first != second || len(store.entries) != 1 || len(rewardStore.grants) != 1 || stat.SpentTickets != 1 || stat.Version != 1 {
+		t.Fatalf("first=%+v second=%+v entries=%d grants=%d stat=%+v", first, second, len(store.entries), len(rewardStore.grants), stat)
 	}
 }
 

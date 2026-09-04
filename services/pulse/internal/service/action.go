@@ -89,7 +89,7 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 	}
 	var result ActionResult
 	err := s.unit.Do(ctx, func(repos ports.Repositories) error {
-		if repos.Period == nil || repos.Idempotency == nil || repos.Reward == nil || repos.Ledger == nil || repos.Account == nil {
+		if repos.Period == nil || repos.Idempotency == nil || repos.Reward == nil || repos.Ledger == nil || repos.Account == nil || repos.UserPeriod == nil {
 			return errors.New("action repositories are not initialized")
 		}
 		activity, err := repos.Period.FindActiveAt(ctx, s.cfg.Now())
@@ -158,6 +158,18 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 			if errors.Is(err, ledger.ErrInvalidEntry) {
 				return err
 			}
+			return err
+		}
+		stat, err := repos.UserPeriod.GetOrCreateForUpdate(ctx, command.UserID, activity.ID)
+		if err != nil {
+			return err
+		}
+		if stat.SpentTickets < 0 || stat.SpentTickets == math.MaxInt64 || stat.Version == math.MaxUint64 {
+			return errors.New("user period spent tickets overflow")
+		}
+		stat.SpentTickets++
+		stat.Version++
+		if err := repos.UserPeriod.Save(ctx, stat); err != nil {
 			return err
 		}
 		grant := ports.RewardGrant{

@@ -590,6 +590,14 @@ VALUES (?, 'grant', ?, ?, 'pending', 0, NOW(6) - INTERVAL 1 MINUTE)`, grantRowID
 		t.Fatalf("settlement states grant=%q outbox=%q", grantStatus, outboxStatus)
 	}
 
+	var spentTickets, statVersion int64
+	if err := sqlDB.QueryRowContext(ctx, `SELECT spent_tickets, version FROM pulse_user_period_stat WHERE user_id = ? AND period_id = ?`, userID, periodID).Scan(&spentTickets, &statVersion); err != nil {
+		t.Fatalf("read action ticket stat: %v", err)
+	}
+	if spentTickets != 1 || statVersion != 1 {
+		t.Fatalf("action ticket stat spent=%d version=%d", spentTickets, statVersion)
+	}
+
 	// A successful Benefit call followed by a Pulse-side timeout is recovered
 	// by querying the same source_ref; no new grant or source_ref is created.
 	secondUserID := userID + 1
