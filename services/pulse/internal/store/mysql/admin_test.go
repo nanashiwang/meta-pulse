@@ -37,3 +37,22 @@ func TestContentAwardTransitionOnlyAllowsSettledToReversed(t *testing.T) {
 		}
 	}
 }
+
+func TestParseAggregateInt64RejectsOverflow(t *testing.T) {
+	valid := map[string]int64{
+		"0":                    0,
+		"9223372036854775807":  9223372036854775807,
+		"-9223372036854775808": -9223372036854775808,
+	}
+	for raw, want := range valid {
+		got, err := parseAggregateInt64(raw)
+		if err != nil || got != want {
+			t.Fatalf("raw=%q got=%d err=%v want=%d", raw, got, err, want)
+		}
+	}
+	for _, raw := range []string{"", "9223372036854775808", "-9223372036854775809", "1.5", "not-a-number"} {
+		if _, err := parseAggregateInt64(raw); err == nil {
+			t.Fatalf("invalid aggregate %q was accepted", raw)
+		}
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/nanashiwang/meta-pulse/internal/domain/period"
@@ -198,10 +199,18 @@ GROUP BY status`).Scan(&settlementRows).Error; err != nil {
 			snapshot.SettlementDeadCount += row.Count
 		}
 	}
+	var reservedRaw, hardCapRaw string
 	if err := r.db.WithContext(ctx).Raw(`
 SELECT COALESCE(SUM(reserved_amount), 0), COALESCE(SUM(hard_cap), 0)
-FROM pulse_reward_budget`).Row().Scan(&snapshot.BudgetReservedAmount, &snapshot.BudgetHardCap); err != nil {
+FROM pulse_reward_budget`).Row().Scan(&reservedRaw, &hardCapRaw); err != nil {
 		return ports.OperationalSnapshot{}, fmt.Errorf("read budget usage: %w", err)
+	}
+	var err error
+	if snapshot.BudgetReservedAmount, err = parseAggregateInt64(reservedRaw); err != nil {
+		return ports.OperationalSnapshot{}, fmt.Errorf("read budget reserved amount: %w", err)
+	}
+	if snapshot.BudgetHardCap, err = parseAggregateInt64(hardCapRaw); err != nil {
+		return ports.OperationalSnapshot{}, fmt.Errorf("read budget hard cap: %w", err)
 	}
 	return snapshot, nil
 }
@@ -408,8 +417,12 @@ func (r *contentRepository) LockAwardLimits(ctx context.Context, userID, periodI
 }
 
 func (r *contentRepository) SumUserActiveAwards(ctx context.Context, userID, periodID uint64) (int64, error) {
-	var total int64
-	if err := r.db.WithContext(ctx).Model(&contentAwardModel{}).Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ? AND period_id = ? AND status IN ?", userID, periodID, []string{ports.ContentAwardPending, ports.ContentAwardSettled}).Select("COALESCE(SUM(amount), 0)").Scan(&total).Error; err != nil {
+	var raw string
+	if err := r.db.WithContext(ctx).Model(&contentAwardModel{}).Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ? AND period_id = ? AND status IN ?", userID, periodID, []string{ports.ContentAwardPending, ports.ContentAwardSettled}).Select("COALESCE(SUM(amount), 0)").Row().Scan(&raw); err != nil {
+		return 0, fmt.Errorf("sum user content awards: %w", err)
+	}
+	total, err := parseAggregateInt64(raw)
+	if err != nil {
 		return 0, fmt.Errorf("sum user content awards: %w", err)
 	}
 	return total, nil
@@ -417,11 +430,23 @@ func (r *contentRepository) SumUserActiveAwards(ctx context.Context, userID, per
 
 func (r *contentRepository) SumDailyActiveAwards(ctx context.Context, day time.Time) (int64, error) {
 	start, end := contentBusinessDayBounds(day)
-	var total int64
-	if err := r.db.WithContext(ctx).Model(&contentAwardModel{}).Clauses(clause.Locking{Strength: "UPDATE"}).Where("created_at >= ? AND created_at < ? AND status IN ?", start, end, []string{ports.ContentAwardPending, ports.ContentAwardSettled}).Select("COALESCE(SUM(amount), 0)").Scan(&total).Error; err != nil {
+	var raw string
+	if err := r.db.WithContext(ctx).Model(&contentAwardModel{}).Clauses(clause.Locking{Strength: "UPDATE"}).Where("created_at >= ? AND created_at < ? AND status IN ?", start, end, []string{ports.ContentAwardPending, ports.ContentAwardSettled}).Select("COALESCE(SUM(amount), 0)").Row().Scan(&raw); err != nil {
+		return 0, fmt.Errorf("sum daily content awards: %w", err)
+	}
+	total, err := parseAggregateInt64(raw)
+	if err != nil {
 		return 0, fmt.Errorf("sum daily content awards: %w", err)
 	}
 	return total, nil
+}
+
+func parseAggregateInt64(raw string) (int64, error) {
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("aggregate does not fit int64: %w", err)
+	}
+	return value, nil
 }
 
 func contentBusinessDayBounds(at time.Time) (time.Time, time.Time) {

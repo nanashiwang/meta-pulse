@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"sync"
@@ -1006,5 +1007,41 @@ VALUES (?, 'grant', ?, JSON_OBJECT(), 'dead', 10, ?, 'retry exhausted')`,
 		return claimErr
 	}); !errors.Is(err, ports.ErrConflict) {
 		t.Fatalf("duplicate dead claim error=%v, want ErrConflict", err)
+	}
+}
+
+func TestMySQLContentAwardSumOverflowFailsClosed(t *testing.T) {
+	database, sqlDB := openMySQLIntegration(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	seed := uint64(970000000 + time.Now().UnixNano()%1000000)
+	userID := seed
+	periodID := seed + 1
+	actionOne := fmt.Sprintf("overflow-award:%d:1", seed)
+	actionTwo := fmt.Sprintf("overflow-award:%d:2", seed)
+	for index, actionID := range []string{actionOne, actionTwo} {
+		if _, err := sqlDB.ExecContext(ctx, `
+INSERT INTO pulse_content_award (
+    candidate_id, award_version, action_id, period_id, user_id, amount,
+    reward_type, budget_type, grant_id, status, reason, created_at
+) VALUES (?, 1, ?, ?, ?, ?, 'quota', 'content_reward', '', 'pending', 'overflow fixture', ?)`,
+			seed+uint64(index)+10, actionID, periodID, userID, int64(math.MaxInt64), time.Now().UTC()); err != nil {
+			t.Fatalf("insert overflow content award %d: %v", index, err)
+		}
+	}
+	t.Cleanup(func() {
+		_, _ = sqlDB.Exec(`DELETE FROM pulse_content_award WHERE action_id IN (?, ?)`, actionOne, actionTwo)
+	})
+
+	unit, err := mysqlstore.NewUnitOfWork(database)
+	if err != nil {
+		t.Fatalf("create unit of work: %v", err)
+	}
+	if err := unit.Do(ctx, func(repos ports.Repositories) error {
+		_, sumErr := repos.Content.SumUserActiveAwards(ctx, userID, periodID)
+		return sumErr
+	}); err == nil {
+		t.Fatal("overflowing content award total was accepted")
 	}
 }
