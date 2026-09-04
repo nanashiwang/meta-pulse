@@ -243,17 +243,29 @@ func (s *ContentAwardService) Reverse(ctx context.Context, actionID, actorType, 
 	if strings.TrimSpace(actionID) == "" || strings.TrimSpace(actorType) == "" || strings.TrimSpace(actorID) == "" || strings.TrimSpace(reason) == "" || strings.TrimSpace(requestID) == "" {
 		return errors.New("invalid content award reversal")
 	}
+	payloadHash := contentReversalPayloadHash(actionID, actorType, actorID, reason)
 
-	// Read the immutable link to the original Grant in one short Pulse
-	// transaction. Do not hold a database transaction open while calling
-	// new-api; the Benefit endpoint is an independent, idempotent boundary.
+	// Reserve the operator idempotency key before the external rollback. The
+	// response is saved only after local state commits, so a crash between the
+	// new-api call and the local commit can safely retry the same source_ref.
 	var grantID uint64
+	var alreadyReversed bool
 	if err := s.unit.Do(ctx, func(repos ports.Repositories) error {
-		if repos.Content == nil || repos.Reward == nil {
+		if repos.Content == nil || repos.Reward == nil || repos.Idempotency == nil {
 			return errors.New("content reversal repositories are not initialized")
 		}
+		idempotency, err := repos.Idempotency.GetOrCreateForUpdate(ctx, "content_reward_reversal", requestID, payloadHash)
+		if err != nil {
+			return err
+		}
+		if idempotency.PayloadHash != payloadHash {
+			return fmt.Errorf("%w: content reversal request=%s", ledger.ErrIdempotencyConflict, requestID)
+		}
+		if idempotency.ResponseStatus != nil && len(idempotency.ResponseJSON) > 0 {
+			return nil
+		}
+
 		var found *ports.ContentAward
-		var err error
 		if locker, ok := repos.Content.(interface {
 			FindAwardByActionForUpdate(context.Context, string) (*ports.ContentAward, error)
 		}); ok {
@@ -265,7 +277,8 @@ func (s *ContentAwardService) Reverse(ctx context.Context, actionID, actorType, 
 			return err
 		}
 		if found.Status == ports.ContentAwardReversed {
-			return nil
+			alreadyReversed = true
+			return saveContentReversalIdempotency(ctx, repos.Idempotency, idempotency, actionID)
 		}
 		if found.GrantID == "" {
 			return ErrContentCandidateUnavailable
@@ -279,21 +292,34 @@ func (s *ContentAwardService) Reverse(ctx context.Context, actionID, actorType, 
 	}); err != nil {
 		return err
 	}
-	if grantID == 0 {
-		// The award was already reversed. The operation is intentionally
-		// idempotent and does not emit another audit record.
+	if alreadyReversed || grantID == 0 {
+		// The award was already reversed, or the same request has already been
+		// completed. Both paths are intentionally idempotent.
 		return nil
 	}
+
+	// Do not hold a Pulse transaction open while calling new-api; Benefit is an
+	// independent idempotent boundary keyed by the original grant source_ref.
 	if err := s.rollback.Rollback(ctx, grantID, reason); err != nil {
 		return err
 	}
 
 	return s.unit.Do(ctx, func(repos ports.Repositories) error {
-		if repos.Content == nil || repos.Audit == nil {
+		if repos.Content == nil || repos.Audit == nil || repos.Idempotency == nil {
 			return errors.New("content reversal repositories are not initialized")
 		}
+		idempotency, err := repos.Idempotency.GetOrCreateForUpdate(ctx, "content_reward_reversal", requestID, payloadHash)
+		if err != nil {
+			return err
+		}
+		if idempotency.PayloadHash != payloadHash {
+			return fmt.Errorf("%w: content reversal request=%s", ledger.ErrIdempotencyConflict, requestID)
+		}
+		if idempotency.ResponseStatus != nil && len(idempotency.ResponseJSON) > 0 {
+			return nil
+		}
+
 		var found *ports.ContentAward
-		var err error
 		if locker, ok := repos.Content.(interface {
 			FindAwardByActionForUpdate(context.Context, string) (*ports.ContentAward, error)
 		}); ok {
@@ -305,14 +331,41 @@ func (s *ContentAwardService) Reverse(ctx context.Context, actionID, actorType, 
 			return err
 		}
 		if found.Status == ports.ContentAwardReversed {
-			return nil
+			return saveContentReversalIdempotency(ctx, repos.Idempotency, idempotency, actionID)
 		}
 		if err := repos.Content.UpdateAwardStatus(ctx, actionID, ports.ContentAwardReversed); err != nil {
 			return err
 		}
 		after, _ := json.Marshal(map[string]any{"action_id": actionID, "status": ports.ContentAwardReversed})
-		return repos.Audit.Append(ctx, ports.AuditLog{ActorType: actorType, ActorID: actorID, Action: "content_reward_reversal", ResourceType: "content_award", ResourceID: actionID, Reason: reason, AfterJSON: after, RequestID: requestID, CreatedAt: s.cfg.Now()})
+		if err := repos.Audit.Append(ctx, ports.AuditLog{ActorType: actorType, ActorID: actorID, Action: "content_reward_reversal", ResourceType: "content_award", ResourceID: actionID, Reason: reason, AfterJSON: after, RequestID: requestID, CreatedAt: s.cfg.Now()}); err != nil {
+			return err
+		}
+		return saveContentReversalIdempotency(ctx, repos.Idempotency, idempotency, actionID)
 	})
+}
+
+func contentReversalPayloadHash(actionID, actorType, actorID, reason string) string {
+	payload, _ := json.Marshal(struct {
+		ActionID  string `json:"action_id"`
+		ActorType string `json:"actor_type"`
+		ActorID   string `json:"actor_id"`
+		Reason    string `json:"reason"`
+	}{actionID, actorType, actorID, reason})
+	digest := sha256.Sum256(payload)
+	return hex.EncodeToString(digest[:])
+}
+
+func saveContentReversalIdempotency(ctx context.Context, repo ports.IdempotencyRepository, record ports.IdempotencyRecord, actionID string) error {
+	payload, err := json.Marshal(map[string]any{"action_id": actionID, "status": ports.ContentAwardReversed})
+	if err != nil {
+		return err
+	}
+	status := 204
+	record.ResponseStatus = &status
+	record.ResponseJSON = payload
+	record.ResourceType = "content_award_reversal"
+	record.ResourceID = actionID
+	return repo.Save(ctx, record)
 }
 
 func validateContentAwardCommand(command ContentAwardCommand) error {

@@ -222,7 +222,8 @@ func TestContentAwardReversalUsesOriginalGrant(t *testing.T) {
 		t.Fatal(err)
 	}
 	rollback := &memoryGrantRollback{}
-	s, err := NewContentAwardService(contentAwardUnit{ledger: ledgerStore, reward: rewards, idem: newMemoryIdempotencyStore(), content: content, audit: audit}, ContentAwardConfig{MinPaidContributionMilli: 1000, MaxUserPeriodAmount: 50, MaxDailyAmount: 100, Now: func() time.Time { return time.Unix(1700000000, 0).UTC() }}, rollback)
+	idem := newMemoryIdempotencyStore()
+	s, err := NewContentAwardService(contentAwardUnit{ledger: ledgerStore, reward: rewards, idem: idem, content: content, audit: audit}, ContentAwardConfig{MinPaidContributionMilli: 1000, MaxUserPeriodAmount: 50, MaxDailyAmount: 100, Now: func() time.Time { return time.Unix(1700000000, 0).UTC() }}, rollback)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,5 +232,14 @@ func TestContentAwardReversalUsesOriginalGrant(t *testing.T) {
 	}
 	if rollback.calls != 1 || rollback.grantID != rewards.grants[0].ID || rollback.reason != "抄袭撤销" || content.awards["content_award:question:42:1"].Status != ports.ContentAwardReversed || len(audit.logs) != 2 {
 		t.Fatalf("rollback=%+v award=%+v audits=%d", rollback, content.awards["content_award:question:42:1"], len(audit.logs))
+	}
+	if err := s.Reverse(context.Background(), "content_award:question:42:1", "admin", "op-2", "抄袭撤销", "reverse-1"); err != nil {
+		t.Fatalf("same reversal replay failed: %v", err)
+	}
+	if rollback.calls != 1 || len(audit.logs) != 2 {
+		t.Fatalf("same reversal replay was not idempotent: rollback=%+v audits=%d", rollback, len(audit.logs))
+	}
+	if err := s.Reverse(context.Background(), "content_award:question:42:1", "admin", "op-2", "不同原因", "reverse-1"); !errors.Is(err, ledger.ErrIdempotencyConflict) {
+		t.Fatalf("changed reversal payload error=%v, want conflict", err)
 	}
 }
