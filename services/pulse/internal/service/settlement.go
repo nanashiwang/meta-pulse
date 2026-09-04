@@ -181,7 +181,7 @@ func (s *SettlementService) loadSettlement(ctx context.Context, outbox ports.Set
 	if outbox.PayloadHash == "" || (canonicalHash != outbox.PayloadHash && legacyHash != outbox.PayloadHash) {
 		return ports.RewardGrant{}, ports.BenefitGrantRequest{}, ErrInvalidSettlementPayload
 	}
-	if err := json.Unmarshal(outbox.PayloadJSON, &payload); err != nil {
+	if err := decodeStrictJSON(outbox.PayloadJSON, &payload); err != nil {
 		return ports.RewardGrant{}, ports.BenefitGrantRequest{}, fmt.Errorf("%w: %v", ErrInvalidSettlementPayload, err)
 	}
 	if payload.GrantID != grant.GrantID || payload.GrantID != payload.SourceRef || payload.UserID != grant.UserID || payload.Amount != grant.Amount || payload.SourceRef != grant.SourceRef || payload.TransferableQuota || payload.RewardType != grant.RewardType {
@@ -450,6 +450,25 @@ func isBenefitConflict(err error) bool           { return errors.Is(err, ports.E
 func sha256Hex(payload []byte) string {
 	digest := sha256.Sum256(payload)
 	return hex.EncodeToString(digest[:])
+}
+
+// decodeStrictJSON accepts exactly one JSON value. Settlement payloads come
+// from Pulse's database, but rejecting trailing values keeps a corrupted or
+// manually altered outbox row from being partially interpreted.
+func decodeStrictJSON(payload []byte, target any) error {
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.UseNumber()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return errors.New("trailing JSON value")
+		}
+		return err
+	}
+	return nil
 }
 
 // canonicalJSONHash hashes JSON after decoding and re-encoding it.

@@ -202,6 +202,17 @@ func TestSettlementRejectsMismatchedGrantIDWithValidPayloadHash(t *testing.T) {
 	}
 }
 
+func TestSettlementRejectsTrailingJSONPayload(t *testing.T) {
+	client := &fakeBenefitClient{}
+	service, _, outboxes, _ := settlementFixture(t, client)
+	outboxes.outboxes[0].PayloadJSON = append(outboxes.outboxes[0].PayloadJSON, []byte(`{"unexpected":true}`)...)
+	outboxes.outboxes[0].PayloadHash = sha256Hex(outboxes.outboxes[0].PayloadJSON)
+	report, err := service.ProcessBatch(context.Background())
+	if err != nil || report.Dead != 1 || client.grantCalls != 0 {
+		t.Fatalf("report=%+v err=%v client=%+v", report, err, client)
+	}
+}
+
 func TestCanonicalJSONHashIgnoresMySQLFormatting(t *testing.T) {
 	compact := []byte(`{"grant_id":"g1","user_id":9007199254740993,"amount":25,"transferable_quota":false}`)
 	normalized := []byte(`{ "amount": 25, "transferable_quota": false, "user_id": 9007199254740993, "grant_id": "g1" }`)
