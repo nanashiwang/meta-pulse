@@ -10,9 +10,15 @@ import (
 	"github.com/nanashiwang/meta-pulse/internal/ports"
 )
 
-type staticContentSource struct{ events []ports.ContentEvent }
+type staticContentSource struct {
+	events  []ports.ContentEvent
+	onFetch func()
+}
 
 func (s staticContentSource) Fetch(context.Context, string, int) ([]ports.ContentEvent, error) {
+	if s.onFetch != nil {
+		s.onFetch()
+	}
 	return append([]ports.ContentEvent(nil), s.events...), nil
 }
 
@@ -83,5 +89,33 @@ func TestContentIngestRejectsOversizedMetadata(t *testing.T) {
 	}
 	if len(content.candidates) != 0 || store.cursor.Value != "" {
 		t.Fatalf("oversized content mutated state candidates=%d cursor=%+v", len(content.candidates), store.cursor)
+	}
+}
+
+func TestContentIngestStaleBatchDoesNotRegressCursor(t *testing.T) {
+	created := time.Unix(1700000000, 0).UTC()
+	stale := ports.ContentEvent{SourceContentID: "1", ContentType: "question", AuthorUserID: 9, SourceCreatedAt: created, CursorValue: "1", PayloadHash: "hash-1"}
+	store := newMemoryLedgerStore()
+	content := &memoryContentStore{}
+	source := staticContentSource{
+		events: []ports.ContentEvent{stale},
+		onFetch: func() {
+			store.cursor.Value = "2"
+			store.cursor.Version++
+		},
+	}
+	s, err := NewContentIngestService(contentIngestUnit{store: store, content: content}, source, ContentIngestConfig{BatchSize: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := s.IngestBatch(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Fetched != 1 || report.Accepted != 0 || len(content.candidates) != 0 {
+		t.Fatalf("report=%+v candidates=%d", report, len(content.candidates))
+	}
+	if store.cursor.Value != "2" {
+		t.Fatalf("content cursor regressed to %q", store.cursor.Value)
 	}
 }

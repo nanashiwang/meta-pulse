@@ -65,6 +65,7 @@ func (s *BackfillService) Run(ctx context.Context, options BackfillOptions) (Bac
 			return report, nil
 		}
 		for _, event := range events {
+			expectedCursor := after
 			report.Fetched++
 			if !options.To.IsZero() && !event.SourceCreatedAt.Before(options.To) {
 				return report, nil
@@ -72,7 +73,10 @@ func (s *BackfillService) Run(ctx context.Context, options BackfillOptions) (Bac
 			if !options.From.IsZero() && event.SourceCreatedAt.Before(options.From) {
 				report.SkippedBefore++
 				if !options.DryRun {
-					if err := s.ingest.advanceOnly(ctx, event); err != nil {
+					if err := s.ingest.advanceOnly(ctx, event, expectedCursor); err != nil {
+						if errors.Is(err, errWorkerCursorAdvanced) {
+							return report, nil
+						}
 						return report, err
 					}
 				}
@@ -88,7 +92,10 @@ func (s *BackfillService) Run(ctx context.Context, options BackfillOptions) (Bac
 				continue
 			}
 			before := IngestResult{}
-			if err := s.ingest.processOne(ctx, event, &before); err != nil {
+			if err := s.ingest.processOne(ctx, event, &before, expectedCursor); err != nil {
+				if errors.Is(err, errWorkerCursorAdvanced) {
+					return report, nil
+				}
 				return report, fmt.Errorf("backfill event %s: %w", event.SourceEventID, err)
 			}
 			report.Accepted += before.Accepted
@@ -118,7 +125,7 @@ func (s *BackfillService) cursor(ctx context.Context) (string, error) {
 	return value, err
 }
 
-func (s *UsageIngestService) advanceOnly(ctx context.Context, event usage.Event) error {
+func (s *UsageIngestService) advanceOnly(ctx context.Context, event usage.Event, expectedCursor string) error {
 	return s.unit.Do(ctx, func(repos ports.Repositories) error {
 		if repos.Cursor == nil {
 			return errors.New("cursor repository is not initialized")
@@ -127,6 +134,6 @@ func (s *UsageIngestService) advanceOnly(ctx context.Context, event usage.Event)
 		if err != nil {
 			return err
 		}
-		return saveCursor(ctx, repos.Cursor, cursor, event)
+		return saveCursor(ctx, repos.Cursor, cursor, event, expectedCursor)
 	})
 }

@@ -83,15 +83,20 @@ func (s *ContentIngestService) IngestBatch(ctx context.Context) (ContentIngestRe
 		return result, err
 	}
 	result.Fetched = len(events)
+	expectedCursor := cursorValue
 	for _, event := range events {
-		if err := s.processOne(ctx, event, &result); err != nil {
+		if err := s.processOne(ctx, event, &result, expectedCursor); err != nil {
+			if errors.Is(err, errWorkerCursorAdvanced) {
+				return result, nil
+			}
 			return result, err
 		}
+		expectedCursor = event.CursorValue
 	}
 	return result, nil
 }
 
-func (s *ContentIngestService) processOne(ctx context.Context, incoming ports.ContentEvent, result *ContentIngestResult) error {
+func (s *ContentIngestService) processOne(ctx context.Context, incoming ports.ContentEvent, result *ContentIngestResult, expectedCursor ...string) error {
 	if incoming.SourceContentID == "" || incoming.ContentType == "" || incoming.AuthorUserID == 0 || incoming.SourceCreatedAt.IsZero() || incoming.CursorValue == "" || incoming.PayloadHash == "" ||
 		!validDBText(incoming.SourceContentID, 191) || !validDBText(incoming.ContentType, 64) ||
 		!validDBText(incoming.Title, 500) || !validDBText(incoming.CursorValue, 191) || !validDBText(incoming.PayloadHash, 64) {
@@ -104,6 +109,9 @@ func (s *ContentIngestService) processOne(ctx context.Context, incoming ports.Co
 		cursor, err := repos.Cursor.GetOrCreateForUpdate(ctx, s.cfg.CursorName, s.cfg.SourceSystem)
 		if err != nil {
 			return err
+		}
+		if cursorAdvanced(cursor.Value, incoming.CursorValue, expectedCursor) {
+			return errWorkerCursorAdvanced
 		}
 		existing, err := repos.Content.FindCandidateBySource(ctx, s.cfg.SourceSystem, incoming.SourceContentID)
 		if err != nil && !errors.Is(err, ports.ErrNotFound) {
@@ -118,7 +126,7 @@ func (s *ContentIngestService) processOne(ctx context.Context, incoming ports.Co
 			} else {
 				result.Replayed++
 			}
-			return saveContentCursor(ctx, repos.Cursor, cursor, incoming)
+			return saveContentCursor(ctx, repos.Cursor, cursor, incoming, expectedCursor...)
 		}
 		periodID := uint64(0)
 		if repos.Period != nil {
@@ -137,11 +145,17 @@ func (s *ContentIngestService) processOne(ctx context.Context, incoming ports.Co
 			return err
 		}
 		result.Accepted++
-		return saveContentCursor(ctx, repos.Cursor, cursor, incoming)
+		return saveContentCursor(ctx, repos.Cursor, cursor, incoming, expectedCursor...)
 	})
 }
 
-func saveContentCursor(ctx context.Context, repository ports.CursorRepository, cursor ports.Cursor, event ports.ContentEvent) error {
+func saveContentCursor(ctx context.Context, repository ports.CursorRepository, cursor ports.Cursor, event ports.ContentEvent, expectedCursor ...string) error {
+	if cursor.Value == event.CursorValue && len(expectedCursor) == 1 {
+		return nil
+	}
+	if cursorAdvanced(cursor.Value, event.CursorValue, expectedCursor) {
+		return errWorkerCursorAdvanced
+	}
 	cursor.Value = event.CursorValue
 	watermark := event.SourceCreatedAt
 	cursor.WatermarkAt = &watermark

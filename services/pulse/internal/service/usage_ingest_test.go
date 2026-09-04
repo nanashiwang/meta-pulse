@@ -11,9 +11,15 @@ import (
 	"github.com/nanashiwang/meta-pulse/internal/ports"
 )
 
-type staticUsageSource struct{ events []usage.Event }
+type staticUsageSource struct {
+	events  []usage.Event
+	onFetch func()
+}
 
 func (s staticUsageSource) Fetch(_ context.Context, _ string, _ int) ([]usage.Event, error) {
+	if s.onFetch != nil {
+		s.onFetch()
+	}
 	return append([]usage.Event(nil), s.events...), nil
 }
 
@@ -234,5 +240,32 @@ func TestUsageIngestRejectsRefundsExceedingOriginalContribution(t *testing.T) {
 	}
 	if got := store.accounts[accountKey(9, 4, "ticket")].Balance; got != 0 {
 		t.Fatalf("ticket account=%d, want 0", got)
+	}
+}
+
+func TestUsageIngestStaleBatchDoesNotRegressCursor(t *testing.T) {
+	store := newMemoryLedgerStore()
+	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, StartsAt: time.Unix(1_600_000_000, 0), EndsAt: time.Unix(1_800_000_000, 0)}}
+	store.rules[4] = []economics.Rule{{ID: 8, Key: "default", Eligible: true, MultiplierBps: 10000}}
+	stale := ingestEvent("1", "hash-1", usage.EventConsume, 1000)
+	source := staticUsageSource{
+		events: []usage.Event{stale},
+		onFetch: func() {
+			// Simulate another worker committing a later event while this worker
+			// is reading its page from LOG_DB.
+			store.cursor.Value = "1:2"
+			store.cursor.Version++
+		},
+	}
+	s := newIngestService(t, store, source)
+	report, err := s.IngestBatch(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Fetched != 1 || report.Accepted != 0 || len(store.usageEvents) != 0 || len(store.entries) != 0 {
+		t.Fatalf("report=%+v usage=%d ledger=%d", report, len(store.usageEvents), len(store.entries))
+	}
+	if store.cursor.Value != "1:2" {
+		t.Fatalf("cursor regressed to %q", store.cursor.Value)
 	}
 }

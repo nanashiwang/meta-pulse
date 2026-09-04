@@ -14,6 +14,8 @@ import (
 
 const DefaultUsageCursorName = "new-api-usage"
 
+var errWorkerCursorAdvanced = errors.New("worker cursor advanced concurrently")
+
 type UsageIngestService struct {
 	unit                 ports.UnitOfWork
 	source               ports.UsageSource
@@ -84,15 +86,22 @@ func (s *UsageIngestService) IngestBatch(ctx context.Context) (IngestResult, err
 		return result, err
 	}
 	result.Fetched = len(events)
+	expectedCursor := cursorValue
 	for _, event := range events {
-		if err := s.processOne(ctx, event, &result); err != nil {
+		if err := s.processOne(ctx, event, &result, expectedCursor); err != nil {
+			if errors.Is(err, errWorkerCursorAdvanced) {
+				// Another worker committed a later cursor while this batch was in
+				// flight. Stop this stale page and refetch from durable state.
+				return result, nil
+			}
 			return result, err
 		}
+		expectedCursor = event.CursorValue
 	}
 	return result, nil
 }
 
-func (s *UsageIngestService) processOne(ctx context.Context, incoming usage.Event, result *IngestResult) error {
+func (s *UsageIngestService) processOne(ctx context.Context, incoming usage.Event, result *IngestResult, expectedCursor ...string) error {
 	if incoming.SourceSystem == "" {
 		incoming.SourceSystem = s.sourceSystem
 	}
@@ -107,6 +116,9 @@ func (s *UsageIngestService) processOne(ctx context.Context, incoming usage.Even
 		if err != nil {
 			return err
 		}
+		if cursorAdvanced(cursor.Value, incoming.CursorValue, expectedCursor) {
+			return errWorkerCursorAdvanced
+		}
 		existing, err := repos.Usage.FindBySource(ctx, incoming.SourceSystem, incoming.SourceEventID)
 		if err != nil && !errors.Is(err, ports.ErrNotFound) {
 			return err
@@ -120,7 +132,7 @@ func (s *UsageIngestService) processOne(ctx context.Context, incoming usage.Even
 			} else {
 				result.Replayed++
 			}
-			return saveCursor(ctx, repos.Cursor, cursor, incoming)
+			return saveCursor(ctx, repos.Cursor, cursor, incoming, expectedCursor...)
 		}
 
 		activity, err := repos.Period.FindActiveAt(ctx, incoming.SourceCreatedAt)
@@ -144,7 +156,7 @@ func (s *UsageIngestService) processOne(ctx context.Context, incoming usage.Even
 				return err
 			}
 			result.ManualReview++
-			return saveCursor(ctx, repos.Cursor, cursor, incoming)
+			return saveCursor(ctx, repos.Cursor, cursor, incoming, expectedCursor...)
 		}
 
 		rules, err := repos.Economics.ListRules(ctx, activity.ID)
@@ -187,7 +199,7 @@ func (s *UsageIngestService) processOne(ctx context.Context, incoming usage.Even
 						return reviewErr
 					}
 					result.ManualReview++
-					return saveCursor(ctx, repos.Cursor, cursor, incoming)
+					return saveCursor(ctx, repos.Cursor, cursor, incoming, expectedCursor...)
 				}
 				contributionEntry, err = s.appendContribution(ctx, repos, incoming, &original.ID)
 			} else {
@@ -242,7 +254,7 @@ func (s *UsageIngestService) processOne(ctx context.Context, incoming usage.Even
 			return err
 		}
 		result.Accepted++
-		return saveCursor(ctx, repos.Cursor, cursor, incoming)
+		return saveCursor(ctx, repos.Cursor, cursor, incoming, expectedCursor...)
 	})
 }
 
@@ -316,7 +328,17 @@ func (s *UsageIngestService) resolveRefund(ctx context.Context, repos ports.Repo
 	return *original, nil
 }
 
-func saveCursor(ctx context.Context, repository ports.CursorRepository, cursor ports.Cursor, event usage.Event) error {
+func cursorAdvanced(current, incoming string, expected []string) bool {
+	return len(expected) == 1 && current != expected[0] && current != incoming
+}
+
+func saveCursor(ctx context.Context, repository ports.CursorRepository, cursor ports.Cursor, event usage.Event, expectedCursor ...string) error {
+	if cursor.Value == event.CursorValue && len(expectedCursor) == 1 {
+		return nil
+	}
+	if cursorAdvanced(cursor.Value, event.CursorValue, expectedCursor) {
+		return errWorkerCursorAdvanced
+	}
 	cursor.Value = event.CursorValue
 	watermark := event.SourceCreatedAt
 	cursor.WatermarkAt = &watermark
