@@ -98,8 +98,8 @@ func ValidateEntry(entry Entry) error {
 				return fmt.Errorf("%w: ticket debit must be negative", ErrInvalidEntry)
 			}
 		case OperationTicketReverse:
-			if entry.ReversalOfEntryID == nil {
-				return fmt.Errorf("%w: ticket reverse must reference an entry", ErrInvalidEntry)
+			if entry.Amount >= 0 || entry.ReversalOfEntryID == nil {
+				return fmt.Errorf("%w: ticket reverse must negate an entry", ErrInvalidEntry)
 			}
 		case OperationTicketAdjustment:
 			if entry.Reason == "" {

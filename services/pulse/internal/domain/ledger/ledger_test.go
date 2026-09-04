@@ -53,3 +53,29 @@ func TestApplyRejectsBalanceOverflow(t *testing.T) {
 		t.Fatalf("error = %v, want balance overflow", err)
 	}
 }
+
+func TestTicketReversalRequiresNegativeAmount(t *testing.T) {
+	id := uint64(4)
+	for _, amount := range []int64{1, 0} {
+		entry := Entry{
+			UserID: 7, PeriodID: 3, AssetType: AssetTicket,
+			Operation: OperationTicketReverse, Amount: amount,
+			SourceType: "test", SourceRef: "ticket-reverse",
+			IdempotencyKey: "ticket-reverse", PayloadHash: "hash-ticket-reverse",
+			ReversalOfEntryID: &id,
+		}
+		if err := ValidateEntry(entry); err == nil {
+			t.Fatalf("amount %d accepted for ticket reversal", amount)
+		}
+	}
+	entry := Entry{
+		UserID: 7, PeriodID: 3, AssetType: AssetTicket,
+		Operation: OperationTicketReverse, Amount: -1,
+		SourceType: "test", SourceRef: "ticket-reverse-negative",
+		IdempotencyKey: "ticket-reverse-negative", PayloadHash: "hash-ticket-reverse-negative",
+		ReversalOfEntryID: &id,
+	}
+	if err := ValidateEntry(entry); err != nil {
+		t.Fatalf("negative ticket reversal rejected: %v", err)
+	}
+}
