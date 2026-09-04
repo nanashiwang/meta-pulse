@@ -19,7 +19,10 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-const maxSettlementPayloadBytes = 64 << 10
+const (
+	maxSettlementPayloadBytes   = 64 << 10
+	maxIdempotencyResponseBytes = 64 << 10
+)
 
 type rewardDefinitionModel struct {
 	ID                uint64 `gorm:"column:id;primaryKey"`
@@ -274,8 +277,8 @@ func (r *rewardRepository) CreateOutbox(ctx context.Context, outbox ports.Settle
 }
 
 func (r *idempotencyRepository) GetOrCreateForUpdate(ctx context.Context, scope, key, payloadHash string) (ports.IdempotencyRecord, error) {
-	if scope == "" || key == "" || payloadHash == "" {
-		return ports.IdempotencyRecord{}, fmt.Errorf("invalid idempotency identity")
+	if err := validateIdempotencyIdentity(scope, key, payloadHash); err != nil {
+		return ports.IdempotencyRecord{}, err
 	}
 	if err := r.db.WithContext(ctx).Exec(`
 INSERT INTO pulse_idempotency (scope, idempotency_key, payload_hash)
@@ -291,14 +294,19 @@ ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)`, scope, key, payloadHash).Error
 }
 
 func (r *idempotencyRepository) Save(ctx context.Context, record ports.IdempotencyRecord) error {
-	if record.ID == 0 {
-		return fmt.Errorf("%w: invalid idempotency record", ports.ErrConflict)
+	if err := validateIdempotencySave(record); err != nil {
+		return err
 	}
-	result := r.db.WithContext(ctx).Model(&idempotencyModel{}).Where("id = ?", record.ID).Updates(map[string]any{
-		"response_status": record.ResponseStatus, "response_json": record.ResponseJSON,
-		"resource_type": record.ResourceType, "resource_id": record.ResourceID,
-		"expires_at": record.ExpiresAt,
-	})
+	// The request identity and first response are immutable. The row is normally
+	// locked by GetOrCreateForUpdate, while this fence also prevents a stale or
+	// corrupted record from completing a different request.
+	result := r.db.WithContext(ctx).Model(&idempotencyModel{}).
+		Where("id = ? AND scope = ? AND idempotency_key = ? AND payload_hash = ? AND response_status IS NULL", record.ID, record.Scope, record.Key, record.PayloadHash).
+		Updates(map[string]any{
+			"response_status": record.ResponseStatus, "response_json": record.ResponseJSON,
+			"resource_type": record.ResourceType, "resource_id": record.ResourceID,
+			"expires_at": record.ExpiresAt,
+		})
 	if result.Error != nil {
 		return fmt.Errorf("save idempotency record: %w", result.Error)
 	}
@@ -419,6 +427,35 @@ func (r *rewardRepository) SaveOutbox(ctx context.Context, outbox ports.Settleme
 	}
 	if result.RowsAffected != 1 {
 		return ports.ErrNotFound
+	}
+	return nil
+}
+
+func validateIdempotencyIdentity(scope, key, payloadHash string) error {
+	if !validMySQLText(scope, 128) || !validMySQLText(key, 191) || len(payloadHash) != sha256.Size*2 {
+		return fmt.Errorf("%w: invalid idempotency identity", ports.ErrConflict)
+	}
+	if _, err := hex.DecodeString(payloadHash); err != nil {
+		return fmt.Errorf("%w: invalid idempotency payload hash", ports.ErrConflict)
+	}
+	return nil
+}
+
+func validateIdempotencySave(record ports.IdempotencyRecord) error {
+	if record.ID == 0 {
+		return fmt.Errorf("%w: invalid idempotency record", ports.ErrConflict)
+	}
+	if err := validateIdempotencyIdentity(record.Scope, record.Key, record.PayloadHash); err != nil {
+		return err
+	}
+	if record.ResponseStatus == nil || *record.ResponseStatus < 200 || *record.ResponseStatus >= 300 ||
+		len(record.ResponseJSON) == 0 || len(record.ResponseJSON) > maxIdempotencyResponseBytes ||
+		!validMySQLText(record.ResourceType, 64) || !validMySQLText(record.ResourceID, 191) ||
+		(record.ExpiresAt != nil && record.ExpiresAt.IsZero()) {
+		return fmt.Errorf("%w: invalid completed idempotency state", ports.ErrConflict)
+	}
+	if _, err := canonicalSettlementPayloadHash(record.ResponseJSON); err != nil {
+		return fmt.Errorf("%w: invalid idempotency response JSON", ports.ErrConflict)
 	}
 	return nil
 }

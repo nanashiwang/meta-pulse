@@ -202,3 +202,65 @@ func TestRewardRepositoryRejectsInvalidLookupIdentityBeforeQuery(t *testing.T) {
 		t.Fatal("zero outbox grant id was accepted")
 	}
 }
+
+func TestIdempotencyPersistenceRequiresImmutableCompleteState(t *testing.T) {
+	status := 201
+	valid := ports.IdempotencyRecord{
+		ID: 1, Scope: "pulse_action:2:3", Key: "request-1", PayloadHash: strings.Repeat("a", 64),
+		ResponseStatus: &status, ResponseJSON: []byte(`{"grant_id":"pg_test"}`),
+		ResourceType: "reward_grant", ResourceID: "pg_test",
+	}
+	if err := validateIdempotencySave(valid); err != nil {
+		t.Fatalf("valid idempotency response rejected: %v", err)
+	}
+	cases := []struct {
+		name   string
+		mutate func(*ports.IdempotencyRecord)
+	}{
+		{"missing id", func(v *ports.IdempotencyRecord) { v.ID = 0 }},
+		{"padded scope", func(v *ports.IdempotencyRecord) { v.Scope = " pulse_action" }},
+		{"long key", func(v *ports.IdempotencyRecord) { v.Key = strings.Repeat("键", 192) }},
+		{"invalid hash", func(v *ports.IdempotencyRecord) { v.PayloadHash = strings.Repeat("z", 64) }},
+		{"missing status", func(v *ports.IdempotencyRecord) { v.ResponseStatus = nil }},
+		{"non-success status", func(v *ports.IdempotencyRecord) { failed := 409; v.ResponseStatus = &failed }},
+		{"missing response", func(v *ports.IdempotencyRecord) { v.ResponseJSON = nil }},
+		{"trailing response", func(v *ports.IdempotencyRecord) { v.ResponseJSON = []byte(`{} {}`) }},
+		{"oversized response", func(v *ports.IdempotencyRecord) {
+			v.ResponseJSON = []byte(`"` + strings.Repeat("x", maxIdempotencyResponseBytes) + `"`)
+		}},
+		{"missing resource type", func(v *ports.IdempotencyRecord) { v.ResourceType = "" }},
+		{"missing resource id", func(v *ports.IdempotencyRecord) { v.ResourceID = "" }},
+		{"zero expiry", func(v *ports.IdempotencyRecord) { zero := time.Time{}; v.ExpiresAt = &zero }},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			value := valid
+			test.mutate(&value)
+			if err := validateIdempotencySave(value); err == nil {
+				t.Fatal("invalid idempotency response was accepted")
+			}
+		})
+	}
+}
+
+func TestIdempotencyRepositoryRejectsInvalidIdentityBeforeQuery(t *testing.T) {
+	repo := &idempotencyRepository{}
+	validHash := strings.Repeat("a", 64)
+	cases := []struct {
+		scope string
+		key   string
+		hash  string
+	}{
+		{"", "key", validHash},
+		{"scope", "", validHash},
+		{strings.Repeat("s", 129), "key", validHash},
+		{"scope", strings.Repeat("k", 192), validHash},
+		{"scope", "key", strings.Repeat("a", 63)},
+		{"scope", "key", strings.Repeat("z", 64)},
+	}
+	for _, test := range cases {
+		if _, err := repo.GetOrCreateForUpdate(context.Background(), test.scope, test.key, test.hash); err == nil {
+			t.Fatalf("invalid identity accepted: scope=%q key=%q hash=%q", test.scope, test.key, test.hash)
+		}
+	}
+}
