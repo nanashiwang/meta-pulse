@@ -277,7 +277,7 @@ func refundCorrelationMatches(ctx context.Context, repos ports.Repositories, eve
 			}
 		}
 	}
-	if original == nil || original.EventType != usage.EventConsume || original.NeedsReview || original.UserID != event.UserID {
+	if original == nil || original.EventType != usage.EventConsume || original.NeedsReview || original.Status == usage.StatusManualReview || original.UserID != event.UserID {
 		return false
 	}
 	if original.PeriodID != 0 {

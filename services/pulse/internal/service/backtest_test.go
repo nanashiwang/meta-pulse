@@ -135,6 +135,26 @@ func TestBacktestValidatesDirectRefundCorrelation(t *testing.T) {
 	}
 }
 
+func TestBacktestRejectsRefundLinkedToManualReviewConsume(t *testing.T) {
+	store := newMemoryLedgerStore()
+	at := time.Unix(1_700_000_000, 0).UTC()
+	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, StartsAt: at.Add(-time.Hour), EndsAt: at.Add(time.Hour)}}
+	store.rules[4] = []economics.Rule{{ID: 1, Key: "default", Eligible: true, MultiplierBps: 10000}}
+	store.usageEvents = []usage.Event{{
+		SourceSystem: "new-api-log", SourceEventID: "manual-consume", UserID: 9, PeriodID: 4,
+		EventType: usage.EventConsume, SourceCreatedAt: at, Status: usage.StatusManualReview,
+	}}
+	event := backtestEvent("refund", at.Add(time.Minute), usage.EventRefund, -100)
+	event.RelatedSourceEventID = "manual-consume"
+	report, err := newBacktest(t, store, backtestSource{events: []usage.Event{event}}).Run(context.Background(), time.Time{}, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.RefundCorrelationGaps != 1 || report.EligibleEvents != 0 {
+		t.Fatalf("manual-review consume was accepted as refund origin: %+v", report)
+	}
+}
+
 func TestBacktestRejectsUnknownDirectRefundCorrelation(t *testing.T) {
 	store := newMemoryLedgerStore()
 	at := time.Unix(1_700_000_000, 0).UTC()
