@@ -63,7 +63,7 @@ Log.quota      = 用户侧计费额度
 
 Pulse 使用独立只读账号读取 `LOG_SQL_DSN` 指向的日志库。`quota` 是第一阶段的 Eligible Paid Usage；Provider 实际成本目前不是日志事实源，必须在回测阶段明确采用“估算毛利”还是扩展 new-api 记录成本快照。
 
-普通消费、异步任务退款、差额结算的关联字段并不完全统一，不能仅凭 `refund` 类型推断因果关系；必须在 M2 前完成 Mapper 契约与异常样本回放。
+关联契约已统一：普通消费和异步任务退款/差额结算使用 `logs.request_id`；任务日志额外保留 `logs.other.task_id`，差额日志保留 `pre_consumed_quota`、`actual_quota`、`reason`；明确的历史 `origin_log_id` 等字段优先。缺少稳定关联时进入人工复核，不猜测因果。
 
 ### 2.3 Benefit 事实边界
 
@@ -302,7 +302,7 @@ type UnitOfWork interface {
 - [x] Benefit 重复请求 payload 比较与 conflict；
 - [x] `/console/pulse` 路由、页面和导航入口；
 - [x] 明确 `LOG_CONSUME_ENABLED` 的生产门禁：new-api 新增 `PULSE_USAGE_LOG_REQUIRED=true`，启用后拒绝后台和配置同步关闭消费日志；
-- [ ] 明确 refund/task/correction 关联字段；
+- [x] 明确 refund/task/correction 关联字段：`request_id` 为主关联，`other.task_id` 为任务键，差额用 consume/refund 正负事件表达，缺失关联进入人工复核；
 - [ ] 评估增加 Provider 成本快照；
 - [ ] Benefit 与 SSO 服务密钥轮换、审计和限流。
 
@@ -343,9 +343,9 @@ type UnitOfWork interface {
 
 全局统一周期使用半开区间 `[start,end)`、Asia/Shanghai（UTC+8）；按日志 `created_at` 归属，Ingest 时间只用于水位线和延迟指标。实现与测试已对齐。
 
-### D3｜Refund / Correction 口径（M2 前）
+### D3｜Refund / Correction 口径（已决策）
 
-必须确认：退款是否有稳定原消费关联；没有关联时如何进入 correction、人工对账和后续冲正，禁止把无法确认的退款直接计入用户贡献。
+`request_id` 是普通消费与异步任务退款/差额结算的主关联键，任务使用 `other.task_id` 辅助审计，明确的 `origin_log_id` 等历史字段优先。差额不新增日志类型：补扣记 consume，退回记 refund，并保留预扣/实际额度。没有稳定原消费关联的记录进入 `manual_review` 与人工对账，禁止直接计入贡献。
 
 ### D4｜Cookie 拓扑（已决策）
 

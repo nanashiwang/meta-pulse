@@ -310,7 +310,17 @@ logs.type     → consume / refund 分类
 logs.quota    → 用户侧计费额度
 ```
 
-当前 new-api 中 `LogTypeConsume = 2`、`LogTypeRefund = 6`。`quota` 是用户收费事实，不等同于 Provider 成本；在成本快照接入前，不能把它宣称为真实毛利。Pulse 使用 `(created_at, id)` 复合游标、UTC+8 的 `source_created_at` 半开周期归属，并在同一 Pulse 事务内提交事件、账本、券、统计和游标。异步任务退款、差额结算和缺少原消费关联的退款必须由 Mapper 明确分类；无法确认时记录 `manual_review` 与对账冲突，不得直接改变贡献值。
+当前 new-api 中 `LogTypeConsume = 2`、`LogTypeRefund = 6`。`quota` 是用户收费事实，不等同于 Provider 成本；在成本快照接入前，不能把它宣称为真实毛利。Pulse 使用 `(created_at, id)` 复合游标、UTC+8 的 `source_created_at` 半开周期归属，并在同一 Pulse 事务内提交事件、账本、券、统计和游标。
+
+Usage 关联契约如下：
+
+- 普通消费：`logs.request_id` 是请求关联键，`logs.id` 是事件主键；
+- 异步任务退款/差额结算：new-api 在任务私有计费快照中保存原始 `request_id`，并将它写回退款/差额日志的 `logs.request_id`；`logs.other.task_id` 保存稳定任务键；
+- 差额结算仍使用 `LogTypeConsume`（补扣）或 `LogTypeRefund`（退回），并在 `logs.other` 保存 `pre_consumed_quota`、`actual_quota`、`reason`；不另造不可追溯的 correction 类型；
+- 历史或特殊任务若只有 `task_id`、没有原始 `request_id`/明确 `origin_log_id`，不得猜测原消费，必须进入 `manual_review` 与对账冲突；
+- `logs.other` 中兼容读取 `origin_log_id`、`original_log_id`、`consume_log_id`、`related_log_id`、`log_id`，明确关联优先于 request 关联。
+
+无法确认关联时不得直接改变贡献值。上述字段均为最小化关联元数据，禁止复制 prompt、response、IP、Token 或 Cookie。
 
 ## 11. Economics Engine
 
