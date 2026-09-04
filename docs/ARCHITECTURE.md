@@ -595,7 +595,7 @@ not_found                → 尚未找到奖励，可使用原 source_ref 重试
 
 `status` 是跨版本判定依据；即使旧 new-api 在 `rolled_back` 响应中遗留 `applied=true`，Pulse 也必须按已撤销处理。Grant 在 rollback 后重放只能返回 `rolled_back`，不得返回 `already_applied` 或再次增加额度。Rollback 仅在确认 `rolled_back` 后才允许本地 Grant/Budget 收敛为 reversed。
 
-发生 timeout 时必须先 Query 原 `source_ref`：只有 `applied / already_applied` 才标记 settled；`not_found` 才使用原 source_ref 重试；`rolled_back` 或 source_ref 不一致进入 terminal conflict，保留原 Grant 与预算预占供人工处置。禁止生成新 source_ref 绕过幂等。
+发生 timeout 等不确定结果时必须先 Query 原 `source_ref`：只有 `applied / already_applied` 才标记 settled；`not_found` 才使用原 source_ref 重试；`rolled_back` 或 source_ref 不一致进入 terminal conflict，保留原 Grant 与预算预占供人工处置。Benefit Receiver 明确返回 payload conflict 时属于已确定的指纹冲突，必须直接进入 terminal conflict；Query 只返回生命周期状态，不能证明已到账 payload 与当前 Outbox 一致，因此禁止再用 Query 的 `applied` 覆盖该冲突。禁止生成新 source_ref 绕过幂等。
 
 ## 21. Period Reward
 

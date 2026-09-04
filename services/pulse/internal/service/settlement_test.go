@@ -173,15 +173,22 @@ func TestSettlementReconcileRolledBackBenefitNeverBecomesSettled(t *testing.T) {
 	}
 }
 
-func TestSettlementConflictBecomesDeadWithoutChangingSource(t *testing.T) {
-	client := &fakeBenefitClient{grantErr: ports.ErrBenefitPayloadConflict, queryState: ports.BenefitState{Applied: false, SourceRef: "pg_test"}}
-	service, _, outboxes, _ := settlementFixture(t, client)
+func TestSettlementConflictBecomesDeadWithoutQueryingAppliedState(t *testing.T) {
+	client := &fakeBenefitClient{
+		grantErr:   ports.ErrBenefitPayloadConflict,
+		queryState: ports.BenefitState{Applied: true, Status: ports.BenefitStatusApplied, SourceRef: "pg_test"},
+	}
+	service, rewards, outboxes, _ := settlementFixture(t, client)
 	report, err := service.ProcessBatch(context.Background())
-	if err != nil || report.Dead != 1 || outboxes.outboxes[0].Status != OutboxStatusDead {
+	if err != nil || report.Dead != 1 || report.Completed != 0 || outboxes.outboxes[0].Status != OutboxStatusDead {
 		t.Fatalf("report=%+v err=%v outbox=%+v", report, err, outboxes.outboxes[0])
 	}
-	if client.queryRef != "pg_test" {
-		t.Fatalf("query source ref=%q", client.queryRef)
+	if client.queryCalls != 0 {
+		t.Fatalf("explicit payload conflict was queried %d times", client.queryCalls)
+	}
+	budget := rewards.budgets[budgetKey(4, ActionBudgetType)]
+	if rewards.grants[0].Status != RewardStatusPending || budget.ReservedAmount != 10 || budget.SettledAmount != 0 {
+		t.Fatalf("grant=%+v budget=%+v", rewards.grants[0], budget)
 	}
 }
 

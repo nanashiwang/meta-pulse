@@ -137,6 +137,12 @@ func (s *SettlementService) processOne(ctx context.Context, outbox ports.Settlem
 	if grantErr == nil && response.RolledBack {
 		return s.failPayload(ctx, outbox, fmt.Errorf("%w: benefit was already rolled back", ErrSettlementConflict))
 	}
+	// A payload conflict is an explicit terminal result: an existing Benefit
+	// under this source_ref has a different fingerprint. Query only exposes the
+	// lifecycle state, so it cannot prove that the applied payload is ours.
+	if grantErr != nil && isBenefitConflict(grantErr) {
+		return s.failPayload(ctx, outbox, fmt.Errorf("%w: %v", ErrSettlementConflict, grantErr))
+	}
 
 	// A timeout or any ambiguous response must query the original source_ref
 	// before retrying. The source_ref is never regenerated.
@@ -152,9 +158,6 @@ func (s *SettlementService) processOne(ctx context.Context, outbox ports.Settlem
 	}
 	if queryErr == nil && !sameSourceRef(state.SourceRef, grant.SourceRef) {
 		return s.failPayload(ctx, outbox, fmt.Errorf("%w: query returned source_ref %q", ErrSettlementConflict, state.SourceRef))
-	}
-	if grantErr != nil && isBenefitConflict(grantErr) {
-		return s.failPayload(ctx, outbox, fmt.Errorf("%w: %v", ErrSettlementConflict, grantErr))
 	}
 	reason := grantErr
 	if reason == nil {
