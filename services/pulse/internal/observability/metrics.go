@@ -37,7 +37,7 @@ func NewMetrics() *Metrics {
 	conflictGauge := prometheus.NewGauge(prometheus.GaugeOpts{Namespace: "meta_pulse", Subsystem: "operations", Name: "open_conflicts", Help: "Open usage ingest conflicts."})
 	mismatchGauge := prometheus.NewGauge(prometheus.GaugeOpts{Namespace: "meta_pulse", Subsystem: "operations", Name: "ledger_mismatches", Help: "Accounts that do not rebuild from their ledger."})
 	retryGauge := prometheus.NewGauge(prometheus.GaugeOpts{Namespace: "meta_pulse", Subsystem: "settlement", Name: "retry", Help: "Settlement outboxes waiting for retry."})
-	deadGauge := prometheus.NewGauge(prometheus.GaugeOpts{Namespace: "meta_pulse", Subsystem: "settlement", Name: "dead", Help: "Settlement outboxes that exhausted retries."})
+	deadGauge := prometheus.NewGauge(prometheus.GaugeOpts{Namespace: "meta_pulse", Subsystem: "settlement", Name: "dead", Help: "Settlement outboxes that exhausted retries or reached a terminal conflict."})
 	reservedGauge := prometheus.NewGauge(prometheus.GaugeOpts{Namespace: "meta_pulse", Subsystem: "budget", Name: "reserved_amount", Help: "Currently reserved reward amount."})
 	hardCapGauge := prometheus.NewGauge(prometheus.GaugeOpts{Namespace: "meta_pulse", Subsystem: "budget", Name: "hard_cap", Help: "Configured reward hard cap."})
 	periodCloseFailures := prometheus.NewCounter(prometheus.CounterOpts{Namespace: "meta_pulse", Subsystem: "period", Name: "close_failures_total", Help: "Period close attempts that failed."})

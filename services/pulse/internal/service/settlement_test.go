@@ -151,7 +151,7 @@ func TestSettlementRolledBackBenefitNeverBecomesSettled(t *testing.T) {
 	if err != nil || report.Dead != 1 || report.Completed != 0 {
 		t.Fatalf("report=%+v err=%v", report, err)
 	}
-	if outboxes.outboxes[0].Status != OutboxStatusDead || rewards.grants[0].Status != RewardStatusPending {
+	if outboxes.outboxes[0].Status != OutboxStatusConflict || rewards.grants[0].Status != RewardStatusPending {
 		t.Fatalf("outbox=%+v grant=%+v", outboxes.outboxes[0], rewards.grants[0])
 	}
 	budget := rewards.budgets[budgetKey(4, ActionBudgetType)]
@@ -168,7 +168,7 @@ func TestSettlementReconcileRolledBackBenefitNeverBecomesSettled(t *testing.T) {
 	if err != nil || report.Checked != 1 || report.Unchanged != 1 || report.Settled != 0 {
 		t.Fatalf("report=%+v err=%v", report, err)
 	}
-	if outboxes.outboxes[0].Status != OutboxStatusDead || rewards.grants[0].Status != RewardStatusPending {
+	if outboxes.outboxes[0].Status != OutboxStatusConflict || rewards.grants[0].Status != RewardStatusPending {
 		t.Fatalf("outbox=%+v grant=%+v", outboxes.outboxes[0], rewards.grants[0])
 	}
 }
@@ -180,15 +180,39 @@ func TestSettlementConflictBecomesDeadWithoutQueryingAppliedState(t *testing.T) 
 	}
 	service, rewards, outboxes, _ := settlementFixture(t, client)
 	report, err := service.ProcessBatch(context.Background())
-	if err != nil || report.Dead != 1 || report.Completed != 0 || outboxes.outboxes[0].Status != OutboxStatusDead {
+	if err != nil || report.Dead != 1 || report.Completed != 0 || outboxes.outboxes[0].Status != OutboxStatusConflict {
 		t.Fatalf("report=%+v err=%v outbox=%+v", report, err, outboxes.outboxes[0])
 	}
 	if client.queryCalls != 0 {
 		t.Fatalf("explicit payload conflict was queried %d times", client.queryCalls)
 	}
+	reconcile, err := service.Reconcile(context.Background())
+	if err != nil || reconcile.Checked != 0 || client.queryCalls != 0 {
+		t.Fatalf("terminal conflict re-entered reconciliation: report=%+v err=%v query_calls=%d", reconcile, err, client.queryCalls)
+	}
 	budget := rewards.budgets[budgetKey(4, ActionBudgetType)]
 	if rewards.grants[0].Status != RewardStatusPending || budget.ReservedAmount != 10 || budget.SettledAmount != 0 {
 		t.Fatalf("grant=%+v budget=%+v", rewards.grants[0], budget)
+	}
+}
+
+func TestSettlementRetryExhaustionRemainsReconcilableDead(t *testing.T) {
+	client := &fakeBenefitClient{
+		grantErr:   errors.New("temporary network error"),
+		queryErr:   errors.New("temporary query error"),
+		queryState: ports.BenefitState{SourceRef: "pg_test"},
+	}
+	service, _, outboxes, _ := settlementFixture(t, client)
+	outboxes.outboxes[0].Attempts = service.cfg.MaxAttempts - 1
+	report, err := service.ProcessBatch(context.Background())
+	if err != nil || report.Dead != 1 || outboxes.outboxes[0].Status != OutboxStatusDead {
+		t.Fatalf("report=%+v err=%v outbox=%+v", report, err, outboxes.outboxes[0])
+	}
+	client.queryErr = nil
+	client.queryState = ports.BenefitState{Applied: false, Status: ports.BenefitStatusNotFound, SourceRef: "pg_test"}
+	reconcile, err := service.Reconcile(context.Background())
+	if err != nil || reconcile.Checked != 1 || client.queryCalls < 2 {
+		t.Fatalf("retry-exhausted row was not reconciled: report=%+v err=%v client=%+v", reconcile, err, client)
 	}
 }
 
@@ -291,7 +315,7 @@ func TestSettlementRejectsMismatchedGrantResponseBeforeQuery(t *testing.T) {
 	if client.queryCalls != 0 {
 		t.Fatalf("mismatched grant response was followed by query: calls=%d", client.queryCalls)
 	}
-	if outboxes.outboxes[0].Status != OutboxStatusDead || rewards.grants[0].Status != RewardStatusPending {
+	if outboxes.outboxes[0].Status != OutboxStatusConflict || rewards.grants[0].Status != RewardStatusPending {
 		t.Fatalf("outbox=%+v grant=%+v", outboxes.outboxes[0], rewards.grants[0])
 	}
 }

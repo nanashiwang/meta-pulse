@@ -186,7 +186,7 @@ OR a.version <> COALESCE((
 	if err := r.db.WithContext(ctx).Raw(`
 SELECT status, COUNT(*) AS count
 FROM pulse_settlement_outbox
-WHERE status IN ('retry', 'dead')
+WHERE status IN ('retry', 'dead', 'conflict')
 GROUP BY status`).Scan(&settlementRows).Error; err != nil {
 		return ports.OperationalSnapshot{}, fmt.Errorf("count settlement backlog: %w", err)
 	}
@@ -194,8 +194,8 @@ GROUP BY status`).Scan(&settlementRows).Error; err != nil {
 		switch row.Status {
 		case "retry":
 			snapshot.SettlementRetryCount = row.Count
-		case "dead":
-			snapshot.SettlementDeadCount = row.Count
+		case "dead", "conflict":
+			snapshot.SettlementDeadCount += row.Count
 		}
 	}
 	if err := r.db.WithContext(ctx).Raw(`

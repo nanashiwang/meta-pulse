@@ -260,7 +260,7 @@ type UnitOfWork interface {
 - [x] Pulse Benefit Client 使用 HMAC 服务认证、时间窗、nonce、来源绑定；仅接受无凭据/查询/片段/子路径的 HTTP(S) 根地址，响应上限 1 MiB；
 - [x] Benefit payload fingerprint 和 conflict 错误已进入统一契约；
 - [x] 使用 `GrantUserQuotaTx`，奖励额度 `transferable_quota=0`；
-- [x] Outbox 指数退避、dead 状态、`reward-retry` 人工重试入口；
+- [x] Outbox 指数退避；`dead` 表示重试耗尽且仍可 Query/Reconcile，`conflict` 表示不可自动收敛的终态完整性冲突；`reward-retry` 提供人工触发入口；
 - [x] timeout 必须先 Query 原 `source_ref`，禁止更换 source_ref；
 - [x] Benefit Reconciliation 可重复查询并收敛状态；
 - [x] 真实 MySQL Outbox 并发 Claim（100 个 Worker 仅一次 Grant）与 Benefit timeout 后原 `source_ref` Query 恢复已验收；

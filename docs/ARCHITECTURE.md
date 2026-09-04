@@ -539,7 +539,7 @@ reward_grant
 settlement_outbox
 ```
 
-Worker 再异步调用 new-api Benefit。
+Worker 再异步调用 new-api Benefit。Outbox 使用 `dead` 表示重试耗尽但仍可 Query/Reconcile 的不确定结果，使用 `conflict` 表示 payload 非法、指纹冲突、已撤销或来源不一致等终态完整性冲突；`conflict` 不得重新进入自动 Reconciliation，只能保留 Grant 与预算预占供人工审计处置。
 
 ## 20. new-api Internal Benefit API
 

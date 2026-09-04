@@ -21,6 +21,7 @@ const (
 	OutboxStatusRetry      = "retry"
 	OutboxStatusCompleted  = "completed"
 	OutboxStatusDead       = "dead"
+	OutboxStatusConflict   = "conflict"
 	GrantStatusSettled     = "settled"
 	GrantStatusDead        = "settlement_dead"
 	GrantStatusReversed    = "reversed"
@@ -109,7 +110,7 @@ func (s *SettlementService) ProcessBatch(ctx context.Context) (SettlementReport,
 			report.Completed++
 		case OutboxStatusRetry:
 			report.Retried++
-		case OutboxStatusDead:
+		case OutboxStatusDead, OutboxStatusConflict:
 			report.Dead++
 		}
 	}
@@ -295,16 +296,18 @@ func (s *SettlementService) retry(ctx context.Context, outbox ports.SettlementOu
 }
 
 func (s *SettlementService) failPayload(ctx context.Context, outbox ports.SettlementOutbox, reason error) (string, error) {
-	// Invalid data is not retriable: retrying could send a tampered payload.
+	// Invalid data and explicit integrity conflicts are terminal. Keep them
+	// separate from retry-exhausted dead rows so reconciliation cannot later
+	// use a lifecycle-only Query response to overwrite a payload conflict.
 	now := s.cfg.Now()
-	outbox.Status = OutboxStatusDead
+	outbox.Status = OutboxStatusConflict
 	outbox.LeasedUntil = nil
 	outbox.NextAttemptAt = now
 	outbox.LastError = truncateError(reason)
 	if err := s.saveOutbox(ctx, outbox); err != nil {
 		return "", err
 	}
-	return OutboxStatusDead, nil
+	return OutboxStatusConflict, nil
 }
 
 func (s *SettlementService) saveOutbox(ctx context.Context, outbox ports.SettlementOutbox) error {
