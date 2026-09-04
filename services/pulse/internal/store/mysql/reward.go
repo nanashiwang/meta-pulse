@@ -1,9 +1,15 @@
 package mysql
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"strings"
 	"time"
 
 	"github.com/nanashiwang/meta-pulse/internal/domain/reward"
@@ -11,6 +17,8 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
+
+const maxSettlementPayloadBytes = 64 << 10
 
 type rewardDefinitionModel struct {
 	ID                uint64 `gorm:"column:id;primaryKey"`
@@ -232,6 +240,9 @@ func (r *rewardRepository) CreateGrant(ctx context.Context, grant ports.RewardGr
 }
 
 func (r *rewardRepository) CreateOutbox(ctx context.Context, outbox ports.SettlementOutbox) (ports.SettlementOutbox, error) {
+	if err := validateSettlementOutboxCreate(outbox); err != nil {
+		return ports.SettlementOutbox{}, err
+	}
 	model := settlementOutboxModel{ID: outbox.ID, RewardGrantID: outbox.RewardGrantID, Operation: outbox.Operation, PayloadHash: outbox.PayloadHash, PayloadJSON: outbox.PayloadJSON, Status: outbox.Status, Attempts: outbox.Attempts, NextAttemptAt: outbox.NextAttemptAt, LeasedUntil: outbox.LeasedUntil, LastError: outbox.LastError, CompletedAt: outbox.CompletedAt, CreatedAt: outbox.CreatedAt}
 	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
@@ -371,8 +382,8 @@ func (r *rewardRepository) ListForReconciliation(ctx context.Context, limit int)
 }
 
 func (r *rewardRepository) SaveOutbox(ctx context.Context, outbox ports.SettlementOutbox) error {
-	if outbox.ID == 0 {
-		return fmt.Errorf("%w: invalid settlement outbox", ports.ErrConflict)
+	if err := validateSettlementOutboxUpdate(outbox); err != nil {
+		return err
 	}
 	// Attempts act as a durable lease fence. A worker that outlives its lease
 	// must not be able to overwrite the result written by the worker that
@@ -391,6 +402,64 @@ func (r *rewardRepository) SaveOutbox(ctx context.Context, outbox ports.Settleme
 		return ports.ErrNotFound
 	}
 	return nil
+}
+
+func validateSettlementOutboxCreate(outbox ports.SettlementOutbox) error {
+	if outbox.ID != 0 || outbox.RewardGrantID == 0 || outbox.Operation != "grant" ||
+		(outbox.Status != "pending" && outbox.Status != "shadow") || outbox.Attempts != 0 ||
+		outbox.NextAttemptAt.IsZero() || outbox.CreatedAt.IsZero() || outbox.LeasedUntil != nil ||
+		strings.TrimSpace(outbox.LastError) != "" || outbox.CompletedAt != nil {
+		return fmt.Errorf("%w: invalid settlement outbox create state", ports.ErrConflict)
+	}
+	if len(outbox.PayloadJSON) == 0 || len(outbox.PayloadJSON) > maxSettlementPayloadBytes {
+		return fmt.Errorf("%w: invalid settlement outbox payload size", ports.ErrConflict)
+	}
+	canonicalHash, err := canonicalSettlementPayloadHash(outbox.PayloadJSON)
+	if err != nil || outbox.PayloadHash != canonicalHash {
+		return fmt.Errorf("%w: invalid settlement outbox payload hash", ports.ErrConflict)
+	}
+	return nil
+}
+
+func validateSettlementOutboxUpdate(outbox ports.SettlementOutbox) error {
+	if outbox.ID == 0 || outbox.RewardGrantID == 0 || outbox.Attempts == 0 || outbox.NextAttemptAt.IsZero() || outbox.LeasedUntil != nil {
+		return fmt.Errorf("%w: invalid settlement outbox update state", ports.ErrConflict)
+	}
+	switch outbox.Status {
+	case "retry", "dead", "conflict":
+		if strings.TrimSpace(outbox.LastError) == "" || outbox.CompletedAt != nil {
+			return fmt.Errorf("%w: invalid failed settlement outbox state", ports.ErrConflict)
+		}
+	case "completed":
+		if outbox.CompletedAt == nil || outbox.CompletedAt.IsZero() || outbox.LastError != "" {
+			return fmt.Errorf("%w: invalid completed settlement outbox state", ports.ErrConflict)
+		}
+	default:
+		return fmt.Errorf("%w: invalid settlement outbox target status", ports.ErrConflict)
+	}
+	return nil
+}
+
+func canonicalSettlementPayloadHash(payload []byte) (string, error) {
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.UseNumber()
+	var value any
+	if err := decoder.Decode(&value); err != nil {
+		return "", err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return "", errors.New("trailing settlement JSON value")
+		}
+		return "", err
+	}
+	canonical, err := json.Marshal(value)
+	if err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256(canonical)
+	return hex.EncodeToString(digest[:]), nil
 }
 
 func settlementOutboxFromModel(model settlementOutboxModel) ports.SettlementOutbox {

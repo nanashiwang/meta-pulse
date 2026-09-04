@@ -164,6 +164,7 @@ func TestSettlementReconcileRolledBackBenefitNeverBecomesSettled(t *testing.T) {
 	client := &fakeBenefitClient{queryState: ports.BenefitState{RolledBack: true, Status: ports.BenefitStatusRolledBack, SourceRef: "pg_test"}}
 	service, rewards, outboxes, _ := settlementFixture(t, client)
 	outboxes.outboxes[0].Status = OutboxStatusRetry
+	outboxes.outboxes[0].Attempts = 1
 	report, err := service.Reconcile(context.Background())
 	if err != nil || report.Checked != 1 || report.Unchanged != 1 || report.Settled != 0 {
 		t.Fatalf("report=%+v err=%v", report, err)
