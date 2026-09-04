@@ -36,6 +36,7 @@ pulse_content_award_limit_guard
 6. 任何 destructive migration 必须先有备份、回滚和数据校验方案。
 7. active Period 的历史经济配置不得通过 migration 被批量覆盖。
 8. `00002_ledger_payload_hash.sql` 创建 append-only trigger；启用 MySQL binary logging 时，DBA 须在迁移前配置 `log_bin_trust_function_creators=1`，或使用具备等效迁移权限的受控发布流程。
+9. `00008_settlement_terminal_conflict.sql` 的终态分类不可逆；Down 只能安全 no-op，禁止把全部 `conflict` 降回可自动对账的 `dead`。
 
 ## 最低唯一约束
 

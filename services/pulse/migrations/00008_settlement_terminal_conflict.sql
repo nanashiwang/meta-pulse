@@ -10,6 +10,7 @@ WHERE status = 'dead'
   );
 
 -- +goose Down
-UPDATE pulse_settlement_outbox
-SET status = 'dead'
-WHERE status = 'conflict';
+-- This data classification is intentionally irreversible. Turning every
+-- conflict back into dead would make terminal integrity failures eligible for
+-- automatic Query/Reconciliation and could settle an unverified payload.
+SELECT 1;
