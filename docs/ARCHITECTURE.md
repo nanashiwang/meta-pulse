@@ -523,7 +523,7 @@ pending → settling → settled
 settled → reversed
 ```
 
-Grant 一旦首次产生，其 reward type、amount、random value 不得重新随机。
+Grant 一旦首次产生，其 reward type、amount、random value 不得重新随机。状态只能按前述方向推进；`settled → reversed` 必须保留原 `settled_at`，仅追加 `reversed_at`，不得抹去历史结算时间。
 
 ## 19. Settlement Outbox
 

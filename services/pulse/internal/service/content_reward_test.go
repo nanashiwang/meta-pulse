@@ -237,7 +237,7 @@ func (m *memoryGrantRollback) Rollback(ctx context.Context, grantID uint64, reas
 	m.reason = reason
 	if m.rewards != nil {
 		now := time.Unix(1700000001, 0).UTC()
-		return m.rewards.UpdateGrantStatus(ctx, grantID, GrantStatusReversed, nil, &now)
+		return m.rewards.TransitionGrantStatus(ctx, grantID, GrantStatusSettled, GrantStatusReversed, now)
 	}
 	return nil
 }
@@ -264,7 +264,7 @@ func TestContentAwardReversalUsesOriginalGrant(t *testing.T) {
 	if err := s.Reverse(context.Background(), actionID, "admin", "op-2", "抄袭撤销", "reverse-1"); err != nil {
 		t.Fatal(err)
 	}
-	if rollback.calls != 1 || rollback.grantID != rewards.grants[0].ID || rollback.reason != "抄袭撤销" || content.awards[actionID].Status != ports.ContentAwardReversed || rewards.grants[0].Status != GrantStatusReversed || len(audit.logs) != 2 {
+	if rollback.calls != 1 || rollback.grantID != rewards.grants[0].ID || rollback.reason != "抄袭撤销" || content.awards[actionID].Status != ports.ContentAwardReversed || rewards.grants[0].Status != GrantStatusReversed || rewards.grants[0].SettledAt == nil || !rewards.grants[0].SettledAt.Equal(settledAt) || rewards.grants[0].ReversedAt == nil || len(audit.logs) != 2 {
 		t.Fatalf("rollback=%+v award=%+v grant=%+v audits=%d", rollback, content.awards[actionID], rewards.grants[0], len(audit.logs))
 	}
 	if err := s.Reverse(context.Background(), actionID, "admin", "op-2", "抄袭撤销", "reverse-1"); err != nil {

@@ -249,7 +249,7 @@ func (s *SettlementService) complete(ctx context.Context, outbox ports.Settlemen
 			if err := repos.Reward.SaveBudget(ctx, budget); err != nil {
 				return err
 			}
-			if err := repos.Reward.UpdateGrantStatus(ctx, current.ID, GrantStatusSettled, &now, nil); err != nil {
+			if err := repos.Reward.TransitionGrantStatus(ctx, current.ID, RewardStatusPending, GrantStatusSettled, now); err != nil {
 				return err
 			}
 		}
@@ -480,7 +480,7 @@ func (s *SettlementService) Rollback(ctx context.Context, grantID uint64, reason
 		if err := repos.Reward.SaveBudget(ctx, budget); err != nil {
 			return err
 		}
-		if err := repos.Reward.UpdateGrantStatus(ctx, current.ID, GrantStatusReversed, nil, &now); err != nil {
+		if err := repos.Reward.TransitionGrantStatus(ctx, current.ID, GrantStatusSettled, GrantStatusReversed, now); err != nil {
 			return err
 		}
 		return nil

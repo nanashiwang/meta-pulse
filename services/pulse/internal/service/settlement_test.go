@@ -219,12 +219,14 @@ func TestSettlementRetryExhaustionRemainsReconcilableDead(t *testing.T) {
 func TestSettlementRollbackReleasesBudgetAndMarksGrant(t *testing.T) {
 	client := &fakeBenefitClient{rollbackState: ports.BenefitState{RolledBack: true, Status: ports.BenefitStatusRolledBack, SourceRef: "pg_test"}}
 	service, rewards, _, grant := settlementFixture(t, client)
+	settledAt := time.Unix(1_699_999_900, 0).UTC()
 	rewards.grants[0].Status = GrantStatusSettled
+	rewards.grants[0].SettledAt = &settledAt
 	rewards.budgets[budgetKey(4, ActionBudgetType)] = ports.RewardBudget{ID: 2, PeriodID: 4, BudgetType: ActionBudgetType, HardCap: 100, SettledAmount: 10, Version: 1}
 	if err := service.Rollback(context.Background(), grant.ID, "fraud review"); err != nil {
 		t.Fatal(err)
 	}
-	if client.rollbackCalls != 1 || client.rollbackRef != "pg_test" || rewards.grants[0].Status != GrantStatusReversed {
+	if client.rollbackCalls != 1 || client.rollbackRef != "pg_test" || rewards.grants[0].Status != GrantStatusReversed || rewards.grants[0].SettledAt == nil || !rewards.grants[0].SettledAt.Equal(settledAt) || rewards.grants[0].ReversedAt == nil {
 		t.Fatalf("client=%+v grant=%+v", client, rewards.grants[0])
 	}
 	budget := rewards.budgets[budgetKey(4, ActionBudgetType)]

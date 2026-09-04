@@ -81,7 +81,7 @@ type RewardRepository interface {
 	FindGrantByAction(ctx context.Context, periodID, userID uint64, actionID string) (*RewardGrant, error)
 	FindGrantByID(ctx context.Context, grantID uint64) (*RewardGrant, error)
 	FindGrantByIDForUpdate(ctx context.Context, grantID uint64) (*RewardGrant, error)
-	UpdateGrantStatus(ctx context.Context, grantID uint64, status string, settledAt, reversedAt *time.Time) error
+	TransitionGrantStatus(ctx context.Context, grantID uint64, fromStatus, toStatus string, at time.Time) error
 	CreateGrant(ctx context.Context, grant RewardGrant) (RewardGrant, error)
 	CreateOutbox(ctx context.Context, outbox SettlementOutbox) (SettlementOutbox, error)
 }

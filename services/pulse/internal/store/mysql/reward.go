@@ -190,15 +190,28 @@ func (r *rewardRepository) findGrantByID(ctx context.Context, grantID uint64, lo
 	return &grant, nil
 }
 
-func (r *rewardRepository) UpdateGrantStatus(ctx context.Context, grantID uint64, status string, settledAt, reversedAt *time.Time) error {
-	result := r.db.WithContext(ctx).Model(&rewardGrantModel{}).Where("id = ?", grantID).Updates(map[string]any{
-		"status": status, "settled_at": settledAt, "reversed_at": reversedAt,
-	})
+func (r *rewardRepository) TransitionGrantStatus(ctx context.Context, grantID uint64, fromStatus, toStatus string, at time.Time) error {
+	if grantID == 0 || at.IsZero() {
+		return errors.New("invalid reward grant status transition")
+	}
+	updates := map[string]any{"status": toStatus}
+	switch {
+	case fromStatus == "pending" && toStatus == "settled":
+		updates["settled_at"] = at
+	case fromStatus == "settled" && toStatus == "reversed":
+		// Keep settled_at as immutable history; reversal only appends its own
+		// timestamp and moves the lifecycle state forward.
+		updates["reversed_at"] = at
+	default:
+		return errors.New("invalid reward grant status transition")
+	}
+	result := r.db.WithContext(ctx).Model(&rewardGrantModel{}).
+		Where("id = ? AND status = ?", grantID, fromStatus).Updates(updates)
 	if result.Error != nil {
-		return fmt.Errorf("update reward grant status: %w", result.Error)
+		return fmt.Errorf("transition reward grant status: %w", result.Error)
 	}
 	if result.RowsAffected != 1 {
-		return ports.ErrNotFound
+		return ports.ErrConflict
 	}
 	return nil
 }

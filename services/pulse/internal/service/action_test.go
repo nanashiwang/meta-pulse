@@ -66,12 +66,25 @@ func (m *memoryRewardStore) FindGrantByID(_ context.Context, grantID uint64) (*p
 func (m *memoryRewardStore) FindGrantByIDForUpdate(ctx context.Context, grantID uint64) (*ports.RewardGrant, error) {
 	return m.FindGrantByID(ctx, grantID)
 }
-func (m *memoryRewardStore) UpdateGrantStatus(_ context.Context, grantID uint64, status string, settledAt, reversedAt *time.Time) error {
+func (m *memoryRewardStore) TransitionGrantStatus(_ context.Context, grantID uint64, fromStatus, toStatus string, at time.Time) error {
 	for i := range m.grants {
-		if m.grants[i].ID == grantID {
-			m.grants[i].Status, m.grants[i].SettledAt, m.grants[i].ReversedAt = status, settledAt, reversedAt
-			return nil
+		if m.grants[i].ID != grantID {
+			continue
 		}
+		if m.grants[i].Status != fromStatus {
+			return ports.ErrConflict
+		}
+		switch {
+		case fromStatus == RewardStatusPending && toStatus == GrantStatusSettled:
+			m.grants[i].Status = toStatus
+			m.grants[i].SettledAt = &at
+		case fromStatus == GrantStatusSettled && toStatus == GrantStatusReversed:
+			m.grants[i].Status = toStatus
+			m.grants[i].ReversedAt = &at
+		default:
+			return errors.New("invalid reward grant status transition")
+		}
+		return nil
 	}
 	return ports.ErrNotFound
 }
