@@ -22,8 +22,8 @@ func ActionRoute(router *gin.RouterGroup, executor ActionExecutor, auth gin.Hand
 		return
 	}
 	router.POST("/me/actions", auth, func(c *gin.Context) {
-		principal, ok := Principal(c)
-		if !ok || principal.UserID == 0 {
+		principal, ok := PrincipalWithRole(c, "new-api")
+		if !ok {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}

@@ -710,6 +710,8 @@ GET  /healthz
 GET  /readyz
 ```
 
+Pulse 内部业务路由还必须按签名角色做最小权限隔离，不能仅凭“签名有效”放行：`new-api` 角色才能访问 `/v1/internal/me/summary`、`/v1/internal/me/actions` 和 `/v1/internal/me/rewards`；`forum` 角色才能访问 `/v1/internal/users/:user_id/profile`；内容奖励管理路由仅接受 `admin` 角色。角色缺失、未知或不匹配时统一拒绝，且不得触发 service 查询、记账或结算。
+
 ## 25. Admin / Operator
 
 内部管理能力：

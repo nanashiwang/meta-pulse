@@ -41,7 +41,7 @@ func TestActionRouteRejectsMissingIdempotency(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	ActionRoute(router.Group("/v1/internal"), &actionStub{}, func(c *gin.Context) {
-		c.Set(PrincipalContextKey, security.Principal{UserID: 7})
+		c.Set(PrincipalContextKey, security.Principal{UserID: 7, Role: "new-api"})
 		c.Next()
 	})
 	request := httptest.NewRequest(http.MethodPost, "/v1/internal/me/actions", strings.NewReader(`{"action_id":"a1","trigger_type":"pulse"}`))
@@ -50,5 +50,22 @@ func TestActionRouteRejectsMissingIdempotency(t *testing.T) {
 	router.ServeHTTP(response, request)
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestActionRouteRejectsNonNewAPIRole(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	ActionRoute(router.Group("/v1/internal"), &actionStub{}, func(c *gin.Context) {
+		c.Set(PrincipalContextKey, security.Principal{UserID: 7, Role: "forum"})
+		c.Next()
+	})
+	request := httptest.NewRequest(http.MethodPost, "/v1/internal/me/actions", strings.NewReader(`{"action_id":"a1","trigger_type":"pulse"}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", "request-1")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("status=%d, want %d", response.Code, http.StatusUnauthorized)
 	}
 }

@@ -50,3 +50,17 @@ func TestSummaryRouteRejectsMissingPrincipal(t *testing.T) {
 		t.Fatalf("status=%d, want %d", response.Code, http.StatusUnauthorized)
 	}
 }
+
+func TestSummaryRouteRejectsNonNewAPIRole(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	SummaryRoute(router.Group("/v1/internal"), &summaryStub{}, func(c *gin.Context) {
+		c.Set(PrincipalContextKey, security.Principal{UserID: 7, Role: "forum"})
+		c.Next()
+	})
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/internal/me/summary", nil))
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("status=%d, want %d", response.Code, http.StatusUnauthorized)
+	}
+}

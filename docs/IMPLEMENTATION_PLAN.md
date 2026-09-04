@@ -170,6 +170,7 @@ type UnitOfWork interface {
 - [x] 生产密钥不进入 Git，支持 current/previous 平滑轮换和 fail closed；
 - [x] SSO 入口使用 CriticalRateLimit；Benefit 内部接口使用独立的已验签服务身份限流，不受公共 API IP 限流影响；
 - [x] Pulse 侧实现规范化 `method/path/user/timestamp/nonce/body_hash` 验签、时间窗和重放拒绝，生产 Nonce 适配 Redis 原子 `SETNX`；签名请求体上限 64 KiB；
+- [x] Pulse 内部用户路由按签名角色最小权限隔离：`new-api` 仅访问用户摘要、Action、奖励历史，`forum` 仅访问用户 Profile，内容奖励管理仅接受 `admin`；角色缺失、未知或不匹配时 fail closed，且不触发业务查询；
 - [ ] 真实部署完成审计、限流压测、跨实例 Nonce 与密钥轮换演练。
 
 **代码出口：**登录、2FA、论坛 SSO、Ticket 重放、Cookie 隔离、BFF 越权和签名重放回归测试通过。真实域名、跨实例、轮换演练和公网门禁属于部署验收；P0 外部验收完成前论坛不得开放公网，Pulse 奖励不得上线。

@@ -56,3 +56,8 @@ func Principal(c *gin.Context) (security.Principal, bool) {
 	principal, ok := value.(security.Principal)
 	return principal, ok
 }
+
+func PrincipalWithRole(c *gin.Context, role string) (security.Principal, bool) {
+	principal, ok := Principal(c)
+	return principal, ok && principal.UserID != 0 && principal.Role == role
+}

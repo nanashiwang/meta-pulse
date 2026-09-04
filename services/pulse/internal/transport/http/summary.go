@@ -21,8 +21,8 @@ func SummaryRoute(router *gin.RouterGroup, reader SummaryReader, auth gin.Handle
 		return
 	}
 	router.GET("/me/summary", auth, func(c *gin.Context) {
-		principal, ok := Principal(c)
-		if !ok || principal.UserID == 0 {
+		principal, ok := PrincipalWithRole(c, "new-api")
+		if !ok {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}

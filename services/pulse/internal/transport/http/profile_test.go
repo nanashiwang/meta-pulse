@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/nanashiwang/meta-pulse/internal/domain/level"
+	"github.com/nanashiwang/meta-pulse/internal/security"
 	"github.com/nanashiwang/meta-pulse/internal/service"
 )
 
@@ -22,6 +23,7 @@ func TestProfileRouteRequiresAuthAndDoesNotTrustClientIdentity(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	ProfileRoute(router.Group("/v1/internal"), profileStub{}, func(c *gin.Context) {
+		c.Set(PrincipalContextKey, security.Principal{UserID: 42, Role: "forum"})
 		c.Next()
 	})
 	response := httptest.NewRecorder()
@@ -42,5 +44,19 @@ func TestProfileRouteRequiresAuthAndDoesNotTrustClientIdentity(t *testing.T) {
 	}
 	if body.UserID != 7 || body.LifetimeContribution != 2000 || body.Level.Key != "pulse" || body.Level.Name != "脉冲者" {
 		t.Fatalf("unexpected profile contract: %+v", body)
+	}
+}
+
+func TestProfileRouteRejectsNonForumRole(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	ProfileRoute(router.Group("/v1/internal"), profileStub{}, func(c *gin.Context) {
+		c.Set(PrincipalContextKey, security.Principal{UserID: 42, Role: "new-api"})
+		c.Next()
+	})
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/internal/users/42/profile", nil))
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("status=%d, want %d", response.Code, http.StatusUnauthorized)
 	}
 }

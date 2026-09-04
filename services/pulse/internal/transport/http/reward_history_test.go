@@ -46,3 +46,17 @@ func TestRewardHistoryRouteRejectsMissingPrincipal(t *testing.T) {
 		t.Fatalf("status=%d", response.Code)
 	}
 }
+
+func TestRewardHistoryRouteRejectsNonNewAPIRole(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	RewardHistoryRoute(router.Group("/v1/internal"), &rewardHistoryStub{}, func(c *gin.Context) {
+		c.Set(PrincipalContextKey, security.Principal{UserID: 7, Role: "forum"})
+		c.Next()
+	})
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/internal/me/rewards", nil))
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("status=%d, want %d", response.Code, http.StatusUnauthorized)
+	}
+}

@@ -20,8 +20,8 @@ func RewardHistoryRoute(router *gin.RouterGroup, reader RewardHistoryReader, aut
 		return
 	}
 	router.GET("/me/rewards", auth, func(c *gin.Context) {
-		principal, ok := Principal(c)
-		if !ok || principal.UserID == 0 {
+		principal, ok := PrincipalWithRole(c, "new-api")
+		if !ok {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
