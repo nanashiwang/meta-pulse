@@ -47,7 +47,7 @@ func ContentAwardRoute(router *gin.RouterGroup, executor ContentAwardExecutor, a
 			Amount       int64  `json:"amount"`
 			Reason       string `json:"reason"`
 		}
-		if err := c.ShouldBindJSON(&request); err != nil {
+		if err := bindStrictJSON(c, &request); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid content award payload"})
 			return
 		}
@@ -68,7 +68,7 @@ func ContentAwardRoute(router *gin.RouterGroup, executor ContentAwardExecutor, a
 		var request struct {
 			Reason string `json:"reason"`
 		}
-		if err := c.ShouldBindJSON(&request); err != nil || strings.TrimSpace(request.Reason) == "" {
+		if err := bindStrictJSON(c, &request); err != nil || strings.TrimSpace(request.Reason) == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "reason is required"})
 			return
 		}

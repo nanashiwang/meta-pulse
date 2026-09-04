@@ -69,3 +69,24 @@ func TestActionRouteRejectsNonNewAPIRole(t *testing.T) {
 		t.Fatalf("status=%d, want %d", response.Code, http.StatusUnauthorized)
 	}
 }
+
+func TestActionRouteRejectsTrailingJSON(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	reader := &actionStub{}
+	router := gin.New()
+	ActionRoute(router.Group("/v1/internal"), reader, func(c *gin.Context) {
+		c.Set(PrincipalContextKey, security.Principal{UserID: 7, Role: "new-api"})
+		c.Next()
+	})
+	request := httptest.NewRequest(http.MethodPost, "/v1/internal/me/actions", strings.NewReader(`{"action_id":"a1","trigger_type":"pulse"} {"unexpected":true}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", "request-1")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if reader.command.ActionID != "" {
+		t.Fatalf("executor received rejected request: %+v", reader.command)
+	}
+}

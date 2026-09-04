@@ -8,6 +8,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -182,6 +183,13 @@ func VerifyRequestWithSecrets(req *http.Request, secrets [][]byte, now time.Time
 	if !matched {
 		return Principal{}, ErrInvalid
 	}
+	// A signed request must describe exactly one JSON value when its body
+	// starts as JSON. Rejecting a second value before claiming the nonce keeps
+	// malformed payloads from becoming permanent replay failures while also
+	// preventing handlers from interpreting only a prefix of the signed body.
+	if hasTrailingJSONValue(body) {
+		return Principal{}, fmt.Errorf("%w: trailing JSON value", ErrInvalid)
+	}
 	if nonces == nil {
 		return Principal{}, errors.New("nonce store is not configured")
 	}
@@ -194,6 +202,21 @@ func VerifyRequestWithSecrets(req *http.Request, secrets [][]byte, now time.Time
 		return Principal{}, ErrReplay
 	}
 	return Principal{UserID: userID, Role: role, Nonce: nonce}, nil
+}
+
+func hasTrailingJSONValue(body []byte) bool {
+	if len(bytes.TrimSpace(body)) == 0 {
+		return false
+	}
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	var first any
+	if err := decoder.Decode(&first); err != nil {
+		// The signature layer authenticates arbitrary body bytes. Non-JSON
+		// payload validation remains the handler's responsibility.
+		return false
+	}
+	var trailing any
+	return decoder.Decode(&trailing) != io.EOF
 }
 
 // CanonicalPayload is public so new-api, forum adapters, and tests can share

@@ -36,7 +36,7 @@ func ActionRoute(router *gin.RouterGroup, executor ActionExecutor, auth gin.Hand
 			ActionID    string `json:"action_id"`
 			TriggerType string `json:"trigger_type"`
 		}
-		if err := c.ShouldBindJSON(&request); err != nil {
+		if err := bindStrictJSON(c, &request); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid action payload"})
 			return
 		}

@@ -146,3 +146,21 @@ func (s *countingNonceStore) Claim(context.Context, string, time.Time) (bool, er
 	s.claims++
 	return true, nil
 }
+
+func TestVerifyRequestRejectsTrailingJSONBeforeClaimingNonce(t *testing.T) {
+	now := time.Now().Truncate(time.Second)
+	secret := []byte("test-secret")
+	store := &countingNonceStore{}
+	body := `{"action_id":"a1"} {"unexpected":true}`
+	req := signedRequest(http.MethodPost, "http://pulse/v1/internal/me/actions", "123", "new-api", "n-trailing", body, now, secret)
+	if _, err := VerifyRequest(req, secret, now, time.Minute, store); err == nil {
+		t.Fatal("trailing JSON request was accepted")
+	}
+	if store.claims != 0 {
+		t.Fatalf("nonce claims=%d, want 0", store.claims)
+	}
+	valid := signedRequest(http.MethodPost, "http://pulse/v1/internal/me/actions", "123", "new-api", "n-trailing", `{"action_id":"a1"}`, now, secret)
+	if _, err := VerifyRequest(valid, secret, now, time.Minute, store); err != nil {
+		t.Fatalf("valid request after rejected trailing JSON was rejected: %v", err)
+	}
+}
