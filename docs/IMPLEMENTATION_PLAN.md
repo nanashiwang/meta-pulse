@@ -13,16 +13,16 @@
 ✅ Monorepo 骨架  services/{pulse,forum,forum-plugin} + sites/blog + deploy
 ✅ 论坛插件       UserCenter、等级展示、SSO Ticket 验签、共享 Nonce 已落地
 ✅ new-api 调研   已确认登录、2FA、LOG_DB、BenefitChangeRecord、额度发放边界
-🟡 P0 接入契约     new-api SSO / BFF / Benefit API、Pulse 验签与轮换已落地；真实部署验收待完成
-🟡 M0 地基         配置、Gin、健康检查、GORM/Redis、Goose migration、指标已落地；本地 MySQL/Redis Compose 验收完成，LOG_DB 权限验收待完成
+🟡 P0 接入契约     new-api SSO / BFF / Benefit API、Pulse 验签、轮换、SSO 限流与 Benefit 服务限流已落地；真实部署验收待完成
+🟡 M0 地基         配置、Gin、健康检查、GORM/Redis、Goose migration、指标已落地；本地 MySQL/Redis Compose 已验收，LOG_DB 权限验收待完成
 ✅ M1 Ledger 记账内核    领域账本、账户快照、幂等冲突、重建与 ledger-check 已落地
 ✅ M2 Usage Ingest 与等级  只读日志游标、统一 Mapper、事务记账、退款复核、等级 Profile 已落地
 🟡 M2.5 回测框架  只读回放、范围过滤、异常/覆盖率、倍率对比已落地；真实 LOG_DB 样本待环境接入
-✅ M3 只读入口  new-api BFF/UI、YuanHeng 隔离 WebView、论坛等级降级与 Pulse 只读接口已落地；发布灰度待环境验收
+🟡 M3 只读入口  new-api BFF/UI、YuanHeng 隔离 WebView、论坛等级降级与 Pulse 只读接口已落地；发布灰度待环境验收
 ✅ M4 Shadow Mode  Action、幂等、确定性随机、Ticket/Budget/Grant/Outbox 已落地；真实 MySQL 并发与提交恢复验收完成
 🟡 M5 Settlement  Pulse Benefit Client、Outbox 退避、Query/Reconcile/Rollback 与 new-api 接收端已落地；Pulse 真实 MySQL 并发结算/Query 恢复已验收，真实额度到账待完成
 ✅ M6 周期与运营       Period Close、稳定周期奖励、Holdout 固化、人工调整审计、日指标聚合已落地；真实 MySQL 中断恢复验收完成
-✅ M7 内容奖励         Pulse 侧候选采集、人工审核、独立预算、限额、幂等、结算与撤销已落地；Answer 真实 schema/SSO 与 Benefit 端到端验收待完成
+🟡 M7 内容奖励         Pulse 侧候选采集、人工审核、独立预算、限额、幂等、结算与撤销已落地；Answer 真实 schema/SSO 与 Benefit 端到端验收待完成
 ```
 
 本次已启动 M0 第一批：`services/pulse/` 已从 HTTP 桩升级为可装配的 API/Worker 基础，新增 16 张核心表 migration、依赖健康检查、结构化日志、Prometheus registry、UnitOfWork 事务边界和服务签名校验。`docs/OVERVIEW.md` 为未跟踪文件，本计划不依赖它，也不覆盖或删除它。
@@ -167,8 +167,10 @@ type UnitOfWork interface {
 - [x] 统一服务签名覆盖 method、path、user、timestamp、nonce、body hash；
 - [x] 定义 Benefit API 的 grant/query/rollback、payload fingerprint、conflict 和错误码；
 - [x] 定义 Usage Mapper：consume、refund、correction、异步 task 退款、差额结算；不确定关联进入人工复核；
-- [x] 生产密钥不进入 Git，支持 current/previous 平滑轮换和 fail closed；审计、限流及轮换演练待部署验收；
-- [x] Pulse 侧实现规范化 `method/path/user/timestamp/nonce/body_hash` 验签、时间窗和重放拒绝，生产 Nonce 适配 Redis 原子 `SETNX`。
+- [x] 生产密钥不进入 Git，支持 current/previous 平滑轮换和 fail closed；
+- [x] SSO 入口使用 CriticalRateLimit；Benefit 内部接口使用独立的已验签服务身份限流，不受公共 API IP 限流影响；
+- [x] Pulse 侧实现规范化 `method/path/user/timestamp/nonce/body_hash` 验签、时间窗和重放拒绝，生产 Nonce 适配 Redis 原子 `SETNX`；
+- [ ] 真实部署完成审计、限流压测、跨实例 Nonce 与密钥轮换演练。
 
 **代码出口：**登录、2FA、论坛 SSO、Ticket 重放、Cookie 隔离、BFF 越权和签名重放回归测试通过。真实域名、跨实例、轮换演练和公网门禁属于部署验收；P0 外部验收完成前论坛不得开放公网，Pulse 奖励不得上线。
 
@@ -217,7 +219,8 @@ type UnitOfWork interface {
 - [x] 输出用户覆盖率、贡献值、券产出、异常率和数据缺口；
 - [x] 对比人工倍率、模型倍率、渠道倍率的结果；
 - [ ] 基于真实报告标定 Ticket Threshold、Reward 权重、预算上限；
-- [ ] 决定采用估算毛利，还是让 new-api 增加不可变成本快照。
+- [x] 当前阶段采用“用户收费 × 配置倍率”的成本代理值，并在报告中明确不等同真实毛利；
+- [ ] 正式 Margin-aware 运营前，让 new-api 提供不可变整数定点 Provider 成本快照。
 
 当前实现：`meta-pulse-tool backtest --from ... --to ...` 使用与 Ingest 相同的 LOG_DB Mapper，范围按 `[from,to)`，只读 Pulse DB，不推进生产游标、不写 Ledger/Account。由于当前环境未提供可验证的真实 LOG_DB 样本，真实回放与参数定标不能伪造完成。
 
@@ -304,7 +307,8 @@ type UnitOfWork interface {
 - [x] 明确 `LOG_CONSUME_ENABLED` 的生产门禁：new-api 新增 `PULSE_USAGE_LOG_REQUIRED=true`，启用后拒绝后台和配置同步关闭消费日志；
 - [x] 明确 refund/task/correction 关联字段：`request_id` 为主关联，`other.task_id` 为任务键，差额用 consume/refund 正负事件表达，缺失关联进入人工复核；
 - [x] 完成 Provider 成本快照评估：当前不具备成本事实，先采用估算口径；正式上线前由 new-api 增加不可变整数定点成本快照并由 Pulse 只读消费；
-- [ ] Benefit 与 SSO 服务密钥轮换、审计和限流。
+- [x] 代码层支持 Benefit/SSO current/previous 密钥轮换、fail-closed，以及 SSO CriticalRateLimit 和 Benefit 服务身份限流；
+- [ ] 生产部署完成密钥轮换、审计、限流压测与跨实例演练。
 
 ### YuanHeng Desktop
 
@@ -363,11 +367,11 @@ type UnitOfWork interface {
 
 以下项目已有代码、测试或验收脚本，但必须接入真实部署配置后才能勾选完成：
 
-- 真实 MySQL/Redis Compose：迁移、`/readyz`、重启、唯一约束、事务回滚和并发锁；
 - new-api `LOG_DB` 只读账号、Pulse 独立数据库及无主库写权限；
 - 真实 LOG_DB 回放、参数定标和 Provider 成本快照决策；
 - Answer 真实 schema、SSO、等级降级和跨实例 Nonce；
-- new-api Benefit 真实到账、重放 100 次、timeout Query、rollback 及密钥轮换演练。
+- new-api Benefit 真实到账、重放 100 次、timeout Query、rollback 及密钥轮换演练；
+- 生产环境的 SSO/Benefit 审计、限流压测、真实域名和跨实例 Redis nonce 演练。
 
 本机当前 Docker Hub 返回镜像授权服务不可用，不能以失败的拉取结果或内存 fake 代替上述验收。
 
