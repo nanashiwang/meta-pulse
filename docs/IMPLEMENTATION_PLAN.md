@@ -165,7 +165,7 @@ type UnitOfWork interface {
 - [x] new-api 实现 Pulse Signed BFF，浏览器访问 new-api，用户 ID 由 session 派生；
 - [x] 更新 Nginx/网关：对外 `/api/pulse/*` 只进入 new-api BFF，Pulse/Answer 均不发布宿主机端口；
 - [x] 统一服务签名覆盖 method、path、user、timestamp、nonce、body hash；
-- [x] 定义 Benefit API 的 grant/query/rollback、payload fingerprint、conflict 和错误码；
+- [x] 定义 Benefit API 的 grant/query/rollback、payload fingerprint、conflict 和错误码；Grant 的请求体 `user_id` 必须与已验签 `X-Pulse-User-Id` 一致；
 - [x] 定义 Usage Mapper：consume、refund、correction、异步 task 退款、差额结算；不确定关联进入人工复核；
 - [x] 生产密钥不进入 Git，支持 current/previous 平滑轮换和 fail closed；
 - [x] SSO 入口使用 CriticalRateLimit；Benefit 内部接口使用独立的已验签服务身份限流，不受公共 API IP 限流影响；

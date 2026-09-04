@@ -576,7 +576,7 @@ target_type = user_quota
 target_id   = user_id
 ```
 
-new-api 的 Benefit Receiver 必须以 `source_ref` 唯一定位，并持久化请求的 payload fingerprint。Pulse Outbox 的 `payload_hash` 对 JSON 做稳定规范化（对象 key 排序、去除空白后再 hash），避免 MySQL JSON 列读回时的 key 顺序/空白变化造成误判；兼容历史 struct 字段序列化的记录时仍必须完成同一 payload 语义校验：
+new-api 的 Benefit Receiver 必须以 `source_ref` 唯一定位，并持久化请求的 payload fingerprint。Grant 请求的 `user_id` 必须与已验签的 `X-Pulse-User-Id` 完全一致，避免签名主体与实际入账用户脱钩；Query/Rollback 只使用服务身份签名，不从浏览器或请求体推导入账用户。Pulse Outbox 的 `payload_hash` 对 JSON 做稳定规范化（对象 key 排序、去除空白后再 hash），避免 MySQL JSON 列读回时的 key 顺序/空白变化造成误判；兼容历史 struct 字段序列化的记录时仍必须完成同一 payload 语义校验：
 
 ```text
 同 source_ref + 同 payload → 返回第一次结果
@@ -693,7 +693,7 @@ X-Pulse-Nonce
 X-Pulse-Signature
 ```
 
-签名内容至少覆盖规范化的 `method + path + user_id + timestamp + nonce + body_hash`；时间窗、Nonce、来源和密钥版本都必须校验。`X-Pulse-User-Id` 只能由 new-api BFF 服务端从 session 派生，Pulse 不信任浏览器传值。
+签名内容至少覆盖规范化的 `method + path + user_id + timestamp + nonce + body_hash`；时间窗、Nonce、来源和密钥版本都必须校验。对于用户 BFF 请求，`X-Pulse-User-Id` 只能由 new-api 服务端从 session 派生；对于 Worker 的 Benefit Grant 请求，它必须来自不可变 Grant，并且 new-api 必须校验它与请求体 `user_id` 一致。Pulse 不信任浏览器传值。
 
 以下用户 API 是 Pulse 原始 API，只允许内网的 new-api BFF、Worker 或受控管理端访问；浏览器和 YuanHeng 不得直接调用：
 
