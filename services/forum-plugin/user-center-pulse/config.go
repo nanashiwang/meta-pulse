@@ -1,9 +1,14 @@
 package pulse_user_center
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/apache/answer/plugin"
@@ -104,9 +109,55 @@ func (uc *UserCenter) ConfigFields() []plugin.ConfigField {
 	}
 }
 
+const minimumConfigSecretLength = 32
+
+func validateConfig(c *Config) error {
+	if c == nil {
+		return errors.New("forum plugin config is nil")
+	}
+	for name, raw := range map[string]string{
+		"newapi_base_url": c.NewAPIBaseURL,
+		"pulse_base_url":  c.PulseBaseURL,
+	} {
+		parsed, err := url.Parse(strings.TrimSpace(raw))
+		if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.User != nil || parsed.Fragment != "" || parsed.RawQuery != "" {
+			return fmt.Errorf("%s must be an absolute http(s) URL without credentials, query, or fragment", name)
+		}
+	}
+	for name, secret := range map[string]string{
+		"sso_hmac_secret":   c.SSOHMACSecret,
+		"pulse_hmac_secret": c.PulseHMACSecret,
+	} {
+		if !usableConfigSecret(secret) {
+			return fmt.Errorf("%s must be at least %d bytes and cannot be a placeholder", name, minimumConfigSecretLength)
+		}
+	}
+	if previous := strings.TrimSpace(c.SSOHMACSecretPrevious); previous != "" {
+		if !usableConfigSecret(previous) || previous == strings.TrimSpace(c.SSOHMACSecret) {
+			return errors.New("sso_hmac_secret_previous is invalid or duplicates the active secret")
+		}
+	}
+	return nil
+}
+
+func usableConfigSecret(secret string) bool {
+	secret = strings.TrimSpace(secret)
+	return len(secret) >= minimumConfigSecretLength && secret != "replace-me"
+}
+
 func (uc *UserCenter) ConfigReceiver(config []byte) error {
 	c := &Config{}
-	if err := json.Unmarshal(config, c); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(config))
+	if err := decoder.Decode(c); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != nil && !errors.Is(err, io.EOF) {
+		return err
+	} else if err == nil {
+		return errors.New("trailing JSON value")
+	}
+	if err := validateConfig(c); err != nil {
 		return err
 	}
 	nonces, err := NewRedisNonceStore(c.NonceRedisURL)

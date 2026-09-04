@@ -3,6 +3,7 @@ package pulse_user_center
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -77,11 +78,11 @@ func TestConfigReceiverInstallsSharedNonceStore(t *testing.T) {
 	payload := []byte(fmt.Sprintf(`{
 		"newapi_base_url":"https://api.example.test",
 		"pulse_base_url":"https://pulse.example.test",
-		"sso_hmac_secret":"sso-secret",
-		"pulse_hmac_secret":"pulse-secret",
+		"sso_hmac_secret":"%s",
+		"pulse_hmac_secret":"%s",
 		"nonce_redis_url":"redis://%s/0",
 		"level_badge_enabled":true
-	}`, server.Addr()))
+	}`, strings.Repeat("s", minimumConfigSecretLength), strings.Repeat("p", minimumConfigSecretLength), server.Addr()))
 	if err := uc.ConfigReceiver(payload); err != nil {
 		t.Fatal(err)
 	}
