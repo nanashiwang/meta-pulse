@@ -122,13 +122,19 @@ func (s *SettlementService) processOne(ctx context.Context, outbox ports.Settlem
 		return s.failPayload(ctx, outbox, err)
 	}
 	response, grantErr := s.client.Grant(ctx, request)
-	if grantErr == nil && response.Applied && sameSourceRef(response.SourceRef, grant.SourceRef) {
+	// A successful HTTP response with a different (or empty) source_ref is an
+	// integrity failure, not an ambiguous response. Do not let a subsequent
+	// Query of the expected key turn a mismatched Grant response into settled.
+	if grantErr == nil && !sameSourceRef(response.SourceRef, grant.SourceRef) {
+		return s.failPayload(ctx, outbox, fmt.Errorf("%w: grant returned source_ref %q", ErrSettlementConflict, response.SourceRef))
+	}
+	if grantErr == nil && response.Applied {
 		if err := s.complete(ctx, outbox, grant); err != nil {
 			return "", err
 		}
 		return OutboxStatusCompleted, nil
 	}
-	if grantErr == nil && response.RolledBack && sameSourceRef(response.SourceRef, grant.SourceRef) {
+	if grantErr == nil && response.RolledBack {
 		return s.failPayload(ctx, outbox, fmt.Errorf("%w: benefit was already rolled back", ErrSettlementConflict))
 	}
 
@@ -146,9 +152,6 @@ func (s *SettlementService) processOne(ctx context.Context, outbox ports.Settlem
 	}
 	if queryErr == nil && !sameSourceRef(state.SourceRef, grant.SourceRef) {
 		return s.failPayload(ctx, outbox, fmt.Errorf("%w: query returned source_ref %q", ErrSettlementConflict, state.SourceRef))
-	}
-	if grantErr == nil && !sameSourceRef(response.SourceRef, grant.SourceRef) {
-		return s.failPayload(ctx, outbox, fmt.Errorf("%w: grant returned source_ref %q", ErrSettlementConflict, response.SourceRef))
 	}
 	if grantErr != nil && isBenefitConflict(grantErr) {
 		return s.failPayload(ctx, outbox, fmt.Errorf("%w: %v", ErrSettlementConflict, grantErr))

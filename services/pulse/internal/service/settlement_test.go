@@ -270,3 +270,21 @@ func TestSettlementMarksContentAwardSettled(t *testing.T) {
 		t.Fatalf("content award status=%q, want %q", got, ports.ContentAwardSettled)
 	}
 }
+
+func TestSettlementRejectsMismatchedGrantResponseBeforeQuery(t *testing.T) {
+	client := &fakeBenefitClient{
+		grantResponse: ports.BenefitGrantResponse{Applied: true, SourceRef: "other-grant"},
+		queryState:    ports.BenefitState{Applied: true, SourceRef: "pg_test"},
+	}
+	service, rewards, outboxes, _ := settlementFixture(t, client)
+	report, err := service.ProcessBatch(context.Background())
+	if err != nil || report.Dead != 1 || report.Completed != 0 {
+		t.Fatalf("report=%+v err=%v", report, err)
+	}
+	if client.queryCalls != 0 {
+		t.Fatalf("mismatched grant response was followed by query: calls=%d", client.queryCalls)
+	}
+	if outboxes.outboxes[0].Status != OutboxStatusDead || rewards.grants[0].Status != RewardStatusPending {
+		t.Fatalf("outbox=%+v grant=%+v", outboxes.outboxes[0], rewards.grants[0])
+	}
+}
