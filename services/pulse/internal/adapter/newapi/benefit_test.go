@@ -122,3 +122,41 @@ func TestBenefitClientRejectsUnknownState(t *testing.T) {
 		t.Fatalf("err=%v", err)
 	}
 }
+
+func TestBenefitClientRejectsUnsafeBaseURL(t *testing.T) {
+	tests := []string{
+		"ftp://new-api.internal",
+		"http://user:pass@new-api.internal",
+		"http://new-api.internal/base",
+		"http://new-api.internal?target=other",
+		"http://new-api.internal#fragment",
+		"//new-api.internal",
+	}
+	for _, baseURL := range tests {
+		t.Run(baseURL, func(t *testing.T) {
+			if _, err := NewBenefitClient(baseURL, []byte("secret"), nil); err == nil {
+				t.Fatalf("base URL %q should be rejected", baseURL)
+			}
+		})
+	}
+	client, err := NewBenefitClient("https://new-api.internal/", []byte("secret"), nil)
+	if err != nil || client.baseURL != "https://new-api.internal" {
+		t.Fatalf("client=%+v err=%v", client, err)
+	}
+}
+
+func TestBenefitClientRejectsOversizedResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"applied","source_ref":"pg_1"}`))
+		_, _ = w.Write([]byte(strings.Repeat(" ", maxBenefitResponseBytes)))
+	}))
+	defer server.Close()
+	client, err := NewBenefitClient(server.URL, []byte("benefit-secret"), server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.Query(context.Background(), "pg_1")
+	if err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("err=%v", err)
+	}
+}

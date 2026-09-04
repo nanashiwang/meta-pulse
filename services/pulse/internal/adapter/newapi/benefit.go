@@ -25,6 +25,8 @@ var (
 	ErrBenefitNotFound = errors.New("new-api benefit not found")
 )
 
+const maxBenefitResponseBytes = 1 << 20
+
 type BenefitClient struct {
 	baseURL string
 	secret  []byte
@@ -34,8 +36,8 @@ type BenefitClient struct {
 }
 
 func NewBenefitClient(baseURL string, secret []byte, client *http.Client) (*BenefitClient, error) {
-	parsed, err := url.Parse(strings.TrimRight(strings.TrimSpace(baseURL), "/"))
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+	parsed, err := url.Parse(strings.TrimSpace(baseURL))
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.Hostname() == "" || parsed.User != nil || parsed.Opaque != "" || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") || (parsed.RawPath != "" && parsed.RawPath != "/") {
 		return nil, errors.New("new-api benefit base URL is invalid")
 	}
 	if len(secret) == 0 {
@@ -44,7 +46,9 @@ func NewBenefitClient(baseURL string, secret []byte, client *http.Client) (*Bene
 	if client == nil {
 		client = &http.Client{Timeout: 10 * time.Second}
 	}
-	return &BenefitClient{baseURL: strings.TrimRight(parsed.String(), "/"), secret: append([]byte(nil), secret...), role: "pulse-settlement", http: client, now: time.Now}, nil
+	parsed.Path = ""
+	parsed.RawPath = ""
+	return &BenefitClient{baseURL: parsed.String(), secret: append([]byte(nil), secret...), role: "pulse-settlement", http: client, now: time.Now}, nil
 }
 
 func (c *BenefitClient) Grant(ctx context.Context, request ports.BenefitGrantRequest) (ports.BenefitGrantResponse, error) {
@@ -142,9 +146,12 @@ func (c *BenefitClient) post(ctx context.Context, path string, userID uint64, pa
 		return fmt.Errorf("call new-api benefit API: %w", err)
 	}
 	defer response.Body.Close()
-	responseBody, readErr := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	responseBody, readErr := io.ReadAll(io.LimitReader(response.Body, maxBenefitResponseBytes+1))
 	if readErr != nil {
 		return fmt.Errorf("read new-api benefit response: %w", readErr)
+	}
+	if len(responseBody) > maxBenefitResponseBytes {
+		return fmt.Errorf("new-api benefit response exceeds %d bytes", maxBenefitResponseBytes)
 	}
 	var envelope benefitResponse
 	if len(responseBody) > 0 {

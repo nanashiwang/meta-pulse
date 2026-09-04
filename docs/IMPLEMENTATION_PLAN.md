@@ -257,7 +257,7 @@ type UnitOfWork interface {
 ### M5｜Settlement 与 Benefit API
 
 - [x] new-api Grant / Query / Rollback 内部接口；
-- [x] Pulse Benefit Client 使用 HMAC 服务认证、时间窗、nonce、来源绑定；
+- [x] Pulse Benefit Client 使用 HMAC 服务认证、时间窗、nonce、来源绑定；仅接受无凭据/查询/片段/子路径的 HTTP(S) 根地址，响应上限 1 MiB；
 - [x] Benefit payload fingerprint 和 conflict 错误已进入统一契约；
 - [x] 使用 `GrantUserQuotaTx`，奖励额度 `transferable_quota=0`；
 - [x] Outbox 指数退避、dead 状态、`reward-retry` 人工重试入口；
