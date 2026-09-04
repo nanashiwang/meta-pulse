@@ -310,6 +310,9 @@ func (r *rewardRepository) ClaimDue(ctx context.Context, now time.Time, limit in
 	if limit <= 0 || limit > 5000 {
 		return nil, errors.New("settlement batch size must be between 1 and 5000")
 	}
+	if now.IsZero() || !leaseUntil.After(now) {
+		return nil, errors.New("settlement lease must end after a non-zero claim time")
+	}
 	var models []settlementOutboxModel
 	err := r.db.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
 		Where("status IN ? AND next_attempt_at <= ? AND (leased_until IS NULL OR leased_until < ?)", []string{"pending", "retry", "processing"}, now, now).
@@ -320,17 +323,36 @@ func (r *rewardRepository) ClaimDue(ctx context.Context, now time.Time, limit in
 	result := make([]ports.SettlementOutbox, 0, len(models))
 	for i := range models {
 		model := &models[i]
+		previousStatus := model.Status
+		previousAttempts := model.Attempts
+		nextAttempts, err := nextSettlementAttempt(previousAttempts)
+		if err != nil {
+			return nil, fmt.Errorf("claim settlement outbox %d: %w", model.ID, err)
+		}
 		model.Status = "processing"
 		model.LeasedUntil = &leaseUntil
-		model.Attempts++
-		if err := r.db.WithContext(ctx).Model(&settlementOutboxModel{}).Where("id = ?", model.ID).Updates(map[string]any{
-			"status": model.Status, "leased_until": model.LeasedUntil, "attempts": model.Attempts,
-		}).Error; err != nil {
-			return nil, fmt.Errorf("lease settlement outbox: %w", err)
+		model.Attempts = nextAttempts
+		update := r.db.WithContext(ctx).Model(&settlementOutboxModel{}).
+			Where("id = ? AND status = ? AND attempts = ?", model.ID, previousStatus, previousAttempts).
+			Updates(map[string]any{
+				"status": model.Status, "leased_until": model.LeasedUntil, "attempts": model.Attempts,
+			})
+		if update.Error != nil {
+			return nil, fmt.Errorf("lease settlement outbox: %w", update.Error)
+		}
+		if update.RowsAffected != 1 {
+			return nil, ports.ErrConflict
 		}
 		result = append(result, settlementOutboxFromModel(*model))
 	}
 	return result, nil
+}
+
+func nextSettlementAttempt(current uint32) (uint32, error) {
+	if current == ^uint32(0) {
+		return 0, errors.New("settlement attempt counter overflow")
+	}
+	return current + 1, nil
 }
 
 func (r *rewardRepository) ListForReconciliation(ctx context.Context, limit int) ([]ports.SettlementOutbox, error) {
