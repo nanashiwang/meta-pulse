@@ -2,7 +2,7 @@
 
 Meta Pulse 使用独立 MySQL 8.0+ 逻辑库。SQL 文件采用 Goose 注释格式，并按数字顺序执行。
 
-首个 migration `00001_initial_schema.sql` 创建 16 张核心表；`00002_ledger_payload_hash.sql` 补充账本 payload 指纹和 append-only 数据库保护；`00003_usage_correlation.sql` 补充最小退款关联字段与冲突唯一键；`00004`—`00006` 依次补充预算类型、内容奖励表和内容限额并发 guard；`00007` 持久化 Usage 命中的 economics config version 快照；`00008` 将终态 Settlement 完整性冲突从可对账的 `dead` 状态中分离：
+首个 migration `00001_initial_schema.sql` 创建 16 张核心表；`00002_ledger_payload_hash.sql` 补充账本 payload 指纹和 append-only 数据库保护；`00003_usage_correlation.sql` 补充最小退款关联字段与冲突唯一键；`00004`—`00006` 依次补充预算类型、内容奖励表和内容限额并发 guard；`00007` 持久化 Usage 命中的 economics config version 快照；`00008` 将终态 Settlement 完整性冲突从可对账的 `dead` 状态中分离；`00009` 为跨周期请求/Action 的旧记录恢复添加 key-first 与 user/action 查询索引：
 
 ```text
 pulse_period
@@ -74,3 +74,10 @@ Reward settled => new-api Benefit exists
 Budget reserved + settled <= cap
 accepted UsageEvent => exactly one accounting effect
 ```
+
+
+## `00009` 幂等升级
+
+仅添加 `pulse_idempotency(idempotency_key, scope)` 与 `pulse_reward_grant(user_id, action_id, trigger_type)` 非唯一辅助索引，不重写 Ledger、Grant 或旧请求响应。新 API 在同一业务事务内建立不依赖周期的 action/request 双映射，旧记录按原指纹核验后恢复；存在歧义时冲突退出。
+
+执行发布前备份并排空旧 API 写请求，禁止同时运行新旧 Action 写入路径。Down 只移除辅助索引，不会撤销已经建立的稳定幂等语义；旧版本不认识新请求范围，不能以执行 Down/删幂等记录的方式直接恢复发奖。

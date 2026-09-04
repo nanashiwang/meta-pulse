@@ -27,6 +27,11 @@ func main() {
 	}
 
 	switch os.Args[1] {
+	case "config-check":
+		if err := runConfigCheck(os.Args[2:]); err != nil {
+			logger.Error("configuration check failed", "error", err)
+			os.Exit(1)
+		}
 	case "migrate-up", "migrate-status":
 		if err := runMigration(os.Args[1] == "migrate-up"); err != nil {
 			logger.Error("migration command failed", "error", err)
@@ -405,5 +410,22 @@ func runMigration(up bool) error {
 
 func usage() {
 	fmt.Println("Meta Pulse operator tool")
-	fmt.Println("commands: migrate-up | migrate-status | backfill | backtest | access-check | reconcile | ledger-check | period-close | reward-retry --grant-id <pg_...>")
+	fmt.Println("commands: config-check --role <api|worker|tool> | migrate-up | migrate-status | backfill | backtest | access-check | reconcile | ledger-check | period-close | reward-retry --grant-id <pg_...>")
+}
+
+// runConfigCheck never opens a database or emits credential values.
+func runConfigCheck(args []string) error {
+	flags := flag.NewFlagSet("config-check", flag.ContinueOnError)
+	role := flags.String("role", "", "required process role: api, worker or tool")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return errors.New("unexpected config-check arguments")
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	return cfg.ValidateRole(*role)
 }

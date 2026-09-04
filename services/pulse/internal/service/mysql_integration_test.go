@@ -168,14 +168,23 @@ VALUES (?, ?, 'ticket', 'ticket_mint', 1, 1, 'integration', ?, ?, ?, 'integratio
 		t.Fatalf("rebuilt ticket account = %+v", rebuilt)
 	}
 
+	var spentTickets, statVersion int64
+	if err := sqlDB.QueryRowContext(ctx, `SELECT spent_tickets, version FROM pulse_user_period_stat WHERE user_id = ? AND period_id = ?`, userID, periodID).Scan(&spentTickets, &statVersion); err != nil {
+		t.Fatalf("read action ticket stat: %v", err)
+	}
+	if spentTickets != 1 || statVersion != 1 {
+		t.Fatalf("action ticket stat spent=%d version=%d", spentTickets, statVersion)
+	}
+
 	var idempotencyRows int
-	scope := "pulse_action:" + strconv.FormatUint(periodID, 10) + ":" + strconv.FormatUint(userID, 10)
+	scope := "pulse_action_request:" + strconv.FormatUint(userID, 10)
 	if err := sqlDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM pulse_idempotency WHERE scope = ? AND idempotency_key = ?`, scope, command.IdempotencyKey).Scan(&idempotencyRows); err != nil {
 		t.Fatal(err)
 	}
 	if idempotencyRows != 1 {
 		t.Fatalf("idempotency rows = %d, want 1", idempotencyRows)
 	}
+	assertMySQLActionPeriodReplay(t, sqlDB, action, command, results[0])
 }
 
 func TestMySQLPeriodCloseRollbackReentryAndRestart(t *testing.T) {
@@ -671,12 +680,12 @@ VALUES (?, 'grant', ?, ?, 'pending', 0, NOW(6) - INTERVAL 1 MINUTE)`, grantRowID
 		t.Fatalf("settlement states grant=%q outbox=%q", grantStatus, outboxStatus)
 	}
 
-	var spentTickets, statVersion int64
-	if err := sqlDB.QueryRowContext(ctx, `SELECT spent_tickets, version FROM pulse_user_period_stat WHERE user_id = ? AND period_id = ?`, userID, periodID).Scan(&spentTickets, &statVersion); err != nil {
-		t.Fatalf("read action ticket stat: %v", err)
+	var statRows int
+	if err := sqlDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM pulse_user_period_stat WHERE user_id=? AND period_id=?`, userID, periodID).Scan(&statRows); err != nil {
+		t.Fatal(err)
 	}
-	if spentTickets != 1 || statVersion != 1 {
-		t.Fatalf("action ticket stat spent=%d version=%d", spentTickets, statVersion)
+	if statRows != 0 {
+		t.Fatal("settlement mutated ticket stats for a directly seeded grant")
 	}
 
 	// A successful Benefit call followed by a Pulse-side timeout is recovered

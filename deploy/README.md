@@ -5,7 +5,8 @@
 - `install.sh`：初始化生产配置、生成随机凭据、启动依赖、执行迁移、启动服务并检查 `/readyz`。
 - `update.sh`：加锁拉取远程分支、备份配置、构建镜像、执行前向迁移、重建服务并检查 `/readyz`。
 - `meta-pulse.env.example`：生产配置模板。
-- `test.sh`：不连接 Docker 的脚本和配置离线测试。
+- `test.sh` / `update_test.sh`：不连接真实 Docker、不执行远程更新的脚本回归。
+- `config-test.sh`：用测试凭据渲染实际生产 Compose，验证 API/Worker/Tool 的最小权限配置；不读取真实 `.env`、不连接业务数据库。
 
 ## 部署边界
 
@@ -62,7 +63,7 @@ docker compose --env-file .env -f docker-compose.yml logs -f pulse-api pulse-wor
 
 ## 一键更新
 
-默认更新当前分支。脚本要求 tracked 工作区干净，保留 `.env`，并使用 Git lock 防止并发更新：
+默认更新当前分支。脚本要求 tracked 工作区干净，先取得 Git lock，再只读校验已有 `.env`。配置缺失、空密钥或占位密码会直接停止，必须从备份恢复原凭据；更新绝不会自动生成新密码/随机种子。安装支持的 shell 配置注入不适用于更新，Compose 也不会使用继承的 `PULSE_*`、`NEWAPI_*`、`FORUM_*` 或 `COMPOSE_PROJECT_NAME` 覆盖已校验文件：
 
 ```bash
 cd /opt/meta-pulse
@@ -77,7 +78,7 @@ cd /opt/meta-pulse
 ./deploy/update.sh --no-build      # 仅使用已有镜像（仅适合已预构建场景）
 ```
 
-更新顺序是：加锁 → 备份运行中的 Pulse/Forum 数据库 → 拉取代码 → 校验 Compose → 构建新镜像 → `migrate-up` → 重建服务 → `/readyz`。迁移只前进，不执行 down；失败时会输出容器日志、原 commit 和备份位置，不会伪造成功。
+更新顺序是：加锁 → 只读校验配置 → 备份原 `.env` 和 Compose → 备份运行中的 Pulse/Forum 数据库 → 拉取代码 → 校验 Compose → 构建新镜像 → 排空/停止旧 Pulse API → `migrate-up` → 重建服务 → API/Worker `/readyz`。迁移只前进，不执行 down；失败时会输出容器日志、原 commit 和备份位置，不会伪造成功。
 
 每次更新的 `.env`、更新前 Compose 配置和数据库 dump 位于：
 
@@ -113,3 +114,41 @@ docker compose --env-file .env -f docker-compose.yml up -d pulse-api pulse-worke
 如果新版本已经写入不可逆 schema，必须按数据库备份/恢复方案处理，禁止用 `docker compose down -v`“解决”问题。
 
 正式关闭 `PULSE_REWARD_SHADOW_MODE` 前，仍需完成 new-api Benefit 实际到账、Query/Reconciliation、密钥轮换、限流和跨实例 Redis Nonce 等外部验收；本脚本不会替代这些验收。
+
+
+## 监控与最小权限
+
+API 使用服务/BFF/Admin/随机密钥；Worker 只需要服务/随机密钥、只读 LOG_DB 和 Benefit 地址，不能为了通过启动校验给它额外分发 BFF/Admin 密钥。迁移工具不需要签名密钥。可用 `meta-pulse-tool config-check --role worker` 校验对应环境（角色也支持 `api`、`tool`）；命令不连接数据库、不输出密钥。
+
+Prometheus 必须能访问 Docker 私网，可配置两组抓取目标（不要发布宿主机端口）：
+
+```yaml
+scrape_configs:
+  - job_name: pulse-api
+    static_configs:
+      - targets: ['pulse-api:8088']
+  - job_name: pulse-worker
+    static_configs:
+      - targets: ['pulse-worker:8089']
+```
+
+- API `/metrics`：HTTP 计数，按路由模板分组。
+- Worker `/metrics`：真实账本差异、结算 retry/dead、预算、周期/任务失败、采集新鲜度。
+- 需要同时告警抓取失败、`meta_pulse_operations_up == 0` 和 `time() - meta_pulse_operations_last_success_timestamp_seconds > 120`。首次采集前业务值为 NaN；失败时保留旧值但将 up 设为 0，不能把陈旧数据当作正常。
+- Worker `/readyz` 只检查 Pulse MySQL/Redis；日志源只读权限仍在启动时 fail closed 验收。启动后各任务独立超时，慢日志/论坛查询不消耗结算和对账的任务预算。
+
+## 幂等升级与回归
+
+首次从旧部署脚本升级到本版时，先备份已有 `.env`，在 tracked 工作区干净的前提下用 `git pull --ff-only` 获取新脚本，再执行 `./deploy/update.sh`；已经运行的旧脚本不会自动获得本版的保护。
+
+本次新增 `00009_action_replay_indexes.sql`，只添加历史请求/动作查询索引，不改写任何账本、金额或旧幂等记录。更新脚本在迁移前通过 `compose stop -t 15 pulse-api` 排空/停止旧 API 的在途写请求，不能混跑新旧 Action 实现；这会短暂停用 Pulse API，但不会停止 new-api 的模型、计费或登录服务。新操作需要新的 action id/key；网络重试复用原值，跨周期也返回原结果。历史同 key/action 已有多笔结果时返回 conflict，必须人工核对，禁止删除记录后重发。
+
+若需回退到不认识稳定幂等范围的旧版本，应先在 new-api BFF 封闭 Action 入口并解决回放兼容，优先采用向前修复；不能只回退二进制后继续发奖，更不能恢复旧库抹掉已经提交/到账的奖励。
+
+```bash
+make test                # Go + 更新脚本离线回归
+make deploy-config-test  # 实际 Compose 渲染 + 生产角色校验
+make test-integration    # 需要提前设置专用测试库 PULSE_INTEGRATION_DSN
+```
+
+集成 DSN 必须指向可丢弃的独立 MySQL 8 测试库，包含 `parseTime=True&loc=Asia%2FShanghai`，禁止指向现有业务库。MySQL 开启 binary logging 时需允许创建账本保护触发器（`log_bin_trust_function_creators=1`）；CI 自动创建隔离服务并设置该项。真实服务器的安装、更新、备份恢复和公网身份链路仍需另外验收。

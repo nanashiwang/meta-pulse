@@ -87,7 +87,7 @@ cd /opt/meta-pulse
 ./deploy/update.sh
 ```
 
-更新脚本会加锁、备份数据库和配置、fast-forward 拉取代码、执行迁移、重建服务并检查 `/readyz`。详细参数、日志、回滚和外部依赖见 [`deploy/README.md`](deploy/README.md)。
+更新脚本会先加锁、只读校验已有配置，再备份数据库和原配置、fast-forward 拉取代码、执行迁移、重建服务并检查 API/Worker 的 `/readyz`。更新不会生成或轮换凭据；配置缺失时必须先恢复原配置。详细参数、日志、回滚和外部依赖见 [`deploy/README.md`](deploy/README.md)。
 
 ### 本地验证
 
@@ -95,7 +95,15 @@ cd /opt/meta-pulse
 make test       # Go 测试 + 部署脚本离线测试
 make vet
 make deploy-test
+make deploy-config-test  # 生产 Compose 配置 + API/Worker/Tool 最小权限校验
 ```
+
+### 运行监控与数据库回归
+
+- API 的 `:8088/metrics` 提供 HTTP 指标；Worker 的 `:8089/metrics` 提供账本、结算、预算、周期失败与任务失败指标。两者均只允许内网采集，不发布宿主机端口。
+- 业务指标必须同时检查 `meta_pulse_operations_up` 和最近成功采集时间，不能把未采集/过期数据当作正常。
+- `make test-integration` 必须显式提供专用测试库的 `PULSE_INTEGRATION_DSN`，执行真实 MySQL 事务、100 并发/重放、跨周期和旧版幂等恢复测试；**禁止指向业务数据库**。CI 自动创建隔离 MySQL。
+- 新的开启操作必须使用新的 `action_id` 和 `Idempotency-Key`；响应丢失时复用原值，即使周期已经结束，也返回首次结果。
 
 ## 仓库结构
 
@@ -133,10 +141,10 @@ Apache Answer 源码不进入仓库，通过官方镜像与 Go module 引入。
 
 ## 当前状态
 
-**仓库内 P0–M7 已完成｜系统架构已冻结｜当前仅剩真实外部环境验收。**
+**P0–M7 功能里程碑已落地；已补齐跨周期幂等、Worker、更新安全与监控回归。正式上线仍需真实外部环境验收。**
 
 已落地范围包括：身份与服务签名边界、Usage Ingest、Ledger/Account、等级、确定性 Reward、Hard Budget、Transactional Outbox、Benefit Query/Reconciliation/Rollback、可重入 Period Close、运营审计与指标、论坛 SSO/等级，以及独立预算的内容奖励。
 
-尚未冒充完成的事项只包括真实 LOG_DB 样本与只读权限、Provider 成本快照、new-api Benefit 实际到账与密钥轮换、Answer 真实 schema/公网 SSO、跨实例 Redis Nonce、真实域名和生产灰度。明细见 [实施计划第 8 节](docs/IMPLEMENTATION_PLAN.md#8-当前未冒充完成的外部验收)。
+仍需完成的外部验收包括真实 LOG_DB 样本与只读权限、Provider 成本快照、new-api Benefit 实际到账与密钥轮换、Answer 真实 schema/公网 SSO、跨实例 Redis Nonce、真实域名和生产灰度。明细见 [实施计划第 8 节](docs/IMPLEMENTATION_PLAN.md#8-当前未冒充完成的外部验收)。
 
 实现不得改变 `docs/ARCHITECTURE.md` 定义的系统边界、事实源和工程红线，以及 `docs/COMMUNITY.md` 定义的社区层边界。里程碑、出口标准和外部验收清单见 `docs/IMPLEMENTATION_PLAN.md`。

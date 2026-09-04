@@ -25,5 +25,5 @@ WORKDIR /app
 COPY --from=builder /out/ /usr/local/bin/
 USER pulse
 
-EXPOSE 8088
+EXPOSE 8088 8089
 ENTRYPOINT ["meta-pulse-api"]

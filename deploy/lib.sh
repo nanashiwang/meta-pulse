@@ -116,6 +116,11 @@ ensure_env_file() {
   done
 }
 
+# Updates fail closed: only installation may create or repair credentials.
+require_existing_env_file() {
+  [[ -f "$ENV_FILE" ]] || die "更新需要已有配置：${ENV_FILE}；请从备份恢复，禁止重新生成已有数据卷的凭据"
+}
+
 require_env_value() {
   local key="$1"
   local value
@@ -131,6 +136,10 @@ validate_environment() {
   local key value
   for key in PULSE_DB_PASSWORD PULSE_DB_ROOT_PASSWORD FORUM_DB_PASSWORD FORUM_DB_ROOT_PASSWORD; do
     require_env_value "$key"
+    value="$(env_value "$key")"
+    case "$value" in
+      replace-me|CHANGE_ME|__GENERATE__) die "$key 仍为占位密码，请恢复真实凭据" ;;
+    esac
   done
   for key in PULSE_SERVICE_HMAC_SECRET PULSE_USER_BFF_HMAC_SECRET PULSE_ADMIN_HMAC_SECRET PULSE_REWARD_RANDOM_SECRET; do
     value="$(env_value "$key")"
@@ -148,9 +157,18 @@ validate_worker_environment() {
   require_env_value NEWAPI_INTERNAL_BASE_URL
 }
 
-compose() {
+compose() (
+  # Compose normally prefers exported shell values over --env-file. Clear only
+  # application configuration in this subshell so the validated/backed-up file
+  # is also the configuration that is deployed. Docker connection vars remain.
+  local key
+  for key in $(compgen -e); do
+    case "$key" in
+      PULSE_*|NEWAPI_*|FORUM_*|COMPOSE_PROJECT_NAME) unset "$key" ;;
+    esac
+  done
   docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
-}
+)
 
 validate_compose() {
   log "校验 Docker Compose 配置"

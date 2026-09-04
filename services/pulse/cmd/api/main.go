@@ -30,6 +30,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := cfg.ValidateAPI(); err != nil {
+		logger.Error("invalid API configuration", "error", err)
+		os.Exit(1)
+	}
+
 	database, err := mysqlstore.Open(cfg.PulseDBDSN)
 	if err != nil {
 		logger.Error("initialize pulse database", "error", err)
@@ -118,7 +123,7 @@ func main() {
 			return nil
 		}
 	}, nonces, 5*time.Minute)
-	metrics := observability.NewMetrics()
+	metrics := observability.NewHTTPMetrics()
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           app.NewRouterWithProfileSummaryActionContentAndHistory(logger, readiness, profile, profile, action, content, rewardHistory, profileAuth, metrics),

@@ -98,6 +98,16 @@ func (m *memoryRewardStore) TransitionGrantStatus(_ context.Context, grantID uin
 	return ports.ErrNotFound
 }
 
+func (m *memoryRewardStore) ListPulseGrantsByAction(_ context.Context, userID uint64, actionID string) ([]ports.RewardGrant, error) {
+	var grants []ports.RewardGrant
+	for _, grant := range m.grants {
+		if grant.UserID == userID && grant.ActionID == actionID && grant.TriggerType == ActionTriggerType {
+			grants = append(grants, grant)
+		}
+	}
+	return grants, nil
+}
+
 func (m *memoryRewardStore) FindGrantByAction(_ context.Context, periodID, userID uint64, actionID string) (*ports.RewardGrant, error) {
 	for _, grant := range m.grants {
 		if grant.PeriodID == periodID && grant.UserID == userID && grant.ActionID == actionID {
@@ -132,6 +142,16 @@ type memoryIdempotencyStore struct {
 func newMemoryIdempotencyStore() *memoryIdempotencyStore {
 	return &memoryIdempotencyStore{records: make(map[string]ports.IdempotencyRecord)}
 }
+func (m *memoryIdempotencyStore) LegacyActionRequests(_ context.Context, userID uint64, key string) ([]ports.IdempotencyRecord, error) {
+	var records []ports.IdempotencyRecord
+	for _, record := range m.records {
+		if record.Key == key && strings.HasPrefix(record.Scope, "pulse_action:") && strings.HasSuffix(record.Scope, fmt.Sprintf(":%d", userID)) {
+			records = append(records, record)
+		}
+	}
+	return records, nil
+}
+
 func (m *memoryIdempotencyStore) GetOrCreateForUpdate(_ context.Context, scope, key, payloadHash string) (ports.IdempotencyRecord, error) {
 	mapKey := scope + ":" + key
 	if record, ok := m.records[mapKey]; ok {

@@ -1,5 +1,5 @@
 .PHONY: help fmt vet test build build-pulse build-forum build-blog \
-        run-api run-worker migrate-up migrate-status up down deploy-install deploy-update deploy-test clean
+        run-api run-worker migrate-up migrate-status up down deploy-install deploy-update deploy-test deploy-config-test test-integration clean
 
 # The repo root is not a Go module, so `./...` does not resolve across the
 # workspace. Every Go target lists module paths explicitly.
@@ -19,6 +19,8 @@ help:
 	@echo "  make deploy-install  服务器首次生产部署"
 	@echo "  make deploy-update   服务器拉取并更新生产服务"
 	@echo "  make deploy-test     离线验证部署脚本"
+	@echo "  make deploy-config-test  生产 Compose 角色配置回归"
+	@echo "  make test-integration    独立 MySQL 事务/并发回归（需测试 DSN）"
 	@echo ""
 	@echo "Tracks: services/pulse (A) | sites/blog (B) | services/forum* (C)"
 
@@ -33,6 +35,14 @@ test: deploy-test
 
 deploy-test:
 	./deploy/test.sh
+
+deploy-config-test:
+	./deploy/config-test.sh
+
+# Refuse a green run made entirely of skipped database tests.
+test-integration:
+	@test -n "$$PULSE_INTEGRATION_DSN" || { echo "请设置专用测试库 PULSE_INTEGRATION_DSN" >&2; exit 1; }
+	go test -count=1 -race ./services/pulse/internal/service -run MySQL -timeout 5m
 
 build: build-pulse build-blog
 

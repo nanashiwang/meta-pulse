@@ -13,6 +13,7 @@ const minimumProductionSecretLength = 32
 type Config struct {
 	Environment                 string
 	HTTPAddr                    string
+	WorkerHTTPAddr              string
 	PulseDBDSN                  string
 	RedisAddr                   string
 	RedisPassword               string
@@ -93,6 +94,7 @@ func Load() (Config, error) {
 	cfg := Config{
 		Environment:                 strings.ToLower(getenv("PULSE_ENV", "development")),
 		HTTPAddr:                    getenv("PULSE_HTTP_ADDR", ":8088"),
+		WorkerHTTPAddr:              getenv("PULSE_WORKER_HTTP_ADDR", ":8089"),
 		PulseDBDSN:                  os.Getenv("PULSE_DB_DSN"),
 		RedisAddr:                   getenv("PULSE_REDIS_ADDR", "127.0.0.1:6379"),
 		RedisPassword:               os.Getenv("PULSE_REDIS_PASSWORD"),
@@ -106,7 +108,7 @@ func Load() (Config, error) {
 		UserBFFHMACSecretPrevious:   os.Getenv("PULSE_USER_BFF_HMAC_SECRET_PREVIOUS"),
 		AdminHMACSecret:             os.Getenv("PULSE_ADMIN_HMAC_SECRET"),
 		AdminHMACSecretPrevious:     os.Getenv("PULSE_ADMIN_HMAC_SECRET_PREVIOUS"),
-		RewardRandomSecret:          getenv("PULSE_REWARD_RANDOM_SECRET", "replace-me"),
+		RewardRandomSecret:          os.Getenv("PULSE_REWARD_RANDOM_SECRET"),
 		RewardShadowMode:            rewardShadowMode,
 		IngestBatchSize:             ingestBatchSize,
 		SettlementBatchSize:         settlementBatchSize,
@@ -125,9 +127,9 @@ func Load() (Config, error) {
 	return cfg, nil
 }
 
-// Validate contains process-independent validation. Worker-only dependencies
-// are validated by ValidateWorker so the API does not gain unnecessary access
-// to new-api LOG_DB.
+// Validate checks shared settings and any supplied rotation secrets. Required
+// credentials are checked by the process role, never by this common loader.
+// Read-only/migration tools do not need BFF, admin or reward credentials.
 func (cfg Config) Validate() error {
 	var errs []error
 	if strings.TrimSpace(cfg.HTTPAddr) == "" {
@@ -165,7 +167,7 @@ func (cfg Config) Validate() error {
 			"PULSE_ADMIN_HMAC_SECRET":    cfg.AdminHMACSecret,
 			"PULSE_REWARD_RANDOM_SECRET": cfg.RewardRandomSecret,
 		} {
-			if len(secret) < minimumProductionSecretLength || secret == "replace-me" {
+			if secret != "" && (len(strings.TrimSpace(secret)) < minimumProductionSecretLength || secret == "replace-me") {
 				errs = append(errs, fmt.Errorf("%s must be at least %d bytes and cannot use a placeholder in production", name, minimumProductionSecretLength))
 			}
 		}
@@ -223,8 +225,45 @@ func (cfg Config) ValidateLogReader() error {
 	return nil
 }
 
-func (cfg Config) ValidateWorker() error {
+func (cfg Config) validateRequiredSecrets(secrets map[string]string) error {
 	var errs []error
+	for name, secret := range secrets {
+		secret = strings.TrimSpace(secret)
+		if secret == "" || (cfg.Environment == "production" && (len(secret) < minimumProductionSecretLength || secret == "replace-me")) {
+			errs = append(errs, fmt.Errorf("%s is required and must be at least %d bytes in production", name, minimumProductionSecretLength))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func (cfg Config) ValidateAPI() error {
+	return errors.Join(cfg.Validate(), cfg.validateRequiredSecrets(map[string]string{
+		"PULSE_SERVICE_HMAC_SECRET":  cfg.ServiceHMACSecret,
+		"PULSE_USER_BFF_HMAC_SECRET": cfg.UserBFFHMACSecret,
+		"PULSE_ADMIN_HMAC_SECRET":    cfg.AdminHMACSecret,
+		"PULSE_REWARD_RANDOM_SECRET": cfg.RewardRandomSecret,
+	}))
+}
+
+// ValidateRole also powers the offline deployment configuration gate.
+func (cfg Config) ValidateRole(role string) error {
+	switch role {
+	case "api":
+		return cfg.ValidateAPI()
+	case "worker":
+		return cfg.ValidateWorker()
+	case "tool":
+		return cfg.Validate()
+	default:
+		return fmt.Errorf("unknown process role %q", role)
+	}
+}
+
+func (cfg Config) ValidateWorker() error {
+	errs := []error{cfg.Validate(), cfg.validateRequiredSecrets(map[string]string{
+		"PULSE_SERVICE_HMAC_SECRET":  cfg.ServiceHMACSecret,
+		"PULSE_REWARD_RANDOM_SECRET": cfg.RewardRandomSecret,
+	})}
 	if err := cfg.ValidateLogReader(); err != nil {
 		errs = append(errs, err)
 	}

@@ -79,6 +79,9 @@ type RewardRepository interface {
 	GetBudgetForUpdate(ctx context.Context, periodID uint64, budgetType string) (RewardBudget, error)
 	SaveBudget(ctx context.Context, budget RewardBudget) error
 	FindGrantByAction(ctx context.Context, periodID, userID uint64, actionID string) (*RewardGrant, error)
+	// ListPulseGrantsByAction returns at most two matches, including closed periods.
+	// Multiple historical matches must be reconciled, never silently selected.
+	ListPulseGrantsByAction(ctx context.Context, userID uint64, actionID string) ([]RewardGrant, error)
 	FindGrantByID(ctx context.Context, grantID uint64) (*RewardGrant, error)
 	FindGrantByPublicID(ctx context.Context, grantID string) (*RewardGrant, error)
 	FindGrantByIDForUpdate(ctx context.Context, grantID uint64) (*RewardGrant, error)
@@ -88,6 +91,8 @@ type RewardRepository interface {
 }
 
 type IdempotencyRepository interface {
+	// LegacyActionRequests reads at most two pre-upgrade, period-scoped requests.
+	LegacyActionRequests(ctx context.Context, userID uint64, key string) ([]IdempotencyRecord, error)
 	GetOrCreateForUpdate(ctx context.Context, scope, key, payloadHash string) (IdempotencyRecord, error)
 	Save(ctx context.Context, record IdempotencyRecord) error
 }

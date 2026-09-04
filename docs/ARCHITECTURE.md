@@ -453,6 +453,16 @@ COMMIT
 
 同一个 Action 无论网络重试多少次，只能对应一个 Reward Grant。
 
+用户 Action 的持久化幂等范围不依赖当前周期或运行时配置：
+
+- 请求范围：`pulse_action_request:{user_id}` + `Idempotency-Key`；
+- 动作范围：`pulse_action_identity:{user_id}` + `action_id`，避免换请求 key 后再次扣券；
+- 请求指纹仅覆盖规范化的 `user_id + action_id + trigger_type`；周期、配置版本和随机结果在首次成功时绑定并保存在原响应/Grant 中。
+
+单事务固定先锁 Action Identity，再锁 Request Identity（避免 MySQL 重放时的重复键/gap-lock 锁序循环），先返回已保存结果，再为真正的新操作寻找 Active Period。首次请求、双幂等响应、扣券、预算、Grant 和 Outbox 一起提交；周期 closed、跨周期或密钥轮换不影响已提交结果的重放。同 key 改 payload 必须 conflict。新的用户操作必须使用新的 `action_id` 和请求 key，不能按周期复用固定值。
+
+升级兼容保留原 `pulse_action:{period_id}:{user_id}` 记录及其指纹，不覆盖历史。首次读取旧记录时校验原响应、指纹与 Grant 后，在同一事务补建稳定映射；同一旧 key 或 action 对应多笔历史结果时 fail closed，交由人工对账，不猜测、不补发。旧记录按 key 查找、旧 Grant 按用户/action 查找，使用 `00009` 的辅助索引。上线必须排空旧 API 写请求，禁止混跑新旧 Action 实现；回退旧版前必须先封闭 Action 入口并解决新格式兼容，禁止删除幂等记录绕过校验。
+
 ## 15. 确定性随机
 
 随机结果不能因重试改变。
@@ -842,6 +852,10 @@ pulse_worker_job_failure_total
 
 至少告警：Ingest Lag、Conflict、Ledger Mismatch、Settlement 堆积/Dead、Budget 接近上限、Period Close Failed、API 5xx 激增。
 
+指标采集按进程归属：API `:8088/metrics` 只提供真实 HTTP 指标，路由标签使用模板或固定 `unmatched`，不使用用户 ID/原始路径扩张序列。Worker `:8089/metrics` 在运营快照事务成功提交后更新业务 Gauge，同时暴露周期失败和固定任务名的失败计数；该端点仅供内网 Prometheus 访问。
+
+首次采集前业务 Gauge 为 `NaN`，`meta_pulse_operations_up=0`，最近成功时间为 0。采集失败保留最后成功的数值/时间，设置 up=0 并增加失败计数；需同时监控抓取失败、up=0 和 `time() - meta_pulse_operations_last_success_timestamp_seconds > 120`，不能把数据过期当作零故障。所有指标仍是可重建诊断，不授权任何经济写操作。
+
 ## 30. 故障模型
 
 ### Pulse MySQL 不可用
@@ -850,7 +864,7 @@ Pulse 不可用，new-api 正常。
 
 ### new-api LOG_DB 不可用
 
-Ingest 暂停，恢复后从 Cursor 继续。
+Ingest 暂停，恢复后从 Cursor 继续。运行中的 Usage、Settlement、Reconciliation、Period Close、运营聚合和可选 Content Ingest 各用独立任务循环与超时；慢日志读取不能消耗结算/对账的时间预算。单个任务自身不重叠执行，停机统一取消并等待在途任务退出；数据库事务和 Outbox fence 仍负责跨实例幂等，调度器不是记账锁。启动时的 LOG_DB 只读权限门禁仍保持 fail closed。
 
 ### Benefit API 不可用
 
@@ -898,6 +912,9 @@ Redis
 - 对外 `/api/pulse/*`：由 new-api BFF 接管并清除浏览器提交的 Pulse 服务签名头，不把浏览器请求直接转发为 Pulse 原始请求；
 - 论坛固定使用独立 HTTPS 子域；网关对 Answer 使用 Cookie allowlist，Login Ticket callback query 不进入边缘 access log；
 - Secret 仅存服务器 Secret / 密码管理器，不写 GitHub。
+- 生产配置按角色校验：API 需要服务/BFF/Admin/随机密钥，不持有 LOG_DB 凭据；Worker 仅需要服务/随机密钥及只读 LOG_DB/Benefit 配置，不注入 BFF/Admin 密钥；迁移和只读工具不因公共配置加载而被迫持有签名密钥，实际操作另行检查所需能力。
+- 更新流程先获得部署锁、只读校验并备份原 `.env`，再执行数据库备份、拉取、构建和迁移；只有安装可初始化凭据。更新配置缺失/占位时停止，不能自动重建密码或随机种子。Compose 使用已校验配置文件，不接受继承的应用环境变量隐式覆盖。
+- API/Worker 均通过自身 `/readyz` 检查 Pulse MySQL/Redis；Worker 诊断端口为容器内 8089，不能将其公开到宿主机或公网。
 
 ## 32. `opensource-loyalty` 复用边界
 
@@ -1025,7 +1042,7 @@ draft → active → settling → closed
 
 人工财务调整必须携带操作人、原因和 request id；调整只追加 `contribution_adjustment` / `ticket_adjustment` Ledger 分录，并在同一事务追加 `pulse_audit_log`。历史分录和金额不得 UPDATE。实验分组先由版本化 HMAC 稳定计算，再由 `(experiment_id, user_id)` 唯一记录固化，后续配置变化不得覆盖历史 cohort。
 
-运营指标是可丢失、可重建的诊断投影，不是经济事实源。Worker 从 Pulse 持久化表聚合 ingest lag、开放冲突、Ledger mismatch、Settlement retry/dead 和 Budget reserved/hard cap 到 `pulse_metric_daily`，并输出异常告警日志；Prometheus 同时提供 HTTP、周期、结算和预算指标。指标聚合失败不得阻断用量记账或结算。
+运营指标是可丢失、可重建的诊断投影，不是经济事实源。Worker 从 Pulse 持久化表聚合 ingest lag、开放冲突、Ledger mismatch、Settlement retry/dead 和 Budget reserved/hard cap 到 `pulse_metric_daily`，并输出异常告警日志；Prometheus 由 API 提供 HTTP 指标、Worker 提供周期/结算/预算指标和采集新鲜度。Worker 各任务独立调度，指标聚合失败不得阻断用量记账或结算。
 
 ## 37. M7 内容奖励实现边界
 

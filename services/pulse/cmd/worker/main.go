@@ -2,7 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -10,8 +14,11 @@ import (
 
 	"github.com/nanashiwang/meta-pulse/internal/adapter/forum"
 	"github.com/nanashiwang/meta-pulse/internal/adapter/newapi"
+	"github.com/nanashiwang/meta-pulse/internal/app"
 	"github.com/nanashiwang/meta-pulse/internal/config"
 	"github.com/nanashiwang/meta-pulse/internal/health"
+	"github.com/nanashiwang/meta-pulse/internal/job"
+	"github.com/nanashiwang/meta-pulse/internal/observability"
 	"github.com/nanashiwang/meta-pulse/internal/service"
 	mysqlstore "github.com/nanashiwang/meta-pulse/internal/store/mysql"
 	redisstore "github.com/nanashiwang/meta-pulse/internal/store/redis"
@@ -123,15 +130,24 @@ func main() {
 	readiness := health.NewChecker(map[string]health.Pinger{"mysql": database, "redis": cache})
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	metrics := observability.NewMetrics()
+	listener, err := net.Listen("tcp", cfg.WorkerHTTPAddr)
+	if err != nil {
+		logger.Error("listen on worker diagnostics address", "error", err)
+		os.Exit(1)
+	}
+	server := &http.Server{Handler: app.NewWorkerHandler(readiness, metrics), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
+	serverErrors := make(chan error, 1)
+	go func() { serverErrors <- server.Serve(listener) }()
 
-	logger.Info("meta-pulse-worker started", "environment", cfg.Environment)
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
+	// Each task has its own non-overlapping loop and root-derived deadline.
+	// Slow LOG_DB, forum or metrics queries cannot consume settlement's timeout.
+	var tasks []job.Task
+	addTask := func(name string, run func(context.Context) error) {
+		tasks = append(tasks, job.Task{Name: name, Interval: 30 * time.Second, Timeout: 20 * time.Second, Run: run})
+	}
 
-	runBatch := func() {
-		checkCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-		defer cancel()
-
+	addTask("usage_ingest", func(checkCtx context.Context) error {
 		usageResult, usageErr := ingest.IngestBatch(checkCtx)
 		if usageErr != nil {
 			logger.Warn("usage ingest failed", "error", usageErr, "fetched", usageResult.Fetched)
@@ -139,27 +155,53 @@ func main() {
 			logger.Info("usage ingest batch completed", "fetched", usageResult.Fetched, "accepted", usageResult.Accepted, "replayed", usageResult.Replayed, "conflicts", usageResult.Conflicts, "manual_review", usageResult.ManualReview)
 		}
 
-		// Core settlement is independent of usage and forum reads. A failed
-		// source must not prevent already persisted outbox records from being
-		// reconciled.
+		return usageErr
+	})
+
+	addTask("settlement", func(checkCtx context.Context) error {
 		settlementResult, settlementErr := settlement.ProcessBatch(checkCtx)
 		if settlementErr != nil {
 			logger.Warn("settlement batch failed", "error", settlementErr)
 		} else if settlementResult.Claimed > 0 {
 			logger.Info("settlement batch completed", "claimed", settlementResult.Claimed, "completed", settlementResult.Completed, "retried", settlementResult.Retried, "dead", settlementResult.Dead, "failed", settlementResult.Failed)
 		}
+
+		return settlementErr
+	})
+
+	addTask("reconciliation", func(checkCtx context.Context) error {
 		reconciliation, reconciliationErr := settlement.Reconcile(checkCtx)
 		if reconciliationErr != nil {
 			logger.Warn("settlement reconciliation failed", "error", reconciliationErr)
 		} else if reconciliation.Settled > 0 {
 			logger.Info("settlement reconciliation completed", "checked", reconciliation.Checked, "settled", reconciliation.Settled, "unchanged", reconciliation.Unchanged, "failed", reconciliation.Failed)
 		}
+
+		return reconciliationErr
+	})
+
+	addTask("period_close", func(checkCtx context.Context) error {
 		periodReport, periodErr := periodCloser.RunOnce(checkCtx)
 		if periodErr != nil {
 			logger.Warn("period close failed", "error", periodErr)
 		} else if periodReport.Checked > 0 {
 			logger.Info("period close completed", "checked", periodReport.Checked, "closed", periodReport.Closed, "deferred", periodReport.Deferred, "failed", periodReport.Failed, "tickets_expired", periodReport.TicketsExpired, "rewards_created", periodReport.RewardsCreated)
 		}
+
+		if periodReport.Failed > 0 {
+			metrics.PeriodCloseFailures.Add(float64(periodReport.Failed))
+		}
+		if periodErr != nil && periodReport.Failed == 0 {
+			metrics.PeriodCloseFailures.Inc()
+		}
+		if periodErr == nil && periodReport.Failed > 0 {
+			return fmt.Errorf("%d periods failed to close", periodReport.Failed)
+		}
+
+		return periodErr
+	})
+
+	addTask("operations", func(checkCtx context.Context) error {
 		metricsSnapshot, metricsErr := metricsAggregation.Aggregate(checkCtx)
 		if metricsErr != nil {
 			logger.Warn("operational metrics aggregation failed", "error", metricsErr)
@@ -167,7 +209,17 @@ func main() {
 			logger.Warn("pulse operational alert", "ledger_mismatches", metricsSnapshot.LedgerMismatchCount, "settlement_dead", metricsSnapshot.SettlementDeadCount, "open_conflicts", metricsSnapshot.OpenConflictCount)
 		}
 
-		if contentIngest != nil {
+		if metricsErr != nil {
+			metrics.RecordOperationsFailure()
+		} else {
+			metrics.RecordOperations(metricsSnapshot)
+		}
+
+		return metricsErr
+	})
+
+	if contentIngest != nil {
+		addTask("content_ingest", func(checkCtx context.Context) error {
 			contentResult, contentErr := contentIngest.IngestBatch(checkCtx)
 			if contentErr != nil {
 				// Content is a sidecar projection; never return or panic here.
@@ -175,27 +227,42 @@ func main() {
 			} else if contentResult.Fetched > 0 {
 				logger.Info("content ingest batch completed", "fetched", contentResult.Fetched, "accepted", contentResult.Accepted, "replayed", contentResult.Replayed, "conflicts", contentResult.Conflicts)
 			}
+			return contentErr
+		})
+	}
+	tasks = append(tasks, job.Task{Name: "dependencies", Interval: 30 * time.Second, Timeout: 2 * time.Second, Run: readiness.Check})
+	jobsDone := make(chan struct{})
+	go func() {
+		defer close(jobsDone)
+		if err := job.Run(ctx, tasks, func(name string, err error) {
+			if err != nil {
+				metrics.JobFailures.WithLabelValues(name).Inc()
+				logger.Warn("worker job failed", "job", name, "error", err)
+			}
+		}); err != nil {
+			logger.Error("worker scheduler failed", "error", err)
+			stop()
+		}
+	}()
+	logger.Info("meta-pulse-worker started", "environment", cfg.Environment, "diagnostics_addr", cfg.WorkerHTTPAddr)
+	var serverErr error
+	select {
+	case <-ctx.Done():
+	case serverErr = <-serverErrors:
+		if !errors.Is(serverErr, http.ErrServerClosed) {
+			logger.Error("worker diagnostics stopped", "error", serverErr)
 		}
 	}
-
-	// Run immediately on startup, then continue polling. No new-api relay
-	// request waits for this worker.
-	runBatch()
-	for {
-		checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		err := readiness.Check(checkCtx)
-		cancel()
-		if err != nil {
-			logger.Warn("worker dependencies not ready", "error", err)
-		} else {
-			runBatch()
-		}
-
-		select {
-		case <-ctx.Done():
-			logger.Info("meta-pulse-worker stopped")
-			return
-		case <-ticker.C:
-		}
+	stop()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		logger.Warn("worker diagnostics shutdown failed", "error", err)
+		_ = server.Close()
+	}
+	<-jobsDone
+	logger.Info("meta-pulse-worker stopped")
+	if serverErr != nil && !errors.Is(serverErr, http.ErrServerClosed) {
+		os.Exit(1)
 	}
 }

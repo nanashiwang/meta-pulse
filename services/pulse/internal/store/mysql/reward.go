@@ -170,6 +170,23 @@ func (r *rewardRepository) ListGrantsForUser(ctx context.Context, userID uint64,
 	return result, nil
 }
 
+// New requests are serialized by the stable action identity. These fallback
+// rows are pre-upgrade history: use a non-locking read to avoid introducing
+// range/gap locks before a subsequent Grant or Idempotency INSERT.
+func (r *rewardRepository) ListPulseGrantsByAction(ctx context.Context, userID uint64, actionID string) ([]ports.RewardGrant, error) {
+	var models []rewardGrantModel
+	if err := r.db.WithContext(ctx).
+		Where("user_id = ? AND action_id = ? AND trigger_type = 'pulse'", userID, actionID).
+		Order("id").Limit(2).Find(&models).Error; err != nil {
+		return nil, fmt.Errorf("find historical pulse action: %w", err)
+	}
+	grants := make([]ports.RewardGrant, 0, len(models))
+	for _, model := range models {
+		grants = append(grants, rewardGrantFromModel(model))
+	}
+	return grants, nil
+}
+
 func (r *rewardRepository) FindGrantByAction(ctx context.Context, periodID, userID uint64, actionID string) (*ports.RewardGrant, error) {
 	if periodID == 0 || userID == 0 || !validMySQLText(actionID, 191) {
 		return nil, errors.New("invalid reward grant action identity")
@@ -290,6 +307,22 @@ func (r *rewardRepository) CreateOutbox(ctx context.Context, outbox ports.Settle
 		outbox.CreatedAt = model.CreatedAt
 	}
 	return outbox, nil
+}
+
+func (r *idempotencyRepository) LegacyActionRequests(ctx context.Context, userID uint64, key string) ([]ports.IdempotencyRecord, error) {
+	var models []idempotencyModel
+	// The key-first index bounds this compatibility lookup; v2 scopes deliberately
+	// do not match the legacy pulse_action:<period>:<user> prefix.
+	if err := r.db.WithContext(ctx).
+		Where("idempotency_key = ? AND scope LIKE ?", key, fmt.Sprintf("pulse_action:%%:%d", userID)).
+		Order("id").Limit(2).Find(&models).Error; err != nil {
+		return nil, fmt.Errorf("find legacy action request: %w", err)
+	}
+	records := make([]ports.IdempotencyRecord, 0, len(models))
+	for _, model := range models {
+		records = append(records, idempotencyFromModel(model))
+	}
+	return records, nil
 }
 
 func (r *idempotencyRepository) GetOrCreateForUpdate(ctx context.Context, scope, key, payloadHash string) (ports.IdempotencyRecord, error) {

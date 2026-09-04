@@ -36,14 +36,14 @@ func TestValidateProductionSecretsFailClosed(t *testing.T) {
 	cfg.ServiceHMACSecret = "replace-me"
 	cfg.UserBFFHMACSecret = "short"
 	cfg.AdminHMACSecret = ""
-	if err := cfg.Validate(); err == nil {
+	if err := cfg.ValidateAPI(); err == nil {
 		t.Fatal("production placeholders were accepted")
 	}
 
 	cfg.ServiceHMACSecret = strings.Repeat("s", 32)
 	cfg.UserBFFHMACSecret = strings.Repeat("u", 32)
 	cfg.AdminHMACSecret = strings.Repeat("a", 32)
-	if err := cfg.Validate(); err != nil {
+	if err := cfg.ValidateAPI(); err != nil {
 		t.Fatalf("valid production config rejected: %v", err)
 	}
 }
@@ -98,5 +98,50 @@ func TestSecretPairsKeepActiveBeforePrevious(t *testing.T) {
 	secrets := cfg.ServiceHMACSecrets()
 	if len(secrets) != 2 || string(secrets[0]) != "active" || string(secrets[1]) != "previous" {
 		t.Fatalf("unexpected secret order: %#v", secrets)
+	}
+}
+
+func TestProductionProcessRolesUseLeastPrivilege(t *testing.T) {
+	cfg := validConfig()
+	cfg.Environment = "production"
+	cfg.NewAPILogDSN = "readonly@tcp(newapi-mysql:3306)/new_api"
+	cfg.NewAPIInternalURL = "http://new-api:3000"
+	cfg.ServiceHMACSecret = strings.Repeat("s", 32)
+	if err := cfg.ValidateWorker(); err != nil {
+		t.Fatalf("worker should not require BFF/admin keys: %v", err)
+	}
+	if err := cfg.ValidateAPI(); err == nil {
+		t.Fatal("API accepted missing signing keys")
+	}
+	cfg.ServiceHMACSecret = ""
+	cfg.RewardRandomSecret = ""
+	if err := cfg.ValidateRole("tool"); err != nil {
+		t.Fatalf("migration tool required signing keys: %v", err)
+	}
+	if err := cfg.ValidateWorker(); err == nil {
+		t.Fatal("worker accepted missing signing/random keys")
+	}
+	if err := cfg.ValidateRole("unknown"); err == nil {
+		t.Fatal("unknown role accepted")
+	}
+}
+
+func TestLoadProductionWorkerWithoutAPISecrets(t *testing.T) {
+	t.Setenv("PULSE_ENV", "production")
+	t.Setenv("PULSE_DB_DSN", "pulse@tcp(mysql:3306)/meta_pulse")
+	t.Setenv("NEWAPI_LOG_DSN", "readonly@tcp(logs:3306)/logs")
+	t.Setenv("NEWAPI_INTERNAL_BASE_URL", "http://new-api:3000")
+	for _, key := range []string{"PULSE_SERVICE_HMAC_SECRET", "PULSE_REWARD_RANDOM_SECRET"} {
+		t.Setenv(key, strings.Repeat("s", 32))
+	}
+	for _, key := range []string{"PULSE_USER_BFF_HMAC_SECRET", "PULSE_ADMIN_HMAC_SECRET", "PULSE_SERVICE_HMAC_SECRET_PREVIOUS", "PULSE_USER_BFF_HMAC_SECRET_PREVIOUS", "PULSE_ADMIN_HMAC_SECRET_PREVIOUS"} {
+		t.Setenv(key, "")
+	}
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.ValidateWorker(); err != nil {
+		t.Fatal(err)
 	}
 }

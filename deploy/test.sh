@@ -40,4 +40,6 @@ grep -q 'chmod 600 "\$BACKUP_DIR/compose.before.yml"' "$ROOT/deploy/update.sh"
 grep -q 'mysqldump' "$ROOT/deploy/lib.sh"
 grep -q ': >"\$output_file"' "$ROOT/deploy/lib.sh"
 
+bash "$ROOT/deploy/update_test.sh"
+
 echo '部署脚本离线测试通过'

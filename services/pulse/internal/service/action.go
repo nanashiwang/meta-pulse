@@ -104,13 +104,22 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 		if repos.Period == nil || repos.Idempotency == nil || repos.Reward == nil || repos.Ledger == nil || repos.Account == nil || repos.UserPeriod == nil {
 			return errors.New("action repositories are not initialized")
 		}
-		activity, err := repos.Period.FindActiveAt(ctx, s.cfg.Now())
+		// Request identity must not depend on the wall clock, active period or
+		// mutable runtime config. A committed response is replayable forever.
+		payloadHash := actionRequestHash(command)
+		// Lock action identity before request identity, consistently across calls.
+		// Its scope sorts before the request scope: inserting it later can form
+		// an InnoDB duplicate-key gap-lock cycle with concurrent request replays.
+		// Changing only the request key must never create a second action.
+		actionIdentity, err := repos.Idempotency.GetOrCreateForUpdate(ctx, fmt.Sprintf("pulse_action_identity:%d", command.UserID), command.ActionID, payloadHash)
 		if err != nil {
 			return err
 		}
-		payloadHash := actionPayloadHash(command, activity.ID, activity.ConfigVersion)
-		scope := fmt.Sprintf("pulse_action:%d:%d", activity.ID, command.UserID)
-		idempotency, err := repos.Idempotency.GetOrCreateForUpdate(ctx, scope, command.IdempotencyKey, payloadHash)
+		if actionIdentity.PayloadHash != payloadHash {
+			return fmt.Errorf("%w: action identity payload differs", ledger.ErrIdempotencyConflict)
+		}
+
+		idempotency, err := repos.Idempotency.GetOrCreateForUpdate(ctx, fmt.Sprintf("pulse_action_request:%d", command.UserID), command.IdempotencyKey, payloadHash)
 		if err != nil {
 			return err
 		}
@@ -118,16 +127,70 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 			return fmt.Errorf("%w: action idempotency payload differs", ledger.ErrIdempotencyConflict)
 		}
 		if idempotency.ResponseStatus != nil && len(idempotency.ResponseJSON) > 0 {
-			if err := json.Unmarshal(idempotency.ResponseJSON, &result); err != nil {
-				return fmt.Errorf("decode idempotency response: %w", err)
-			}
-			return nil
+			return json.Unmarshal(idempotency.ResponseJSON, &result)
 		}
-		if existing, findErr := repos.Reward.FindGrantByAction(ctx, activity.ID, command.UserID, command.ActionID); findErr == nil {
-			result = actionResultFromGrant(*existing)
+
+		// Import old period-scoped requests without rewriting their history. If
+		// an old key was reused across periods, fail closed for operator review.
+		legacy, err := repos.Idempotency.LegacyActionRequests(ctx, command.UserID, command.IdempotencyKey)
+		if err != nil {
+			return err
+		}
+		if len(legacy) > 1 {
+			return fmt.Errorf("%w: ambiguous legacy action request", ledger.ErrIdempotencyConflict)
+		}
+		if len(legacy) == 1 {
+			old := legacy[0]
+			if old.ResponseStatus == nil || json.Unmarshal(old.ResponseJSON, &result) != nil ||
+				result.UserID != command.UserID || result.ActionID != command.ActionID || result.GrantID == "" ||
+				old.Scope != fmt.Sprintf("pulse_action:%d:%d", result.PeriodID, command.UserID) ||
+				old.PayloadHash != actionPayloadHash(command, result.PeriodID, result.ConfigVersion) {
+				return fmt.Errorf("%w: legacy action payload differs or is incomplete", ledger.ErrIdempotencyConflict)
+			}
+		}
+
+		saveResult := func() error {
+			if err := saveActionIdempotency(ctx, repos.Idempotency, actionIdentity, result); err != nil {
+				return err
+			}
 			return saveActionIdempotency(ctx, repos.Idempotency, idempotency, result)
-		} else if !errors.Is(findErr, ports.ErrNotFound) {
-			return findErr
+		}
+		if actionIdentity.ResponseStatus != nil && len(actionIdentity.ResponseJSON) > 0 {
+			var cached ActionResult
+			if err := json.Unmarshal(actionIdentity.ResponseJSON, &cached); err != nil {
+				return fmt.Errorf("decode action response: %w", err)
+			}
+			if len(legacy) == 1 {
+				if result.GrantID != cached.GrantID {
+					return fmt.Errorf("%w: legacy/action identity mismatch", ledger.ErrIdempotencyConflict)
+				}
+				// A new alias may have been recovered from an already settled
+				// grant. Preserve this old key's original response verbatim.
+			} else {
+				result = cached
+			}
+			return saveActionIdempotency(ctx, repos.Idempotency, idempotency, result)
+		}
+		grants, err := repos.Reward.ListPulseGrantsByAction(ctx, command.UserID, command.ActionID)
+		if err != nil {
+			return err
+		}
+		if len(grants) > 1 {
+			return fmt.Errorf("%w: ambiguous historical action grants", ledger.ErrIdempotencyConflict)
+		}
+		if len(legacy) == 1 {
+			if len(grants) != 1 || grants[0].GrantID != result.GrantID {
+				return fmt.Errorf("%w: legacy action grant does not match", ledger.ErrIdempotencyConflict)
+			}
+			return saveResult()
+		}
+		if len(grants) == 1 {
+			result = actionResultFromGrant(grants[0])
+			return saveResult()
+		}
+		activity, err := repos.Period.FindActiveAt(ctx, s.cfg.Now())
+		if err != nil {
+			return err
 		}
 
 		definitions, err := repos.Reward.ListDefinitions(ctx, activity.ID)
@@ -217,7 +280,7 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 			return err
 		}
 		result = actionResultFromGrant(persistedGrant)
-		return saveActionIdempotency(ctx, repos.Idempotency, idempotency, result)
+		return saveResult()
 	})
 	if err != nil {
 		return ActionResult{}, err
@@ -225,6 +288,17 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 	return result, nil
 }
 
+func actionRequestHash(command ActionCommand) string {
+	payload, _ := json.Marshal(struct {
+		UserID      uint64 `json:"user_id"`
+		ActionID    string `json:"action_id"`
+		TriggerType string `json:"trigger_type"`
+	}{command.UserID, command.ActionID, command.TriggerType})
+	digest := sha256.Sum256(payload)
+	return hex.EncodeToString(digest[:])
+}
+
+// actionPayloadHash is retained only to verify pre-upgrade request fingerprints.
 func actionPayloadHash(command ActionCommand, periodID uint64, configVersion string) string {
 	payload, _ := json.Marshal(struct {
 		PeriodID      uint64 `json:"period_id"`

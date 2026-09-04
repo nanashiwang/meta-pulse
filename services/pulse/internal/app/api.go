@@ -84,7 +84,17 @@ func NewRouterWithProfileSummaryActionContentAndHistory(logger *slog.Logger, rea
 func requestMetrics(metrics *observability.Metrics) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Next()
-		metrics.HTTPRequests.WithLabelValues(c.Request.Method, c.Request.URL.Path, strconv.Itoa(c.Writer.Status())).Inc()
+		path := c.FullPath()
+		if path == "" {
+			path = "unmatched"
+		}
+		method := c.Request.Method
+		switch method {
+		case "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE", "PATCH":
+		default:
+			method = "OTHER"
+		}
+		metrics.HTTPRequests.WithLabelValues(method, path, strconv.Itoa(c.Writer.Status())).Inc()
 	}
 }
 

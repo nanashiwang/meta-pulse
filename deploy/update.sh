@@ -17,7 +17,7 @@ usage() {
 用法：deploy/update.sh [选项]
 
 默认将当前分支以 fast-forward 方式更新，然后构建、迁移、重启服务。
-.env 始终保留，不会被 Git 覆盖；脚本使用 Git 锁避免并发更新。
+.env 只读校验，不会初始化或轮换凭据；缺失配置时停止。脚本使用 Git 锁避免并发更新。
 
 选项：
   --env-file PATH   使用指定生产配置文件（默认：.env）
@@ -72,7 +72,15 @@ while (($# > 0)); do
 done
 
 check_host_prerequisites
-ensure_env_file
+# Lock before reading or backing up deployment configuration. Updating must
+# never initialize credentials or import shell overrides like install does.
+require_command flock
+GIT_DIR="$(git -C "$REPO_ROOT" rev-parse --absolute-git-dir)"
+LOCK_FILE="$GIT_DIR/meta-pulse-update.lock"
+exec 9>"$LOCK_FILE"
+flock -n 9 || die "已有另一个 Meta Pulse 更新正在执行"
+
+require_existing_env_file
 validate_environment
 if (( SKIP_WORKER == 0 )); then
   validate_worker_environment
@@ -89,13 +97,6 @@ git -C "$REPO_ROOT" diff --cached --quiet || die "存在已暂存的 tracked 修
 
 OLD_COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD)"
 OLD_BRANCH="$CURRENT_BRANCH"
-
-# Git 的 lock 路径位于 .git 内，不会污染工作区；flock 是 Linux 部署的标准工具。
-require_command flock
-GIT_DIR="$(git -C "$REPO_ROOT" rev-parse --absolute-git-dir)"
-LOCK_FILE="$GIT_DIR/meta-pulse-update.lock"
-exec 9>"$LOCK_FILE"
-flock -n 9 || die "已有另一个 Meta Pulse 更新正在执行"
 
 BACKUP_DIR="$REPO_ROOT/.data/deploy-backups/$(date -u +%Y%m%dT%H%M%SZ)-$OLD_COMMIT-$$"
 mkdir -p "$BACKUP_DIR"
@@ -151,6 +152,11 @@ if (( NO_BUILD == 0 )); then
   log "构建服务镜像：${build_services[*]}"
   compose build "${build_services[@]}"
 fi
+
+# Drain every old API replica before the new idempotency implementation can
+# accept writes. New-api's model/billing/login services are not stopped.
+log "排空旧 Pulse API 写请求（不影响 new-api 主链路）"
+compose stop -t 15 pulse-api
 
 log "执行数据库迁移（只前进，不执行 down）"
 compose run --rm --no-deps --entrypoint meta-pulse-tool pulse-api migrate-up
