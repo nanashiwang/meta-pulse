@@ -55,7 +55,11 @@ func (c *BenefitClient) Grant(ctx context.Context, request ports.BenefitGrantReq
 	if err := c.post(ctx, "/api/internal/pulse/benefits/grant", request.UserID, request, &response); err != nil {
 		return ports.BenefitGrantResponse{}, err
 	}
-	return ports.BenefitGrantResponse{Applied: response.applied(), SourceRef: response.SourceRef}, nil
+	state, err := response.state()
+	if err != nil {
+		return ports.BenefitGrantResponse{}, err
+	}
+	return ports.BenefitGrantResponse{Applied: state.Applied, RolledBack: state.RolledBack, Status: state.Status, SourceRef: state.SourceRef}, nil
 }
 
 func (c *BenefitClient) Query(ctx context.Context, sourceRef string) (ports.BenefitState, error) {
@@ -65,11 +69,11 @@ func (c *BenefitClient) Query(ctx context.Context, sourceRef string) (ports.Bene
 	var response benefitResponse
 	if err := c.post(ctx, "/api/internal/pulse/benefits/query", 1, map[string]string{"source_ref": sourceRef}, &response); err != nil {
 		if errors.Is(err, ErrBenefitNotFound) {
-			return ports.BenefitState{Applied: false, SourceRef: sourceRef}, nil
+			return ports.BenefitState{Status: ports.BenefitStatusNotFound, SourceRef: sourceRef}, nil
 		}
 		return ports.BenefitState{}, err
 	}
-	return ports.BenefitState{Applied: response.applied(), SourceRef: response.SourceRef}, nil
+	return response.state()
 }
 
 func (c *BenefitClient) Rollback(ctx context.Context, sourceRef, reason string) (ports.BenefitState, error) {
@@ -80,19 +84,34 @@ func (c *BenefitClient) Rollback(ctx context.Context, sourceRef, reason string) 
 	if err := c.post(ctx, "/api/internal/pulse/benefits/rollback", 1, map[string]string{"source_ref": sourceRef, "reason": reason}, &response); err != nil {
 		return ports.BenefitState{}, err
 	}
-	return ports.BenefitState{Applied: response.applied(), SourceRef: response.SourceRef}, nil
+	return response.state()
 }
 
 type benefitResponse struct {
-	Applied   bool   `json:"applied"`
-	Status    string `json:"status"`
-	SourceRef string `json:"source_ref"`
-	Code      string `json:"code"`
-	Message   string `json:"message"`
+	Applied    bool   `json:"applied"`
+	RolledBack bool   `json:"rolled_back"`
+	Status     string `json:"status"`
+	SourceRef  string `json:"source_ref"`
+	Code       string `json:"code"`
+	Message    string `json:"message"`
 }
 
-func (r benefitResponse) applied() bool {
-	return r.Applied || r.Status == "applied" || r.Status == "already_applied" || r.Status == "rolled_back"
+func (r benefitResponse) state() (ports.BenefitState, error) {
+	state := ports.BenefitState{Status: strings.TrimSpace(r.Status), SourceRef: r.SourceRef}
+	switch state.Status {
+	case ports.BenefitStatusApplied, ports.BenefitStatusAlreadyApplied:
+		if r.RolledBack {
+			return ports.BenefitState{}, errors.New("new-api benefit response has contradictory state")
+		}
+		state.Applied = true
+	case ports.BenefitStatusRolledBack:
+		// status is authoritative during a rolling upgrade: older new-api
+		// versions returned applied=true even after a reversal.
+		state.RolledBack = true
+	default:
+		return ports.BenefitState{}, fmt.Errorf("new-api benefit response has unsupported status %q", state.Status)
+	}
+	return state, nil
 }
 
 func (c *BenefitClient) post(ctx context.Context, path string, userID uint64, payload any, result any) error {

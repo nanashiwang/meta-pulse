@@ -265,6 +265,7 @@ type UnitOfWork interface {
 - [x] Benefit Reconciliation 可重复查询并收敛状态；
 - [x] 真实 MySQL Outbox 并发 Claim（100 个 Worker 仅一次 Grant）与 Benefit timeout 后原 `source_ref` Query 恢复已验收；
 - [x] rollback 调用原 source_ref，Pulse 侧只更新可审计状态；new-api 侧必须以 reversal 记录落账；内容奖励撤销使用 Idempotency-Key 并校验同 key 的 payload conflict。
+- [x] Benefit 显式区分 `applied/already_applied`、`rolled_back`、`not_found`；已撤销状态不得误收敛为 settled，异常 source_ref 进入 terminal conflict 并保留预算预占待人工处置。
 
 当前实现不会把 `shadow` Outbox 发送到 new-api；只有关闭 `PULSE_REWARD_SHADOW_MODE` 且 new-api 接收端完成验收后才会处理 pending Outbox。
 

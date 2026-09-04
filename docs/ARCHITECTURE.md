@@ -585,7 +585,17 @@ new-api 的 Benefit Receiver 必须以 `source_ref` 唯一定位，并持久化�
 
 现有 `BenefitChangeRecord` / `GrantUserQuotaTx` 可作为落地基础，但只处理数据库 duplicate 不足以满足上述语义，必须补充 payload 比较、审计记录和明确错误码。同一 Reward 最多到账一次；奖励额度建议 `transferable_quota = 0`，避免把活动额度再次转移。
 
-发生 timeout 时必须先 `GET Benefit(source_ref)`：存在则标记 settled；不存在才使用原 source_ref 重试。禁止生成新 source_ref 绕过幂等。
+Benefit 状态必须显式区分：
+
+```text
+applied / already_applied → 奖励当前有效，可收敛为 settled
+rolled_back              → 奖励已撤销，applied=false，不得收敛为 settled
+not_found                → 尚未找到奖励，可使用原 source_ref 重试
+```
+
+`status` 是跨版本判定依据；即使旧 new-api 在 `rolled_back` 响应中遗留 `applied=true`，Pulse 也必须按已撤销处理。Grant 在 rollback 后重放只能返回 `rolled_back`，不得返回 `already_applied` 或再次增加额度。Rollback 仅在确认 `rolled_back` 后才允许本地 Grant/Budget 收敛为 reversed。
+
+发生 timeout 时必须先 Query 原 `source_ref`：只有 `applied / already_applied` 才标记 settled；`not_found` 才使用原 source_ref 重试；`rolled_back` 或 source_ref 不一致进入 terminal conflict，保留原 Grant 与预算预占供人工处置。禁止生成新 source_ref 绕过幂等。
 
 ## 21. Period Reward
 

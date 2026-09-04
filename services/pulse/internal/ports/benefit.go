@@ -7,6 +7,13 @@ import (
 
 var ErrBenefitPayloadConflict = errors.New("new-api benefit payload conflict")
 
+const (
+	BenefitStatusApplied        = "applied"
+	BenefitStatusAlreadyApplied = "already_applied"
+	BenefitStatusRolledBack     = "rolled_back"
+	BenefitStatusNotFound       = "not_found"
+)
+
 type BenefitGrantRequest struct {
 	GrantID           string `json:"grant_id"`
 	UserID            uint64 `json:"user_id"`
@@ -18,13 +25,17 @@ type BenefitGrantRequest struct {
 }
 
 type BenefitGrantResponse struct {
-	Applied   bool
-	SourceRef string
+	Applied    bool
+	RolledBack bool
+	Status     string
+	SourceRef  string
 }
 
 type BenefitState struct {
-	Applied   bool
-	SourceRef string
+	Applied    bool
+	RolledBack bool
+	Status     string
+	SourceRef  string
 }
 
 type BenefitClient interface {

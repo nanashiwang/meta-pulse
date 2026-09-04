@@ -128,6 +128,9 @@ func (s *SettlementService) processOne(ctx context.Context, outbox ports.Settlem
 		}
 		return OutboxStatusCompleted, nil
 	}
+	if grantErr == nil && response.RolledBack && sameSourceRef(response.SourceRef, grant.SourceRef) {
+		return s.failPayload(ctx, outbox, fmt.Errorf("%w: benefit was already rolled back", ErrSettlementConflict))
+	}
 
 	// A timeout or any ambiguous response must query the original source_ref
 	// before retrying. The source_ref is never regenerated.
@@ -137,6 +140,15 @@ func (s *SettlementService) processOne(ctx context.Context, outbox ports.Settlem
 			return "", err
 		}
 		return OutboxStatusCompleted, nil
+	}
+	if queryErr == nil && state.RolledBack && sameSourceRef(state.SourceRef, grant.SourceRef) {
+		return s.failPayload(ctx, outbox, fmt.Errorf("%w: benefit was rolled back", ErrSettlementConflict))
+	}
+	if queryErr == nil && !sameSourceRef(state.SourceRef, grant.SourceRef) {
+		return s.failPayload(ctx, outbox, fmt.Errorf("%w: query returned source_ref %q", ErrSettlementConflict, state.SourceRef))
+	}
+	if grantErr == nil && !sameSourceRef(response.SourceRef, grant.SourceRef) {
+		return s.failPayload(ctx, outbox, fmt.Errorf("%w: grant returned source_ref %q", ErrSettlementConflict, response.SourceRef))
 	}
 	if grantErr != nil && isBenefitConflict(grantErr) {
 		return s.failPayload(ctx, outbox, fmt.Errorf("%w: %v", ErrSettlementConflict, grantErr))
@@ -346,11 +358,29 @@ func (s *SettlementService) Reconcile(ctx context.Context) (ReconciliationReport
 			continue
 		}
 		state, queryErr := s.client.Query(ctx, grant.SourceRef)
-		if queryErr != nil || !state.Applied || !sameSourceRef(state.SourceRef, grant.SourceRef) {
+		if queryErr != nil {
 			report.Unchanged++
-			if queryErr != nil {
+			report.Failed++
+			continue
+		}
+		if state.RolledBack && sameSourceRef(state.SourceRef, grant.SourceRef) {
+			if _, err := s.failPayload(ctx, outbox, fmt.Errorf("%w: benefit was rolled back", ErrSettlementConflict)); err != nil {
 				report.Failed++
+			} else {
+				report.Unchanged++
 			}
+			continue
+		}
+		if !sameSourceRef(state.SourceRef, grant.SourceRef) {
+			if _, err := s.failPayload(ctx, outbox, fmt.Errorf("%w: query returned source_ref %q", ErrSettlementConflict, state.SourceRef)); err != nil {
+				report.Failed++
+			} else {
+				report.Unchanged++
+			}
+			continue
+		}
+		if !state.Applied {
+			report.Unchanged++
 			continue
 		}
 		if err := s.complete(ctx, outbox, *grant); err != nil {
@@ -400,7 +430,7 @@ func (s *SettlementService) Rollback(ctx context.Context, grantID uint64, reason
 		return nil
 	}
 	state, err := s.client.Rollback(ctx, grant.SourceRef, reason)
-	if err != nil || !state.Applied || !sameSourceRef(state.SourceRef, grant.SourceRef) {
+	if err != nil || !state.RolledBack || state.Applied || !sameSourceRef(state.SourceRef, grant.SourceRef) {
 		if err != nil {
 			return err
 		}

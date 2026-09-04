@@ -141,6 +141,38 @@ func TestSettlementTimeoutQueriesOriginalSourceRef(t *testing.T) {
 	}
 }
 
+func TestSettlementRolledBackBenefitNeverBecomesSettled(t *testing.T) {
+	client := &fakeBenefitClient{
+		grantErr:   errors.New("context deadline exceeded"),
+		queryState: ports.BenefitState{RolledBack: true, Status: ports.BenefitStatusRolledBack, SourceRef: "pg_test"},
+	}
+	service, rewards, outboxes, _ := settlementFixture(t, client)
+	report, err := service.ProcessBatch(context.Background())
+	if err != nil || report.Dead != 1 || report.Completed != 0 {
+		t.Fatalf("report=%+v err=%v", report, err)
+	}
+	if outboxes.outboxes[0].Status != OutboxStatusDead || rewards.grants[0].Status != RewardStatusPending {
+		t.Fatalf("outbox=%+v grant=%+v", outboxes.outboxes[0], rewards.grants[0])
+	}
+	budget := rewards.budgets[budgetKey(4, ActionBudgetType)]
+	if budget.ReservedAmount != 10 || budget.SettledAmount != 0 {
+		t.Fatalf("budget=%+v", budget)
+	}
+}
+
+func TestSettlementReconcileRolledBackBenefitNeverBecomesSettled(t *testing.T) {
+	client := &fakeBenefitClient{queryState: ports.BenefitState{RolledBack: true, Status: ports.BenefitStatusRolledBack, SourceRef: "pg_test"}}
+	service, rewards, outboxes, _ := settlementFixture(t, client)
+	outboxes.outboxes[0].Status = OutboxStatusRetry
+	report, err := service.Reconcile(context.Background())
+	if err != nil || report.Checked != 1 || report.Unchanged != 1 || report.Settled != 0 {
+		t.Fatalf("report=%+v err=%v", report, err)
+	}
+	if outboxes.outboxes[0].Status != OutboxStatusDead || rewards.grants[0].Status != RewardStatusPending {
+		t.Fatalf("outbox=%+v grant=%+v", outboxes.outboxes[0], rewards.grants[0])
+	}
+}
+
 func TestSettlementConflictBecomesDeadWithoutChangingSource(t *testing.T) {
 	client := &fakeBenefitClient{grantErr: ports.ErrBenefitPayloadConflict, queryState: ports.BenefitState{Applied: false, SourceRef: "pg_test"}}
 	service, _, outboxes, _ := settlementFixture(t, client)
@@ -154,7 +186,7 @@ func TestSettlementConflictBecomesDeadWithoutChangingSource(t *testing.T) {
 }
 
 func TestSettlementRollbackReleasesBudgetAndMarksGrant(t *testing.T) {
-	client := &fakeBenefitClient{rollbackState: ports.BenefitState{Applied: true, SourceRef: "pg_test"}}
+	client := &fakeBenefitClient{rollbackState: ports.BenefitState{RolledBack: true, Status: ports.BenefitStatusRolledBack, SourceRef: "pg_test"}}
 	service, rewards, _, grant := settlementFixture(t, client)
 	rewards.grants[0].Status = GrantStatusSettled
 	rewards.budgets[budgetKey(4, ActionBudgetType)] = ports.RewardBudget{ID: 2, PeriodID: 4, BudgetType: ActionBudgetType, HardCap: 100, SettledAmount: 10, Version: 1}
