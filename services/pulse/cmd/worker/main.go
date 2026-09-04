@@ -47,6 +47,14 @@ func main() {
 		os.Exit(1)
 	}
 	defer logReader.Close()
+	accessCtx, accessCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	accessReport, accessErr := verifyLogReaderAccess(accessCtx, logReader)
+	accessCancel()
+	if accessErr != nil {
+		logger.Error("verify new-api log reader permissions", "error", accessErr, "current_user", accessReport.CurrentUser, "database", accessReport.Database, "grant_count", accessReport.GrantCount)
+		os.Exit(1)
+	}
+	logger.Info("verified new-api log reader permissions", "current_user", accessReport.CurrentUser, "database", accessReport.Database, "grant_count", accessReport.GrantCount)
 	source, err := newapi.NewLogSource(logReader, "new-api-log")
 	if err != nil {
 		logger.Error("initialize new-api usage source", "error", err)
