@@ -38,8 +38,8 @@ func ingestEvent(id, hash string, eventType usage.EventType, quota int64) usage.
 
 func TestUsageIngestReplayAndConflictAreSafe(t *testing.T) {
 	store := newMemoryLedgerStore()
-	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, StartsAt: time.Unix(1_600_000_000, 0), EndsAt: time.Unix(1_800_000_000, 0)}}
-	store.rules[4] = []economics.Rule{{ID: 8, Key: "default", Eligible: true, MultiplierBps: 10000}}
+	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, ConfigVersion: "v1", StartsAt: time.Unix(1_600_000_000, 0), EndsAt: time.Unix(1_800_000_000, 0)}}
+	store.rules[4] = []economics.Rule{{ID: 8, Key: "default", Eligible: true, MultiplierBps: 10000, ConfigVersion: "v1"}}
 	event := ingestEvent("1", "hash-1", usage.EventConsume, 1500)
 	s := newIngestService(t, store, staticUsageSource{events: []usage.Event{event}})
 
@@ -74,8 +74,8 @@ func TestUsageIngestReplayAndConflictAreSafe(t *testing.T) {
 
 func TestUsageIngestRefundReversesContributionAndTicketEntitlement(t *testing.T) {
 	store := newMemoryLedgerStore()
-	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, StartsAt: time.Unix(1_600_000_000, 0), EndsAt: time.Unix(1_800_000_000, 0)}}
-	store.rules[4] = []economics.Rule{{ID: 8, Key: "default", Eligible: true, MultiplierBps: 10000}}
+	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, ConfigVersion: "v1", StartsAt: time.Unix(1_600_000_000, 0), EndsAt: time.Unix(1_800_000_000, 0)}}
+	store.rules[4] = []economics.Rule{{ID: 8, Key: "default", Eligible: true, MultiplierBps: 10000, ConfigVersion: "v1"}}
 	consume := ingestEvent("1", "hash-1", usage.EventConsume, 1500)
 	s := newIngestService(t, store, staticUsageSource{})
 	result := IngestResult{}
@@ -100,8 +100,8 @@ func TestUsageIngestRefundReversesContributionAndTicketEntitlement(t *testing.T)
 
 func TestUsageIngestUncorrelatedRefundGoesToReview(t *testing.T) {
 	store := newMemoryLedgerStore()
-	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, StartsAt: time.Unix(1_600_000_000, 0), EndsAt: time.Unix(1_800_000_000, 0)}}
-	store.rules[4] = []economics.Rule{{ID: 8, Key: "default", Eligible: true, MultiplierBps: 10000}}
+	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, ConfigVersion: "v1", StartsAt: time.Unix(1_600_000_000, 0), EndsAt: time.Unix(1_800_000_000, 0)}}
+	store.rules[4] = []economics.Rule{{ID: 8, Key: "default", Eligible: true, MultiplierBps: 10000, ConfigVersion: "v1"}}
 	refund := ingestEvent("2", "hash-2", usage.EventRefund, -1000)
 	refund.QuotaDelta = 500 // mapper would normalize this before the service.
 	refund.NeedsReview = true
@@ -127,7 +127,7 @@ func (s cursorAwareSource) Fetch(_ context.Context, after string, _ int) ([]usag
 
 func TestBackfillDryRunDoesNotWritePulseState(t *testing.T) {
 	store := newMemoryLedgerStore()
-	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, StartsAt: time.Unix(1_600_000_000, 0), EndsAt: time.Unix(1_800_000_000, 0)}}
+	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, ConfigVersion: "v1", StartsAt: time.Unix(1_600_000_000, 0), EndsAt: time.Unix(1_800_000_000, 0)}}
 	event := ingestEvent("1", "hash-1", usage.EventConsume, 100)
 	ingest := newIngestService(t, store, cursorAwareSource{events: []usage.Event{event}})
 	backfill, err := NewBackfillService(ingest, cursorAwareSource{events: []usage.Event{event}})
@@ -147,8 +147,8 @@ func TestBackfillUsesHalfOpenEnd(t *testing.T) {
 	store := newMemoryLedgerStore()
 	start := time.Unix(1_700_000_000, 0).UTC()
 	boundary := start.Add(time.Hour)
-	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, StartsAt: start.Add(-time.Hour), EndsAt: boundary.Add(time.Hour)}}
-	store.rules[4] = []economics.Rule{{ID: 8, Key: "default", Eligible: true, MultiplierBps: 10000}}
+	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, ConfigVersion: "v1", StartsAt: start.Add(-time.Hour), EndsAt: boundary.Add(time.Hour)}}
+	store.rules[4] = []economics.Rule{{ID: 8, Key: "default", Eligible: true, MultiplierBps: 10000, ConfigVersion: "v1"}}
 
 	inRange := ingestEvent("1", "hash-1", usage.EventConsume, 100)
 	inRange.SourceCreatedAt = start.Add(30 * time.Minute)
@@ -176,8 +176,8 @@ func TestBackfillUsesHalfOpenEnd(t *testing.T) {
 
 func TestUsageIngestRejectsRefundLinkedToAnotherRefund(t *testing.T) {
 	store := newMemoryLedgerStore()
-	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, StartsAt: time.Unix(1_600_000_000, 0), EndsAt: time.Unix(1_800_000_000, 0)}}
-	store.rules[4] = []economics.Rule{{ID: 8, Key: "default", Eligible: true, MultiplierBps: 10000}}
+	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, ConfigVersion: "v1", StartsAt: time.Unix(1_600_000_000, 0), EndsAt: time.Unix(1_800_000_000, 0)}}
+	store.rules[4] = []economics.Rule{{ID: 8, Key: "default", Eligible: true, MultiplierBps: 10000, ConfigVersion: "v1"}}
 	s := newIngestService(t, store, staticUsageSource{})
 	var result IngestResult
 
@@ -209,8 +209,8 @@ func TestUsageIngestRejectsRefundLinkedToAnotherRefund(t *testing.T) {
 
 func TestUsageIngestRejectsRefundsExceedingOriginalContribution(t *testing.T) {
 	store := newMemoryLedgerStore()
-	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, StartsAt: time.Unix(1_600_000_000, 0), EndsAt: time.Unix(1_800_000_000, 0)}}
-	store.rules[4] = []economics.Rule{{ID: 8, Key: "default", Eligible: true, MultiplierBps: 10000}}
+	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, ConfigVersion: "v1", StartsAt: time.Unix(1_600_000_000, 0), EndsAt: time.Unix(1_800_000_000, 0)}}
+	store.rules[4] = []economics.Rule{{ID: 8, Key: "default", Eligible: true, MultiplierBps: 10000, ConfigVersion: "v1"}}
 	s := newIngestService(t, store, staticUsageSource{})
 	var result IngestResult
 
@@ -245,8 +245,8 @@ func TestUsageIngestRejectsRefundsExceedingOriginalContribution(t *testing.T) {
 
 func TestUsageIngestStaleBatchDoesNotRegressCursor(t *testing.T) {
 	store := newMemoryLedgerStore()
-	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, StartsAt: time.Unix(1_600_000_000, 0), EndsAt: time.Unix(1_800_000_000, 0)}}
-	store.rules[4] = []economics.Rule{{ID: 8, Key: "default", Eligible: true, MultiplierBps: 10000}}
+	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, ConfigVersion: "v1", StartsAt: time.Unix(1_600_000_000, 0), EndsAt: time.Unix(1_800_000_000, 0)}}
+	store.rules[4] = []economics.Rule{{ID: 8, Key: "default", Eligible: true, MultiplierBps: 10000, ConfigVersion: "v1"}}
 	stale := ingestEvent("1", "hash-1", usage.EventConsume, 1000)
 	source := staticUsageSource{
 		events: []usage.Event{stale},
@@ -267,5 +267,36 @@ func TestUsageIngestStaleBatchDoesNotRegressCursor(t *testing.T) {
 	}
 	if store.cursor.Value != "1:2" {
 		t.Fatalf("cursor regressed to %q", store.cursor.Value)
+	}
+}
+
+func TestUsageIngestPersistsEconomicsVersionSnapshot(t *testing.T) {
+	store := newMemoryLedgerStore()
+	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, ConfigVersion: "v1", StartsAt: time.Unix(1_600_000_000, 0), EndsAt: time.Unix(1_800_000_000, 0)}}
+	store.rules[4] = []economics.Rule{{ID: 8, Key: "default", Eligible: true, MultiplierBps: 10000, ConfigVersion: "v1"}}
+	event := ingestEvent("1", "hash-1", usage.EventConsume, 1000)
+	s := newIngestService(t, store, staticUsageSource{})
+	var result IngestResult
+	if err := s.processOne(context.Background(), event, &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.usageEvents) != 1 || store.usageEvents[0].EconomicsConfigVersion != "v1" {
+		t.Fatalf("usage snapshot=%+v", store.usageEvents)
+	}
+}
+
+func TestUsageIngestRejectsEconomicsVersionMismatch(t *testing.T) {
+	store := newMemoryLedgerStore()
+	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, ConfigVersion: "v1", StartsAt: time.Unix(1_600_000_000, 0), EndsAt: time.Unix(1_800_000_000, 0)}}
+	store.rules[4] = []economics.Rule{{ID: 8, Key: "default", Eligible: true, MultiplierBps: 10000, ConfigVersion: "v2"}}
+	event := ingestEvent("1", "hash-1", usage.EventConsume, 1000)
+	s := newIngestService(t, store, staticUsageSource{})
+	var result IngestResult
+	err := s.processOne(context.Background(), event, &result)
+	if err == nil || err.Error() != "economics rule config version mismatch" {
+		t.Fatalf("err=%v", err)
+	}
+	if len(store.usageEvents) != 0 || len(store.entries) != 0 || store.cursor.Value != "" {
+		t.Fatalf("mismatched rule mutated state usage=%d ledger=%d cursor=%+v", len(store.usageEvents), len(store.entries), store.cursor)
 	}
 }

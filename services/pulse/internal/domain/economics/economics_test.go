@@ -36,3 +36,20 @@ func TestIneligibleRuleProducesNoContribution(t *testing.T) {
 		t.Fatalf("decision = %+v", decision)
 	}
 }
+
+func TestValidateRulesFailsClosed(t *testing.T) {
+	valid := Rule{ID: 1, Key: "default", MultiplierBps: 10000, ConfigVersion: "v1"}
+	if err := ValidateRules([]Rule{valid}, "v1"); err != nil {
+		t.Fatal(err)
+	}
+	cases := []Rule{
+		{ID: 1, Key: "default", MultiplierBps: 10000, ConfigVersion: "v2"},
+		{ID: 1, Key: "default", ModelPattern: "[", MultiplierBps: 10000, ConfigVersion: "v1"},
+		{ID: 1, Key: "default", MultiplierBps: -1, ConfigVersion: "v1"},
+	}
+	for _, rule := range cases {
+		if err := ValidateRules([]Rule{rule}, "v1"); err == nil {
+			t.Fatalf("invalid rule accepted: %+v", rule)
+		}
+	}
+}

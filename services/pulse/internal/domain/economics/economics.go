@@ -2,6 +2,7 @@
 package economics
 
 import (
+	"errors"
 	"path"
 	"sort"
 	"strings"
@@ -27,6 +28,26 @@ type Decision struct {
 	MultiplierBps money.Bps
 	ConfigVersion string
 	Contribution  money.Milli
+}
+
+func ValidateRules(rules []Rule, configVersion string) error {
+	if strings.TrimSpace(configVersion) == "" {
+		return errors.New("economics config version is empty")
+	}
+	for _, rule := range rules {
+		if rule.ID == 0 || strings.TrimSpace(rule.Key) == "" || rule.ConfigVersion != configVersion {
+			return errors.New("economics rule config version mismatch")
+		}
+		if err := rule.MultiplierBps.Validate(); err != nil {
+			return err
+		}
+		if rule.ModelPattern != "" {
+			if _, err := path.Match(rule.ModelPattern, ""); err != nil {
+				return errors.New("economics rule model pattern is invalid")
+			}
+		}
+	}
+	return nil
 }
 
 func (r Rule) Matches(modelName string, channelID uint64) bool {

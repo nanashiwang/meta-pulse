@@ -66,8 +66,8 @@ func backtestEvent(id string, at time.Time, eventType usage.EventType, quota int
 func TestBacktestIsReadOnlyAndUsesHalfOpenRange(t *testing.T) {
 	store := newMemoryLedgerStore()
 	at := time.Unix(1_700_000_000, 0).UTC()
-	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, StartsAt: at.Add(-time.Hour), EndsAt: at.Add(time.Hour)}}
-	store.rules[4] = []economics.Rule{{ID: 1, Key: "default", Eligible: true, MultiplierBps: 10000}}
+	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, ConfigVersion: "v1", StartsAt: at.Add(-time.Hour), EndsAt: at.Add(time.Hour)}}
+	store.rules[4] = []economics.Rule{{ID: 1, Key: "default", Eligible: true, MultiplierBps: 10000, ConfigVersion: "v1"}}
 	events := []usage.Event{
 		backtestEvent("before", at.Add(-time.Minute), usage.EventConsume, 100),
 		backtestEvent("inside", at, usage.EventConsume, 1200),
@@ -91,8 +91,8 @@ func TestBacktestIsReadOnlyAndUsesHalfOpenRange(t *testing.T) {
 func TestBacktestReportsPeriodRuleAndRefundGaps(t *testing.T) {
 	store := newMemoryLedgerStore()
 	at := time.Unix(1_700_000_000, 0).UTC()
-	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, StartsAt: at.Add(-time.Hour), EndsAt: at.Add(time.Hour)}}
-	store.rules[4] = []economics.Rule{{ID: 1, Key: "gpt-only", ModelPattern: "gpt-*", Eligible: true, MultiplierBps: 10000}}
+	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, ConfigVersion: "v1", StartsAt: at.Add(-time.Hour), EndsAt: at.Add(time.Hour)}}
+	store.rules[4] = []economics.Rule{{ID: 1, Key: "gpt-only", ModelPattern: "gpt-*", Eligible: true, MultiplierBps: 10000, ConfigVersion: "v1"}}
 	events := []usage.Event{
 		backtestEvent("no-period", at.Add(-2*time.Hour), usage.EventConsume, 100),
 		backtestEvent("no-rule", at, usage.EventConsume, 100),
@@ -118,8 +118,8 @@ func TestBacktestReportsPeriodRuleAndRefundGaps(t *testing.T) {
 func TestBacktestValidatesDirectRefundCorrelation(t *testing.T) {
 	store := newMemoryLedgerStore()
 	at := time.Unix(1_700_000_000, 0).UTC()
-	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, StartsAt: at.Add(-time.Hour), EndsAt: at.Add(time.Hour)}}
-	store.rules[4] = []economics.Rule{{ID: 1, Key: "default", Eligible: true, MultiplierBps: 10000}}
+	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, ConfigVersion: "v1", StartsAt: at.Add(-time.Hour), EndsAt: at.Add(time.Hour)}}
+	store.rules[4] = []economics.Rule{{ID: 1, Key: "default", Eligible: true, MultiplierBps: 10000, ConfigVersion: "v1"}}
 	events := []usage.Event{
 		backtestEvent("consume", at, usage.EventConsume, 1000),
 		backtestEvent("refund", at.Add(time.Minute), usage.EventRefund, -100),
@@ -138,8 +138,8 @@ func TestBacktestValidatesDirectRefundCorrelation(t *testing.T) {
 func TestBacktestRejectsRefundLinkedToManualReviewConsume(t *testing.T) {
 	store := newMemoryLedgerStore()
 	at := time.Unix(1_700_000_000, 0).UTC()
-	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, StartsAt: at.Add(-time.Hour), EndsAt: at.Add(time.Hour)}}
-	store.rules[4] = []economics.Rule{{ID: 1, Key: "default", Eligible: true, MultiplierBps: 10000}}
+	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, ConfigVersion: "v1", StartsAt: at.Add(-time.Hour), EndsAt: at.Add(time.Hour)}}
+	store.rules[4] = []economics.Rule{{ID: 1, Key: "default", Eligible: true, MultiplierBps: 10000, ConfigVersion: "v1"}}
 	store.usageEvents = []usage.Event{{
 		SourceSystem: "new-api-log", SourceEventID: "manual-consume", UserID: 9, PeriodID: 4,
 		EventType: usage.EventConsume, SourceCreatedAt: at, Status: usage.StatusManualReview,
@@ -158,8 +158,8 @@ func TestBacktestRejectsRefundLinkedToManualReviewConsume(t *testing.T) {
 func TestBacktestRejectsUnknownDirectRefundCorrelation(t *testing.T) {
 	store := newMemoryLedgerStore()
 	at := time.Unix(1_700_000_000, 0).UTC()
-	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, StartsAt: at.Add(-time.Hour), EndsAt: at.Add(time.Hour)}}
-	store.rules[4] = []economics.Rule{{ID: 1, Key: "default", Eligible: true, MultiplierBps: 10000}}
+	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, ConfigVersion: "v1", StartsAt: at.Add(-time.Hour), EndsAt: at.Add(time.Hour)}}
+	store.rules[4] = []economics.Rule{{ID: 1, Key: "default", Eligible: true, MultiplierBps: 10000, ConfigVersion: "v1"}}
 	event := backtestEvent("refund", at, usage.EventRefund, -100)
 	event.RelatedSourceEventID = "missing-consume"
 	report, err := newBacktest(t, store, backtestSource{events: []usage.Event{event}}).Run(context.Background(), time.Time{}, time.Time{})
@@ -175,11 +175,11 @@ func TestBacktestComparesMultipliers(t *testing.T) {
 	store := newMemoryLedgerStore()
 	at := time.Unix(1_700_000_000, 0).UTC()
 	channel := uint64(2)
-	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, StartsAt: at.Add(-time.Hour), EndsAt: at.Add(time.Hour)}}
+	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, ConfigVersion: "v1", StartsAt: at.Add(-time.Hour), EndsAt: at.Add(time.Hour)}}
 	store.rules[4] = []economics.Rule{
-		{ID: 1, Key: "default", Priority: 0, Eligible: true, MultiplierBps: 10000},
-		{ID: 2, Key: "model", Priority: 10, ModelPattern: "gpt-*", Eligible: true, MultiplierBps: 20000},
-		{ID: 3, Key: "channel", Priority: 20, ChannelID: &channel, Eligible: true, MultiplierBps: 30000},
+		{ID: 1, Key: "default", Priority: 0, Eligible: true, MultiplierBps: 10000, ConfigVersion: "v1"},
+		{ID: 2, Key: "model", Priority: 10, ModelPattern: "gpt-*", Eligible: true, MultiplierBps: 20000, ConfigVersion: "v1"},
+		{ID: 3, Key: "channel", Priority: 20, ChannelID: &channel, Eligible: true, MultiplierBps: 30000, ConfigVersion: "v1"},
 	}
 	event := backtestEvent("1", at, usage.EventConsume, 1000)
 	report, err := newBacktest(t, store, backtestSource{events: []usage.Event{event}}).Run(context.Background(), time.Time{}, time.Time{})
@@ -194,8 +194,8 @@ func TestBacktestComparesMultipliers(t *testing.T) {
 func TestBacktestFailsWhenSourceCursorDoesNotAdvance(t *testing.T) {
 	store := newMemoryLedgerStore()
 	at := time.Unix(1_700_000_000, 0).UTC()
-	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, StartsAt: at.Add(-time.Hour), EndsAt: at.Add(time.Hour)}}
-	store.rules[4] = []economics.Rule{{ID: 1, Key: "default", Eligible: true, MultiplierBps: money.Bps(10000)}}
+	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, ConfigVersion: "v1", StartsAt: at.Add(-time.Hour), EndsAt: at.Add(time.Hour)}}
+	store.rules[4] = []economics.Rule{{ID: 1, Key: "default", Eligible: true, MultiplierBps: money.Bps(10000), ConfigVersion: "v1"}}
 	_, err := newBacktest(t, store, stuckBacktestSource{event: backtestEvent("same", at, usage.EventConsume, 1)}).Run(context.Background(), time.Time{}, time.Time{})
 	if err == nil || err.Error() != "backtest source did not advance cursor" {
 		t.Fatalf("error=%v", err)

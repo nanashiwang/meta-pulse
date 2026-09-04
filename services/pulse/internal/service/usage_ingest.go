@@ -149,6 +149,8 @@ func (s *UsageIngestService) processOne(ctx context.Context, incoming usage.Even
 			incoming.Eligible = false
 			incoming.ContributionMilli = 0
 			incoming.MultiplierBps = 0
+			incoming.EconomicsRuleID = nil
+			incoming.EconomicsConfigVersion = ""
 			if _, err := repos.Usage.Create(ctx, incoming); err != nil {
 				return err
 			}
@@ -163,6 +165,9 @@ func (s *UsageIngestService) processOne(ctx context.Context, incoming usage.Even
 		if err != nil {
 			return err
 		}
+		if err := economics.ValidateRules(rules, activity.ConfigVersion); err != nil {
+			return err
+		}
 		rule, found := economics.Select(rules, incoming.ModelName, incoming.ChannelID)
 		if found {
 			decision, err := economics.Evaluate(incoming.QuotaDelta, rule)
@@ -171,6 +176,7 @@ func (s *UsageIngestService) processOne(ctx context.Context, incoming usage.Even
 			}
 			incoming.Eligible = decision.Eligible
 			incoming.EconomicsRuleID = uint64Ptr(decision.RuleID)
+			incoming.EconomicsConfigVersion = decision.ConfigVersion
 			incoming.MultiplierBps = decision.MultiplierBps
 			incoming.ContributionMilli = decision.Contribution
 		} else {
@@ -179,6 +185,8 @@ func (s *UsageIngestService) processOne(ctx context.Context, incoming usage.Even
 			incoming.Eligible = false
 			incoming.MultiplierBps = 0
 			incoming.ContributionMilli = 0
+			incoming.EconomicsRuleID = nil
+			incoming.EconomicsConfigVersion = ""
 		}
 		incoming.Status = usage.StatusAccepted
 

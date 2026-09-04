@@ -24,26 +24,27 @@ type economicsRepository struct{ db *gorm.DB }
 type userPeriodStatRepository struct{ db *gorm.DB }
 
 type usageEventModel struct {
-	ID                   uint64    `gorm:"column:id;primaryKey"`
-	SourceSystem         string    `gorm:"column:source_system"`
-	SourceEventID        string    `gorm:"column:source_event_id"`
-	PayloadHash          string    `gorm:"column:payload_hash"`
-	UserID               uint64    `gorm:"column:user_id"`
-	PeriodID             uint64    `gorm:"column:period_id"`
-	EventType            string    `gorm:"column:event_type"`
-	SourceCreatedAt      time.Time `gorm:"column:source_created_at"`
-	QuotaDelta           int64     `gorm:"column:quota_delta"`
-	Eligible             bool      `gorm:"column:eligible"`
-	EconomicsRuleID      *uint64   `gorm:"column:economics_rule_id"`
-	MultiplierBps        int32     `gorm:"column:multiplier_bps"`
-	ContributionMilli    int64     `gorm:"column:contribution_milli"`
-	Status               string    `gorm:"column:status"`
-	ModelName            string    `gorm:"column:model_name"`
-	ChannelID            *uint64   `gorm:"column:channel_id"`
-	RequestID            string    `gorm:"column:request_id"`
-	RelatedSourceEventID string    `gorm:"column:related_source_event_id"`
-	ReviewReason         string    `gorm:"column:review_reason"`
-	CreatedAt            time.Time `gorm:"column:created_at"`
+	ID                     uint64    `gorm:"column:id;primaryKey"`
+	SourceSystem           string    `gorm:"column:source_system"`
+	SourceEventID          string    `gorm:"column:source_event_id"`
+	PayloadHash            string    `gorm:"column:payload_hash"`
+	UserID                 uint64    `gorm:"column:user_id"`
+	PeriodID               uint64    `gorm:"column:period_id"`
+	EventType              string    `gorm:"column:event_type"`
+	SourceCreatedAt        time.Time `gorm:"column:source_created_at"`
+	QuotaDelta             int64     `gorm:"column:quota_delta"`
+	Eligible               bool      `gorm:"column:eligible"`
+	EconomicsRuleID        *uint64   `gorm:"column:economics_rule_id"`
+	EconomicsConfigVersion string    `gorm:"column:economics_config_version"`
+	MultiplierBps          int32     `gorm:"column:multiplier_bps"`
+	ContributionMilli      int64     `gorm:"column:contribution_milli"`
+	Status                 string    `gorm:"column:status"`
+	ModelName              string    `gorm:"column:model_name"`
+	ChannelID              *uint64   `gorm:"column:channel_id"`
+	RequestID              string    `gorm:"column:request_id"`
+	RelatedSourceEventID   string    `gorm:"column:related_source_event_id"`
+	ReviewReason           string    `gorm:"column:review_reason"`
+	CreatedAt              time.Time `gorm:"column:created_at"`
 }
 
 func (usageEventModel) TableName() string { return "pulse_usage_event" }
@@ -285,11 +286,11 @@ func (r *userPeriodStatRepository) Save(ctx context.Context, stat ports.UserPeri
 }
 
 func usageModelFromDomain(event usage.Event) usageEventModel {
-	return usageEventModel{ID: event.ID, SourceSystem: event.SourceSystem, SourceEventID: event.SourceEventID, PayloadHash: event.PayloadHash, UserID: event.UserID, PeriodID: event.PeriodID, EventType: string(event.EventType), SourceCreatedAt: event.SourceCreatedAt, QuotaDelta: event.QuotaDelta, Eligible: event.Eligible, EconomicsRuleID: event.EconomicsRuleID, MultiplierBps: int32(event.MultiplierBps), ContributionMilli: int64(event.ContributionMilli), Status: string(event.Status), ModelName: event.ModelName, ChannelID: uint64Ptr(event.ChannelID), RequestID: event.RequestID, RelatedSourceEventID: event.RelatedSourceEventID, ReviewReason: event.ReviewReason}
+	return usageEventModel{ID: event.ID, SourceSystem: event.SourceSystem, SourceEventID: event.SourceEventID, PayloadHash: event.PayloadHash, UserID: event.UserID, PeriodID: event.PeriodID, EventType: string(event.EventType), SourceCreatedAt: event.SourceCreatedAt, QuotaDelta: event.QuotaDelta, Eligible: event.Eligible, EconomicsRuleID: event.EconomicsRuleID, EconomicsConfigVersion: event.EconomicsConfigVersion, MultiplierBps: int32(event.MultiplierBps), ContributionMilli: int64(event.ContributionMilli), Status: string(event.Status), ModelName: event.ModelName, ChannelID: uint64Ptr(event.ChannelID), RequestID: event.RequestID, RelatedSourceEventID: event.RelatedSourceEventID, ReviewReason: event.ReviewReason}
 }
 
 func (m usageEventModel) toDomain() usage.Event {
-	return usage.Event{ID: m.ID, SourceSystem: m.SourceSystem, SourceEventID: m.SourceEventID, PayloadHash: m.PayloadHash, UserID: m.UserID, PeriodID: m.PeriodID, EventType: usage.EventType(m.EventType), SourceCreatedAt: m.SourceCreatedAt, QuotaDelta: m.QuotaDelta, ModelName: m.ModelName, ChannelID: derefUint64(m.ChannelID), RequestID: m.RequestID, RelatedSourceEventID: m.RelatedSourceEventID, Eligible: m.Eligible, EconomicsRuleID: m.EconomicsRuleID, MultiplierBps: money.Bps(m.MultiplierBps), ContributionMilli: money.Milli(m.ContributionMilli), Status: usage.Status(m.Status), ReviewReason: m.ReviewReason}
+	return usage.Event{ID: m.ID, SourceSystem: m.SourceSystem, SourceEventID: m.SourceEventID, PayloadHash: m.PayloadHash, UserID: m.UserID, PeriodID: m.PeriodID, EventType: usage.EventType(m.EventType), SourceCreatedAt: m.SourceCreatedAt, QuotaDelta: m.QuotaDelta, ModelName: m.ModelName, ChannelID: derefUint64(m.ChannelID), RequestID: m.RequestID, RelatedSourceEventID: m.RelatedSourceEventID, Eligible: m.Eligible, EconomicsRuleID: m.EconomicsRuleID, EconomicsConfigVersion: m.EconomicsConfigVersion, MultiplierBps: money.Bps(m.MultiplierBps), ContributionMilli: money.Milli(m.ContributionMilli), Status: usage.Status(m.Status), ReviewReason: m.ReviewReason}
 }
 
 func (m periodModel) toDomain() period.Period {

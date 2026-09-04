@@ -29,25 +29,26 @@ var (
 )
 
 type Event struct {
-	ID                   uint64
-	SourceSystem         string
-	SourceEventID        string
-	CursorValue          string
-	PayloadHash          string
-	UserID               uint64
-	PeriodID             uint64
-	EventType            EventType
-	SourceCreatedAt      time.Time
-	QuotaDelta           int64
-	ModelName            string
-	ChannelID            uint64
-	RequestID            string
-	RelatedSourceEventID string
-	NeedsReview          bool
-	ReviewReason         string
-	Eligible             bool
-	EconomicsRuleID      *uint64
-	MultiplierBps        money.Bps
-	ContributionMilli    money.Milli
-	Status               Status
+	ID                     uint64
+	SourceSystem           string
+	SourceEventID          string
+	CursorValue            string
+	PayloadHash            string
+	UserID                 uint64
+	PeriodID               uint64
+	EventType              EventType
+	SourceCreatedAt        time.Time
+	QuotaDelta             int64
+	ModelName              string
+	ChannelID              uint64
+	RequestID              string
+	RelatedSourceEventID   string
+	NeedsReview            bool
+	ReviewReason           string
+	Eligible               bool
+	EconomicsRuleID        *uint64
+	EconomicsConfigVersion string
+	MultiplierBps          money.Bps
+	ContributionMilli      money.Milli
+	Status                 Status
 }

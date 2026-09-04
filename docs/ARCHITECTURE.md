@@ -351,7 +351,7 @@ Contribution = Eligible Paid Usage × Contribution Multiplier
 
 禁止使用 float 做账。
 
-每个 Usage Event 必须保存当时命中的规则、倍率、eligibility、contribution 快照，后续规则变更不得重算旧事件。事件同时保留 model/channel 与最小化 request/correlation 字段，供退款对账；不得保存 prompt、response、IP、Token 或 Cookie。
+每个 Usage Event 必须保存当时命中的规则、`economics_config_version`、倍率、eligibility、contribution 快照，且规则版本必须与归属 Period 的 `config_version` 一致；后续规则变更不得重算旧事件。事件同时保留 model/channel 与最小化 request/correlation 字段，供退款对账；不得保存 prompt、response、IP、Token 或 Cookie。
 
 ## 12. Ledger
 

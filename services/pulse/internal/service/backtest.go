@@ -163,6 +163,9 @@ func (s *BacktestService) evaluate(ctx context.Context, event usage.Event, seenR
 		if err != nil {
 			return err
 		}
+		if err := economics.ValidateRules(rules, activity.ConfigVersion); err != nil {
+			return err
+		}
 		rule, found := economics.Select(rules, event.ModelName, event.ChannelID)
 		if !found {
 			report.NoMatchingRuleEvents++
