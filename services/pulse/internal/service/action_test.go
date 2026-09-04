@@ -322,3 +322,31 @@ func TestActionFailsClosedForInvalidRewardTable(t *testing.T) {
 		})
 	}
 }
+
+func TestActionRejectsNonPulseTriggerBeforeMutation(t *testing.T) {
+	for _, triggerType := range []string{"", "content", "period_reward", "instant", "forged"} {
+		t.Run(triggerType, func(t *testing.T) {
+			store, rewards, idem := setupActionStore()
+			action := newActionService(t, store, rewards, idem)
+			_, err := action.Execute(context.Background(), ActionCommand{
+				UserID: 9, ActionID: "forged-trigger", TriggerType: triggerType, IdempotencyKey: "forged-trigger",
+			})
+			if !errors.Is(err, ErrInvalidAction) {
+				t.Fatalf("trigger %q error=%v, want ErrInvalidAction", triggerType, err)
+			}
+			if len(store.entries) != 0 || len(rewards.grants) != 0 || len(rewards.outboxes) != 0 {
+				t.Fatalf("trigger %q mutated state entries=%d grants=%d outboxes=%d", triggerType, len(store.entries), len(rewards.grants), len(rewards.outboxes))
+			}
+		})
+	}
+}
+
+func TestActionServiceRejectsNonLoyaltyBudget(t *testing.T) {
+	store, rewards, idem := setupActionStore()
+	_, err := NewActionService(actionUnit{store: store, reward: rewards, idem: idem}, ActionConfig{
+		RandomSecret: []byte("action-test-secret"), BudgetType: "period_reward",
+	})
+	if err == nil {
+		t.Fatal("non-loyalty action budget was accepted")
+	}
+}

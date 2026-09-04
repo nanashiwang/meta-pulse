@@ -480,8 +480,21 @@ func validateRewardGrantCreate(grant ports.RewardGrant) error {
 	if _, err := hex.DecodeString(grant.RandomValue); err != nil {
 		return fmt.Errorf("%w: invalid reward grant random value", ports.ErrConflict)
 	}
-	if (grant.TriggerType == "content") != (grant.RewardDefinitionID == 0) {
-		return fmt.Errorf("%w: invalid reward grant definition binding", ports.ErrConflict)
+	switch grant.TriggerType {
+	case "pulse":
+		if grant.RewardDefinitionID == 0 || grant.BudgetType != "loyalty" {
+			return fmt.Errorf("%w: invalid pulse reward grant binding", ports.ErrConflict)
+		}
+	case "period_reward":
+		if grant.RewardDefinitionID == 0 || grant.BudgetType != "period_reward" {
+			return fmt.Errorf("%w: invalid period reward grant binding", ports.ErrConflict)
+		}
+	case "content":
+		if grant.RewardDefinitionID != 0 || grant.BudgetType != "content_reward" {
+			return fmt.Errorf("%w: invalid content reward grant binding", ports.ErrConflict)
+		}
+	default:
+		return fmt.Errorf("%w: invalid reward grant trigger type", ports.ErrConflict)
 	}
 	return nil
 }

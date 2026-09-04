@@ -245,7 +245,7 @@ type UnitOfWork interface {
 
 - [x] API mutation 必须使用 Idempotency-Key；
 - [x] 版本化 HMAC 确定性随机，保存 random value 和 config version；
-- [x] 一个 Action 只能消费一张 Ticket、生成一个 Grant 和一个随机结果；
+- [x] 一个 Action 只能消费一张 Ticket、生成一个 Grant 和一个随机结果；用户入口的 `trigger_type` 固定为 `pulse`，周期与内容来源只能由服务端生成；
 - [x] Budget reservation 与 hard cap；
 - [x] 单事务写入 Ticket Spend、Budget Reservation、Reward Grant、Settlement Outbox；
 - [x] 先只生成 `pending` Grant，不真实发额度；Shadow outbox 不进入结算发送；

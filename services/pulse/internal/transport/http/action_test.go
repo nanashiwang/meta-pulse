@@ -90,3 +90,26 @@ func TestActionRouteRejectsTrailingJSON(t *testing.T) {
 		t.Fatalf("executor received rejected request: %+v", reader.command)
 	}
 }
+
+func TestActionRouteRejectsForgedTriggerTypeBeforeExecution(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, triggerType := range []string{"", "content", "period_reward", "forged"} {
+		t.Run(triggerType, func(t *testing.T) {
+			executor := &actionStub{}
+			router := gin.New()
+			ActionRoute(router.Group("/v1/internal"), executor, func(c *gin.Context) {
+				c.Set(PrincipalContextKey, security.Principal{UserID: 7, Role: "new-api"})
+				c.Next()
+			})
+			body := `{"action_id":"a1","trigger_type":"` + triggerType + `"}`
+			request := httptest.NewRequest(http.MethodPost, "/v1/internal/me/actions", strings.NewReader(body))
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Idempotency-Key", "request-1")
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			if response.Code != http.StatusBadRequest || executor.command.ActionID != "" {
+				t.Fatalf("trigger=%q status=%d command=%+v body=%s", triggerType, response.Code, executor.command, response.Body.String())
+			}
+		})
+	}
+}

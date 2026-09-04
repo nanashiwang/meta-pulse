@@ -40,9 +40,14 @@ func ActionRoute(router *gin.RouterGroup, executor ActionExecutor, auth gin.Hand
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid action payload"})
 			return
 		}
+		triggerType := strings.TrimSpace(request.TriggerType)
+		if triggerType != service.ActionTriggerType {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid action payload"})
+			return
+		}
 		result, err := executor.Execute(c.Request.Context(), service.ActionCommand{
 			UserID: principal.UserID, ActionID: strings.TrimSpace(request.ActionID),
-			TriggerType: strings.TrimSpace(request.TriggerType), IdempotencyKey: idempotencyKey,
+			TriggerType: triggerType, IdempotencyKey: idempotencyKey,
 		})
 		if err != nil {
 			status := http.StatusInternalServerError

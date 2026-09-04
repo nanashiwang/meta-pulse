@@ -599,12 +599,15 @@ not_found                → 尚未找到奖励，可使用原 source_ref 重试
 
 ## 21. Period Reward
 
-支持：
+Reward Grant 的来源类型固定为：
 
 ```text
-trigger_type = instant
-trigger_type = period_close
+trigger_type = pulse          # 用户开启脉冲，仅由 /me/actions 生成
+trigger_type = period_reward  # Period Close 服务端生成
+trigger_type = content        # 管理员审核内容后服务端生成
 ```
+
+用户 Action 只能提交 `pulse`，不得伪装 `period_reward` 或 `content`；持久化层同时校验来源、Reward Definition 与 `loyalty` / `period_reward` / `content_reward` Budget 的固定绑定。
 
 周期奖励公式参数化，可支持平均分、按 Contribution 权重、按 Ticket Spend 权重、固定档位。
 

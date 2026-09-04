@@ -147,16 +147,23 @@ func TestRewardGrantCreateValidatesImmutableIdentity(t *testing.T) {
 	now := time.Now()
 	valid := ports.RewardGrant{
 		GrantID: "pg_test", PeriodID: 2, UserID: 3, ActionID: "action", TriggerType: "pulse",
-		RewardDefinitionID: 4, RewardType: "quota", Amount: 10, BudgetType: "instant",
+		RewardDefinitionID: 4, RewardType: "quota", Amount: 10, BudgetType: "loyalty",
 		RandomValue: strings.Repeat("a", 64), ConfigVersion: "v1", Status: "pending",
 		SourceRef: "pg_test", Reason: "pulse action", CreatedAt: now,
 	}
 	if err := validateRewardGrantCreate(valid); err != nil {
 		t.Fatalf("valid grant rejected: %v", err)
 	}
+	periodReward := valid
+	periodReward.TriggerType = "period_reward"
+	periodReward.BudgetType = "period_reward"
+	if err := validateRewardGrantCreate(periodReward); err != nil {
+		t.Fatalf("valid period reward grant rejected: %v", err)
+	}
 	content := valid
 	content.TriggerType = "content"
 	content.RewardDefinitionID = 0
+	content.BudgetType = "content_reward"
 	if err := validateRewardGrantCreate(content); err != nil {
 		t.Fatalf("valid content grant rejected: %v", err)
 	}
@@ -171,7 +178,10 @@ func TestRewardGrantCreateValidatesImmutableIdentity(t *testing.T) {
 		{"invalid random", func(v *ports.RewardGrant) { v.RandomValue = strings.Repeat("z", 64) }},
 		{"long reason", func(v *ports.RewardGrant) { v.Reason = strings.Repeat("理", 256) }},
 		{"missing definition", func(v *ports.RewardGrant) { v.RewardDefinitionID = 0 }},
-		{"content definition", func(v *ports.RewardGrant) { v.TriggerType = "content" }},
+		{"unknown trigger", func(v *ports.RewardGrant) { v.TriggerType = "forged" }},
+		{"pulse budget mismatch", func(v *ports.RewardGrant) { v.BudgetType = "period_reward" }},
+		{"period budget mismatch", func(v *ports.RewardGrant) { v.TriggerType = "period_reward" }},
+		{"content definition", func(v *ports.RewardGrant) { v.TriggerType = "content"; v.BudgetType = "content_reward" }},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {

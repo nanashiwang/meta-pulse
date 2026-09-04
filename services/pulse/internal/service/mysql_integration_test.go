@@ -96,7 +96,7 @@ VALUES (?, ?, 'ticket', 'ticket_mint', 1, 1, 'integration', ?, ?, ?, 'integratio
 	if err != nil {
 		t.Fatalf("create action service: %v", err)
 	}
-	command := ActionCommand{UserID: userID, ActionID: "integration-action", TriggerType: "ticket", IdempotencyKey: "integration-idempotency"}
+	command := ActionCommand{UserID: userID, ActionID: "integration-action", TriggerType: ActionTriggerType, IdempotencyKey: "integration-idempotency"}
 
 	const callers = 100
 	results := make([]ActionResult, callers)
