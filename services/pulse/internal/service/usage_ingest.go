@@ -255,22 +255,63 @@ func (s *UsageIngestService) appendContribution(ctx context.Context, repos ports
 }
 
 func (s *UsageIngestService) resolveRefund(ctx context.Context, repos ports.Repositories, event usage.Event) (ledger.Entry, error) {
-	if event.RelatedSourceEventID == "" && event.RequestID != "" {
-		original, err := repos.Usage.FindConsumeByRequest(ctx, event.UserID, event.RequestID)
+	var originEvent *usage.Event
+	if event.RelatedSourceEventID != "" {
+		found, err := repos.Usage.FindBySource(ctx, event.SourceSystem, event.RelatedSourceEventID)
 		if err != nil {
 			return ledger.Entry{}, fmt.Errorf("refund consume correlation unavailable: %w", err)
 		}
-		event.RelatedSourceEventID = original.SourceEventID
+		originEvent = found
+	} else if event.RequestID != "" {
+		found, err := repos.Usage.FindConsumeByRequest(ctx, event.UserID, event.RequestID)
+		if err != nil {
+			return ledger.Entry{}, fmt.Errorf("refund consume correlation unavailable: %w", err)
+		}
+		originEvent = found
 	}
-	if event.RelatedSourceEventID == "" {
+	if originEvent == nil {
 		return ledger.Entry{}, errors.New("refund has no stable consume correlation")
 	}
-	original, err := repos.Ledger.FindBySource(ctx, "usage", usageSourceRefForID(event.SourceSystem, event.RelatedSourceEventID), ledger.AssetContribution)
+	if originEvent.EventType != usage.EventConsume || originEvent.Status != usage.StatusAccepted || originEvent.NeedsReview {
+		return ledger.Entry{}, errors.New("refund correlation must reference an accepted consume event")
+	}
+	if originEvent.UserID != event.UserID || originEvent.PeriodID != event.PeriodID {
+		return ledger.Entry{}, errors.New("refund consume correlation belongs to another account")
+	}
+
+	original, err := repos.Ledger.FindBySource(ctx, "usage", usageSourceRef(*originEvent), ledger.AssetContribution)
 	if err != nil {
 		return ledger.Entry{}, fmt.Errorf("refund original ledger unavailable: %w", err)
 	}
-	if original.UserID != event.UserID || original.PeriodID != event.PeriodID {
-		return ledger.Entry{}, errors.New("refund consume correlation belongs to another account")
+	if original.Operation != ledger.OperationContributionEarn || original.Amount <= 0 || original.ReversalOfEntryID != nil {
+		return ledger.Entry{}, errors.New("refund correlation must reference an original contribution earn")
+	}
+	if event.ContributionMilli >= 0 {
+		return ledger.Entry{}, errors.New("refund contribution must be negative")
+	}
+
+	entries, err := repos.Ledger.ListAccountEntries(ctx, event.UserID, event.PeriodID, ledger.AssetContribution)
+	if err != nil {
+		return ledger.Entry{}, fmt.Errorf("list refund contribution history: %w", err)
+	}
+	var reversed int64
+	for _, entry := range entries {
+		if entry.ReversalOfEntryID == nil || *entry.ReversalOfEntryID != original.ID {
+			continue
+		}
+		if entry.Operation != ledger.OperationContributionReverse || entry.Amount >= 0 {
+			return ledger.Entry{}, errors.New("refund contribution history contains an invalid reversal")
+		}
+		if entry.Amount == math.MinInt64 || reversed > math.MaxInt64+entry.Amount {
+			return ledger.Entry{}, errors.New("refund contribution history overflow")
+		}
+		reversed += -entry.Amount
+	}
+	if reversed > original.Amount {
+		return ledger.Entry{}, errors.New("refund contribution history exceeds original contribution")
+	}
+	if event.ContributionMilli == math.MinInt64 || -int64(event.ContributionMilli) > original.Amount-reversed {
+		return ledger.Entry{}, errors.New("refund contribution exceeds original contribution")
 	}
 	return *original, nil
 }

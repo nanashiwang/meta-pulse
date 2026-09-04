@@ -167,3 +167,72 @@ func TestBackfillUsesHalfOpenEnd(t *testing.T) {
 		t.Fatalf("usage events=%+v, want only event 1", store.usageEvents)
 	}
 }
+
+func TestUsageIngestRejectsRefundLinkedToAnotherRefund(t *testing.T) {
+	store := newMemoryLedgerStore()
+	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, StartsAt: time.Unix(1_600_000_000, 0), EndsAt: time.Unix(1_800_000_000, 0)}}
+	store.rules[4] = []economics.Rule{{ID: 8, Key: "default", Eligible: true, MultiplierBps: 10000}}
+	s := newIngestService(t, store, staticUsageSource{})
+	var result IngestResult
+
+	consume := ingestEvent("consume-chain", "hash-consume-chain", usage.EventConsume, 1500)
+	if err := s.processOne(context.Background(), consume, &result); err != nil {
+		t.Fatal(err)
+	}
+	firstRefund := ingestEvent("refund-chain-1", "hash-refund-chain-1", usage.EventRefund, -500)
+	firstRefund.RelatedSourceEventID = consume.SourceEventID
+	if err := s.processOne(context.Background(), firstRefund, &result); err != nil {
+		t.Fatal(err)
+	}
+	secondRefund := ingestEvent("refund-chain-2", "hash-refund-chain-2", usage.EventRefund, -100)
+	secondRefund.RelatedSourceEventID = firstRefund.SourceEventID
+	if err := s.processOne(context.Background(), secondRefund, &result); err != nil {
+		t.Fatal(err)
+	}
+
+	if result.Accepted != 2 || result.ManualReview != 1 || len(store.entries) != 3 {
+		t.Fatalf("result=%+v entries=%d", result, len(store.entries))
+	}
+	if got := store.usageEvents[2].Status; got != usage.StatusManualReview {
+		t.Fatalf("second refund status=%q, want manual_review", got)
+	}
+	if got := store.accounts[accountKey(9, 4, "contribution")].Balance; got != 1000 {
+		t.Fatalf("contribution account=%d, want 1000", got)
+	}
+}
+
+func TestUsageIngestRejectsRefundsExceedingOriginalContribution(t *testing.T) {
+	store := newMemoryLedgerStore()
+	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, StartsAt: time.Unix(1_600_000_000, 0), EndsAt: time.Unix(1_800_000_000, 0)}}
+	store.rules[4] = []economics.Rule{{ID: 8, Key: "default", Eligible: true, MultiplierBps: 10000}}
+	s := newIngestService(t, store, staticUsageSource{})
+	var result IngestResult
+
+	consume := ingestEvent("consume-cap", "hash-consume-cap", usage.EventConsume, 1500)
+	if err := s.processOne(context.Background(), consume, &result); err != nil {
+		t.Fatal(err)
+	}
+	firstRefund := ingestEvent("refund-cap-1", "hash-refund-cap-1", usage.EventRefund, -1000)
+	firstRefund.RelatedSourceEventID = consume.SourceEventID
+	if err := s.processOne(context.Background(), firstRefund, &result); err != nil {
+		t.Fatal(err)
+	}
+	secondRefund := ingestEvent("refund-cap-2", "hash-refund-cap-2", usage.EventRefund, -600)
+	secondRefund.RelatedSourceEventID = consume.SourceEventID
+	if err := s.processOne(context.Background(), secondRefund, &result); err != nil {
+		t.Fatal(err)
+	}
+
+	if result.Accepted != 2 || result.ManualReview != 1 || len(store.entries) != 4 {
+		t.Fatalf("result=%+v entries=%d", result, len(store.entries))
+	}
+	if got := store.usageEvents[2].Status; got != usage.StatusManualReview {
+		t.Fatalf("second refund status=%q, want manual_review", got)
+	}
+	if got := store.accounts[accountKey(9, 4, "contribution")].Balance; got != 500 {
+		t.Fatalf("contribution account=%d, want 500", got)
+	}
+	if got := store.accounts[accountKey(9, 4, "ticket")].Balance; got != 0 {
+		t.Fatalf("ticket account=%d, want 0", got)
+	}
+}
