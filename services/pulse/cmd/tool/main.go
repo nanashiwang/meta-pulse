@@ -56,7 +56,10 @@ func main() {
 			os.Exit(1)
 		}
 	case "period-close":
-		fmt.Printf("meta-pulse tool %s: command scaffold; implementation pending\n", os.Args[1])
+		if err := runPeriodClose(); err != nil {
+			logger.Error("period close failed", "error", err)
+			os.Exit(1)
+		}
 	default:
 		usage()
 	}
@@ -262,6 +265,45 @@ func runBackfill(args []string) error {
 	}
 	fmt.Println(string(encoded))
 	return err
+}
+
+func runPeriodClose() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	database, err := mysqlstore.Open(cfg.PulseDBDSN)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	unit, err := mysqlstore.NewUnitOfWork(database)
+	if err != nil {
+		return err
+	}
+	periodCloser, err := service.NewPeriodCloseService(unit, service.PeriodCloseConfig{
+		BatchSize:           cfg.PeriodCloseBatchSize,
+		CursorName:          service.DefaultUsageCursorName,
+		SourceSystem:        "new-api-log",
+		RequireWatermark:    cfg.PeriodCloseRequireWatermark,
+		EnablePeriodRewards: cfg.PeriodRewardsEnabled,
+		RandomSecret:        []byte(cfg.RewardRandomSecret),
+		ShadowMode:          cfg.RewardShadowMode,
+	})
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+	report, runErr := periodCloser.RunOnce(ctx)
+	encoded, encodeErr := json.MarshalIndent(report, "", "  ")
+	if encodeErr != nil {
+		return encodeErr
+	}
+	fmt.Println(string(encoded))
+	return runErr
 }
 
 func runLedgerCheck() error {
