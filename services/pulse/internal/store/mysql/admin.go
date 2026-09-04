@@ -13,6 +13,8 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+const maxAuditJSONBytes = 64 << 10
+
 type auditLogModel struct {
 	ID           uint64    `gorm:"column:id;primaryKey"`
 	ActorType    string    `gorm:"column:actor_type"`
@@ -109,12 +111,34 @@ func (r *periodAdminRepository) Transition(ctx context.Context, periodID uint64,
 }
 
 func (r *auditRepository) Append(ctx context.Context, log ports.AuditLog) error {
-	if log.ActorType == "" || log.ActorID == "" || log.Action == "" || log.ResourceType == "" || log.ResourceID == "" || log.Reason == "" {
-		return errors.New("invalid audit log")
+	if err := validateAuditLogCreate(log); err != nil {
+		return err
 	}
 	model := auditLogModel{ID: log.ID, ActorType: log.ActorType, ActorID: log.ActorID, Action: log.Action, ResourceType: log.ResourceType, ResourceID: log.ResourceID, Reason: log.Reason, BeforeJSON: log.BeforeJSON, AfterJSON: log.AfterJSON, RequestID: log.RequestID, CreatedAt: log.CreatedAt}
 	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
 		return fmt.Errorf("append audit log: %w", err)
+	}
+	return nil
+}
+
+func validateAuditLogCreate(log ports.AuditLog) error {
+	if log.ID != 0 || log.CreatedAt.IsZero() ||
+		!validMySQLText(log.ActorType, 32) || !validMySQLText(log.ActorID, 128) ||
+		!validMySQLText(log.Action, 128) || !validMySQLText(log.ResourceType, 64) ||
+		!validMySQLText(log.ResourceID, 191) || !validMySQLText(log.Reason, 500) ||
+		(log.RequestID != "" && !validMySQLText(log.RequestID, 128)) {
+		return fmt.Errorf("%w: invalid audit log create state", ports.ErrConflict)
+	}
+	for _, document := range [][]byte{log.BeforeJSON, log.AfterJSON} {
+		if len(document) == 0 {
+			continue
+		}
+		if len(document) > maxAuditJSONBytes {
+			return fmt.Errorf("%w: audit JSON exceeds %d bytes", ports.ErrConflict, maxAuditJSONBytes)
+		}
+		if _, err := canonicalSettlementPayloadHash(document); err != nil {
+			return fmt.Errorf("%w: invalid audit JSON", ports.ErrConflict)
+		}
 	}
 	return nil
 }

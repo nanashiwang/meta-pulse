@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -54,5 +55,53 @@ func TestParseAggregateInt64RejectsOverflow(t *testing.T) {
 		if _, err := parseAggregateInt64(raw); err == nil {
 			t.Fatalf("invalid aggregate %q was accepted", raw)
 		}
+	}
+}
+
+func TestAuditLogCreateValidatesDurableShape(t *testing.T) {
+	now := time.Now()
+	valid := ports.AuditLog{
+		ActorType: "admin", ActorID: "operator-1", Action: "ledger_adjustment",
+		ResourceType: "ledger_entry", ResourceID: "request-1", Reason: "manual correction",
+		BeforeJSON: []byte(`{"balance":1}`), AfterJSON: []byte(`{"balance":2}`),
+		RequestID: "request-1", CreatedAt: now,
+	}
+	if err := validateAuditLogCreate(valid); err != nil {
+		t.Fatalf("valid audit log rejected: %v", err)
+	}
+	withoutOptionalFields := valid
+	withoutOptionalFields.BeforeJSON = nil
+	withoutOptionalFields.AfterJSON = nil
+	withoutOptionalFields.RequestID = ""
+	if err := validateAuditLogCreate(withoutOptionalFields); err != nil {
+		t.Fatalf("audit log without optional fields rejected: %v", err)
+	}
+
+	cases := []struct {
+		name   string
+		mutate func(*ports.AuditLog)
+	}{
+		{"explicit id", func(v *ports.AuditLog) { v.ID = 1 }},
+		{"zero creation time", func(v *ports.AuditLog) { v.CreatedAt = time.Time{} }},
+		{"blank actor type", func(v *ports.AuditLog) { v.ActorType = " " }},
+		{"padded actor id", func(v *ports.AuditLog) { v.ActorID = " operator-1" }},
+		{"malformed utf8", func(v *ports.AuditLog) { v.Action = string([]byte{0xff}) }},
+		{"oversized resource type", func(v *ports.AuditLog) { v.ResourceType = strings.Repeat("类", 65) }},
+		{"oversized reason", func(v *ports.AuditLog) { v.Reason = strings.Repeat("理", 501) }},
+		{"oversized request id", func(v *ports.AuditLog) { v.RequestID = strings.Repeat("r", 129) }},
+		{"invalid before json", func(v *ports.AuditLog) { v.BeforeJSON = []byte(`{"balance":`) }},
+		{"trailing after json", func(v *ports.AuditLog) { v.AfterJSON = []byte(`{} {}`) }},
+		{"oversized after json", func(v *ports.AuditLog) { v.AfterJSON = []byte(`"` + strings.Repeat("a", maxAuditJSONBytes) + `"`) }},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			value := valid
+			value.BeforeJSON = append([]byte(nil), valid.BeforeJSON...)
+			value.AfterJSON = append([]byte(nil), valid.AfterJSON...)
+			test.mutate(&value)
+			if err := validateAuditLogCreate(value); err == nil {
+				t.Fatal("invalid audit log was accepted")
+			}
+		})
 	}
 }
