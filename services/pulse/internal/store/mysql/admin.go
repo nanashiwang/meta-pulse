@@ -356,9 +356,22 @@ func (r *contentRepository) UpdateAwardStatus(ctx context.Context, actionID, sta
 	return nil
 }
 
+func (r *contentRepository) MarkAwardSettledByGrantID(ctx context.Context, grantID string) error {
+	if grantID == "" {
+		return errors.New("invalid content grant id")
+	}
+	// A loyalty grant has no content award, and a repeated settlement may
+	// already have moved this row. Both cases are safe no-ops. Only pending
+	// awards can transition to settled; reversed awards must never be revived.
+	if err := r.db.WithContext(ctx).Model(&contentAwardModel{}).Where("grant_id = ? AND status = ?", grantID, ports.ContentAwardPending).Updates(map[string]any{"status": ports.ContentAwardSettled}).Error; err != nil {
+		return fmt.Errorf("mark content award settled: %w", err)
+	}
+	return nil
+}
+
 func (r *contentRepository) SumUserActiveAwards(ctx context.Context, userID, periodID uint64) (int64, error) {
 	var total int64
-	if err := r.db.WithContext(ctx).Model(&contentAwardModel{}).Where("user_id = ? AND period_id = ? AND status IN ?", userID, periodID, []string{ports.ContentAwardPending}).Select("COALESCE(SUM(amount), 0)").Scan(&total).Error; err != nil {
+	if err := r.db.WithContext(ctx).Model(&contentAwardModel{}).Where("user_id = ? AND period_id = ? AND status IN ?", userID, periodID, []string{ports.ContentAwardPending, ports.ContentAwardSettled}).Select("COALESCE(SUM(amount), 0)").Scan(&total).Error; err != nil {
 		return 0, fmt.Errorf("sum user content awards: %w", err)
 	}
 	return total, nil
@@ -366,7 +379,7 @@ func (r *contentRepository) SumUserActiveAwards(ctx context.Context, userID, per
 
 func (r *contentRepository) SumDailyActiveAwards(ctx context.Context, day time.Time) (int64, error) {
 	var total int64
-	if err := r.db.WithContext(ctx).Model(&contentAwardModel{}).Where("DATE(created_at) = DATE(?) AND status IN ?", day, []string{ports.ContentAwardPending}).Select("COALESCE(SUM(amount), 0)").Scan(&total).Error; err != nil {
+	if err := r.db.WithContext(ctx).Model(&contentAwardModel{}).Where("DATE(created_at) = DATE(?) AND status IN ?", day, []string{ports.ContentAwardPending, ports.ContentAwardSettled}).Select("COALESCE(SUM(amount), 0)").Scan(&total).Error; err != nil {
 		return 0, fmt.Errorf("sum daily content awards: %w", err)
 	}
 	return total, nil

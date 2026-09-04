@@ -88,10 +88,19 @@ func (m *memoryContentStore) UpdateAwardStatus(_ context.Context, actionID, stat
 	m.awards[actionID] = award
 	return nil
 }
+func (m *memoryContentStore) MarkAwardSettledByGrantID(_ context.Context, grantID string) error {
+	for actionID, award := range m.awards {
+		if award.GrantID == grantID && award.Status == ports.ContentAwardPending {
+			award.Status = ports.ContentAwardSettled
+			m.awards[actionID] = award
+		}
+	}
+	return nil
+}
 func (m *memoryContentStore) SumUserActiveAwards(_ context.Context, userID, periodID uint64) (int64, error) {
 	var total int64
 	for _, award := range m.awards {
-		if award.UserID == userID && award.PeriodID == periodID && award.Status == ports.ContentAwardPending {
+		if award.UserID == userID && award.PeriodID == periodID && (award.Status == ports.ContentAwardPending || award.Status == ports.ContentAwardSettled) {
 			total += award.Amount
 		}
 	}
@@ -100,7 +109,7 @@ func (m *memoryContentStore) SumUserActiveAwards(_ context.Context, userID, peri
 func (m *memoryContentStore) SumDailyActiveAwards(_ context.Context, _ time.Time) (int64, error) {
 	var total int64
 	for _, award := range m.awards {
-		if award.Status == ports.ContentAwardPending {
+		if award.Status == ports.ContentAwardPending || award.Status == ports.ContentAwardSettled {
 			total += award.Amount
 		}
 	}

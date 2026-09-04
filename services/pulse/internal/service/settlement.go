@@ -230,6 +230,14 @@ func (s *SettlementService) complete(ctx context.Context, outbox ports.Settlemen
 				return err
 			}
 		}
+		// Content awards share the Grant settlement boundary. Keep their
+		// projection in sync in the same Pulse transaction; a missing content
+		// row simply means this is a normal loyalty/period grant.
+		if repos.Content != nil {
+			if err := repos.Content.MarkAwardSettledByGrantID(ctx, current.GrantID); err != nil {
+				return err
+			}
+		}
 		outbox.Status = OutboxStatusCompleted
 		outbox.LeasedUntil = nil
 		outbox.LastError = ""

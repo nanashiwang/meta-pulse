@@ -15,10 +15,11 @@ type settlementUnit struct {
 	store      *memoryLedgerStore
 	reward     *memoryRewardStore
 	settlement *memorySettlementStore
+	content    ports.ContentRepository
 }
 
 func (u settlementUnit) Do(ctx context.Context, fn func(ports.Repositories) error) error {
-	return fn(ports.Repositories{Ledger: u.store, Account: u.store, Usage: memoryUsageRepo{u.store}, Conflict: memoryConflictRepo{u.store}, Cursor: memoryCursorRepo{u.store}, Period: memoryPeriodRepo{u.store}, Economics: memoryEconomicsRepo{u.store}, UserPeriod: memoryStatRepo{u.store}, Reward: u.reward, Settlement: u.settlement})
+	return fn(ports.Repositories{Ledger: u.store, Account: u.store, Usage: memoryUsageRepo{u.store}, Conflict: memoryConflictRepo{u.store}, Cursor: memoryCursorRepo{u.store}, Period: memoryPeriodRepo{u.store}, Economics: memoryEconomicsRepo{u.store}, UserPeriod: memoryStatRepo{u.store}, Reward: u.reward, Settlement: u.settlement, Content: u.content})
 }
 
 type memorySettlementStore struct{ outboxes []ports.SettlementOutbox }
@@ -218,5 +219,22 @@ func TestCanonicalJSONHashIgnoresMySQLFormatting(t *testing.T) {
 	normalized := []byte(`{ "amount": 25, "transferable_quota": false, "user_id": 9007199254740993, "grant_id": "g1" }`)
 	if canonicalJSONHash(compact) != canonicalJSONHash(normalized) {
 		t.Fatalf("canonical JSON hash changed with key order or whitespace")
+	}
+}
+
+func TestSettlementMarksContentAwardSettled(t *testing.T) {
+	client := &fakeBenefitClient{grantResponse: ports.BenefitGrantResponse{Applied: true, SourceRef: "pg_test"}}
+	service, rewards, outboxes, grant := settlementFixture(t, client)
+	content := &memoryContentStore{awards: map[string]ports.ContentAward{
+		grant.ActionID: {ActionID: grant.ActionID, GrantID: grant.GrantID, Status: ports.ContentAwardPending},
+	}}
+	service.unit = settlementUnit{store: service.unit.(settlementUnit).store, reward: rewards, settlement: outboxes, content: content}
+
+	report, err := service.ProcessBatch(context.Background())
+	if err != nil || report.Completed != 1 {
+		t.Fatalf("report=%+v err=%v", report, err)
+	}
+	if got := content.awards[grant.ActionID].Status; got != ports.ContentAwardSettled {
+		t.Fatalf("content award status=%q, want %q", got, ports.ContentAwardSettled)
 	}
 }
