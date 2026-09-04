@@ -49,3 +49,37 @@ func TestMapperUsesRequestIDForAsyncRefundCorrelation(t *testing.T) {
 		t.Fatalf("event = %+v", event)
 	}
 }
+
+func TestMapperPreservesLargeNumericRefundCorrelation(t *testing.T) {
+	const originID = "9007199254740993"
+	event, err := (UsageMapper{}).Map(LogRecord{
+		ID: 14, UserID: 7, CreatedAt: 1_700_000_000, Type: LogTypeRefund,
+		Quota: 100, Other: `{"origin_log_id":9007199254740993}`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if event.NeedsReview || event.RelatedSourceEventID != originID {
+		t.Fatalf("event = %+v", event)
+	}
+}
+
+func TestMapperRejectsUnsafeRefundCorrelationValues(t *testing.T) {
+	for _, other := range []string{
+		`{"origin_log_id":9007199254740993.5}`,
+		`{"origin_log_id":-10}`,
+		`{"origin_log_id":"not-a-log-id"}`,
+		`{"origin_log_id":10}{"unexpected":true}`,
+	} {
+		event, err := (UsageMapper{}).Map(LogRecord{
+			ID: 15, UserID: 7, CreatedAt: 1_700_000_000, Type: LogTypeRefund,
+			Quota: 100, Other: other,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !event.NeedsReview || event.RelatedSourceEventID != "" {
+			t.Fatalf("other=%s event=%+v", other, event)
+		}
+	}
+}

@@ -1,10 +1,12 @@
 package newapi
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -68,13 +70,27 @@ func (m UsageMapper) Map(record LogRecord) (usage.Event, error) {
 }
 
 func relatedSourceEventID(record LogRecord) string {
+	if strings.TrimSpace(record.Other) == "" {
+		return ""
+	}
+	// UseNumber is required here: log IDs are int64 values and decoding them
+	// through float64 can silently change IDs above 2^53, causing a refund to
+	// be correlated with the wrong consume event. Strictly consume one JSON
+	// value so malformed metadata cannot be partially interpreted.
+	decoder := json.NewDecoder(bytes.NewReader([]byte(record.Other)))
+	decoder.UseNumber()
 	var fields map[string]any
-	if json.Unmarshal([]byte(record.Other), &fields) == nil {
-		for _, key := range []string{"origin_log_id", "original_log_id", "consume_log_id", "related_log_id", "log_id"} {
-			if value, ok := fields[key]; ok {
-				if id := scalarID(value); id != "" {
-					return id
-				}
+	if err := decoder.Decode(&fields); err != nil {
+		return ""
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return ""
+	}
+	for _, key := range []string{"origin_log_id", "original_log_id", "consume_log_id", "related_log_id", "log_id"} {
+		if value, ok := fields[key]; ok {
+			if id := scalarID(value); id != "" {
+				return id
 			}
 		}
 	}
@@ -82,17 +98,20 @@ func relatedSourceEventID(record LogRecord) string {
 }
 
 func scalarID(value any) string {
+	var raw string
 	switch v := value.(type) {
 	case string:
-		return strings.TrimSpace(v)
-	case float64:
-		if v > 0 && v == float64(int64(v)) {
-			return strconv.FormatInt(int64(v), 10)
-		}
+		raw = strings.TrimSpace(v)
 	case json.Number:
-		return v.String()
+		raw = v.String()
+	default:
+		return ""
 	}
-	return ""
+	parsed, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || parsed <= 0 {
+		return ""
+	}
+	return strconv.FormatInt(parsed, 10)
 }
 
 func maxInt64(value int64) int64 {
