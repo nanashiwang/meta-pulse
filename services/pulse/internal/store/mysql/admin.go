@@ -144,17 +144,34 @@ func validateAuditLogCreate(log ports.AuditLog) error {
 }
 
 func (r *experimentRepository) FindOrCreate(ctx context.Context, assignment ports.ExperimentAssignment) (ports.ExperimentAssignment, error) {
-	if assignment.ExperimentID == "" || assignment.UserID == 0 || assignment.Cohort == "" || assignment.BucketBps >= 10000 {
-		return ports.ExperimentAssignment{}, errors.New("invalid experiment assignment")
+	if err := validateExperimentAssignmentCreate(assignment); err != nil {
+		return ports.ExperimentAssignment{}, err
 	}
-	model := experimentAssignmentModel{ID: assignment.ID, ExperimentID: assignment.ExperimentID, UserID: assignment.UserID, Cohort: assignment.Cohort, BucketBps: assignment.BucketBps, AssignedAt: assignment.AssignedAt}
-	if err := r.db.WithContext(ctx).Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "experiment_id"}, {Name: "user_id"}}, DoNothing: true}).Create(&model).Error; err != nil {
+	candidate := experimentAssignmentModel{ExperimentID: assignment.ExperimentID, UserID: assignment.UserID, Cohort: assignment.Cohort, BucketBps: assignment.BucketBps, AssignedAt: assignment.AssignedAt}
+	if err := r.db.WithContext(ctx).Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "experiment_id"}, {Name: "user_id"}}, DoNothing: true}).Create(&candidate).Error; err != nil {
 		return ports.ExperimentAssignment{}, fmt.Errorf("save experiment assignment: %w", err)
 	}
-	if err := r.db.WithContext(ctx).Where("experiment_id = ? AND user_id = ?", assignment.ExperimentID, assignment.UserID).Take(&model).Error; err != nil {
+	// Always read into a fresh model. On duplicate-key no-op, MySQL/GORM may
+	// leave the candidate primary key populated from driver state; reusing it
+	// could accidentally add an unrelated id predicate and hide the historical
+	// assignment that must remain immutable.
+	var persisted experimentAssignmentModel
+	if err := r.db.WithContext(ctx).Where("experiment_id = ? AND user_id = ?", assignment.ExperimentID, assignment.UserID).Take(&persisted).Error; err != nil {
 		return ports.ExperimentAssignment{}, fmt.Errorf("read experiment assignment: %w", err)
 	}
-	return ports.ExperimentAssignment{ID: model.ID, ExperimentID: model.ExperimentID, UserID: model.UserID, Cohort: model.Cohort, BucketBps: model.BucketBps, AssignedAt: model.AssignedAt}, nil
+	if persisted.ID == 0 || persisted.ExperimentID != assignment.ExperimentID || persisted.UserID != assignment.UserID ||
+		!validMySQLText(persisted.Cohort, 32) || persisted.BucketBps >= 10000 || persisted.AssignedAt.IsZero() {
+		return ports.ExperimentAssignment{}, fmt.Errorf("%w: invalid persisted experiment assignment", ports.ErrConflict)
+	}
+	return ports.ExperimentAssignment{ID: persisted.ID, ExperimentID: persisted.ExperimentID, UserID: persisted.UserID, Cohort: persisted.Cohort, BucketBps: persisted.BucketBps, AssignedAt: persisted.AssignedAt}, nil
+}
+
+func validateExperimentAssignmentCreate(assignment ports.ExperimentAssignment) error {
+	if assignment.ID != 0 || assignment.UserID == 0 || assignment.BucketBps >= 10000 || assignment.AssignedAt.IsZero() ||
+		!validMySQLText(assignment.ExperimentID, 128) || !validMySQLText(assignment.Cohort, 32) {
+		return fmt.Errorf("%w: invalid experiment assignment create state", ports.ErrConflict)
+	}
+	return nil
 }
 
 func (r *metricRepository) Upsert(ctx context.Context, metric ports.MetricValue) error {

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nanashiwang/meta-pulse/internal/domain/experiment"
 	"github.com/nanashiwang/meta-pulse/internal/domain/ledger"
 	"github.com/nanashiwang/meta-pulse/internal/domain/period"
 	"github.com/nanashiwang/meta-pulse/internal/domain/usage"
@@ -1043,5 +1044,46 @@ INSERT INTO pulse_content_award (
 		return sumErr
 	}); err == nil {
 		t.Fatal("overflowing content award total was accepted")
+	}
+}
+
+func TestMySQLExperimentAssignmentKeepsFirstCohort(t *testing.T) {
+	database, sqlDB := openMySQLIntegration(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	seed := time.Now().UnixNano()
+	experimentID := fmt.Sprintf("integration-experiment-%d", seed)
+	userID := uint64(980000000 + seed%1000000)
+	t.Cleanup(func() {
+		_, _ = sqlDB.Exec(`DELETE FROM pulse_experiment_assignment WHERE experiment_id = ? AND user_id = ?`, experimentID, userID)
+	})
+
+	unit, err := mysqlstore.NewUnitOfWork(database)
+	if err != nil {
+		t.Fatalf("create unit of work: %v", err)
+	}
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	service, err := NewExperimentService(unit, []byte("integration-experiment-secret"), func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("create experiment service: %v", err)
+	}
+	first, err := service.Assign(ctx, experimentID, userID, []experiment.Variant{{Name: "first", Percentage: 10000}})
+	if err != nil {
+		t.Fatalf("create first assignment: %v", err)
+	}
+	second, err := service.Assign(ctx, experimentID, userID, []experiment.Variant{{Name: "second", Percentage: 10000}})
+	if err != nil {
+		t.Fatalf("read historical assignment: %v", err)
+	}
+	if first.ID == 0 || first.Cohort != "first" || second != first {
+		t.Fatalf("first=%+v second=%+v", first, second)
+	}
+	var rows int
+	if err := sqlDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM pulse_experiment_assignment WHERE experiment_id = ? AND user_id = ?`, experimentID, userID).Scan(&rows); err != nil {
+		t.Fatalf("count experiment assignments: %v", err)
+	}
+	if rows != 1 {
+		t.Fatalf("experiment assignment rows=%d, want 1", rows)
 	}
 }

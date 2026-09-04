@@ -105,3 +105,36 @@ func TestAuditLogCreateValidatesDurableShape(t *testing.T) {
 		})
 	}
 }
+
+func TestExperimentAssignmentCreateValidatesImmutableIdentity(t *testing.T) {
+	valid := ports.ExperimentAssignment{
+		ExperimentID: "holdout-v1", UserID: 7, Cohort: "control",
+		BucketBps: 9999, AssignedAt: time.Now(),
+	}
+	if err := validateExperimentAssignmentCreate(valid); err != nil {
+		t.Fatalf("valid experiment assignment rejected: %v", err)
+	}
+	cases := []struct {
+		name   string
+		mutate func(*ports.ExperimentAssignment)
+	}{
+		{"explicit id", func(v *ports.ExperimentAssignment) { v.ID = 1 }},
+		{"missing user", func(v *ports.ExperimentAssignment) { v.UserID = 0 }},
+		{"blank experiment", func(v *ports.ExperimentAssignment) { v.ExperimentID = " " }},
+		{"padded experiment", func(v *ports.ExperimentAssignment) { v.ExperimentID = " holdout-v1" }},
+		{"long experiment", func(v *ports.ExperimentAssignment) { v.ExperimentID = strings.Repeat("实", 129) }},
+		{"malformed cohort", func(v *ports.ExperimentAssignment) { v.Cohort = string([]byte{0xff}) }},
+		{"long cohort", func(v *ports.ExperimentAssignment) { v.Cohort = strings.Repeat("组", 33) }},
+		{"bucket out of range", func(v *ports.ExperimentAssignment) { v.BucketBps = 10000 }},
+		{"zero assignment time", func(v *ports.ExperimentAssignment) { v.AssignedAt = time.Time{} }},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			value := valid
+			test.mutate(&value)
+			if err := validateExperimentAssignmentCreate(value); err == nil {
+				t.Fatal("invalid experiment assignment was accepted")
+			}
+		})
+	}
+}
