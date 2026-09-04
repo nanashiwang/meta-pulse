@@ -63,6 +63,9 @@ func (m *memoryRewardStore) FindGrantByID(_ context.Context, grantID uint64) (*p
 	}
 	return nil, ports.ErrNotFound
 }
+func (m *memoryRewardStore) FindGrantByIDForUpdate(ctx context.Context, grantID uint64) (*ports.RewardGrant, error) {
+	return m.FindGrantByID(ctx, grantID)
+}
 func (m *memoryRewardStore) UpdateGrantStatus(_ context.Context, grantID uint64, status string, settledAt, reversedAt *time.Time) error {
 	for i := range m.grants {
 		if m.grants[i].ID == grantID {

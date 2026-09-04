@@ -220,16 +220,20 @@ func (s *SettlementService) complete(ctx context.Context, outbox ports.Settlemen
 		if repos.Reward == nil || repos.Settlement == nil {
 			return errors.New("settlement repositories are not initialized")
 		}
-		current, err := repos.Reward.FindGrantByID(ctx, grant.ID)
+		current, err := repos.Reward.FindGrantByIDForUpdate(ctx, grant.ID)
 		if err != nil {
 			return err
 		}
-		if current.Status != GrantStatusSettled {
+		alreadySettled := current.Status == GrantStatusSettled
+		if !alreadySettled {
+			if current.Status != RewardStatusPending {
+				return fmt.Errorf("grant %d has unexpected settlement status %s", current.ID, current.Status)
+			}
 			budget, err := repos.Reward.GetBudgetForUpdate(ctx, current.PeriodID, current.BudgetType)
 			if err != nil {
 				return err
 			}
-			if current.Amount < 0 || budget.ReservedAmount < current.Amount || budget.Version == math.MaxUint64 {
+			if current.Amount <= 0 || budget.ReservedAmount < current.Amount || budget.Version == math.MaxUint64 {
 				return errors.New("settlement budget reservation is inconsistent")
 			}
 			budget.ReservedAmount -= current.Amount
@@ -257,7 +261,14 @@ func (s *SettlementService) complete(ctx context.Context, outbox ports.Settlemen
 		outbox.LeasedUntil = nil
 		outbox.LastError = ""
 		outbox.CompletedAt = &now
-		return repos.Settlement.SaveOutbox(ctx, outbox)
+		err = repos.Settlement.SaveOutbox(ctx, outbox)
+		if alreadySettled && errors.Is(err, ports.ErrNotFound) {
+			// Another completion committed Grant, Budget and Outbox atomically.
+			// A stale reconciler may therefore observe the terminal Grant while
+			// its fenced Outbox update no longer matches.
+			return nil
+		}
+		return err
 	})
 }
 
@@ -405,15 +416,7 @@ func (s *SettlementService) Rollback(ctx context.Context, grantID uint64, reason
 		if repos.Reward == nil {
 			return errors.New("reward repository is not initialized")
 		}
-		var found *ports.RewardGrant
-		var err error
-		if locker, ok := repos.Reward.(interface {
-			FindGrantByIDForUpdate(context.Context, uint64) (*ports.RewardGrant, error)
-		}); ok {
-			found, err = locker.FindGrantByIDForUpdate(ctx, grantID)
-		} else {
-			found, err = repos.Reward.FindGrantByID(ctx, grantID)
-		}
+		found, err := repos.Reward.FindGrantByIDForUpdate(ctx, grantID)
 		if err != nil {
 			return err
 		}
@@ -445,15 +448,7 @@ func (s *SettlementService) Rollback(ctx context.Context, grantID uint64, reason
 		// budget mutation must happen exactly once. Re-lock and re-check the
 		// grant after the network call so concurrent retries cannot release the
 		// same reserved amount twice.
-		var current *ports.RewardGrant
-		var err error
-		if locker, ok := repos.Reward.(interface {
-			FindGrantByIDForUpdate(context.Context, uint64) (*ports.RewardGrant, error)
-		}); ok {
-			current, err = locker.FindGrantByIDForUpdate(ctx, grant.ID)
-		} else {
-			current, err = repos.Reward.FindGrantByID(ctx, grant.ID)
-		}
+		current, err := repos.Reward.FindGrantByIDForUpdate(ctx, grant.ID)
 		if err != nil {
 			return err
 		}

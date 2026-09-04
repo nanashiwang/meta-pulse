@@ -288,3 +288,17 @@ func TestSettlementRejectsMismatchedGrantResponseBeforeQuery(t *testing.T) {
 		t.Fatalf("outbox=%+v grant=%+v", outboxes.outboxes[0], rewards.grants[0])
 	}
 }
+
+func TestSettlementRejectsUnexpectedGrantState(t *testing.T) {
+	client := &fakeBenefitClient{grantResponse: ports.BenefitGrantResponse{Applied: true, SourceRef: "pg_test"}}
+	service, rewards, outboxes, _ := settlementFixture(t, client)
+	rewards.grants[0].Status = GrantStatusReversed
+	err := service.complete(context.Background(), outboxes.outboxes[0], rewards.grants[0])
+	if err == nil {
+		t.Fatal("unexpected grant state was settled")
+	}
+	budget := rewards.budgets[budgetKey(4, ActionBudgetType)]
+	if budget.ReservedAmount != 10 || budget.SettledAmount != 0 || rewards.grants[0].Status != GrantStatusReversed {
+		t.Fatalf("state changed grant=%+v budget=%+v", rewards.grants[0], budget)
+	}
+}
