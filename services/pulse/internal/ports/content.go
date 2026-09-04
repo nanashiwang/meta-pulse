@@ -74,8 +74,9 @@ type ContentRepository interface {
 	CreateCandidate(ctx context.Context, candidate ContentCandidate) (ContentCandidate, error)
 	ReviewCandidate(ctx context.Context, candidateID uint64, status, actorType, actorID, reason string, reviewedAt time.Time) error
 	FindAwardByAction(ctx context.Context, actionID string) (*ContentAward, error)
+	FindAwardByActionForUpdate(ctx context.Context, actionID string) (*ContentAward, error)
 	CreateAward(ctx context.Context, award ContentAward) (ContentAward, error)
-	UpdateAwardStatus(ctx context.Context, actionID, status string) error
+	TransitionAwardStatus(ctx context.Context, actionID, fromStatus, toStatus string) error
 	MarkAwardSettledByGrantID(ctx context.Context, grantID string) error
 	LockAwardLimits(ctx context.Context, userID, periodID uint64, day time.Time) error
 	SumUserActiveAwards(ctx context.Context, userID, periodID uint64) (int64, error)

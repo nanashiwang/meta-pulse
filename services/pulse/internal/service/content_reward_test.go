@@ -69,6 +69,9 @@ func (m *memoryContentStore) FindAwardByAction(_ context.Context, actionID strin
 	copy := award
 	return &copy, nil
 }
+func (m *memoryContentStore) FindAwardByActionForUpdate(ctx context.Context, actionID string) (*ports.ContentAward, error) {
+	return m.FindAwardByAction(ctx, actionID)
+}
 func (m *memoryContentStore) CreateAward(_ context.Context, award ports.ContentAward) (ports.ContentAward, error) {
 	if m.awards == nil {
 		m.awards = make(map[string]ports.ContentAward)
@@ -80,12 +83,15 @@ func (m *memoryContentStore) CreateAward(_ context.Context, award ports.ContentA
 	m.awards[award.ActionID] = award
 	return award, nil
 }
-func (m *memoryContentStore) UpdateAwardStatus(_ context.Context, actionID, status string) error {
+func (m *memoryContentStore) TransitionAwardStatus(_ context.Context, actionID, fromStatus, toStatus string) error {
 	award, ok := m.awards[actionID]
 	if !ok {
 		return ports.ErrNotFound
 	}
-	award.Status = status
+	if award.Status != fromStatus {
+		return ports.ErrConflict
+	}
+	award.Status = toStatus
 	m.awards[actionID] = award
 	return nil
 }
@@ -219,15 +225,20 @@ func TestContentAwardDoesNotWriteContributionOrTicketLedger(t *testing.T) {
 }
 
 type memoryGrantRollback struct {
+	rewards *memoryRewardStore
 	calls   int
 	grantID uint64
 	reason  string
 }
 
-func (m *memoryGrantRollback) Rollback(_ context.Context, grantID uint64, reason string) error {
+func (m *memoryGrantRollback) Rollback(ctx context.Context, grantID uint64, reason string) error {
 	m.calls++
 	m.grantID = grantID
 	m.reason = reason
+	if m.rewards != nil {
+		now := time.Unix(1700000001, 0).UTC()
+		return m.rewards.UpdateGrantStatus(ctx, grantID, GrantStatusReversed, nil, &now)
+	}
 	return nil
 }
 
@@ -237,26 +248,75 @@ func TestContentAwardReversalUsesOriginalGrant(t *testing.T) {
 	if _, err := s.ReviewAndAward(context.Background(), command); err != nil {
 		t.Fatal(err)
 	}
-	rollback := &memoryGrantRollback{}
+	actionID := "content_award:question:42:1"
+	award := content.awards[actionID]
+	award.Status = ports.ContentAwardSettled
+	content.awards[actionID] = award
+	settledAt := time.Unix(1700000000, 0).UTC()
+	rewards.grants[0].Status = GrantStatusSettled
+	rewards.grants[0].SettledAt = &settledAt
+	rollback := &memoryGrantRollback{rewards: rewards}
 	idem := newMemoryIdempotencyStore()
 	s, err := NewContentAwardService(contentAwardUnit{ledger: ledgerStore, reward: rewards, idem: idem, content: content, audit: audit}, ContentAwardConfig{MinPaidContributionMilli: 1000, MaxUserPeriodAmount: 50, MaxDailyAmount: 100, Now: func() time.Time { return time.Unix(1700000000, 0).UTC() }}, rollback)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Reverse(context.Background(), "content_award:question:42:1", "admin", "op-2", "抄袭撤销", "reverse-1"); err != nil {
+	if err := s.Reverse(context.Background(), actionID, "admin", "op-2", "抄袭撤销", "reverse-1"); err != nil {
 		t.Fatal(err)
 	}
-	if rollback.calls != 1 || rollback.grantID != rewards.grants[0].ID || rollback.reason != "抄袭撤销" || content.awards["content_award:question:42:1"].Status != ports.ContentAwardReversed || len(audit.logs) != 2 {
-		t.Fatalf("rollback=%+v award=%+v audits=%d", rollback, content.awards["content_award:question:42:1"], len(audit.logs))
+	if rollback.calls != 1 || rollback.grantID != rewards.grants[0].ID || rollback.reason != "抄袭撤销" || content.awards[actionID].Status != ports.ContentAwardReversed || rewards.grants[0].Status != GrantStatusReversed || len(audit.logs) != 2 {
+		t.Fatalf("rollback=%+v award=%+v grant=%+v audits=%d", rollback, content.awards[actionID], rewards.grants[0], len(audit.logs))
 	}
-	if err := s.Reverse(context.Background(), "content_award:question:42:1", "admin", "op-2", "抄袭撤销", "reverse-1"); err != nil {
+	if err := s.Reverse(context.Background(), actionID, "admin", "op-2", "抄袭撤销", "reverse-1"); err != nil {
 		t.Fatalf("same reversal replay failed: %v", err)
 	}
 	if rollback.calls != 1 || len(audit.logs) != 2 {
 		t.Fatalf("same reversal replay was not idempotent: rollback=%+v audits=%d", rollback, len(audit.logs))
 	}
-	if err := s.Reverse(context.Background(), "content_award:question:42:1", "admin", "op-2", "不同原因", "reverse-1"); !errors.Is(err, ledger.ErrIdempotencyConflict) {
+	if err := s.Reverse(context.Background(), actionID, "admin", "op-2", "不同原因", "reverse-1"); !errors.Is(err, ledger.ErrIdempotencyConflict) {
 		t.Fatalf("changed reversal payload error=%v, want conflict", err)
+	}
+}
+
+func TestContentAwardReversalRejectsUnsettledOrMismatchedGrant(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*memoryContentStore, *memoryRewardStore, string)
+		want   error
+	}{
+		{name: "pending award", mutate: func(_ *memoryContentStore, _ *memoryRewardStore, _ string) {}, want: ErrContentAwardNotReversible},
+		{name: "pending grant", mutate: func(content *memoryContentStore, _ *memoryRewardStore, actionID string) {
+			award := content.awards[actionID]
+			award.Status = ports.ContentAwardSettled
+			content.awards[actionID] = award
+		}, want: ErrContentAwardNotReversible},
+		{name: "mismatched grant", mutate: func(content *memoryContentStore, rewards *memoryRewardStore, actionID string) {
+			award := content.awards[actionID]
+			award.Status = ports.ContentAwardSettled
+			award.GrantID = "wrong-grant"
+			content.awards[actionID] = award
+			rewards.grants[0].Status = GrantStatusSettled
+		}, want: ports.ErrConflict},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			service, _, content, rewards, _ := newContentAwardFixture(t, 1000)
+			command := ContentAwardCommand{CandidateID: 1, AwardVersion: 1, RewardType: "quota", Amount: 10, Reason: "精华回答", ActorType: "admin", ActorID: "op-1", RequestID: "review-1"}
+			if _, err := service.ReviewAndAward(context.Background(), command); err != nil {
+				t.Fatal(err)
+			}
+			actionID := "content_award:question:42:1"
+			test.mutate(content, rewards, actionID)
+			rollback := &memoryGrantRollback{rewards: rewards}
+			service.rollback = rollback
+			err := service.Reverse(context.Background(), actionID, "admin", "op-2", "撤销", "reverse-1")
+			if !errors.Is(err, test.want) {
+				t.Fatalf("error=%v, want %v", err, test.want)
+			}
+			if rollback.calls != 0 {
+				t.Fatalf("invalid reversal called Benefit rollback %d times", rollback.calls)
+			}
+		})
 	}
 }
 

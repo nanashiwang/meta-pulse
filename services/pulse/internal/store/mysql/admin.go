@@ -364,16 +364,18 @@ func (r *contentRepository) CreateAward(ctx context.Context, award ports.Content
 	return award, nil
 }
 
-func (r *contentRepository) UpdateAwardStatus(ctx context.Context, actionID, status string) error {
-	if actionID == "" || status == "" {
-		return errors.New("invalid content award status")
+func (r *contentRepository) TransitionAwardStatus(ctx context.Context, actionID, fromStatus, toStatus string) error {
+	if actionID == "" || fromStatus != ports.ContentAwardSettled || toStatus != ports.ContentAwardReversed {
+		return errors.New("invalid content award status transition")
 	}
-	result := r.db.WithContext(ctx).Model(&contentAwardModel{}).Where("action_id = ?", actionID).Updates(map[string]any{"status": status})
+	result := r.db.WithContext(ctx).Model(&contentAwardModel{}).
+		Where("action_id = ? AND status = ?", actionID, fromStatus).
+		Updates(map[string]any{"status": toStatus})
 	if result.Error != nil {
-		return fmt.Errorf("update content award status: %w", result.Error)
+		return fmt.Errorf("transition content award status: %w", result.Error)
 	}
 	if result.RowsAffected != 1 {
-		return ports.ErrNotFound
+		return ports.ErrConflict
 	}
 	return nil
 }

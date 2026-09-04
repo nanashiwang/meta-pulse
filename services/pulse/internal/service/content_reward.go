@@ -20,6 +20,7 @@ var (
 	ErrContentCandidateUnavailable = errors.New("content candidate is not awardable")
 	ErrContentPaidThreshold        = errors.New("content reward paid threshold is not met")
 	ErrContentAwardLimit           = errors.New("content reward limit exceeded")
+	ErrContentAwardNotReversible   = errors.New("content award is not reversible")
 )
 
 type ContentAwardConfig struct {
@@ -293,14 +294,7 @@ func (s *ContentAwardService) Reverse(ctx context.Context, actionID, actorType, 
 			return nil
 		}
 
-		var found *ports.ContentAward
-		if locker, ok := repos.Content.(interface {
-			FindAwardByActionForUpdate(context.Context, string) (*ports.ContentAward, error)
-		}); ok {
-			found, err = locker.FindAwardByActionForUpdate(ctx, actionID)
-		} else {
-			found, err = repos.Content.FindAwardByAction(ctx, actionID)
-		}
+		found, err := repos.Content.FindAwardByActionForUpdate(ctx, actionID)
 		if err != nil {
 			return err
 		}
@@ -308,11 +302,14 @@ func (s *ContentAwardService) Reverse(ctx context.Context, actionID, actorType, 
 			alreadyReversed = true
 			return saveContentReversalIdempotency(ctx, repos.Idempotency, idempotency, actionID)
 		}
-		if found.GrantID == "" {
-			return ErrContentCandidateUnavailable
+		if found.Status != ports.ContentAwardSettled || found.GrantID == "" {
+			return ErrContentAwardNotReversible
 		}
 		grant, err := repos.Reward.FindGrantByAction(ctx, found.PeriodID, found.UserID, found.ActionID)
 		if err != nil {
+			return err
+		}
+		if err := validateContentAwardGrant(*found, *grant); err != nil {
 			return err
 		}
 		grantID = grant.ID
@@ -333,7 +330,7 @@ func (s *ContentAwardService) Reverse(ctx context.Context, actionID, actorType, 
 	}
 
 	return s.unit.Do(ctx, func(repos ports.Repositories) error {
-		if repos.Content == nil || repos.Audit == nil || repos.Idempotency == nil {
+		if repos.Content == nil || repos.Reward == nil || repos.Audit == nil || repos.Idempotency == nil {
 			return errors.New("content reversal repositories are not initialized")
 		}
 		idempotency, err := repos.Idempotency.GetOrCreateForUpdate(ctx, "content_reward_reversal", requestID, payloadHash)
@@ -347,21 +344,27 @@ func (s *ContentAwardService) Reverse(ctx context.Context, actionID, actorType, 
 			return nil
 		}
 
-		var found *ports.ContentAward
-		if locker, ok := repos.Content.(interface {
-			FindAwardByActionForUpdate(context.Context, string) (*ports.ContentAward, error)
-		}); ok {
-			found, err = locker.FindAwardByActionForUpdate(ctx, actionID)
-		} else {
-			found, err = repos.Content.FindAwardByAction(ctx, actionID)
-		}
+		found, err := repos.Content.FindAwardByActionForUpdate(ctx, actionID)
 		if err != nil {
 			return err
 		}
 		if found.Status == ports.ContentAwardReversed {
 			return saveContentReversalIdempotency(ctx, repos.Idempotency, idempotency, actionID)
 		}
-		if err := repos.Content.UpdateAwardStatus(ctx, actionID, ports.ContentAwardReversed); err != nil {
+		if found.Status != ports.ContentAwardSettled || found.GrantID == "" {
+			return ErrContentAwardNotReversible
+		}
+		grant, err := repos.Reward.FindGrantByID(ctx, grantID)
+		if err != nil {
+			return err
+		}
+		if err := validateContentAwardGrant(*found, *grant); err != nil {
+			return err
+		}
+		if grant.Status != GrantStatusReversed {
+			return fmt.Errorf("%w: grant status=%s", ErrContentAwardNotReversible, grant.Status)
+		}
+		if err := repos.Content.TransitionAwardStatus(ctx, actionID, ports.ContentAwardSettled, ports.ContentAwardReversed); err != nil {
 			return err
 		}
 		after, _ := json.Marshal(map[string]any{"action_id": actionID, "status": ports.ContentAwardReversed})
@@ -370,6 +373,21 @@ func (s *ContentAwardService) Reverse(ctx context.Context, actionID, actorType, 
 		}
 		return saveContentReversalIdempotency(ctx, repos.Idempotency, idempotency, actionID)
 	})
+}
+
+func validateContentAwardGrant(award ports.ContentAward, grant ports.RewardGrant) error {
+	if grant.ID == 0 || grant.GrantID == "" || grant.SourceRef != grant.GrantID ||
+		grant.GrantID != award.GrantID || grant.PeriodID != award.PeriodID ||
+		grant.UserID != award.UserID || grant.ActionID != award.ActionID ||
+		grant.TriggerType != "content" || grant.RewardDefinitionID != 0 ||
+		grant.RewardType != award.RewardType || grant.Amount != award.Amount ||
+		grant.BudgetType != award.BudgetType || grant.TransferableQuota {
+		return fmt.Errorf("%w: content award/grant mapping mismatch", ports.ErrConflict)
+	}
+	if grant.Status != GrantStatusSettled && grant.Status != GrantStatusReversed {
+		return fmt.Errorf("%w: grant status=%s", ErrContentAwardNotReversible, grant.Status)
+	}
+	return nil
 }
 
 func contentReversalPayloadHash(actionID, actorType, actorID, reason string) string {
