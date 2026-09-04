@@ -169,7 +169,7 @@ type UnitOfWork interface {
 - [x] 定义 Usage Mapper：consume、refund、correction、异步 task 退款、差额结算；不确定关联进入人工复核；
 - [x] 生产密钥不进入 Git，支持 current/previous 平滑轮换和 fail closed；
 - [x] SSO 入口使用 CriticalRateLimit；Benefit 内部接口使用独立的已验签服务身份限流，不受公共 API IP 限流影响；
-- [x] Pulse 侧实现规范化 `method/path/user/timestamp/nonce/body_hash` 验签、时间窗和重放拒绝，生产 Nonce 适配 Redis 原子 `SETNX`；
+- [x] Pulse 侧实现规范化 `method/path/user/timestamp/nonce/body_hash` 验签、时间窗和重放拒绝，生产 Nonce 适配 Redis 原子 `SETNX`；签名请求体上限 64 KiB；
 - [ ] 真实部署完成审计、限流压测、跨实例 Nonce 与密钥轮换演练。
 
 **代码出口：**登录、2FA、论坛 SSO、Ticket 重放、Cookie 隔离、BFF 越权和签名重放回归测试通过。真实域名、跨实例、轮换演练和公网门禁属于部署验收；P0 外部验收完成前论坛不得开放公网，Pulse 奖励不得上线。
@@ -263,7 +263,7 @@ type UnitOfWork interface {
 - [x] timeout 必须先 Query 原 `source_ref`，禁止更换 source_ref；
 - [x] Benefit Reconciliation 可重复查询并收敛状态；
 - [x] 真实 MySQL Outbox 并发 Claim（100 个 Worker 仅一次 Grant）与 Benefit timeout 后原 `source_ref` Query 恢复已验收；
-- [x] rollback 调用原 source_ref，Pulse 侧只更新可审计状态；new-api 侧必须以 reversal 记录落账。
+- [x] rollback 调用原 source_ref，Pulse 侧只更新可审计状态；new-api 侧必须以 reversal 记录落账；内容奖励撤销使用 Idempotency-Key 并校验同 key 的 payload conflict。
 
 当前实现不会把 `shadow` Outbox 发送到 new-api；只有关闭 `PULSE_REWARD_SHADOW_MODE` 且 new-api 接收端完成验收后才会处理 pending Outbox。
 
@@ -290,7 +290,7 @@ type UnitOfWork interface {
 - [x] 独立 `content_reward` budget：内容奖励汇入通用 Reward Grant/Settlement，但预算线与 loyalty、period_reward 隔离；
 - [x] 付费门槛、单用户上限、全站日上限；未达标/超限只写审核与资格结果，不生成 Grant；
 - [x] `content_award:{type}:{id}:{version}` 幂等，并校验同 action 的 payload 冲突；
-- [x] 删除/抄袭后的 settled → reversed：撤销复用原 Grant/source_ref，Benefit rollback 与本地状态更新均可重试；
+- [x] 删除/抄袭后的 settled → reversed：撤销复用原 Grant/source_ref，Benefit rollback 与本地状态更新均可重试；撤销请求本身按 Idempotency-Key 幂等，payload 变化进入 conflict；
 - [x] 内容不产生 contribution 或 ticket。
 
 **出口：**四道防刷闸全部生效；内容奖励与忠诚度预算、账本、贡献值完全隔离。Pulse 侧代码、迁移、管理路由和回归测试已完成；正式 Answer 数据库只读账号、真实 schema、SSO 及 new-api Benefit 接收端属于跨仓库部署验收，不在本仓库内冒充完成。
@@ -302,7 +302,7 @@ type UnitOfWork interface {
 - [x] Forum SSO Bridge 与 Login Ticket；
 - [x] Pulse BFF，服务端派生 user ID；
 - [x] Pulse Internal Benefit API；
-- [x] Benefit 重复请求 payload 比较与 conflict；
+- [x] Benefit 重复请求 payload 比较与 conflict；严格拒绝尾随 JSON，保持 Benefit 指纹边界一致；
 - [x] `/console/pulse` 路由、页面和导航入口；
 - [x] 明确 `LOG_CONSUME_ENABLED` 的生产门禁：new-api 新增 `PULSE_USAGE_LOG_REQUIRED=true`，启用后拒绝后台和配置同步关闭消费日志；
 - [x] 明确 refund/task/correction 关联字段：`request_id` 为主关联，`other.task_id` 为任务键，差额用 consume/refund 正负事件表达，缺失关联进入人工复核；
@@ -391,6 +391,8 @@ type UnitOfWork interface {
 | Ledger/Account 重建 | M1 | 可重建、可对账 |
 | Login Ticket 重放 | P0 | 单次 nonce、过期拒绝 |
 | BFF 越权/签名重放 | P0 | 浏览器不能伪造身份 |
+| 签名请求体超限/尾随 JSON | P0/M5 | 超过 64 KiB 或存在第二个 JSON 值时拒绝，且不消费 nonce |
+| 内容撤销重放/同 key 改 payload | M7 | 只执行一次，改 payload 返回 conflict |
 
 内存 fake 不能替代真实 MySQL 唯一约束测试；所有人工调整、冲正、rollback 都必须有审计断言。
 
