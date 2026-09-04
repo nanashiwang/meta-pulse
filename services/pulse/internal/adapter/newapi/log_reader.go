@@ -64,6 +64,83 @@ type LogReader struct {
 	db *sql.DB
 }
 
+// AccessCheckReport describes the effective grants visible to the log reader.
+// It deliberately omits the grant text so operator output cannot expose
+// account details unnecessarily.
+type AccessCheckReport struct {
+	CurrentUser string `json:"current_user"`
+	Database    string `json:"database"`
+	Readable    bool   `json:"readable"`
+	ReadOnly    bool   `json:"read_only"`
+	GrantCount  int    `json:"grant_count"`
+}
+
+// CheckReadOnly verifies the log account can read logs and has no write
+// privilege. It performs no persistent write. Role-based grants are rejected
+// because SHOW GRANTS alone cannot safely establish their effective privileges
+// in a fail-closed deployment check.
+func (r *LogReader) CheckReadOnly(ctx context.Context) (AccessCheckReport, error) {
+	var report AccessCheckReport
+	if r == nil || r.db == nil {
+		return report, errors.New("new-api log reader is not initialized")
+	}
+	if err := r.db.QueryRowContext(ctx, "SELECT CURRENT_USER(), DATABASE()").Scan(&report.CurrentUser, &report.Database); err != nil {
+		return report, fmt.Errorf("inspect new-api log connection: %w", err)
+	}
+	if err := r.db.QueryRowContext(ctx, "SELECT 1 FROM logs LIMIT 1").Scan(new(int)); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return report, fmt.Errorf("verify new-api log read access: %w", err)
+	}
+	report.Readable = true
+
+	rows, err := r.db.QueryContext(ctx, "SHOW GRANTS")
+	if err != nil {
+		return report, fmt.Errorf("inspect new-api log grants: %w", err)
+	}
+	defer rows.Close()
+	grants := make([]string, 0, 4)
+	for rows.Next() {
+		var grant string
+		if err := rows.Scan(&grant); err != nil {
+			return report, fmt.Errorf("scan new-api log grant: %w", err)
+		}
+		grants = append(grants, grant)
+	}
+	if err := rows.Err(); err != nil {
+		return report, fmt.Errorf("iterate new-api log grants: %w", err)
+	}
+	report.GrantCount = len(grants)
+	report.ReadOnly = validateReadOnlyGrants(grants)
+	return report, nil
+}
+
+func validateReadOnlyGrants(grants []string) bool {
+	if len(grants) == 0 {
+		return false
+	}
+	allowed := map[string]struct{}{"SELECT": {}, "USAGE": {}, "SHOW VIEW": {}}
+	for _, grant := range grants {
+		upper := strings.ToUpper(strings.TrimSpace(grant))
+		if upper == "" || strings.Contains(upper, "WITH GRANT OPTION") {
+			return false
+		}
+		start := strings.Index(upper, "GRANT ")
+		on := strings.Index(upper, " ON ")
+		if start != 0 || on <= len("GRANT ") {
+			// Includes role grants and other grant forms whose effective
+			// privileges cannot be proven from this query.
+			return false
+		}
+		privileges := strings.TrimSpace(upper[len("GRANT "):on])
+		for _, privilege := range strings.Split(privileges, ",") {
+			privilege = strings.TrimSpace(privilege)
+			if _, ok := allowed[privilege]; !ok {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func OpenLogReader(dsn string) (*LogReader, error) {
 	if strings.TrimSpace(dsn) == "" {
 		return nil, errors.New("new-api log DSN is empty")

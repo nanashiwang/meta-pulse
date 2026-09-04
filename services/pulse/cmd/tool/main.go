@@ -30,6 +30,11 @@ func main() {
 			logger.Error("migration command failed", "error", err)
 			os.Exit(1)
 		}
+	case "access-check":
+		if err := runAccessCheck(); err != nil {
+			logger.Error("access check failed", "error", err)
+			os.Exit(1)
+		}
 	case "ledger-check":
 		if err := runLedgerCheck(); err != nil {
 			logger.Error("ledger check failed", "error", err)
@@ -306,6 +311,36 @@ func runPeriodClose() error {
 	return runErr
 }
 
+func runAccessCheck() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	if err := cfg.ValidateWorker(); err != nil {
+		return err
+	}
+	reader, err := newapi.OpenLogReader(cfg.NewAPILogDSN)
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	report, err := reader.CheckReadOnly(ctx)
+	if err != nil {
+		return err
+	}
+	encoded, encodeErr := json.MarshalIndent(report, "", "  ")
+	if encodeErr != nil {
+		return encodeErr
+	}
+	fmt.Println(string(encoded))
+	if !report.Readable || !report.ReadOnly {
+		return fmt.Errorf("new-api LOG_DB account is not a proven read-only account")
+	}
+	return nil
+}
+
 func runLedgerCheck() error {
 	cfg, err := config.Load()
 	if err != nil {
@@ -349,5 +384,5 @@ func runMigration(up bool) error {
 
 func usage() {
 	fmt.Println("Meta Pulse operator tool")
-	fmt.Println("commands: migrate-up | migrate-status | backfill | backtest | reconcile | ledger-check | period-close | reward-retry")
+	fmt.Println("commands: migrate-up | migrate-status | backfill | backtest | access-check | reconcile | ledger-check | period-close | reward-retry")
 }
