@@ -66,6 +66,37 @@ Meta Pulse 负责 Usage Event、贡献值、脉冲券、经济规则、10 天周
 - Apache Answer（论坛）/ VitePress（博客）
 - Docker / Docker Compose / Nginx
 
+## 快速开始
+
+### 服务器首次部署
+
+Meta Pulse 使用独立的 Pulse MySQL、Redis、API、Worker 和 Answer 容器；new-api、Nginx、TLS 和公网 DNS 由外部系统负责。推荐在 Linux 服务器执行：
+
+```bash
+git clone https://github.com/nanashiwang/meta-pulse.git /opt/meta-pulse
+cd /opt/meta-pulse
+./deploy/install.sh
+```
+
+首次执行会创建 `/opt/meta-pulse/.env` 并生成随机凭据。填写真实的 `NEWAPI_LOG_DSN`（只读账号）和 `NEWAPI_INTERNAL_BASE_URL`，同步 new-api / 论坛插件的 HMAC 密钥后，再次执行安装脚本。脚本在配置不完整时会安全退出，不会删除数据卷。
+
+### 一键更新
+
+```bash
+cd /opt/meta-pulse
+./deploy/update.sh
+```
+
+更新脚本会加锁、备份数据库和配置、fast-forward 拉取代码、执行迁移、重建服务并检查 `/readyz`。详细参数、日志、回滚和外部依赖见 [`deploy/README.md`](deploy/README.md)。
+
+### 本地验证
+
+```bash
+make test       # Go 测试 + 部署脚本离线测试
+make vet
+make deploy-test
+```
+
 ## 仓库结构
 
 Monorepo，三条 track 并行推进：
