@@ -101,6 +101,10 @@ Apache Answer 源码不进入仓库，通过官方镜像与 Go module 引入。
 
 ## 当前状态
 
-**开发推进中｜完整项目架构已冻结｜M1 Ledger 与 M2 Usage Ingest/等级已落地；P0/M0 真实环境验收及跨仓库任务仍按清单推进。**
+**仓库内 P0–M7 已完成｜系统架构已冻结｜当前仅剩真实外部环境验收。**
 
-实现可以并行拆分，但不得改变 `docs/ARCHITECTURE.md` 定义的系统边界、事实源和工程红线，以及 `docs/COMMUNITY.md` 定义的社区层边界。推进顺序与每个里程碑的出口标准见 `docs/IMPLEMENTATION_PLAN.md`。
+已落地范围包括：身份与服务签名边界、Usage Ingest、Ledger/Account、等级、确定性 Reward、Hard Budget、Transactional Outbox、Benefit Query/Reconciliation/Rollback、可重入 Period Close、运营审计与指标、论坛 SSO/等级，以及独立预算的内容奖励。
+
+尚未冒充完成的事项只包括真实 LOG_DB 样本与只读权限、Provider 成本快照、new-api Benefit 实际到账与密钥轮换、Answer 真实 schema/公网 SSO、跨实例 Redis Nonce、真实域名和生产灰度。明细见 [实施计划第 8 节](docs/IMPLEMENTATION_PLAN.md#8-当前未冒充完成的外部验收)。
+
+实现不得改变 `docs/ARCHITECTURE.md` 定义的系统边界、事实源和工程红线，以及 `docs/COMMUNITY.md` 定义的社区层边界。里程碑、出口标准和外部验收清单见 `docs/IMPLEMENTATION_PLAN.md`。

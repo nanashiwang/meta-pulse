@@ -11,21 +11,19 @@
 ```text
 ✅ 架构文档       ARCHITECTURE.md / COMMUNITY.md / AGENTS.md
 ✅ Monorepo 骨架  services/{pulse,forum,forum-plugin} + sites/blog + deploy
-✅ 论坛插件       UserCenter、等级展示、SSO Ticket 验签、共享 Nonce 已落地
-✅ new-api 调研   已确认登录、2FA、LOG_DB、BenefitChangeRecord、额度发放边界
-🟡 P0 接入契约     new-api SSO / BFF / Benefit API、Pulse 验签、轮换、SSO 限流与 Benefit 服务限流已落地；真实部署验收待完成
-🟡 M0 地基         配置、Gin、健康检查、GORM/Redis、Goose migration、指标已落地；本地 MySQL/Redis Compose 已验收，LOG_DB 权限验收待完成
-✅ M1 Ledger 记账内核    领域账本、账户快照、幂等冲突、重建与 ledger-check 已落地
-✅ M2 Usage Ingest 与等级  只读日志游标、统一 Mapper、事务记账、退款复核、等级 Profile 已落地
-🟡 M2.5 回测框架  只读回放、范围过滤、异常/覆盖率、倍率对比已落地；真实 LOG_DB 样本待环境接入
-🟡 M3 只读入口  new-api BFF/UI、YuanHeng 隔离 WebView、论坛等级降级与 Pulse 只读接口已落地；发布灰度待环境验收
-✅ M4 Shadow Mode  Action、幂等、确定性随机、Ticket/Budget/Grant/Outbox 已落地；真实 MySQL 并发与提交恢复验收完成
-🟡 M5 Settlement  Pulse Benefit Client、Outbox 退避、Query/Reconcile/Rollback 与 new-api 接收端已落地；Pulse 真实 MySQL 并发结算/Query 恢复已验收，真实额度到账待完成
-✅ M6 周期与运营       Period Close、稳定周期奖励、Holdout 固化、人工调整审计、日指标聚合已落地；真实 MySQL 中断恢复验收完成
-🟡 M7 内容奖励         Pulse 侧候选采集、人工审核、独立预算、限额、幂等、结算与撤销已落地；Answer 真实 schema/SSO 与 Benefit 端到端验收待完成
+✅ P0 仓库实现     SSO / BFF / Benefit 契约、服务验签、角色隔离、Nonce、轮换与限流门禁
+✅ M0 地基         配置、Gin、健康检查、GORM/Redis、Goose migration、指标与 Compose 验收
+✅ M1 Ledger      追加式账本、账户快照、幂等冲突、重建、对账与人工调整审计
+✅ M2 Ingest      只读日志游标、统一 Mapper、单事务记账、退款复核、等级 Profile
+✅ M2.5 回测工具   只读回放、半开范围、异常/覆盖率报告、倍率对比与溢出保护
+✅ M3 只读入口     new-api BFF/UI、YuanHeng 隔离 WebView、论坛等级与降级
+✅ M4 Reward      Shadow Mode、确定性随机、Ticket/Budget/Grant/Outbox 与并发恢复
+✅ M5 Settlement  Benefit Client、退避、Query/Reconcile/Rollback、死信安全重试与终态冲突
+✅ M6 运营闭环     可重入 Period Close、周期奖励、Holdout 固化、Audit、日指标与告警
+✅ M7 内容奖励     候选采集、首次审核固化、独立预算、限额、幂等、结算、撤销与审计
 ```
 
-本次已启动 M0 第一批：`services/pulse/` 已从 HTTP 桩升级为可装配的 API/Worker 基础，新增 16 张核心表 migration、依赖健康检查、结构化日志、Prometheus registry、UnitOfWork 事务边界和服务签名校验。`docs/OVERVIEW.md` 为未跟踪文件，本计划不依赖它，也不覆盖或删除它。
+截至 2026-09-04，**P0、M0、M1、M2、M2.5、M3、M4、M5、M6、M7 的仓库内实现均已完成**。下方仍未勾选的条目全部依赖真实 LOG_DB、new-api、Answer、公网域名或生产密钥等外部环境，只能按第 8 节执行真实部署验收，不能用内存 fake、静态代码检查或本地桩冒充完成。
 
 ## 2. 已确认的跨仓库事实
 
@@ -283,7 +281,7 @@ type UnitOfWork interface {
 
 当前实现：`PeriodCloseService` 在 watermark 到达后执行 Ledger/Account 对账、Ticket 过期、周期奖励和状态迁移；`AdminAdjustmentService` 只追加 adjustment 分录并同步 Audit Log；`ExperimentService` 固化 HMAC cohort；`MetricsAggregationService` 将运营快照写入 `pulse_metric_daily`，Worker 已接入周期关闭与指标聚合。
 
-**出口：**Period Close 重跑不重复发放；中途崩溃可继续；预算、账本、奖励和 Benefit 可对账。真实 MySQL 唯一约束、事务回滚和故障恢复仍须在 Compose 环境完成。
+**出口：**Period Close 重跑不重复发放；中途崩溃可继续；预算、账本、奖励和 Benefit 可对账。真实 MySQL 唯一约束、事务回滚、连接重启与故障恢复已完成条件集成验收；生产容器和基础设施演练归入第 8 节外部验收。
 
 ### M7｜内容奖励 ✅（Pulse 侧完成）
 
@@ -368,7 +366,7 @@ type UnitOfWork interface {
 
 ## 8. 当前未冒充完成的外部验收
 
-以下项目已有代码、测试或验收脚本，但必须接入真实部署配置后才能勾选完成：
+仓库内阶段已经收口；以下项目不是遗留代码阶段，而是必须由真实外部系统、账号、流量和密钥完成的上线验收。已有代码、测试或验收脚本不能替代真实结果：
 
 - new-api `LOG_DB` 只读账号、Pulse 独立数据库及无主库写权限；
 - 真实 LOG_DB 回放与参数定标；Provider 成本快照的正式接入仍待 new-api 变更；
