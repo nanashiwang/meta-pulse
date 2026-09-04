@@ -19,6 +19,11 @@ import (
 )
 
 const (
+	// MaxSignedRequestBodyBytes keeps the authentication boundary from reading
+	// an attacker-controlled body without a bound. It is aligned with the
+	// new-api Pulse service-auth limit.
+	MaxSignedRequestBodyBytes = 64 << 10
+
 	HeaderUserID    = "X-Pulse-User-Id"
 	HeaderRole      = "X-Pulse-Role"
 	HeaderTimestamp = "X-Pulse-Timestamp"
@@ -136,9 +141,12 @@ func VerifyRequestWithSecrets(req *http.Request, secrets [][]byte, now time.Time
 
 	var body []byte
 	if req.Body != nil {
-		body, err = io.ReadAll(req.Body)
+		body, err = io.ReadAll(io.LimitReader(req.Body, MaxSignedRequestBodyBytes+1))
 		if err != nil {
 			return Principal{}, fmt.Errorf("%w: read body: %v", ErrInvalid, err)
+		}
+		if len(body) > MaxSignedRequestBodyBytes {
+			return Principal{}, fmt.Errorf("%w: request body exceeds %d bytes", ErrInvalid, MaxSignedRequestBodyBytes)
 		}
 	}
 	// Preserve the body for the actual handler.

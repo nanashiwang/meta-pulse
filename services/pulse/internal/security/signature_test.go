@@ -62,6 +62,21 @@ func TestVerifyRequestRejectsTamperingAndKeepsNonceAvailable(t *testing.T) {
 	}
 }
 
+func TestVerifyRequestRejectsOversizedBodyWithoutClaimingNonce(t *testing.T) {
+	now := time.Now().Truncate(time.Second)
+	secret := []byte("test-secret")
+	nonces := NewMemoryNonceStore()
+	body := strings.Repeat("x", MaxSignedRequestBodyBytes+1)
+	oversized := signedRequest(http.MethodPost, "http://pulse/v1/me/actions", "123", "user-bff", "n-oversized", body, now, secret)
+	if _, err := VerifyRequest(oversized, secret, now, time.Minute, nonces); err == nil {
+		t.Fatal("oversized request accepted")
+	}
+	valid := signedRequest(http.MethodPost, "http://pulse/v1/me/actions", "123", "user-bff", "n-oversized", "ok", now, secret)
+	if _, err := VerifyRequest(valid, secret, now, time.Minute, nonces); err != nil {
+		t.Fatalf("valid retry after oversized request was rejected: %v", err)
+	}
+}
+
 func TestVerifyRequestRejectsTimeAndMissingSecret(t *testing.T) {
 	now := time.Now().Truncate(time.Second)
 	secret := []byte("test-secret")
