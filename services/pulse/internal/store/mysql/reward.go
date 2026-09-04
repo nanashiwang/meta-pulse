@@ -299,7 +299,7 @@ func (r *rewardRepository) ClaimDue(ctx context.Context, now time.Time, limit in
 	}
 	var models []settlementOutboxModel
 	err := r.db.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
-		Where("status IN ? AND next_attempt_at <= ? AND (leased_until IS NULL OR leased_until < ?)", []string{"pending", "retry"}, now, now).
+		Where("status IN ? AND next_attempt_at <= ? AND (leased_until IS NULL OR leased_until < ?)", []string{"pending", "retry", "processing"}, now, now).
 		Order("id ASC").Limit(limit).Find(&models).Error
 	if err != nil {
 		return nil, fmt.Errorf("claim settlement outbox: %w", err)
@@ -339,10 +339,16 @@ func (r *rewardRepository) SaveOutbox(ctx context.Context, outbox ports.Settleme
 	if outbox.ID == 0 {
 		return fmt.Errorf("%w: invalid settlement outbox", ports.ErrConflict)
 	}
-	result := r.db.WithContext(ctx).Model(&settlementOutboxModel{}).Where("id = ?", outbox.ID).Updates(map[string]any{
-		"status": outbox.Status, "attempts": outbox.Attempts, "next_attempt_at": outbox.NextAttemptAt,
-		"leased_until": outbox.LeasedUntil, "last_error": outbox.LastError, "completed_at": outbox.CompletedAt,
-	})
+	// Attempts act as a durable lease fence. A worker that outlives its lease
+	// must not be able to overwrite the result written by the worker that
+	// reclaimed the row. Reconciliation may also complete retry/dead rows, so
+	// all non-terminal source states are accepted here.
+	result := r.db.WithContext(ctx).Model(&settlementOutboxModel{}).
+		Where("id = ? AND attempts = ? AND status IN ?", outbox.ID, outbox.Attempts, []string{"processing", "retry", "dead"}).
+		Updates(map[string]any{
+			"status": outbox.Status, "attempts": outbox.Attempts, "next_attempt_at": outbox.NextAttemptAt,
+			"leased_until": outbox.LeasedUntil, "last_error": outbox.LastError, "completed_at": outbox.CompletedAt,
+		})
 	if result.Error != nil {
 		return fmt.Errorf("save settlement outbox: %w", result.Error)
 	}

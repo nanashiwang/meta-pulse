@@ -644,6 +644,80 @@ VALUES (?, 'grant', ?, ?, 'pending', 0, NOW(6) - INTERVAL 1 MINUTE)`, secondGran
 	}
 }
 
+func TestMySQLSettlementLeaseRecoveryAndFence(t *testing.T) {
+	database, sqlDB := openMySQLIntegration(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	rewardGrantID := uint64(950000000 + time.Now().UnixNano()%1000000)
+	result, err := sqlDB.ExecContext(ctx, `
+INSERT INTO pulse_settlement_outbox (reward_grant_id, operation, payload_hash, payload_json, status, attempts, next_attempt_at, leased_until)
+VALUES (?, 'grant', ?, JSON_OBJECT(), 'processing', 1, ?, ?)`,
+		rewardGrantID, fmt.Sprintf("%064d", 9), now.Add(-time.Minute), now.Add(-time.Second))
+	if err != nil {
+		t.Fatalf("insert expired settlement lease: %v", err)
+	}
+	insertedID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("read expired settlement lease id: %v", err)
+	}
+	outboxID := uint64(insertedID)
+	t.Cleanup(func() { _, _ = sqlDB.Exec(`DELETE FROM pulse_settlement_outbox WHERE id = ?`, outboxID) })
+
+	unit, err := mysqlstore.NewUnitOfWork(database)
+	if err != nil {
+		t.Fatalf("create unit of work: %v", err)
+	}
+	var reclaimed ports.SettlementOutbox
+	if err := unit.Do(ctx, func(repos ports.Repositories) error {
+		claimed, err := repos.Settlement.ClaimDue(ctx, now, 1, now.Add(time.Minute))
+		if err == nil {
+			if len(claimed) != 1 {
+				return fmt.Errorf("expected one reclaimed outbox, got %d", len(claimed))
+			}
+			reclaimed = claimed[0]
+		}
+		return err
+	}); err != nil {
+		t.Fatalf("reclaim expired settlement lease: %v", err)
+	}
+	if reclaimed.ID != outboxID || reclaimed.Status != OutboxStatusProcessing || reclaimed.Attempts != 2 || reclaimed.LeasedUntil == nil {
+		t.Fatalf("unexpected reclaimed outbox: %+v", reclaimed)
+	}
+
+	// The original worker still carries attempts=1. Its late write must not
+	// overwrite the lease owner that reclaimed the row with attempts=2.
+	stale := reclaimed
+	stale.Attempts = 1
+	stale.Status = OutboxStatusCompleted
+	stale.LeasedUntil = nil
+	stale.CompletedAt = &now
+	if err := unit.Do(ctx, func(repos ports.Repositories) error {
+		return repos.Settlement.SaveOutbox(ctx, stale)
+	}); !errors.Is(err, ports.ErrNotFound) {
+		t.Fatalf("stale settlement write error=%v, want ErrNotFound", err)
+	}
+
+	reclaimed.Status = OutboxStatusCompleted
+	reclaimed.LeasedUntil = nil
+	reclaimed.CompletedAt = &now
+	if err := unit.Do(ctx, func(repos ports.Repositories) error {
+		return repos.Settlement.SaveOutbox(ctx, reclaimed)
+	}); err != nil {
+		t.Fatalf("save reclaimed settlement: %v", err)
+	}
+
+	var status string
+	var attempts uint32
+	if err := sqlDB.QueryRowContext(ctx, `SELECT status, attempts FROM pulse_settlement_outbox WHERE id = ?`, outboxID).Scan(&status, &attempts); err != nil {
+		t.Fatalf("read reclaimed settlement: %v", err)
+	}
+	if status != OutboxStatusCompleted || attempts != 2 {
+		t.Fatalf("persisted settlement status=%q attempts=%d", status, attempts)
+	}
+}
+
 func TestMySQLContentAwardConcurrentCaps(t *testing.T) {
 	database, sqlDB := openMySQLIntegration(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
