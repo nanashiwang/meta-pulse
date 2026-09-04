@@ -1,6 +1,7 @@
 package security
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -113,4 +114,35 @@ func TestVerifyRequestDoesNotClaimNonceWhenAllRotationSecretsFail(t *testing.T) 
 	if _, err := VerifyRequestWithSecrets(valid, [][]byte{[]byte("current-secret"), []byte("previous-secret")}, now, time.Minute, nonces); err != nil {
 		t.Fatalf("valid retry after failed signature was rejected: %v", err)
 	}
+}
+
+func TestVerifyRequestRejectsOversizedRoleAndNonceBeforeClaim(t *testing.T) {
+	now := time.Now().Truncate(time.Second)
+	secret := []byte("test-secret")
+	for _, test := range []struct {
+		name  string
+		role  string
+		nonce string
+	}{
+		{name: "role", role: strings.Repeat("r", MaxSignedRoleBytes+1), nonce: "valid-nonce"},
+		{name: "nonce", role: "new-api", nonce: strings.Repeat("n", MaxSignedNonceBytes+1)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store := &countingNonceStore{}
+			req := signedRequest(http.MethodGet, "http://pulse/v1/internal/me/summary", "123", test.role, test.nonce, "", now, secret)
+			if _, err := VerifyRequest(req, secret, now, time.Minute, store); err == nil {
+				t.Fatal("oversized signed header accepted")
+			}
+			if store.claims != 0 {
+				t.Fatalf("nonce claims=%d, want 0", store.claims)
+			}
+		})
+	}
+}
+
+type countingNonceStore struct{ claims int }
+
+func (s *countingNonceStore) Claim(context.Context, string, time.Time) (bool, error) {
+	s.claims++
+	return true, nil
 }

@@ -169,7 +169,7 @@ type UnitOfWork interface {
 - [x] 定义 Usage Mapper：consume、refund、correction、异步 task 退款、差额结算；不确定关联进入人工复核；
 - [x] 生产密钥不进入 Git，支持 current/previous 平滑轮换和 fail closed；
 - [x] SSO 入口使用 CriticalRateLimit；Benefit 内部接口使用独立的已验签服务身份限流，不受公共 API IP 限流影响；
-- [x] Pulse 侧实现规范化 `method/path/user/timestamp/nonce/body_hash` 验签、时间窗和重放拒绝，生产 Nonce 适配 Redis 原子 `SETNX`；签名请求体上限 64 KiB；
+- [x] Pulse 侧实现规范化 `method/path/user/timestamp/nonce/body_hash` 验签、时间窗和重放拒绝，生产 Nonce 适配 Redis 原子 `SETNX`；签名请求体上限 64 KiB，角色/Nonce 头长度分别限制为 64/128 字节；
 - [x] Pulse 内部用户路由按签名角色最小权限隔离：`new-api` 仅访问用户摘要、Action、奖励历史，`forum` 仅访问用户 Profile，内容奖励管理仅接受 `admin`；角色缺失、未知或不匹配时 fail closed，且不触发业务查询；
 - [ ] 真实部署完成审计、限流压测、跨实例 Nonce 与密钥轮换演练。
 

@@ -23,6 +23,8 @@ const (
 	// an attacker-controlled body without a bound. It is aligned with the
 	// new-api Pulse service-auth limit.
 	MaxSignedRequestBodyBytes = 64 << 10
+	MaxSignedRoleBytes        = 64
+	MaxSignedNonceBytes       = 128
 
 	HeaderUserID    = "X-Pulse-User-Id"
 	HeaderRole      = "X-Pulse-Role"
@@ -125,6 +127,9 @@ func VerifyRequestWithSecrets(req *http.Request, secrets [][]byte, now time.Time
 	nonce := strings.TrimSpace(req.Header.Get(HeaderNonce))
 	if role == "" || nonce == "" {
 		return Principal{}, fmt.Errorf("%w: missing role or nonce", ErrInvalid)
+	}
+	if len(role) > MaxSignedRoleBytes || len(nonce) > MaxSignedNonceBytes {
+		return Principal{}, fmt.Errorf("%w: role or nonce is too long", ErrInvalid)
 	}
 
 	timestamp, err := strconv.ParseInt(strings.TrimSpace(req.Header.Get(HeaderTimestamp)), 10, 64)
