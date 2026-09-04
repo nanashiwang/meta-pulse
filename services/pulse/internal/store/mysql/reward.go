@@ -11,6 +11,7 @@ import (
 	"io"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/nanashiwang/meta-pulse/internal/domain/reward"
 	"github.com/nanashiwang/meta-pulse/internal/ports"
@@ -105,6 +106,9 @@ type rewardRepository struct{ db *gorm.DB }
 type idempotencyRepository struct{ db *gorm.DB }
 
 func (r *rewardRepository) ListDefinitions(ctx context.Context, periodID uint64) ([]reward.Definition, error) {
+	if periodID == 0 {
+		return nil, errors.New("invalid reward definition period")
+	}
 	var models []rewardDefinitionModel
 	if err := r.db.WithContext(ctx).Where("period_id = ? AND enabled = ?", periodID, true).Order("id ASC").Find(&models).Error; err != nil {
 		return nil, fmt.Errorf("list reward definitions: %w", err)
@@ -117,6 +121,9 @@ func (r *rewardRepository) ListDefinitions(ctx context.Context, periodID uint64)
 }
 
 func (r *rewardRepository) GetBudgetForUpdate(ctx context.Context, periodID uint64, budgetType string) (ports.RewardBudget, error) {
+	if periodID == 0 || !validMySQLText(budgetType, 64) {
+		return ports.RewardBudget{}, errors.New("invalid reward budget identity")
+	}
 	var model rewardBudgetModel
 	err := r.db.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).Where("period_id = ? AND budget_type = ?", periodID, budgetType).Take(&model).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -129,8 +136,8 @@ func (r *rewardRepository) GetBudgetForUpdate(ctx context.Context, periodID uint
 }
 
 func (r *rewardRepository) SaveBudget(ctx context.Context, budget ports.RewardBudget) error {
-	if budget.ID == 0 || budget.Version == 0 {
-		return fmt.Errorf("%w: invalid reward budget version", ports.ErrConflict)
+	if err := validateRewardBudgetSave(budget); err != nil {
+		return err
 	}
 	result := r.db.WithContext(ctx).Model(&rewardBudgetModel{}).Where("id = ? AND version = ?", budget.ID, budget.Version-1).Updates(map[string]any{
 		"reserved_amount": budget.ReservedAmount, "settled_amount": budget.SettledAmount,
@@ -161,6 +168,9 @@ func (r *rewardRepository) ListGrantsForUser(ctx context.Context, userID uint64,
 }
 
 func (r *rewardRepository) FindGrantByAction(ctx context.Context, periodID, userID uint64, actionID string) (*ports.RewardGrant, error) {
+	if periodID == 0 || userID == 0 || !validMySQLText(actionID, 191) {
+		return nil, errors.New("invalid reward grant action identity")
+	}
 	var model rewardGrantModel
 	err := r.db.WithContext(ctx).Where("period_id = ? AND user_id = ? AND action_id = ?", periodID, userID, actionID).Take(&model).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -182,6 +192,9 @@ func (r *rewardRepository) FindGrantByIDForUpdate(ctx context.Context, grantID u
 }
 
 func (r *rewardRepository) findGrantByID(ctx context.Context, grantID uint64, lock bool) (*ports.RewardGrant, error) {
+	if grantID == 0 {
+		return nil, errors.New("invalid reward grant id")
+	}
 	var model rewardGrantModel
 	query := r.db.WithContext(ctx)
 	if lock {
@@ -225,6 +238,9 @@ func (r *rewardRepository) TransitionGrantStatus(ctx context.Context, grantID ui
 }
 
 func (r *rewardRepository) CreateGrant(ctx context.Context, grant ports.RewardGrant) (ports.RewardGrant, error) {
+	if err := validateRewardGrantCreate(grant); err != nil {
+		return ports.RewardGrant{}, err
+	}
 	model := rewardGrantModel{ID: grant.ID, GrantID: grant.GrantID, PeriodID: grant.PeriodID, UserID: grant.UserID, ActionID: grant.ActionID, TriggerType: grant.TriggerType, RewardDefinitionID: grant.RewardDefinitionID, RewardType: grant.RewardType, Amount: grant.Amount, RandomValue: grant.RandomValue, ConfigVersion: grant.ConfigVersion, Status: grant.Status, SourceRef: grant.SourceRef, Reason: grant.Reason, BudgetType: grant.BudgetType, SettledAt: grant.SettledAt, ReversedAt: grant.ReversedAt, CreatedAt: grant.CreatedAt}
 	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
@@ -305,6 +321,9 @@ func idempotencyFromModel(model idempotencyModel) ports.IdempotencyRecord {
 }
 
 func (r *rewardRepository) FindOutboxByGrant(ctx context.Context, grantID uint64) (*ports.SettlementOutbox, error) {
+	if grantID == 0 {
+		return nil, errors.New("invalid settlement grant id")
+	}
 	var model settlementOutboxModel
 	err := r.db.WithContext(ctx).Where("reward_grant_id = ?", grantID).Take(&model).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -402,6 +421,36 @@ func (r *rewardRepository) SaveOutbox(ctx context.Context, outbox ports.Settleme
 		return ports.ErrNotFound
 	}
 	return nil
+}
+
+func validateRewardBudgetSave(budget ports.RewardBudget) error {
+	if budget.ID == 0 || budget.PeriodID == 0 || budget.Version == 0 || !validMySQLText(budget.BudgetType, 64) ||
+		budget.HardCap < 0 || budget.ReservedAmount < 0 || budget.SettledAmount < 0 || budget.ReleasedAmount < 0 ||
+		budget.SettledAmount > budget.HardCap || budget.ReservedAmount > budget.HardCap-budget.SettledAmount {
+		return fmt.Errorf("%w: invalid reward budget", ports.ErrConflict)
+	}
+	return nil
+}
+
+func validateRewardGrantCreate(grant ports.RewardGrant) error {
+	if grant.ID != 0 || grant.PeriodID == 0 || grant.UserID == 0 || grant.Amount <= 0 || grant.TransferableQuota ||
+		grant.Status != "pending" || grant.GrantID != grant.SourceRef || grant.SettledAt != nil || grant.ReversedAt != nil || grant.CreatedAt.IsZero() ||
+		!validMySQLText(grant.GrantID, 64) || !validMySQLText(grant.ActionID, 191) || !validMySQLText(grant.TriggerType, 32) ||
+		!validMySQLText(grant.RewardType, 64) || !validMySQLText(grant.ConfigVersion, 64) || !validMySQLText(grant.SourceRef, 191) ||
+		!validMySQLText(grant.Reason, 255) || !validMySQLText(grant.BudgetType, 64) || len(grant.RandomValue) != sha256.Size*2 {
+		return fmt.Errorf("%w: invalid reward grant create state", ports.ErrConflict)
+	}
+	if _, err := hex.DecodeString(grant.RandomValue); err != nil {
+		return fmt.Errorf("%w: invalid reward grant random value", ports.ErrConflict)
+	}
+	if (grant.TriggerType == "content") != (grant.RewardDefinitionID == 0) {
+		return fmt.Errorf("%w: invalid reward grant definition binding", ports.ErrConflict)
+	}
+	return nil
+}
+
+func validMySQLText(value string, maxRunes int) bool {
+	return value == strings.TrimSpace(value) && value != "" && utf8.ValidString(value) && utf8.RuneCountInString(value) <= maxRunes
 }
 
 func validateSettlementOutboxCreate(outbox ports.SettlementOutbox) error {

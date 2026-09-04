@@ -378,3 +378,18 @@ func TestContentAwardReverseRejectsDatabaseOverflow(t *testing.T) {
 		t.Fatalf("oversized reversal called Benefit rollback %d times", rollback.calls)
 	}
 }
+
+func TestContentAwardKeepsLongReviewReasonOutOfGrantRow(t *testing.T) {
+	service, _, _, rewards, audit := newContentAwardFixture(t, 1000)
+	reason := strings.Repeat("优", 500)
+	result, err := service.ReviewAndAward(context.Background(), ContentAwardCommand{
+		CandidateID: 1, AwardVersion: 1, RewardType: "quota", Amount: 10,
+		Reason: reason, ActorType: "admin", ActorID: "op-1", RequestID: "review-long-reason",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Award.Reason != reason || result.Grant == nil || result.Grant.Reason != "content reward" || rewards.grants[0].Reason != "content reward" || audit.logs[0].Reason != reason {
+		t.Fatalf("result=%+v grant=%+v audit=%+v", result, rewards.grants[0], audit.logs[0])
+	}
+}

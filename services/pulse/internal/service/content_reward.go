@@ -198,7 +198,7 @@ func (s *ContentAwardService) ReviewAndAward(ctx context.Context, command Conten
 			return fmt.Errorf("%w: %v", ErrContentAwardLimit, err)
 		}
 		grantID := reward.GrantID(periodID, candidate.AuthorUserID, actionID)
-		grant := ports.RewardGrant{GrantID: grantID, PeriodID: periodID, UserID: candidate.AuthorUserID, ActionID: actionID, TriggerType: "content", RewardDefinitionID: 0, RewardType: command.RewardType, Amount: command.Amount, TransferableQuota: false, BudgetType: s.cfg.BudgetType, RandomValue: hashString(actionID), ConfigVersion: s.cfg.ConfigVersion, Status: RewardStatusPending, SourceRef: grantID, Reason: command.Reason, CreatedAt: now}
+		grant := ports.RewardGrant{GrantID: grantID, PeriodID: periodID, UserID: candidate.AuthorUserID, ActionID: actionID, TriggerType: "content", RewardDefinitionID: 0, RewardType: command.RewardType, Amount: command.Amount, TransferableQuota: false, BudgetType: s.cfg.BudgetType, RandomValue: hashString(actionID), ConfigVersion: s.cfg.ConfigVersion, Status: RewardStatusPending, SourceRef: grantID, Reason: "content reward", CreatedAt: now}
 		persistedGrant, err := repos.Reward.CreateGrant(ctx, grant)
 		if err != nil {
 			return err

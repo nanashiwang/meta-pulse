@@ -122,3 +122,83 @@ func TestSettlementOutboxUpdateEnforcesTerminalShape(t *testing.T) {
 		}
 	}
 }
+
+func TestRewardBudgetSaveRejectsBrokenInvariant(t *testing.T) {
+	valid := ports.RewardBudget{ID: 1, PeriodID: 2, BudgetType: "instant", HardCap: 100, ReservedAmount: 30, SettledAmount: 60, ReleasedAmount: 10, Version: 3}
+	if err := validateRewardBudgetSave(valid); err != nil {
+		t.Fatalf("valid budget rejected: %v", err)
+	}
+	cases := []ports.RewardBudget{
+		{ID: 0, PeriodID: 2, BudgetType: "instant", HardCap: 100, Version: 1},
+		{ID: 1, PeriodID: 0, BudgetType: "instant", HardCap: 100, Version: 1},
+		{ID: 1, PeriodID: 2, BudgetType: " instant", HardCap: 100, Version: 1},
+		{ID: 1, PeriodID: 2, BudgetType: "instant", HardCap: 100, ReservedAmount: 60, SettledAmount: 50, Version: 1},
+		{ID: 1, PeriodID: 2, BudgetType: "instant", HardCap: -1, Version: 1},
+		{ID: 1, PeriodID: 2, BudgetType: "instant", HardCap: 100, ReleasedAmount: -1, Version: 1},
+	}
+	for _, budget := range cases {
+		if err := validateRewardBudgetSave(budget); err == nil {
+			t.Fatalf("invalid budget accepted: %+v", budget)
+		}
+	}
+}
+
+func TestRewardGrantCreateValidatesImmutableIdentity(t *testing.T) {
+	now := time.Now()
+	valid := ports.RewardGrant{
+		GrantID: "pg_test", PeriodID: 2, UserID: 3, ActionID: "action", TriggerType: "pulse",
+		RewardDefinitionID: 4, RewardType: "quota", Amount: 10, BudgetType: "instant",
+		RandomValue: strings.Repeat("a", 64), ConfigVersion: "v1", Status: "pending",
+		SourceRef: "pg_test", Reason: "pulse action", CreatedAt: now,
+	}
+	if err := validateRewardGrantCreate(valid); err != nil {
+		t.Fatalf("valid grant rejected: %v", err)
+	}
+	content := valid
+	content.TriggerType = "content"
+	content.RewardDefinitionID = 0
+	if err := validateRewardGrantCreate(content); err != nil {
+		t.Fatalf("valid content grant rejected: %v", err)
+	}
+	cases := []struct {
+		name   string
+		mutate func(*ports.RewardGrant)
+	}{
+		{"explicit id", func(v *ports.RewardGrant) { v.ID = 1 }},
+		{"source mismatch", func(v *ports.RewardGrant) { v.SourceRef = "other" }},
+		{"transferable", func(v *ports.RewardGrant) { v.TransferableQuota = true }},
+		{"terminal status", func(v *ports.RewardGrant) { v.Status = "settled" }},
+		{"invalid random", func(v *ports.RewardGrant) { v.RandomValue = strings.Repeat("z", 64) }},
+		{"long reason", func(v *ports.RewardGrant) { v.Reason = strings.Repeat("理", 256) }},
+		{"missing definition", func(v *ports.RewardGrant) { v.RewardDefinitionID = 0 }},
+		{"content definition", func(v *ports.RewardGrant) { v.TriggerType = "content" }},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			value := valid
+			test.mutate(&value)
+			if err := validateRewardGrantCreate(value); err == nil {
+				t.Fatal("invalid grant was accepted")
+			}
+		})
+	}
+}
+
+func TestRewardRepositoryRejectsInvalidLookupIdentityBeforeQuery(t *testing.T) {
+	repo := &rewardRepository{}
+	if _, err := repo.ListDefinitions(context.Background(), 0); err == nil {
+		t.Fatal("zero definition period was accepted")
+	}
+	if _, err := repo.GetBudgetForUpdate(context.Background(), 0, "instant"); err == nil {
+		t.Fatal("zero budget period was accepted")
+	}
+	if _, err := repo.FindGrantByAction(context.Background(), 1, 0, "action"); err == nil {
+		t.Fatal("zero grant user was accepted")
+	}
+	if _, err := repo.FindGrantByID(context.Background(), 0); err == nil {
+		t.Fatal("zero grant id was accepted")
+	}
+	if _, err := repo.FindOutboxByGrant(context.Background(), 0); err == nil {
+		t.Fatal("zero outbox grant id was accepted")
+	}
+}
