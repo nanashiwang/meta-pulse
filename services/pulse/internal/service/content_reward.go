@@ -122,7 +122,8 @@ func (s *ContentAwardService) ReviewAndAward(ctx context.Context, command Conten
 		if err != nil {
 			return err
 		}
-		if candidate.Status == ports.ContentCandidateRejected || candidate.Status == ports.ContentCandidateDeleted || candidate.AuthorUserID == 0 || candidate.ContentType == "" || candidate.SourceContentID == "" {
+		if (candidate.Status != ports.ContentCandidatePending && candidate.Status != ports.ContentCandidateApproved) ||
+			candidate.AuthorUserID == 0 || candidate.ContentType == "" || candidate.SourceContentID == "" {
 			return ErrContentCandidateUnavailable
 		}
 		periodID := command.PeriodID
@@ -145,8 +146,13 @@ func (s *ContentAwardService) ReviewAndAward(ctx context.Context, command Conten
 		} else if !errors.Is(findErr, ports.ErrNotFound) {
 			return findErr
 		}
-		if err := repos.Content.ReviewCandidate(ctx, candidate.ID, ports.ContentCandidateApproved, command.ActorType, command.ActorID, command.Reason, now); err != nil {
-			return err
+		// The first review fixes candidate review metadata. A later award_version
+		// may add another reward without rewriting that historical decision; the
+		// new operator and reason remain auditable on the Award and Audit Log.
+		if candidate.Status == ports.ContentCandidatePending {
+			if err := repos.Content.ReviewCandidate(ctx, candidate.ID, ports.ContentCandidateApproved, command.ActorType, command.ActorID, command.Reason, now); err != nil {
+				return err
+			}
 		}
 
 		lifetimeContribution, err := lifetimeContribution(ctx, repos.Account, candidate.AuthorUserID)

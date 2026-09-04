@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/nanashiwang/meta-pulse/internal/domain/period"
 	"github.com/nanashiwang/meta-pulse/internal/ports"
@@ -199,7 +200,7 @@ func validateMetricUpsert(metric ports.MetricValue) error {
 		len(metric.DimensionHash) != 64 || metric.DimensionHash != strings.ToLower(metric.DimensionHash) {
 		return fmt.Errorf("%w: invalid daily metric identity", ports.ErrConflict)
 	}
-	if _, err := hex.DecodeString(metric.DimensionHash); err != nil {
+	if !validLowerHex(metric.DimensionHash, 64) {
 		return fmt.Errorf("%w: invalid daily metric dimension hash", ports.ErrConflict)
 	}
 	if len(metric.Dimensions) == 0 {
@@ -347,6 +348,9 @@ func contentAwardFromModel(model contentAwardModel) ports.ContentAward {
 }
 
 func (r *contentRepository) FindCandidateBySource(ctx context.Context, sourceSystem, sourceContentID string) (*ports.ContentCandidate, error) {
+	if !validMySQLText(sourceSystem, 64) || !validMySQLText(sourceContentID, 191) {
+		return nil, fmt.Errorf("%w: invalid content candidate source identity", ports.ErrConflict)
+	}
 	var model contentCandidateModel
 	err := r.db.WithContext(ctx).Where("source_system = ? AND source_content_id = ?", sourceSystem, sourceContentID).Take(&model).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -360,6 +364,9 @@ func (r *contentRepository) FindCandidateBySource(ctx context.Context, sourceSys
 }
 
 func (r *contentRepository) FindCandidateForUpdate(ctx context.Context, candidateID uint64) (*ports.ContentCandidate, error) {
+	if candidateID == 0 {
+		return nil, fmt.Errorf("%w: invalid content candidate id", ports.ErrConflict)
+	}
 	var model contentCandidateModel
 	err := r.db.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", candidateID).Take(&model).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -373,10 +380,10 @@ func (r *contentRepository) FindCandidateForUpdate(ctx context.Context, candidat
 }
 
 func (r *contentRepository) CreateCandidate(ctx context.Context, candidate ports.ContentCandidate) (ports.ContentCandidate, error) {
-	if candidate.SourceSystem == "" || candidate.SourceContentID == "" || candidate.ContentType == "" || candidate.AuthorUserID == 0 || candidate.PayloadHash == "" || candidate.CursorValue == "" || candidate.Status == "" {
-		return ports.ContentCandidate{}, errors.New("invalid content candidate")
+	if err := validateContentCandidateCreate(candidate); err != nil {
+		return ports.ContentCandidate{}, err
 	}
-	model := contentCandidateModel{ID: candidate.ID, SourceSystem: candidate.SourceSystem, SourceContentID: candidate.SourceContentID, ContentType: candidate.ContentType, AuthorUserID: candidate.AuthorUserID, PeriodID: candidate.PeriodID, Title: candidate.Title, SourceCreatedAt: candidate.SourceCreatedAt, PayloadHash: candidate.PayloadHash, CursorValue: candidate.CursorValue, Status: candidate.Status, CreatedAt: candidate.CreatedAt}
+	model := contentCandidateModel{SourceSystem: candidate.SourceSystem, SourceContentID: candidate.SourceContentID, ContentType: candidate.ContentType, AuthorUserID: candidate.AuthorUserID, PeriodID: candidate.PeriodID, Title: candidate.Title, SourceCreatedAt: candidate.SourceCreatedAt, PayloadHash: candidate.PayloadHash, CursorValue: candidate.CursorValue, Status: candidate.Status, CreatedAt: candidate.CreatedAt}
 	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
 			return ports.ContentCandidate{}, ports.ErrConflict
@@ -384,24 +391,45 @@ func (r *contentRepository) CreateCandidate(ctx context.Context, candidate ports
 		return ports.ContentCandidate{}, fmt.Errorf("create content candidate: %w", err)
 	}
 	candidate.ID = model.ID
-	if candidate.CreatedAt.IsZero() {
-		candidate.CreatedAt = model.CreatedAt
-	}
 	return candidate, nil
 }
 
-func (r *contentRepository) ReviewCandidate(ctx context.Context, candidateID uint64, status, actorType, actorID, reason string, reviewedAt time.Time) error {
-	if candidateID == 0 || status == "" || actorType == "" || actorID == "" || reason == "" {
-		return errors.New("invalid content review")
+func validateContentCandidateCreate(candidate ports.ContentCandidate) error {
+	if candidate.ID != 0 || candidate.AuthorUserID == 0 || candidate.Status != ports.ContentCandidatePending ||
+		!validMySQLText(candidate.SourceSystem, 64) || !validMySQLText(candidate.SourceContentID, 191) ||
+		!validMySQLText(candidate.ContentType, 64) || !validOptionalMySQLString(candidate.Title, 500) ||
+		!validMySQLText(candidate.CursorValue, 191) || !validLowerHex(candidate.PayloadHash, 64) ||
+		!validMySQLTime(candidate.SourceCreatedAt) || !validMySQLTime(candidate.CreatedAt) ||
+		candidate.ReviewActorType != "" || candidate.ReviewActorID != "" || candidate.ReviewReason != "" || candidate.ReviewedAt != nil {
+		return fmt.Errorf("%w: invalid content candidate create state", ports.ErrConflict)
 	}
-	result := r.db.WithContext(ctx).Model(&contentCandidateModel{}).Where("id = ?", candidateID).Updates(map[string]any{"status": status, "review_actor_type": actorType, "review_actor_id": actorID, "review_reason": reason, "reviewed_at": reviewedAt})
+	return nil
+}
+
+func (r *contentRepository) ReviewCandidate(ctx context.Context, candidateID uint64, status, actorType, actorID, reason string, reviewedAt time.Time) error {
+	if candidateID == 0 || !validContentCandidateReviewStatus(status) || !validMySQLText(actorType, 32) ||
+		!validMySQLText(actorID, 128) || !validMySQLText(reason, 500) || !validMySQLTime(reviewedAt) {
+		return fmt.Errorf("%w: invalid content candidate review", ports.ErrConflict)
+	}
+	result := r.db.WithContext(ctx).Model(&contentCandidateModel{}).
+		Where("id = ? AND status = ? AND reviewed_at IS NULL", candidateID, ports.ContentCandidatePending).
+		Updates(map[string]any{"status": status, "review_actor_type": actorType, "review_actor_id": actorID, "review_reason": reason, "reviewed_at": reviewedAt})
 	if result.Error != nil {
 		return fmt.Errorf("review content candidate: %w", result.Error)
 	}
 	if result.RowsAffected != 1 {
-		return ports.ErrNotFound
+		return ports.ErrConflict
 	}
 	return nil
+}
+
+func validContentCandidateReviewStatus(status string) bool {
+	switch status {
+	case ports.ContentCandidateApproved, ports.ContentCandidateRejected, ports.ContentCandidateDeleted:
+		return true
+	default:
+		return false
+	}
 }
 
 func (r *contentRepository) FindAwardByAction(ctx context.Context, actionID string) (*ports.ContentAward, error) {
@@ -513,6 +541,23 @@ func (r *contentRepository) SumDailyActiveAwards(ctx context.Context, day time.T
 		return 0, fmt.Errorf("sum daily content awards: %w", err)
 	}
 	return total, nil
+}
+
+func validOptionalMySQLString(value string, maxRunes int) bool {
+	return maxRunes > 0 && utf8.ValidString(value) && utf8.RuneCountInString(value) <= maxRunes
+}
+
+func validLowerHex(value string, length int) bool {
+	if length <= 0 || len(value) != length || value != strings.ToLower(value) {
+		return false
+	}
+	_, err := hex.DecodeString(value)
+	return err == nil
+}
+
+func validMySQLTime(value time.Time) bool {
+	year := value.Year()
+	return !value.IsZero() && year >= 1000 && year <= 9999
 }
 
 func parseAggregateInt64(raw string) (int64, error) {

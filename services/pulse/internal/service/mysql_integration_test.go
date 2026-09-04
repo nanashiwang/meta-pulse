@@ -1087,3 +1087,49 @@ func TestMySQLExperimentAssignmentKeepsFirstCohort(t *testing.T) {
 		t.Fatalf("experiment assignment rows=%d, want 1", rows)
 	}
 }
+
+func TestMySQLContentCandidateReviewCannotOverwriteFirstDecision(t *testing.T) {
+	database, sqlDB := openMySQLIntegration(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	seed := time.Now().UnixNano()
+	sourceID := fmt.Sprintf("integration-candidate-%d", seed)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	unit, err := mysqlstore.NewUnitOfWork(database)
+	if err != nil {
+		t.Fatalf("create unit of work: %v", err)
+	}
+	var candidate ports.ContentCandidate
+	if err := unit.Do(ctx, func(repos ports.Repositories) error {
+		var createErr error
+		candidate, createErr = repos.Content.CreateCandidate(ctx, ports.ContentCandidate{
+			SourceSystem: "integration-answer", SourceContentID: sourceID, ContentType: "question",
+			AuthorUserID: uint64(990000000 + seed%1000000), SourceCreatedAt: now,
+			PayloadHash: fmt.Sprintf("%064x", seed), CursorValue: sourceID,
+			Status: ports.ContentCandidatePending, CreatedAt: now,
+		})
+		return createErr
+	}); err != nil {
+		t.Fatalf("create content candidate: %v", err)
+	}
+	t.Cleanup(func() { _, _ = sqlDB.Exec(`DELETE FROM pulse_content_candidate WHERE id = ?`, candidate.ID) })
+
+	if err := unit.Do(ctx, func(repos ports.Repositories) error {
+		return repos.Content.ReviewCandidate(ctx, candidate.ID, ports.ContentCandidateApproved, "admin", "first-operator", "first decision", now)
+	}); err != nil {
+		t.Fatalf("review candidate: %v", err)
+	}
+	if err := unit.Do(ctx, func(repos ports.Repositories) error {
+		return repos.Content.ReviewCandidate(ctx, candidate.ID, ports.ContentCandidateRejected, "admin", "second-operator", "overwrite", now.Add(time.Second))
+	}); !errors.Is(err, ports.ErrConflict) {
+		t.Fatalf("second review error=%v, want ErrConflict", err)
+	}
+	var status, actorID, reason string
+	if err := sqlDB.QueryRowContext(ctx, `SELECT status, review_actor_id, review_reason FROM pulse_content_candidate WHERE id = ?`, candidate.ID).Scan(&status, &actorID, &reason); err != nil {
+		t.Fatalf("read content candidate review: %v", err)
+	}
+	if status != ports.ContentCandidateApproved || actorID != "first-operator" || reason != "first decision" {
+		t.Fatalf("review overwritten: status=%s actor=%s reason=%s", status, actorID, reason)
+	}
+}

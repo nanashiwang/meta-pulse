@@ -191,3 +191,88 @@ func TestMetricUpsertValidatesDateIdentityAndDimensions(t *testing.T) {
 		})
 	}
 }
+
+func TestContentCandidateCreateValidatesPendingSourceProjection(t *testing.T) {
+	now := time.Now()
+	valid := ports.ContentCandidate{
+		SourceSystem: "answer", SourceContentID: "42", ContentType: "question",
+		AuthorUserID: 7, Title: "如何接入", SourceCreatedAt: now,
+		PayloadHash: strings.Repeat("a", 64), CursorValue: "42",
+		Status: ports.ContentCandidatePending, CreatedAt: now,
+	}
+	if err := validateContentCandidateCreate(valid); err != nil {
+		t.Fatalf("valid content candidate rejected: %v", err)
+	}
+	withoutTitle := valid
+	withoutTitle.Title = ""
+	if err := validateContentCandidateCreate(withoutTitle); err != nil {
+		t.Fatalf("candidate without title rejected: %v", err)
+	}
+	cases := []struct {
+		name   string
+		mutate func(*ports.ContentCandidate)
+	}{
+		{"explicit id", func(v *ports.ContentCandidate) { v.ID = 1 }},
+		{"missing author", func(v *ports.ContentCandidate) { v.AuthorUserID = 0 }},
+		{"padded source", func(v *ports.ContentCandidate) { v.SourceSystem = " answer" }},
+		{"long source id", func(v *ports.ContentCandidate) { v.SourceContentID = strings.Repeat("内", 192) }},
+		{"long content type", func(v *ports.ContentCandidate) { v.ContentType = strings.Repeat("类", 65) }},
+		{"long title", func(v *ports.ContentCandidate) { v.Title = strings.Repeat("题", 501) }},
+		{"malformed title", func(v *ports.ContentCandidate) { v.Title = string([]byte{0xff}) }},
+		{"short payload hash", func(v *ports.ContentCandidate) { v.PayloadHash = "abcd" }},
+		{"uppercase payload hash", func(v *ports.ContentCandidate) { v.PayloadHash = strings.Repeat("A", 64) }},
+		{"invalid cursor", func(v *ports.ContentCandidate) { v.CursorValue = " " }},
+		{"terminal status", func(v *ports.ContentCandidate) { v.Status = ports.ContentCandidateApproved }},
+		{"review actor on create", func(v *ports.ContentCandidate) { v.ReviewActorID = "operator" }},
+		{"review time on create", func(v *ports.ContentCandidate) { v.ReviewedAt = &now }},
+		{"zero source time", func(v *ports.ContentCandidate) { v.SourceCreatedAt = time.Time{} }},
+		{"zero creation time", func(v *ports.ContentCandidate) { v.CreatedAt = time.Time{} }},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			value := valid
+			test.mutate(&value)
+			if err := validateContentCandidateCreate(value); err == nil {
+				t.Fatal("invalid content candidate was accepted")
+			}
+		})
+	}
+}
+
+func TestContentCandidateReviewOnlyAcceptsPendingToTerminalInput(t *testing.T) {
+	repo := &contentRepository{}
+	now := time.Now()
+	cases := []struct {
+		candidateID uint64
+		status      string
+		actorType   string
+		actorID     string
+		reason      string
+		reviewedAt  time.Time
+	}{
+		{0, ports.ContentCandidateApproved, "admin", "operator", "good", now},
+		{1, ports.ContentCandidatePending, "admin", "operator", "good", now},
+		{1, "unknown", "admin", "operator", "good", now},
+		{1, ports.ContentCandidateApproved, " admin", "operator", "good", now},
+		{1, ports.ContentCandidateApproved, "admin", "operator", " ", now},
+		{1, ports.ContentCandidateApproved, "admin", "operator", "good", time.Time{}},
+	}
+	for _, test := range cases {
+		if err := repo.ReviewCandidate(context.Background(), test.candidateID, test.status, test.actorType, test.actorID, test.reason, test.reviewedAt); err == nil {
+			t.Fatalf("invalid review accepted: %+v", test)
+		}
+	}
+}
+
+func TestContentCandidateQueriesValidateIdentityBeforeDatabase(t *testing.T) {
+	repo := &contentRepository{}
+	if _, err := repo.FindCandidateBySource(context.Background(), "", "42"); err == nil {
+		t.Fatal("empty candidate source accepted")
+	}
+	if _, err := repo.FindCandidateBySource(context.Background(), "answer", strings.Repeat("x", 192)); err == nil {
+		t.Fatal("oversized candidate source id accepted")
+	}
+	if _, err := repo.FindCandidateForUpdate(context.Background(), 0); err == nil {
+		t.Fatal("zero candidate id accepted")
+	}
+}

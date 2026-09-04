@@ -1044,6 +1044,7 @@ Answer 只读元数据
 - 内容奖励预算固定使用 `budget_type=content_reward`，与 `loyalty`、`period_reward` 分离；内容奖励不会写 Contribution/Ticket Ledger，也不进入贡献毛利分母。
 - 发放必须同时通过真实付费门槛、管理员审核、用户周期上限/全站日上限和 Hard Budget 预占四道闸。限额检查先锁定 `pulse_content_award_limit_guard` 的固定行，跨实例串行化后以 locking current read 重算；全站日界按 Asia/Shanghai 的 `[day_start,next_day_start)`。未满足门槛或限额时只保留可审计的资格结果，不创建 Grant。
 - 稳定 action 为 `content_award:{content_type}:{source_content_id}:{award_version}`；相同 action 重放返回原结果，payload 改变返回 conflict；随机值/Grant/source_ref 不因重试变化。
+- Content Candidate 创建时固定为 `pending`，首次审核只能原子地从 `pending` 进入 `approved` / `rejected` / `deleted`，审核人、原因和时间不得被后续请求覆盖；追加 `award_version` 可复用已批准候选，但必须新增 Award 与 Audit Log，不能改写首次审核记录。
 - Content Award 状态随共享 Grant 结算同步：`pending → settled → reversed`；结算在同一 Pulse 事务内把关联 Award 标记为 `settled`，已结算内容继续计入用户/全站限额，只有 `reversed` 才从活跃额度中排除。
 - 内容删除或抄袭只能沿原 `GrantID/source_ref` 执行 Benefit rollback，再把原 Award 标记为 `reversed`；rollback 与本地提交之间发生故障时，重试必须先复用原 source_ref，不能换 key 发补偿奖励或重复释放预算。
 - 管理路由只接受已签名且角色为 `admin` 的 Principal，操作人从签名身份派生；浏览器提交的 `user_id`、`actor_id` 等字段一律不可信。`Idempotency-Key` 是审核/撤销请求的必填字段。
