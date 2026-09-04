@@ -36,3 +36,16 @@ func TestMapperReadsTaskRefundCorrelation(t *testing.T) {
 		t.Fatalf("event = %+v", event)
 	}
 }
+
+func TestMapperUsesRequestIDForAsyncRefundCorrelation(t *testing.T) {
+	event, err := (UsageMapper{}).Map(LogRecord{
+		ID: 13, UserID: 7, CreatedAt: 1_700_000_000, Type: LogTypeRefund,
+		Quota: 100, RequestID: "request-task-1", Other: `{"task_id":"task-1"}`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if event.NeedsReview || event.RequestID != "request-task-1" || event.RelatedSourceEventID != "" || event.QuotaDelta != -100 {
+		t.Fatalf("event = %+v", event)
+	}
+}
