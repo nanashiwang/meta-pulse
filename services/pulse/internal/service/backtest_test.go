@@ -115,6 +115,42 @@ func TestBacktestReportsPeriodRuleAndRefundGaps(t *testing.T) {
 	}
 }
 
+func TestBacktestValidatesDirectRefundCorrelation(t *testing.T) {
+	store := newMemoryLedgerStore()
+	at := time.Unix(1_700_000_000, 0).UTC()
+	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, StartsAt: at.Add(-time.Hour), EndsAt: at.Add(time.Hour)}}
+	store.rules[4] = []economics.Rule{{ID: 1, Key: "default", Eligible: true, MultiplierBps: 10000}}
+	events := []usage.Event{
+		backtestEvent("consume", at, usage.EventConsume, 1000),
+		backtestEvent("refund", at.Add(time.Minute), usage.EventRefund, -100),
+	}
+	events[0].RequestID = "request-1"
+	events[1].RelatedSourceEventID = "consume"
+	report, err := newBacktest(t, store, backtestSource{events: events}).Run(context.Background(), time.Time{}, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.RefundCorrelationGaps != 0 || report.EligibleEvents != 2 || report.NetContributionMilli != 900 {
+		t.Fatalf("valid direct refund was not accepted: %+v", report)
+	}
+}
+
+func TestBacktestRejectsUnknownDirectRefundCorrelation(t *testing.T) {
+	store := newMemoryLedgerStore()
+	at := time.Unix(1_700_000_000, 0).UTC()
+	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, StartsAt: at.Add(-time.Hour), EndsAt: at.Add(time.Hour)}}
+	store.rules[4] = []economics.Rule{{ID: 1, Key: "default", Eligible: true, MultiplierBps: 10000}}
+	event := backtestEvent("refund", at, usage.EventRefund, -100)
+	event.RelatedSourceEventID = "missing-consume"
+	report, err := newBacktest(t, store, backtestSource{events: []usage.Event{event}}).Run(context.Background(), time.Time{}, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.RefundCorrelationGaps != 1 || report.EligibleEvents != 0 || report.NetContributionMilli != 0 {
+		t.Fatalf("unknown direct refund was accepted: %+v", report)
+	}
+}
+
 func TestBacktestComparesMultipliers(t *testing.T) {
 	store := newMemoryLedgerStore()
 	at := time.Unix(1_700_000_000, 0).UTC()

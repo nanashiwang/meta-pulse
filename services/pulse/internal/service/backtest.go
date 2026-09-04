@@ -83,6 +83,7 @@ func (s *BacktestService) Run(ctx context.Context, from, to time.Time) (Backtest
 	users := make(map[uint64]struct{})
 	nets := make(map[string]int64)
 	seenRequests := make(map[string]usage.Event)
+	seenConsumes := make(map[string]usage.Event)
 	after := ""
 	for {
 		pageStart := after
@@ -96,6 +97,15 @@ func (s *BacktestService) Run(ctx context.Context, from, to time.Time) (Backtest
 		for _, event := range events {
 			report.Fetched++
 			after = event.CursorValue
+			// Keep consume metadata before the range filter. A refund inside the
+			// selected window may legitimately point to a consume before --from;
+			// the correlation must still be checked rather than assumed.
+			if event.EventType == usage.EventConsume {
+				seenConsumes[consumeKey(event.UserID, event.SourceEventID)] = event
+				if event.RequestID != "" {
+					seenRequests[requestKey(event.UserID, event.RequestID)] = event
+				}
+			}
 			if !to.IsZero() && !event.SourceCreatedAt.Before(to) {
 				return s.finish(report, users, nets), nil
 			}
@@ -120,10 +130,7 @@ func (s *BacktestService) Run(ctx context.Context, from, to time.Time) (Backtest
 				report.DataGaps["refund has no stable consume correlation"]++
 				continue
 			}
-			if event.RequestID != "" && event.EventType == usage.EventConsume {
-				seenRequests[requestKey(event.UserID, event.RequestID)] = event
-			}
-			if err := s.evaluate(ctx, event, seenRequests, &report, nets); err != nil {
+			if err := s.evaluate(ctx, event, seenRequests, seenConsumes, &report, nets); err != nil {
 				return report, err
 			}
 		}
@@ -141,7 +148,7 @@ func (s *BacktestService) finish(report BacktestReport, users map[uint64]struct{
 	return report
 }
 
-func (s *BacktestService) evaluate(ctx context.Context, event usage.Event, seenRequests map[string]usage.Event, report *BacktestReport, nets map[string]int64) error {
+func (s *BacktestService) evaluate(ctx context.Context, event usage.Event, seenRequests, seenConsumes map[string]usage.Event, report *BacktestReport, nets map[string]int64) error {
 	return s.unit.Do(ctx, func(repos ports.Repositories) error {
 		if repos.Period == nil || repos.Economics == nil {
 			return errors.New("backtest read repositories are not initialized")
@@ -166,16 +173,10 @@ func (s *BacktestService) evaluate(ctx context.Context, event usage.Event, seenR
 		if err != nil {
 			return err
 		}
-		if event.EventType == usage.EventRefund {
-			if event.RelatedSourceEventID == "" && event.RequestID != "" {
-				if _, ok := seenRequests[requestKey(event.UserID, event.RequestID)]; !ok && repos.Usage != nil {
-					if _, lookupErr := repos.Usage.FindConsumeByRequest(ctx, event.UserID, event.RequestID); lookupErr != nil {
-						report.RefundCorrelationGaps++
-						report.DataGaps["refund consume correlation unavailable"]++
-						return nil
-					}
-				}
-			}
+		if event.EventType == usage.EventRefund && !refundCorrelationMatches(ctx, repos, event, activity.ID, seenRequests, seenConsumes) {
+			report.RefundCorrelationGaps++
+			report.DataGaps["refund consume correlation unavailable"]++
+			return nil
 		}
 		if decision.Eligible {
 			report.EligibleEvents++
@@ -246,6 +247,44 @@ func ratioBps(numerator, denominator int) int64 {
 
 func requestKey(userID uint64, requestID string) string {
 	return fmt.Sprintf("%d:%s", userID, requestID)
+}
+
+func consumeKey(userID uint64, sourceEventID string) string {
+	return fmt.Sprintf("%d:%s", userID, sourceEventID)
+}
+
+// refundCorrelationMatches mirrors the ingest safety rule in read-only
+// backtests: a refund must resolve to a consume for the same user and the
+// same period. A supplied origin id takes precedence over request_id.
+func refundCorrelationMatches(ctx context.Context, repos ports.Repositories, event usage.Event, periodID uint64, seenRequests, seenConsumes map[string]usage.Event) bool {
+	var original *usage.Event
+	if event.RelatedSourceEventID != "" {
+		if found, ok := seenConsumes[consumeKey(event.UserID, event.RelatedSourceEventID)]; ok {
+			original = &found
+		} else if repos.Usage != nil {
+			found, err := repos.Usage.FindBySource(ctx, event.SourceSystem, event.RelatedSourceEventID)
+			if err == nil && found != nil {
+				original = found
+			}
+		}
+	} else if event.RequestID != "" {
+		if found, ok := seenRequests[requestKey(event.UserID, event.RequestID)]; ok {
+			original = &found
+		} else if repos.Usage != nil {
+			found, err := repos.Usage.FindConsumeByRequest(ctx, event.UserID, event.RequestID)
+			if err == nil && found != nil {
+				original = found
+			}
+		}
+	}
+	if original == nil || original.EventType != usage.EventConsume || original.NeedsReview || original.UserID != event.UserID {
+		return false
+	}
+	if original.PeriodID != 0 {
+		return original.PeriodID == periodID
+	}
+	activity, err := repos.Period.FindActiveAt(ctx, original.SourceCreatedAt)
+	return err == nil && activity.ID == periodID
 }
 
 func addInt64(left, right int64) int64 {
