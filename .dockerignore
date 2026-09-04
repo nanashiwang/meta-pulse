@@ -1,0 +1,16 @@
+# Never send deployment secrets or runtime data to the Docker build daemon.
+.env
+.env.*
+.data/
+.git/
+.gitignore
+
+# Local/editor/build output
+.DS_Store
+.vscode/
+.idea/
+bin/
+dist/
+coverage/
+*.log
+sites/blog/docs/.vitepress/dist/

@@ -21,6 +21,7 @@
 ✅ M5 Settlement  Benefit Client、退避、Query/Reconcile/Rollback、死信安全重试与终态冲突
 ✅ M6 运营闭环     可重入 Period Close、周期奖励、Holdout 固化、Audit、日指标与告警
 ✅ M7 内容奖励     候选采集、首次审核固化、独立预算、限额、幂等、结算、撤销与审计
+✅ 部署自动化       生产配置模板、随机密钥初始化、迁移、健康检查、加锁更新与失败回滚提示
 ```
 
 截至 2026-09-04，**P0、M0、M1、M2、M2.5、M3、M4、M5、M6、M7 的仓库内实现均已完成**。下方仍未勾选的条目全部依赖真实 LOG_DB、new-api、Answer、公网域名或生产密钥等外部环境，只能按第 8 节执行真实部署验收，不能用内存 fake、静态代码检查或本地桩冒充完成。
@@ -373,6 +374,7 @@ type UnitOfWork interface {
 - Answer 真实 schema、SSO、等级降级和跨实例 Nonce；
 - new-api Benefit 真实到账、重放 100 次、timeout Query、rollback 及密钥轮换演练；
 - 生产环境的 SSO/Benefit 审计、限流压测、真实域名和跨实例 Redis nonce 演练。
+- 服务器首次部署与更新脚本已纳入仓库，但仍需在真实服务器完成 Docker、网络、备份和故障恢复演练。
 
 本机当前 Docker Hub 返回镜像授权服务不可用，不能以失败的拉取结果或内存 fake 代替上述验收。
 

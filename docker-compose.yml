@@ -39,11 +39,12 @@ services:
       dockerfile: services/pulse/Dockerfile
     restart: unless-stopped
     environment:
-      PULSE_ENV: development
+      PULSE_ENV: ${PULSE_ENV:-development}
       PULSE_HTTP_ADDR: :8088
       PULSE_DB_DSN: pulse:${PULSE_DB_PASSWORD}@tcp(mysql:3306)/meta_pulse?charset=utf8mb4&parseTime=True&loc=Asia%2FShanghai
       PULSE_REDIS_ADDR: redis:6379
-      NEWAPI_LOG_DSN: ${NEWAPI_LOG_DSN:-}
+      PULSE_REDIS_PASSWORD: ${PULSE_REDIS_PASSWORD:-}
+      PULSE_REDIS_DB: ${PULSE_REDIS_DB:-0}
       NEWAPI_INTERNAL_BASE_URL: ${NEWAPI_INTERNAL_BASE_URL:-}
       PULSE_SERVICE_HMAC_SECRET: ${PULSE_SERVICE_HMAC_SECRET:-}
       PULSE_SERVICE_HMAC_SECRET_PREVIOUS: ${PULSE_SERVICE_HMAC_SECRET_PREVIOUS:-}
@@ -53,6 +54,11 @@ services:
       PULSE_ADMIN_HMAC_SECRET_PREVIOUS: ${PULSE_ADMIN_HMAC_SECRET_PREVIOUS:-}
       PULSE_REWARD_RANDOM_SECRET: ${PULSE_REWARD_RANDOM_SECRET:-replace-me}
       PULSE_REWARD_SHADOW_MODE: ${PULSE_REWARD_SHADOW_MODE:-true}
+      PULSE_SETTLEMENT_BATCH_SIZE: ${PULSE_SETTLEMENT_BATCH_SIZE:-100}
+      PULSE_CONTENT_MIN_PAID_CONTRIBUTION_MILLI: ${PULSE_CONTENT_MIN_PAID_CONTRIBUTION_MILLI:-1000}
+      PULSE_CONTENT_MAX_USER_PERIOD_AMOUNT: ${PULSE_CONTENT_MAX_USER_PERIOD_AMOUNT:-100}
+      PULSE_CONTENT_MAX_DAILY_AMOUNT: ${PULSE_CONTENT_MAX_DAILY_AMOUNT:-1000}
+      PULSE_TICKET_THRESHOLD_MILLI: ${PULSE_TICKET_THRESHOLD_MILLI:-1000}
     # Internal-only: browsers reach Pulse through new-api's signed BFF.
     expose:
       - "8088"
@@ -74,9 +80,11 @@ services:
     restart: unless-stopped
     entrypoint: ["meta-pulse-worker"]
     environment:
-      PULSE_ENV: development
+      PULSE_ENV: ${PULSE_ENV:-development}
       PULSE_DB_DSN: pulse:${PULSE_DB_PASSWORD}@tcp(mysql:3306)/meta_pulse?charset=utf8mb4&parseTime=True&loc=Asia%2FShanghai
       PULSE_REDIS_ADDR: redis:6379
+      PULSE_REDIS_PASSWORD: ${PULSE_REDIS_PASSWORD:-}
+      PULSE_REDIS_DB: ${PULSE_REDIS_DB:-0}
       NEWAPI_LOG_DSN: ${NEWAPI_LOG_DSN:-}
       FORUM_DB_DSN: ${FORUM_DB_DSN:-}
       NEWAPI_INTERNAL_BASE_URL: ${NEWAPI_INTERNAL_BASE_URL:-}
@@ -93,6 +101,13 @@ services:
       PULSE_CONTENT_MIN_PAID_CONTRIBUTION_MILLI: ${PULSE_CONTENT_MIN_PAID_CONTRIBUTION_MILLI:-1000}
       PULSE_CONTENT_MAX_USER_PERIOD_AMOUNT: ${PULSE_CONTENT_MAX_USER_PERIOD_AMOUNT:-100}
       PULSE_CONTENT_MAX_DAILY_AMOUNT: ${PULSE_CONTENT_MAX_DAILY_AMOUNT:-1000}
+      PULSE_TICKET_THRESHOLD_MILLI: ${PULSE_TICKET_THRESHOLD_MILLI:-1000}
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
     depends_on:
       mysql:
         condition: service_healthy
