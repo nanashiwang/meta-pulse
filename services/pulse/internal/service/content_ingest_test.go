@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -65,5 +66,22 @@ func TestContentIngestCanStageBeforeFirstActivePeriod(t *testing.T) {
 	}
 	if content.candidates[1].PeriodID != 0 || store.cursor.Value != "1" {
 		t.Fatalf("candidate=%+v cursor=%+v", content.candidates[1], store.cursor)
+	}
+}
+
+func TestContentIngestRejectsOversizedMetadata(t *testing.T) {
+	created := time.Unix(1700000000, 0).UTC()
+	event := ports.ContentEvent{SourceContentID: "42", ContentType: "question", AuthorUserID: 9, Title: strings.Repeat("标题", 251), SourceCreatedAt: created, CursorValue: "42", PayloadHash: "hash-1"}
+	store := newMemoryLedgerStore()
+	content := &memoryContentStore{}
+	s, err := NewContentIngestService(contentIngestUnit{store: store, content: content}, staticContentSource{events: []ports.ContentEvent{event}}, ContentIngestConfig{BatchSize: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.IngestBatch(context.Background()); err == nil {
+		t.Fatal("oversized content metadata was accepted")
+	}
+	if len(content.candidates) != 0 || store.cursor.Value != "" {
+		t.Fatalf("oversized content mutated state candidates=%d cursor=%+v", len(content.candidates), store.cursor)
 	}
 }

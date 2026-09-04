@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -256,5 +257,64 @@ func TestContentAwardReversalUsesOriginalGrant(t *testing.T) {
 	}
 	if err := s.Reverse(context.Background(), "content_award:question:42:1", "admin", "op-2", "不同原因", "reverse-1"); !errors.Is(err, ledger.ErrIdempotencyConflict) {
 		t.Fatalf("changed reversal payload error=%v, want conflict", err)
+	}
+}
+
+func TestValidateContentAwardCommandRejectsDatabaseOverflow(t *testing.T) {
+	base := ContentAwardCommand{CandidateID: 1, AwardVersion: 1, Amount: 1, RewardType: "quota", Reason: "精华", ActorType: "admin", ActorID: "operator", RequestID: "request"}
+	cases := []struct {
+		name   string
+		mutate func(*ContentAwardCommand)
+	}{
+		{name: "reward type", mutate: func(c *ContentAwardCommand) { c.RewardType = strings.Repeat("a", 65) }},
+		{name: "reason", mutate: func(c *ContentAwardCommand) { c.Reason = strings.Repeat("a", 501) }},
+		{name: "actor type", mutate: func(c *ContentAwardCommand) { c.ActorType = strings.Repeat("a", 33) }},
+		{name: "actor id", mutate: func(c *ContentAwardCommand) { c.ActorID = strings.Repeat("a", 129) }},
+		{name: "request id", mutate: func(c *ContentAwardCommand) { c.RequestID = strings.Repeat("a", 192) }},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			command := base
+			test.mutate(&command)
+			if err := validateContentAwardCommand(command); err == nil {
+				t.Fatal("oversized content award command was accepted")
+			}
+		})
+	}
+}
+
+func TestContentAwardReverseRejectsDatabaseOverflow(t *testing.T) {
+	service, _, _, _, _ := newContentAwardFixture(t, 1000)
+	rollback := &memoryGrantRollback{}
+	service.rollback = rollback
+	cases := []struct {
+		name string
+		call func() error
+	}{
+		{name: "action id", call: func() error {
+			return service.Reverse(context.Background(), strings.Repeat("a", 192), "admin", "operator", "reason", "request")
+		}},
+		{name: "actor type", call: func() error {
+			return service.Reverse(context.Background(), "action", strings.Repeat("a", 33), "operator", "reason", "request")
+		}},
+		{name: "actor id", call: func() error {
+			return service.Reverse(context.Background(), "action", "admin", strings.Repeat("a", 129), "reason", "request")
+		}},
+		{name: "reason", call: func() error {
+			return service.Reverse(context.Background(), "action", "admin", "operator", strings.Repeat("a", 501), "request")
+		}},
+		{name: "request id", call: func() error {
+			return service.Reverse(context.Background(), "action", "admin", "operator", "reason", strings.Repeat("a", 192))
+		}},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			if err := test.call(); err == nil {
+				t.Fatal("oversized content award reversal was accepted")
+			}
+		})
+	}
+	if rollback.calls != 0 {
+		t.Fatalf("oversized reversal called Benefit rollback %d times", rollback.calls)
 	}
 }

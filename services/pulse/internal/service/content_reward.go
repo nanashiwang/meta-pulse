@@ -67,11 +67,16 @@ func NewContentAwardService(unit ports.UnitOfWork, cfg ContentAwardConfig, rollb
 	if cfg.MinPaidContributionMilli < 0 || cfg.MaxUserPeriodAmount <= 0 || cfg.MaxDailyAmount <= 0 {
 		return nil, errors.New("content award limits must be positive")
 	}
-	if strings.TrimSpace(cfg.BudgetType) == "" {
+	cfg.BudgetType = strings.TrimSpace(cfg.BudgetType)
+	if cfg.BudgetType == "" {
 		cfg.BudgetType = "content_reward"
 	}
-	if strings.TrimSpace(cfg.ConfigVersion) == "" {
+	cfg.ConfigVersion = strings.TrimSpace(cfg.ConfigVersion)
+	if cfg.ConfigVersion == "" {
 		cfg.ConfigVersion = "content-v1"
+	}
+	if !validDBText(cfg.BudgetType, 64) || !validDBText(cfg.ConfigVersion, 64) {
+		return nil, errors.New("content reward configuration value is too long")
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
@@ -87,6 +92,11 @@ func NewContentAwardService(unit ports.UnitOfWork, cfg ContentAwardConfig, rollb
 // approval, four anti-abuse gates, an isolated budget reservation, Grant and
 // Outbox creation, and an audit record in one Pulse transaction.
 func (s *ContentAwardService) ReviewAndAward(ctx context.Context, command ContentAwardCommand) (ContentAwardResult, error) {
+	command.RewardType = strings.TrimSpace(command.RewardType)
+	command.Reason = strings.TrimSpace(command.Reason)
+	command.ActorType = strings.TrimSpace(command.ActorType)
+	command.ActorID = strings.TrimSpace(command.ActorID)
+	command.RequestID = strings.TrimSpace(command.RequestID)
 	if err := validateContentAwardCommand(command); err != nil {
 		return ContentAwardResult{}, err
 	}
@@ -122,6 +132,9 @@ func (s *ContentAwardService) ReviewAndAward(ctx context.Context, command Conten
 			return fmt.Errorf("%w: candidate has no period", ErrContentCandidateUnavailable)
 		}
 		actionID := fmt.Sprintf("content_award:%s:%s:%d", candidate.ContentType, candidate.SourceContentID, command.AwardVersion)
+		if !validDBText(actionID, 191) {
+			return fmt.Errorf("%w: generated action id is too long", ErrContentCandidateUnavailable)
+		}
 		if existing, findErr := repos.Content.FindAwardByAction(ctx, actionID); findErr == nil {
 			if existing.Amount != command.Amount || existing.RewardType != command.RewardType || existing.UserID != candidate.AuthorUserID || existing.PeriodID != periodID || existing.Reason != command.Reason {
 				return fmt.Errorf("%w: content award action=%s", ledger.ErrIdempotencyConflict, actionID)
@@ -247,8 +260,16 @@ func (s *ContentAwardService) Reverse(ctx context.Context, actionID, actorType, 
 	if s.rollback == nil {
 		return errors.New("content award rollback is not configured")
 	}
-	if strings.TrimSpace(actionID) == "" || strings.TrimSpace(actorType) == "" || strings.TrimSpace(actorID) == "" || strings.TrimSpace(reason) == "" || strings.TrimSpace(requestID) == "" {
+	actionID = strings.TrimSpace(actionID)
+	actorType = strings.TrimSpace(actorType)
+	actorID = strings.TrimSpace(actorID)
+	reason = strings.TrimSpace(reason)
+	requestID = strings.TrimSpace(requestID)
+	if actionID == "" || actorType == "" || actorID == "" || reason == "" || requestID == "" {
 		return errors.New("invalid content award reversal")
+	}
+	if !validDBText(actionID, 191) || !validDBText(actorType, 32) || !validDBText(actorID, 128) || !validDBText(reason, 500) || !validDBText(requestID, 191) {
+		return errors.New("content award reversal contains an oversized field")
 	}
 	payloadHash := contentReversalPayloadHash(actionID, actorType, actorID, reason)
 
@@ -376,8 +397,11 @@ func saveContentReversalIdempotency(ctx context.Context, repo ports.IdempotencyR
 }
 
 func validateContentAwardCommand(command ContentAwardCommand) error {
-	if command.CandidateID == 0 || command.AwardVersion == 0 || command.Amount <= 0 || strings.TrimSpace(command.RewardType) == "" || strings.TrimSpace(command.Reason) == "" || strings.TrimSpace(command.ActorType) == "" || strings.TrimSpace(command.ActorID) == "" || strings.TrimSpace(command.RequestID) == "" {
+	if command.CandidateID == 0 || command.AwardVersion == 0 || command.Amount <= 0 || command.RewardType == "" || command.Reason == "" || command.ActorType == "" || command.ActorID == "" || command.RequestID == "" {
 		return errors.New("invalid content award command")
+	}
+	if !validDBText(command.RewardType, 64) || !validDBText(command.Reason, 500) || !validDBText(command.ActorType, 32) || !validDBText(command.ActorID, 128) || !validDBText(command.RequestID, 191) {
+		return errors.New("content award command contains an oversized field")
 	}
 	return nil
 }

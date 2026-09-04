@@ -71,8 +71,12 @@ func NewActionService(unit ports.UnitOfWork, cfg ActionConfig) (*ActionService, 
 	if len(cfg.RandomSecret) == 0 {
 		return nil, errors.New("action random secret is required")
 	}
+	cfg.BudgetType = strings.TrimSpace(cfg.BudgetType)
 	if cfg.BudgetType == "" {
 		cfg.BudgetType = ActionBudgetType
+	}
+	if !validDBText(cfg.BudgetType, 64) {
+		return nil, errors.New("action budget type is too long")
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
@@ -81,11 +85,18 @@ func NewActionService(unit ports.UnitOfWork, cfg ActionConfig) (*ActionService, 
 }
 
 func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (ActionResult, error) {
-	if command.UserID == 0 || strings.TrimSpace(command.ActionID) == "" || strings.TrimSpace(command.TriggerType) == "" {
+	command.ActionID = strings.TrimSpace(command.ActionID)
+	command.TriggerType = strings.TrimSpace(command.TriggerType)
+	command.IdempotencyKey = strings.TrimSpace(command.IdempotencyKey)
+	if command.UserID == 0 || command.ActionID == "" || command.TriggerType == "" ||
+		!validDBText(command.ActionID, 191) || !validDBText(command.TriggerType, 32) {
 		return ActionResult{}, ErrInvalidAction
 	}
-	if strings.TrimSpace(command.IdempotencyKey) == "" {
+	if command.IdempotencyKey == "" {
 		return ActionResult{}, ErrMissingIdempotencyKey
+	}
+	if !validDBText(command.IdempotencyKey, 191) {
+		return ActionResult{}, ErrInvalidAction
 	}
 	var result ActionResult
 	err := s.unit.Do(ctx, func(repos ports.Repositories) error {

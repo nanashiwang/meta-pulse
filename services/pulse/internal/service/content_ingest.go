@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/nanashiwang/meta-pulse/internal/domain/period"
@@ -48,8 +49,12 @@ func NewContentIngestService(unit ports.UnitOfWork, source ContentSource, cfg Co
 	if cfg.CursorName == "" {
 		cfg.CursorName = DefaultContentCursorName
 	}
+	cfg.SourceSystem = strings.TrimSpace(cfg.SourceSystem)
 	if cfg.SourceSystem == "" {
 		cfg.SourceSystem = DefaultContentSourceSystem
+	}
+	if !validDBText(cfg.CursorName, 128) || !validDBText(cfg.SourceSystem, 64) {
+		return nil, errors.New("content cursor or source system is too long")
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
@@ -87,7 +92,9 @@ func (s *ContentIngestService) IngestBatch(ctx context.Context) (ContentIngestRe
 }
 
 func (s *ContentIngestService) processOne(ctx context.Context, incoming ports.ContentEvent, result *ContentIngestResult) error {
-	if incoming.SourceContentID == "" || incoming.ContentType == "" || incoming.AuthorUserID == 0 || incoming.SourceCreatedAt.IsZero() || incoming.CursorValue == "" || incoming.PayloadHash == "" {
+	if incoming.SourceContentID == "" || incoming.ContentType == "" || incoming.AuthorUserID == 0 || incoming.SourceCreatedAt.IsZero() || incoming.CursorValue == "" || incoming.PayloadHash == "" ||
+		!validDBText(incoming.SourceContentID, 191) || !validDBText(incoming.ContentType, 64) ||
+		!validDBText(incoming.Title, 500) || !validDBText(incoming.CursorValue, 191) || !validDBText(incoming.PayloadHash, 64) {
 		return errors.New("invalid normalized content event")
 	}
 	return s.unit.Do(ctx, func(repos ports.Repositories) error {

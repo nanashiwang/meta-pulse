@@ -260,3 +260,21 @@ func (u *serialActionUnit) Do(ctx context.Context, fn func(ports.Repositories) e
 	defer u.mu.Unlock()
 	return u.base.Do(ctx, fn)
 }
+
+func TestActionRejectsOversizedDatabaseIdentifiers(t *testing.T) {
+	store, rewardStore, idem := setupActionStore()
+	action := newActionService(t, store, rewardStore, idem)
+	cases := []ActionCommand{
+		{UserID: 9, ActionID: strings.Repeat("a", 192), TriggerType: "pulse", IdempotencyKey: "one"},
+		{UserID: 9, ActionID: "valid", TriggerType: strings.Repeat("b", 33), IdempotencyKey: "two"},
+		{UserID: 9, ActionID: "valid", TriggerType: "pulse", IdempotencyKey: strings.Repeat("c", 192)},
+	}
+	for i, command := range cases {
+		if _, err := action.Execute(context.Background(), command); !errors.Is(err, ErrInvalidAction) {
+			t.Fatalf("case %d error=%v, want ErrInvalidAction", i, err)
+		}
+	}
+	if len(store.entries) != 0 || len(rewardStore.grants) != 0 {
+		t.Fatalf("oversized action mutated state entries=%d grants=%d", len(store.entries), len(rewardStore.grants))
+	}
+}
