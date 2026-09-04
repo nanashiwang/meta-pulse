@@ -2,9 +2,11 @@ package mysql
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/nanashiwang/meta-pulse/internal/domain/period"
@@ -13,7 +15,11 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-const maxAuditJSONBytes = 64 << 10
+const (
+	maxAuditJSONBytes         = 64 << 10
+	maxMetricDimensionsBytes  = 64 << 10
+	emptyMetricDimensionsHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+)
 
 type auditLogModel struct {
 	ID           uint64    `gorm:"column:id;primaryKey"`
@@ -175,12 +181,39 @@ func validateExperimentAssignmentCreate(assignment ports.ExperimentAssignment) e
 }
 
 func (r *metricRepository) Upsert(ctx context.Context, metric ports.MetricValue) error {
-	if metric.MetricName == "" || metric.DimensionHash == "" {
-		return errors.New("invalid metric identity")
+	if err := validateMetricUpsert(metric); err != nil {
+		return err
 	}
-	model := metricDailyModel{MetricDate: metric.MetricDate, MetricName: metric.MetricName, DimensionHash: metric.DimensionHash, Dimensions: metric.Dimensions, Value: metric.Value}
-	if err := r.db.WithContext(ctx).Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "metric_date"}, {Name: "metric_name"}, {Name: "dimension_hash"}}, DoUpdates: clause.Assignments(map[string]any{"dimensions_json": metric.Dimensions, "metric_value": metric.Value})}).Create(&model).Error; err != nil {
+	metricDate := time.Date(metric.MetricDate.Year(), metric.MetricDate.Month(), metric.MetricDate.Day(), 0, 0, 0, 0, metric.MetricDate.Location())
+	dimensions := append([]byte(nil), metric.Dimensions...)
+	model := metricDailyModel{MetricDate: metricDate, MetricName: metric.MetricName, DimensionHash: metric.DimensionHash, Dimensions: dimensions, Value: metric.Value}
+	if err := r.db.WithContext(ctx).Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "metric_date"}, {Name: "metric_name"}, {Name: "dimension_hash"}}, DoUpdates: clause.Assignments(map[string]any{"dimensions_json": dimensions, "metric_value": metric.Value})}).Create(&model).Error; err != nil {
 		return fmt.Errorf("upsert daily metric: %w", err)
+	}
+	return nil
+}
+
+func validateMetricUpsert(metric ports.MetricValue) error {
+	year := metric.MetricDate.Year()
+	if metric.MetricDate.IsZero() || year < 1000 || year > 9999 || !validMySQLText(metric.MetricName, 128) ||
+		len(metric.DimensionHash) != 64 || metric.DimensionHash != strings.ToLower(metric.DimensionHash) {
+		return fmt.Errorf("%w: invalid daily metric identity", ports.ErrConflict)
+	}
+	if _, err := hex.DecodeString(metric.DimensionHash); err != nil {
+		return fmt.Errorf("%w: invalid daily metric dimension hash", ports.ErrConflict)
+	}
+	if len(metric.Dimensions) == 0 {
+		if metric.DimensionHash != emptyMetricDimensionsHash {
+			return fmt.Errorf("%w: empty metric dimensions hash mismatch", ports.ErrConflict)
+		}
+		return nil
+	}
+	if len(metric.Dimensions) > maxMetricDimensionsBytes {
+		return fmt.Errorf("%w: metric dimensions exceed %d bytes", ports.ErrConflict, maxMetricDimensionsBytes)
+	}
+	canonicalHash, err := canonicalSettlementPayloadHash(metric.Dimensions)
+	if err != nil || canonicalHash != metric.DimensionHash {
+		return fmt.Errorf("%w: invalid metric dimensions JSON or hash", ports.ErrConflict)
 	}
 	return nil
 }

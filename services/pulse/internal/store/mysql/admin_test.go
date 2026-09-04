@@ -138,3 +138,56 @@ func TestExperimentAssignmentCreateValidatesImmutableIdentity(t *testing.T) {
 		})
 	}
 }
+
+func TestMetricUpsertValidatesDateIdentityAndDimensions(t *testing.T) {
+	valid := ports.MetricValue{
+		MetricDate: time.Now(), MetricName: "settlement_retry",
+		DimensionHash: emptyMetricDimensionsHash,
+	}
+	if err := validateMetricUpsert(valid); err != nil {
+		t.Fatalf("valid metric rejected: %v", err)
+	}
+	dimensions := []byte(`{"region":"cn"}`)
+	dimensionsHash, err := canonicalSettlementPayloadHash(dimensions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withDimensions := valid
+	withDimensions.DimensionHash = dimensionsHash
+	withDimensions.Dimensions = dimensions
+	if err := validateMetricUpsert(withDimensions); err != nil {
+		t.Fatalf("valid dimensioned metric rejected: %v", err)
+	}
+
+	cases := []struct {
+		name   string
+		base   ports.MetricValue
+		mutate func(*ports.MetricValue)
+	}{
+		{"zero date", valid, func(v *ports.MetricValue) { v.MetricDate = time.Time{} }},
+		{"date before mysql range", valid, func(v *ports.MetricValue) { v.MetricDate = time.Date(999, 1, 1, 0, 0, 0, 0, time.UTC) }},
+		{"blank name", valid, func(v *ports.MetricValue) { v.MetricName = " " }},
+		{"long name", valid, func(v *ports.MetricValue) { v.MetricName = strings.Repeat("指", 129) }},
+		{"malformed name", valid, func(v *ports.MetricValue) { v.MetricName = string([]byte{0xff}) }},
+		{"short hash", valid, func(v *ports.MetricValue) { v.DimensionHash = "abcd" }},
+		{"uppercase hash", valid, func(v *ports.MetricValue) { v.DimensionHash = strings.ToUpper(emptyMetricDimensionsHash) }},
+		{"non hexadecimal hash", valid, func(v *ports.MetricValue) { v.DimensionHash = strings.Repeat("z", 64) }},
+		{"empty dimensions hash mismatch", valid, func(v *ports.MetricValue) { v.DimensionHash = strings.Repeat("a", 64) }},
+		{"invalid dimensions json", withDimensions, func(v *ports.MetricValue) { v.Dimensions = []byte(`{"region":`) }},
+		{"trailing dimensions json", withDimensions, func(v *ports.MetricValue) { v.Dimensions = []byte(`{} {}`) }},
+		{"dimensions hash mismatch", withDimensions, func(v *ports.MetricValue) { v.DimensionHash = strings.Repeat("a", 64) }},
+		{"oversized dimensions", withDimensions, func(v *ports.MetricValue) {
+			v.Dimensions = []byte(`"` + strings.Repeat("a", maxMetricDimensionsBytes) + `"`)
+		}},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			value := test.base
+			value.Dimensions = append([]byte(nil), test.base.Dimensions...)
+			test.mutate(&value)
+			if err := validateMetricUpsert(value); err == nil {
+				t.Fatal("invalid metric was accepted")
+			}
+		})
+	}
+}
