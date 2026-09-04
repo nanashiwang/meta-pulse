@@ -762,6 +762,14 @@ pulse_metric_daily
 pulse_audit_log
 ```
 
+M7 扩展表：
+
+```text
+pulse_content_candidate
+pulse_content_award
+pulse_content_award_limit_guard
+```
+
 重要唯一约束至少包括：
 
 ```text
@@ -951,7 +959,7 @@ meta-pulse-forum   社区内容
 - Pulse 对论坛数据库只读，新增 Content Candidate Ingest 游标；
 - 内容奖励直接生成 Reward Grant，**不产生 contribution 或 ticket**；
 - 内容奖励使用独立 `budget_type = content_reward`，不计入贡献毛利占比分母；
-- 新增表：`pulse_content_candidate`、`pulse_content_award`、`pulse_user_level`；
+- 新增表：`pulse_content_candidate`、`pulse_content_award`、`pulse_content_award_limit_guard`；等级直接由 Ledger/Account 派生，不维护第二份 `pulse_user_level` 事实；
 - 新增只读接口：`GET /v1/internal/users/:user_id/profile`，返回 `{ user_id, level: { key, name }, lifetime_contribution_milli }`；Pulse 不提供账户封禁事实，论坛用户状态仍由身份边界处理；
 - 论坛登录入口统一为 new-api `/api/forum/sso/start`，未登录时使用 `/login?next=...`；new-api 从 session 读取用户后签发短期、单次 Login Ticket，签发端与插件均拒绝 Ticket 字段中的 `CR/LF` 且要求规范正整数 `user_id`，插件验签并通过共享 Redis `SET NX` 原子消费 nonce 后方可信任身份，Redis 不可用时 fail closed；
 - 论坛登录回调参数在验签前一律不可信，Pulse 故障时论坛登录和浏览必须降级而不是阻断（该接口是 Pulse 的跨仓库前置项）。
@@ -1029,7 +1037,7 @@ Answer 只读元数据
 
 - `services/pulse/internal/adapter/forum` 只读取 Answer 的问题元数据（ID、作者、标题、创建时间），不读取正文，不写论坛库；Worker 使用独立 `FORUM_DB_DSN`，该连接只能配置为只读账号。论坛库故障只影响候选采集，不影响 Usage Ingest、Settlement、Period Close 或 new-api relay。
 - 内容奖励预算固定使用 `budget_type=content_reward`，与 `loyalty`、`period_reward` 分离；内容奖励不会写 Contribution/Ticket Ledger，也不进入贡献毛利分母。
-- 发放必须同时通过真实付费门槛、管理员审核、用户周期上限/全站日上限和 Hard Budget 预占四道闸。未满足门槛或限额时只保留可审计的资格结果，不创建 Grant。
+- 发放必须同时通过真实付费门槛、管理员审核、用户周期上限/全站日上限和 Hard Budget 预占四道闸。限额检查先锁定 `pulse_content_award_limit_guard` 的固定行，跨实例串行化后以 locking current read 重算；全站日界按 Asia/Shanghai 的 `[day_start,next_day_start)`。未满足门槛或限额时只保留可审计的资格结果，不创建 Grant。
 - 稳定 action 为 `content_award:{content_type}:{source_content_id}:{award_version}`；相同 action 重放返回原结果，payload 改变返回 conflict；随机值/Grant/source_ref 不因重试变化。
 - Content Award 状态随共享 Grant 结算同步：`pending → settled → reversed`；结算在同一 Pulse 事务内把关联 Award 标记为 `settled`，已结算内容继续计入用户/全站限额，只有 `reversed` 才从活跃额度中排除。
 - 内容删除或抄袭只能沿原 `GrantID/source_ref` 执行 Benefit rollback，再把原 Award 标记为 `reversed`；rollback 与本地提交之间发生故障时，重试必须先复用原 source_ref，不能换 key 发补偿奖励或重复释放预算。

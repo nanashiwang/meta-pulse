@@ -231,6 +231,14 @@ type contentAwardModel struct {
 
 func (contentAwardModel) TableName() string { return "pulse_content_award" }
 
+type contentAwardLimitGuardModel struct {
+	ID        uint64    `gorm:"column:id;primaryKey"`
+	ScopeKey  string    `gorm:"column:scope_key"`
+	CreatedAt time.Time `gorm:"column:created_at"`
+}
+
+func (contentAwardLimitGuardModel) TableName() string { return "pulse_content_award_limit_guard" }
+
 type contentRepository struct{ db *gorm.DB }
 
 func contentCandidateFromModel(model contentCandidateModel) ports.ContentCandidate {
@@ -369,18 +377,43 @@ func (r *contentRepository) MarkAwardSettledByGrantID(ctx context.Context, grant
 	return nil
 }
 
+func (r *contentRepository) LockAwardLimits(ctx context.Context, userID, periodID uint64, day time.Time) error {
+	if userID == 0 || periodID == 0 || day.IsZero() {
+		return errors.New("invalid content award limit scope")
+	}
+	// Content awards are manually reviewed and low throughput. One seeded row
+	// serializes all cap checks, avoiding dynamic-row insert/gap-lock deadlocks
+	// while making both user-period and cross-period daily totals race-free.
+	var locked contentAwardLimitGuardModel
+	if err := r.db.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).Where("scope_key = ?", "global").Take(&locked).Error; err != nil {
+		return fmt.Errorf("lock content award limit guard: %w", err)
+	}
+	return nil
+}
+
 func (r *contentRepository) SumUserActiveAwards(ctx context.Context, userID, periodID uint64) (int64, error) {
 	var total int64
-	if err := r.db.WithContext(ctx).Model(&contentAwardModel{}).Where("user_id = ? AND period_id = ? AND status IN ?", userID, periodID, []string{ports.ContentAwardPending, ports.ContentAwardSettled}).Select("COALESCE(SUM(amount), 0)").Scan(&total).Error; err != nil {
+	if err := r.db.WithContext(ctx).Model(&contentAwardModel{}).Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ? AND period_id = ? AND status IN ?", userID, periodID, []string{ports.ContentAwardPending, ports.ContentAwardSettled}).Select("COALESCE(SUM(amount), 0)").Scan(&total).Error; err != nil {
 		return 0, fmt.Errorf("sum user content awards: %w", err)
 	}
 	return total, nil
 }
 
 func (r *contentRepository) SumDailyActiveAwards(ctx context.Context, day time.Time) (int64, error) {
+	start, end := contentBusinessDayBounds(day)
 	var total int64
-	if err := r.db.WithContext(ctx).Model(&contentAwardModel{}).Where("DATE(created_at) = DATE(?) AND status IN ?", day, []string{ports.ContentAwardPending, ports.ContentAwardSettled}).Select("COALESCE(SUM(amount), 0)").Scan(&total).Error; err != nil {
+	if err := r.db.WithContext(ctx).Model(&contentAwardModel{}).Clauses(clause.Locking{Strength: "UPDATE"}).Where("created_at >= ? AND created_at < ? AND status IN ?", start, end, []string{ports.ContentAwardPending, ports.ContentAwardSettled}).Select("COALESCE(SUM(amount), 0)").Scan(&total).Error; err != nil {
 		return 0, fmt.Errorf("sum daily content awards: %w", err)
 	}
 	return total, nil
+}
+
+func contentBusinessDayBounds(at time.Time) (time.Time, time.Time) {
+	location, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		location = time.FixedZone("CST", 8*60*60)
+	}
+	local := at.In(location)
+	start := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, location)
+	return start, start.AddDate(0, 0, 1)
 }

@@ -97,6 +97,12 @@ func (m *memoryContentStore) MarkAwardSettledByGrantID(_ context.Context, grantI
 	}
 	return nil
 }
+func (m *memoryContentStore) LockAwardLimits(_ context.Context, userID, periodID uint64, day time.Time) error {
+	if userID == 0 || periodID == 0 || day.IsZero() {
+		return errors.New("invalid content award limit scope")
+	}
+	return nil
+}
 func (m *memoryContentStore) SumUserActiveAwards(_ context.Context, userID, periodID uint64) (int64, error) {
 	var total int64
 	for _, award := range m.awards {

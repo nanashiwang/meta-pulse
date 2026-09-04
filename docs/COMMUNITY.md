@@ -219,8 +219,10 @@ meta-pulse-worker
 ```text
 pulse_content_candidate
 pulse_content_award
-pulse_user_level
+pulse_content_award_limit_guard
 ```
+
+`pulse_content_award_limit_guard` 只保存固定并发串行化行，不保存金额；等级由 Pulse Ledger/Account 实时派生，不维护独立等级事实表。
 
 ## 7. 博客
 

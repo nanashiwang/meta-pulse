@@ -290,7 +290,7 @@ type UnitOfWork interface {
 - [x] 论坛 DB 只读游标与 Content Candidate：Worker 通过可选 `FORUM_DB_DSN` 读取 Answer 问题元数据，只复制必要字段，不复制正文；论坛库不可用时仅停用内容采集；
 - [x] 人工审核、档位、reason、Audit Log：管理员请求必须使用已签名 `admin` Principal，actor 不从 JSON 读取；
 - [x] 独立 `content_reward` budget：内容奖励汇入通用 Reward Grant/Settlement，但预算线与 loyalty、period_reward 隔离；
-- [x] 付费门槛、单用户上限、全站日上限；未达标/超限只写审核与资格结果，不生成 Grant；
+- [x] 付费门槛、单用户上限、全站日上限；持久化 MySQL guard 串行化跨候选/跨实例检查，锁定后使用当前读并按 Asia/Shanghai 半开日区间聚合；未达标/超限只写审核与资格结果，不生成 Grant；
 - [x] `content_award:{type}:{id}:{version}` 幂等，并校验同 action 的 payload 冲突；
 - [x] 内容 Award 随共享 Grant 从 pending 同步为 settled；已结算内容计入用户/全站活跃限额，撤销后 settled → reversed 并从限额中排除；
 - [x] 删除/抄袭后的 settled → reversed：撤销复用原 Grant/source_ref，Benefit rollback 与本地状态更新均可重试；撤销请求本身按 Idempotency-Key 幂等，payload 变化进入 conflict；

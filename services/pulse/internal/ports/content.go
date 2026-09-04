@@ -77,6 +77,7 @@ type ContentRepository interface {
 	CreateAward(ctx context.Context, award ContentAward) (ContentAward, error)
 	UpdateAwardStatus(ctx context.Context, actionID, status string) error
 	MarkAwardSettledByGrantID(ctx context.Context, grantID string) error
+	LockAwardLimits(ctx context.Context, userID, periodID uint64, day time.Time) error
 	SumUserActiveAwards(ctx context.Context, userID, periodID uint64) (int64, error)
 	SumDailyActiveAwards(ctx context.Context, day time.Time) (int64, error)
 }

@@ -90,6 +90,7 @@ func (s *ContentAwardService) ReviewAndAward(ctx context.Context, command Conten
 	if err := validateContentAwardCommand(command); err != nil {
 		return ContentAwardResult{}, err
 	}
+	now := s.cfg.Now()
 	payloadHash := contentAwardPayloadHash(command)
 	var result ContentAwardResult
 	err := s.unit.Do(ctx, func(repos ports.Repositories) error {
@@ -130,7 +131,7 @@ func (s *ContentAwardService) ReviewAndAward(ctx context.Context, command Conten
 		} else if !errors.Is(findErr, ports.ErrNotFound) {
 			return findErr
 		}
-		if err := repos.Content.ReviewCandidate(ctx, candidate.ID, ports.ContentCandidateApproved, command.ActorType, command.ActorID, command.Reason, s.cfg.Now()); err != nil {
+		if err := repos.Content.ReviewCandidate(ctx, candidate.ID, ports.ContentCandidateApproved, command.ActorType, command.ActorID, command.Reason, now); err != nil {
 			return err
 		}
 
@@ -138,23 +139,29 @@ func (s *ContentAwardService) ReviewAndAward(ctx context.Context, command Conten
 		if err != nil {
 			return err
 		}
-		award := ports.ContentAward{CandidateID: candidate.ID, AwardVersion: command.AwardVersion, ActionID: actionID, PeriodID: periodID, UserID: candidate.AuthorUserID, Amount: command.Amount, RewardType: command.RewardType, BudgetType: s.cfg.BudgetType, Status: ports.ContentAwardPending, Reason: command.Reason, CreatedAt: s.cfg.Now()}
+		award := ports.ContentAward{CandidateID: candidate.ID, AwardVersion: command.AwardVersion, ActionID: actionID, PeriodID: periodID, UserID: candidate.AuthorUserID, Amount: command.Amount, RewardType: command.RewardType, BudgetType: s.cfg.BudgetType, Status: ports.ContentAwardPending, Reason: command.Reason, CreatedAt: now}
 		if lifetimeContribution < s.cfg.MinPaidContributionMilli {
 			award.Status = ports.ContentAwardIneligible
 			if _, err := repos.Content.CreateAward(ctx, award); err != nil {
 				return err
 			}
 			result = ContentAwardResult{Award: award, Eligibility: award.Status}
-			if err := appendContentAudit(ctx, repos.Audit, command, candidate, award, "paid_threshold", s.cfg.Now()); err != nil {
+			if err := appendContentAudit(ctx, repos.Audit, command, candidate, award, "paid_threshold", now); err != nil {
 				return err
 			}
 			return saveContentAwardIdempotency(ctx, repos.Idempotency, idempotency, result)
+		}
+		// Limit totals are projections, so lock durable user-period and business-day
+		// guards before reading them. Different candidate rows must not be able to
+		// pass the same cap concurrently.
+		if err := repos.Content.LockAwardLimits(ctx, candidate.AuthorUserID, periodID, now); err != nil {
+			return err
 		}
 		userTotal, err := repos.Content.SumUserActiveAwards(ctx, candidate.AuthorUserID, periodID)
 		if err != nil {
 			return err
 		}
-		dailyTotal, err := repos.Content.SumDailyActiveAwards(ctx, s.cfg.Now())
+		dailyTotal, err := repos.Content.SumDailyActiveAwards(ctx, now)
 		if err != nil {
 			return err
 		}
@@ -164,7 +171,7 @@ func (s *ContentAwardService) ReviewAndAward(ctx context.Context, command Conten
 				return err
 			}
 			result = ContentAwardResult{Award: award, Eligibility: award.Status}
-			if err := appendContentAudit(ctx, repos.Audit, command, candidate, award, "limit", s.cfg.Now()); err != nil {
+			if err := appendContentAudit(ctx, repos.Audit, command, candidate, award, "limit", now); err != nil {
 				return err
 			}
 			return saveContentAwardIdempotency(ctx, repos.Idempotency, idempotency, result)
@@ -177,7 +184,7 @@ func (s *ContentAwardService) ReviewAndAward(ctx context.Context, command Conten
 			return fmt.Errorf("%w: %v", ErrContentAwardLimit, err)
 		}
 		grantID := reward.GrantID(periodID, candidate.AuthorUserID, actionID)
-		grant := ports.RewardGrant{GrantID: grantID, PeriodID: periodID, UserID: candidate.AuthorUserID, ActionID: actionID, TriggerType: "content", RewardDefinitionID: 0, RewardType: command.RewardType, Amount: command.Amount, TransferableQuota: false, BudgetType: s.cfg.BudgetType, RandomValue: hashString(actionID), ConfigVersion: s.cfg.ConfigVersion, Status: RewardStatusPending, SourceRef: grantID, Reason: command.Reason, CreatedAt: s.cfg.Now()}
+		grant := ports.RewardGrant{GrantID: grantID, PeriodID: periodID, UserID: candidate.AuthorUserID, ActionID: actionID, TriggerType: "content", RewardDefinitionID: 0, RewardType: command.RewardType, Amount: command.Amount, TransferableQuota: false, BudgetType: s.cfg.BudgetType, RandomValue: hashString(actionID), ConfigVersion: s.cfg.ConfigVersion, Status: RewardStatusPending, SourceRef: grantID, Reason: command.Reason, CreatedAt: now}
 		persistedGrant, err := repos.Reward.CreateGrant(ctx, grant)
 		if err != nil {
 			return err
@@ -190,7 +197,7 @@ func (s *ContentAwardService) ReviewAndAward(ctx context.Context, command Conten
 		if s.cfg.ShadowMode {
 			status = OutboxStatusShadow
 		}
-		if _, err := repos.Reward.CreateOutbox(ctx, ports.SettlementOutbox{RewardGrantID: persistedGrant.ID, Operation: "grant", PayloadHash: canonicalJSONHash(payload), PayloadJSON: payload, Status: status, NextAttemptAt: s.cfg.Now(), CreatedAt: s.cfg.Now()}); err != nil {
+		if _, err := repos.Reward.CreateOutbox(ctx, ports.SettlementOutbox{RewardGrantID: persistedGrant.ID, Operation: "grant", PayloadHash: canonicalJSONHash(payload), PayloadJSON: payload, Status: status, NextAttemptAt: now, CreatedAt: now}); err != nil {
 			return err
 		}
 		if err := repos.Reward.SaveBudget(ctx, budget); err != nil {
@@ -201,7 +208,7 @@ func (s *ContentAwardService) ReviewAndAward(ctx context.Context, command Conten
 			return err
 		}
 		result = ContentAwardResult{Award: award, Grant: &persistedGrant, Eligibility: "eligible"}
-		if err := appendContentAudit(ctx, repos.Audit, command, candidate, award, "approved", s.cfg.Now()); err != nil {
+		if err := appendContentAudit(ctx, repos.Audit, command, candidate, award, "approved", now); err != nil {
 			return err
 		}
 		return saveContentAwardIdempotency(ctx, repos.Idempotency, idempotency, result)

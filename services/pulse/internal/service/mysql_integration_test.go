@@ -643,3 +643,164 @@ VALUES (?, 'grant', ?, ?, 'pending', 0, NOW(6) - INTERVAL 1 MINUTE)`, secondGran
 		t.Fatalf("settlement budget reserved=%d settled=%d version=%d", reserved, settled, budgetVersion)
 	}
 }
+
+func TestMySQLContentAwardConcurrentCaps(t *testing.T) {
+	database, sqlDB := openMySQLIntegration(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	// The integration schema is disposable but may be reused locally. Remove
+	// this test's old fixtures so prior runs cannot consume today's global cap
+	// or leave an overlapping active period behind.
+	for _, query := range []string{
+		`DELETE FROM pulse_content_award WHERE action_id LIKE 'content_award:question:cap-%'`,
+		`DELETE FROM pulse_content_candidate WHERE source_content_id LIKE 'cap-%'`,
+		`DELETE FROM pulse_period WHERE period_key LIKE 'integration-content-cap-%'`,
+	} {
+		if _, err := sqlDB.ExecContext(ctx, query); err != nil {
+			t.Fatalf("clean old content cap fixtures: %v", err)
+		}
+	}
+
+	t.Run("daily cap across users", func(t *testing.T) {
+		now := time.Now().In(time.FixedZone("CST", 8*60*60)).Truncate(time.Second)
+		runMySQLContentAwardCapCase(t, database, sqlDB, now, now, false, 100, 10)
+	})
+	t.Run("user period cap across days", func(t *testing.T) {
+		now := time.Now().In(time.FixedZone("CST", 8*60*60)).Truncate(time.Second)
+		runMySQLContentAwardCapCase(t, database, sqlDB, now, now.AddDate(0, 0, 1), true, 10, 100)
+	})
+}
+
+func runMySQLContentAwardCapCase(t *testing.T, database *mysqlstore.DB, sqlDB *sql.DB, firstNow, secondNow time.Time, sameUser bool, maxUser, maxDaily int64) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	suffix := time.Now().UnixNano()
+	periodKey := fmt.Sprintf("integration-content-cap-%d", suffix)
+	result, err := sqlDB.ExecContext(ctx, `
+INSERT INTO pulse_period (period_key, status, starts_at, ends_at, timezone, config_version, random_version)
+VALUES (?, 'draft', ?, ?, 'Asia/Shanghai', 'integration-v1', 'hmac-v1')`, periodKey, firstNow.Add(-time.Hour), secondNow.Add(48*time.Hour))
+	if err != nil {
+		t.Fatalf("insert content cap period: %v", err)
+	}
+	periodRaw, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("read content cap period id: %v", err)
+	}
+	periodID := uint64(periodRaw)
+	if _, err := sqlDB.ExecContext(ctx, `
+INSERT INTO pulse_reward_budget (period_id, budget_type, hard_cap, reserved_amount, settled_amount, released_amount, version)
+VALUES (?, 'content_reward', 100, 0, 0, 0, 0)`, periodID); err != nil {
+		t.Fatalf("insert content cap budget: %v", err)
+	}
+
+	firstUser := uint64(1_100_000_000 + suffix%100_000_000)
+	secondUser := firstUser
+	if !sameUser {
+		secondUser++
+	}
+	users := []uint64{firstUser}
+	if secondUser != firstUser {
+		users = append(users, secondUser)
+	}
+	for _, userID := range users {
+		if _, err := sqlDB.ExecContext(ctx, `
+INSERT INTO pulse_account (user_id, period_id, asset_type, balance, version)
+VALUES (?, ?, 'contribution', 1000, 1)`, userID, periodID); err != nil {
+			t.Fatalf("insert content cap account: %v", err)
+		}
+	}
+
+	candidateIDs := make([]uint64, 2)
+	for i, userID := range []uint64{firstUser, secondUser} {
+		candidateResult, err := sqlDB.ExecContext(ctx, `
+INSERT INTO pulse_content_candidate
+(source_system, source_content_id, content_type, author_user_id, period_id, title, source_created_at, payload_hash, cursor_value, status)
+VALUES ('answer-forum', ?, 'question', ?, ?, 'cap test', ?, ?, ?, 'pending')`,
+			fmt.Sprintf("cap-%d-%d", suffix, i), userID, periodID, firstNow, fmt.Sprintf("%064d", i+1), fmt.Sprintf("%d", i+1))
+		if err != nil {
+			t.Fatalf("insert content cap candidate: %v", err)
+		}
+		candidateID, err := candidateResult.LastInsertId()
+		if err != nil {
+			t.Fatalf("read content cap candidate id: %v", err)
+		}
+		candidateIDs[i] = uint64(candidateID)
+	}
+
+	unit, err := mysqlstore.NewUnitOfWork(database)
+	if err != nil {
+		t.Fatalf("create content cap unit: %v", err)
+	}
+	newService := func(now time.Time) *ContentAwardService {
+		service, err := NewContentAwardService(unit, ContentAwardConfig{
+			MinPaidContributionMilli: 1,
+			MaxUserPeriodAmount:      maxUser,
+			MaxDailyAmount:           maxDaily,
+			BudgetType:               "content_reward",
+			ConfigVersion:            "integration-v1",
+			ShadowMode:               true,
+			Now:                      func() time.Time { return now },
+		})
+		if err != nil {
+			t.Fatalf("create content cap service: %v", err)
+		}
+		return service
+	}
+	services := []*ContentAwardService{newService(firstNow), newService(secondNow)}
+	type outcome struct {
+		result ContentAwardResult
+		err    error
+	}
+	outcomes := make(chan outcome, 2)
+	start := make(chan struct{})
+	for i := range services {
+		i := i
+		go func() {
+			<-start
+			result, err := services[i].ReviewAndAward(ctx, ContentAwardCommand{
+				CandidateID: candidateIDs[i], AwardVersion: 1, PeriodID: periodID,
+				RewardType: "quota", Amount: 10, Reason: "并发限额验收",
+				ActorType: "admin", ActorID: fmt.Sprintf("op-%d", i), RequestID: fmt.Sprintf("cap-%d-%d", suffix, i),
+			})
+			outcomes <- outcome{result: result, err: err}
+		}()
+	}
+	close(start)
+
+	eligible, limited := 0, 0
+	for i := 0; i < 2; i++ {
+		outcome := <-outcomes
+		if outcome.err != nil {
+			t.Fatalf("concurrent content award: %v", outcome.err)
+		}
+		switch outcome.result.Eligibility {
+		case "eligible":
+			eligible++
+		case ports.ContentAwardLimited:
+			limited++
+		default:
+			t.Fatalf("unexpected content eligibility %q", outcome.result.Eligibility)
+		}
+	}
+	if eligible != 1 || limited != 1 {
+		t.Fatalf("eligible=%d limited=%d, want 1/1", eligible, limited)
+	}
+
+	var activeAmount, grantCount, reservedAmount int64
+	if err := sqlDB.QueryRowContext(ctx, `
+SELECT COALESCE(SUM(amount), 0) FROM pulse_content_award
+WHERE period_id = ? AND status IN ('pending', 'settled')`, periodID).Scan(&activeAmount); err != nil {
+		t.Fatalf("read active content amount: %v", err)
+	}
+	if err := sqlDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM pulse_reward_grant WHERE period_id = ? AND budget_type = 'content_reward'`, periodID).Scan(&grantCount); err != nil {
+		t.Fatalf("read content grant count: %v", err)
+	}
+	if err := sqlDB.QueryRowContext(ctx, `SELECT reserved_amount FROM pulse_reward_budget WHERE period_id = ? AND budget_type = 'content_reward'`, periodID).Scan(&reservedAmount); err != nil {
+		t.Fatalf("read content reserved amount: %v", err)
+	}
+	if activeAmount != 10 || grantCount != 1 || reservedAmount != 10 {
+		t.Fatalf("active=%d grants=%d reserved=%d, want 10/1/10", activeAmount, grantCount, reservedAmount)
+	}
+}
