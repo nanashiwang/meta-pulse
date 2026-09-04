@@ -117,7 +117,6 @@ func validateReadOnlyGrants(grants []string) bool {
 	if len(grants) == 0 {
 		return false
 	}
-	allowed := map[string]struct{}{"SELECT": {}, "USAGE": {}, "SHOW VIEW": {}}
 	for _, grant := range grants {
 		upper := strings.ToUpper(strings.TrimSpace(grant))
 		if upper == "" || strings.Contains(upper, "WITH GRANT OPTION") {
@@ -131,14 +130,42 @@ func validateReadOnlyGrants(grants []string) bool {
 			return false
 		}
 		privileges := strings.TrimSpace(upper[len("GRANT "):on])
-		for _, privilege := range strings.Split(privileges, ",") {
+		grantTarget := strings.TrimSpace(upper[on+len(" ON "):])
+		to := strings.Index(grantTarget, " TO ")
+		if to <= 0 {
+			return false
+		}
+		grantTarget = strings.TrimSpace(grantTarget[:to])
+		privilegeList := strings.Split(privileges, ",")
+		if len(privilegeList) == 1 && strings.TrimSpace(privilegeList[0]) == "USAGE" {
+			// USAGE carries no data access and is commonly emitted as the
+			// account's baseline grant.
+			if grantTarget != "*.*" {
+				return false
+			}
+			continue
+		}
+		if !isLogsTableGrantTarget(grantTarget) {
+			return false
+		}
+		for _, privilege := range privilegeList {
 			privilege = strings.TrimSpace(privilege)
-			if _, ok := allowed[privilege]; !ok {
+			if privilege != "SELECT" && privilege != "SHOW VIEW" {
 				return false
 			}
 		}
 	}
 	return true
+}
+
+func isLogsTableGrantTarget(target string) bool {
+	parts := strings.Split(target, ".")
+	if len(parts) != 2 {
+		return false
+	}
+	database := strings.Trim(strings.TrimSpace(parts[0]), "`")
+	table := strings.Trim(strings.TrimSpace(parts[1]), "`")
+	return database != "" && database != "*" && table == "LOGS"
 }
 
 func OpenLogReader(dsn string) (*LogReader, error) {
