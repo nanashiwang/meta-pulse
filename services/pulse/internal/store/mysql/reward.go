@@ -190,6 +190,22 @@ func (r *rewardRepository) FindGrantByID(ctx context.Context, grantID uint64) (*
 	return r.findGrantByID(ctx, grantID, false)
 }
 
+func (r *rewardRepository) FindGrantByPublicID(ctx context.Context, grantID string) (*ports.RewardGrant, error) {
+	if !validMySQLText(grantID, 64) {
+		return nil, errors.New("invalid reward grant public id")
+	}
+	var model rewardGrantModel
+	err := r.db.WithContext(ctx).Where("grant_id = ?", grantID).Take(&model).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ports.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find reward grant by public id: %w", err)
+	}
+	grant := rewardGrantFromModel(model)
+	return &grant, nil
+}
+
 func (r *rewardRepository) FindGrantByIDForUpdate(ctx context.Context, grantID uint64) (*ports.RewardGrant, error) {
 	return r.findGrantByID(ctx, grantID, true)
 }
@@ -328,7 +344,7 @@ func idempotencyFromModel(model idempotencyModel) ports.IdempotencyRecord {
 	return ports.IdempotencyRecord{ID: model.ID, Scope: model.Scope, Key: model.IdempotencyKey, PayloadHash: model.PayloadHash, ResponseStatus: model.ResponseStatus, ResponseJSON: model.ResponseJSON, ResourceType: model.ResourceType, ResourceID: model.ResourceID, ExpiresAt: model.ExpiresAt}
 }
 
-func (r *rewardRepository) FindOutboxByGrant(ctx context.Context, grantID uint64) (*ports.SettlementOutbox, error) {
+func (r *rewardRepository) FindByGrant(ctx context.Context, grantID uint64) (*ports.SettlementOutbox, error) {
 	if grantID == 0 {
 		return nil, errors.New("invalid settlement grant id")
 	}
@@ -384,6 +400,30 @@ func (r *rewardRepository) ClaimDue(ctx context.Context, now time.Time, limit in
 		result = append(result, settlementOutboxFromModel(*model))
 	}
 	return result, nil
+}
+
+func (r *rewardRepository) ClaimDead(ctx context.Context, rewardGrantID uint64, expectedAttempts uint32, now time.Time, leaseUntil time.Time) (ports.SettlementOutbox, error) {
+	if rewardGrantID == 0 || expectedAttempts == 0 || now.IsZero() || !leaseUntil.After(now) {
+		return ports.SettlementOutbox{}, errors.New("invalid dead settlement claim")
+	}
+	nextAttempts, err := nextSettlementAttempt(expectedAttempts)
+	if err != nil {
+		return ports.SettlementOutbox{}, err
+	}
+	result := r.db.WithContext(ctx).Model(&settlementOutboxModel{}).
+		Where("reward_grant_id = ? AND status = ? AND attempts = ?", rewardGrantID, "dead", expectedAttempts).
+		Updates(map[string]any{"status": "processing", "attempts": nextAttempts, "leased_until": leaseUntil})
+	if result.Error != nil {
+		return ports.SettlementOutbox{}, fmt.Errorf("claim dead settlement outbox: %w", result.Error)
+	}
+	if result.RowsAffected != 1 {
+		return ports.SettlementOutbox{}, ports.ErrConflict
+	}
+	found, err := r.FindByGrant(ctx, rewardGrantID)
+	if err != nil {
+		return ports.SettlementOutbox{}, err
+	}
+	return *found, nil
 }
 
 func nextSettlementAttempt(current uint32) (uint32, error) {

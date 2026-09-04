@@ -541,6 +541,8 @@ settlement_outbox
 
 Worker 再异步调用 new-api Benefit。Outbox 使用 `dead` 表示重试耗尽但仍可 Query/Reconcile 的不确定结果，使用 `conflict` 表示 payload 非法、指纹冲突、已撤销或来源不一致等终态完整性冲突；`conflict` 不得重新进入自动 Reconciliation，只能保留 Grant 与预算预占供人工审计处置。
 
+人工恢复使用 `reward-retry --grant-id <grant_id>` 精确选择一条 `dead` 记录。命令必须先 Query 原 `source_ref`：已到账则直接收敛，只有 `not_found` 才以 attempts fence 原子领取一次额外发送机会；attempts 不清零，`conflict` 永远不得人工重发。命令重复执行不能更换 source_ref，也不能覆盖已完成结果。
+
 ## 20. new-api Internal Benefit API
 
 新增内部接口：

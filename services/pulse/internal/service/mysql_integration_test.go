@@ -965,3 +965,46 @@ WHERE period_id = ? AND status IN ('pending', 'settled')`, periodID).Scan(&activ
 		t.Fatalf("active=%d grants=%d reserved=%d, want 10/1/10", activeAmount, grantCount, reservedAmount)
 	}
 }
+
+func TestMySQLManualDeadClaimUsesAttemptFence(t *testing.T) {
+	database, sqlDB := openMySQLIntegration(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	rewardGrantID := uint64(960000000 + time.Now().UnixNano()%1000000)
+	result, err := sqlDB.ExecContext(ctx, `
+INSERT INTO pulse_settlement_outbox (reward_grant_id, operation, payload_hash, payload_json, status, attempts, next_attempt_at, last_error)
+VALUES (?, 'grant', ?, JSON_OBJECT(), 'dead', 10, ?, 'retry exhausted')`,
+		rewardGrantID, fmt.Sprintf("%064d", 7), now)
+	if err != nil {
+		t.Fatalf("insert dead settlement outbox: %v", err)
+	}
+	insertedID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("read dead settlement outbox id: %v", err)
+	}
+	t.Cleanup(func() { _, _ = sqlDB.Exec(`DELETE FROM pulse_settlement_outbox WHERE id = ?`, insertedID) })
+
+	unit, err := mysqlstore.NewUnitOfWork(database)
+	if err != nil {
+		t.Fatalf("create unit of work: %v", err)
+	}
+	var claimed ports.SettlementOutbox
+	if err := unit.Do(ctx, func(repos ports.Repositories) error {
+		var claimErr error
+		claimed, claimErr = repos.Settlement.ClaimDead(ctx, rewardGrantID, 10, now, now.Add(time.Minute))
+		return claimErr
+	}); err != nil {
+		t.Fatalf("claim dead settlement: %v", err)
+	}
+	if claimed.Status != OutboxStatusProcessing || claimed.Attempts != 11 || claimed.LeasedUntil == nil {
+		t.Fatalf("claimed=%+v", claimed)
+	}
+	if err := unit.Do(ctx, func(repos ports.Repositories) error {
+		_, claimErr := repos.Settlement.ClaimDead(ctx, rewardGrantID, 10, now, now.Add(time.Minute))
+		return claimErr
+	}); !errors.Is(err, ports.ErrConflict) {
+		t.Fatalf("duplicate dead claim error=%v, want ErrConflict", err)
+	}
+}

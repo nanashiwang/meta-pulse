@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/nanashiwang/meta-pulse/internal/adapter/newapi"
@@ -51,7 +53,7 @@ func main() {
 			os.Exit(1)
 		}
 	case "reward-retry":
-		if err := runSettlement(); err != nil {
+		if err := runRewardRetry(os.Args[2:]); err != nil {
 			logger.Error("reward retry failed", "error", err)
 			os.Exit(1)
 		}
@@ -106,7 +108,24 @@ func runReconcile() error {
 	return err
 }
 
-func runSettlement() error {
+func parseRewardRetryArgs(args []string) (string, error) {
+	flags := flag.NewFlagSet("reward-retry", flag.ContinueOnError)
+	grantID := flags.String("grant-id", "", "public reward grant id/source_ref to retry")
+	if err := flags.Parse(args); err != nil {
+		return "", err
+	}
+	value := strings.TrimSpace(*grantID)
+	if value == "" {
+		return "", errors.New("--grant-id is required")
+	}
+	return value, nil
+}
+
+func runRewardRetry(args []string) error {
+	grantID, err := parseRewardRetryArgs(args)
+	if err != nil {
+		return err
+	}
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -133,7 +152,7 @@ func runSettlement() error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
-	report, err := settlement.ProcessBatch(ctx)
+	report, err := settlement.RetryDead(ctx, grantID)
 	encoded, encodeErr := json.MarshalIndent(report, "", "  ")
 	if encodeErr != nil {
 		return encodeErr
@@ -386,5 +405,5 @@ func runMigration(up bool) error {
 
 func usage() {
 	fmt.Println("Meta Pulse operator tool")
-	fmt.Println("commands: migrate-up | migrate-status | backfill | backtest | access-check | reconcile | ledger-check | period-close | reward-retry")
+	fmt.Println("commands: migrate-up | migrate-status | backfill | backtest | access-check | reconcile | ledger-check | period-close | reward-retry --grant-id <pg_...>")
 }

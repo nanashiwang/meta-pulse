@@ -208,7 +208,10 @@ func TestRewardRepositoryRejectsInvalidLookupIdentityBeforeQuery(t *testing.T) {
 	if _, err := repo.FindGrantByID(context.Background(), 0); err == nil {
 		t.Fatal("zero grant id was accepted")
 	}
-	if _, err := repo.FindOutboxByGrant(context.Background(), 0); err == nil {
+	if _, err := repo.FindGrantByPublicID(context.Background(), ""); err == nil {
+		t.Fatal("empty public grant id was accepted")
+	}
+	if _, err := repo.FindByGrant(context.Background(), 0); err == nil {
 		t.Fatal("zero outbox grant id was accepted")
 	}
 }
@@ -271,6 +274,29 @@ func TestIdempotencyRepositoryRejectsInvalidIdentityBeforeQuery(t *testing.T) {
 	for _, test := range cases {
 		if _, err := repo.GetOrCreateForUpdate(context.Background(), test.scope, test.key, test.hash); err == nil {
 			t.Fatalf("invalid identity accepted: scope=%q key=%q hash=%q", test.scope, test.key, test.hash)
+		}
+	}
+}
+
+func TestSettlementManualDeadClaimRejectsInvalidFence(t *testing.T) {
+	repo := &rewardRepository{}
+	now := time.Now()
+	cases := []struct {
+		grantID uint64
+		attempt uint32
+		now     time.Time
+		lease   time.Time
+	}{
+		{0, 1, now, now.Add(time.Minute)},
+		{1, 0, now, now.Add(time.Minute)},
+		{1, 1, time.Time{}, now.Add(time.Minute)},
+		{1, 1, now, now},
+		{1, 1, now, now.Add(-time.Minute)},
+		{1, math.MaxUint32, now, now.Add(time.Minute)},
+	}
+	for _, test := range cases {
+		if _, err := repo.ClaimDead(context.Background(), test.grantID, test.attempt, test.now, test.lease); err == nil {
+			t.Fatalf("invalid dead claim accepted: %+v", test)
 		}
 	}
 }

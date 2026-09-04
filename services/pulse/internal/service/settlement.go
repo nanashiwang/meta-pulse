@@ -30,6 +30,7 @@ const (
 var (
 	ErrInvalidSettlementPayload = errors.New("invalid settlement payload")
 	ErrSettlementConflict       = errors.New("settlement source conflict")
+	ErrRewardRetryNotDead       = errors.New("reward settlement is not dead")
 )
 
 type SettlementConfig struct {
@@ -47,6 +48,13 @@ type SettlementReport struct {
 	Retried   int `json:"retried"`
 	Dead      int `json:"dead"`
 	Failed    int `json:"failed"`
+}
+
+type RewardRetryReport struct {
+	GrantID          string `json:"grant_id"`
+	PreviousAttempts uint32 `json:"previous_attempts"`
+	Attempt          uint32 `json:"attempt"`
+	Outcome          string `json:"outcome"`
 }
 
 type SettlementService struct {
@@ -81,6 +89,101 @@ func NewSettlementService(unit ports.UnitOfWork, client ports.BenefitClient, cfg
 		cfg.Now = time.Now
 	}
 	return &SettlementService{unit: unit, client: client, cfg: cfg}, nil
+}
+
+// RetryDead performs one explicitly targeted recovery attempt. It always
+// queries the original source_ref before claiming the dead row and only sends
+// Grant again after new-api confirms not_found.
+func (s *SettlementService) RetryDead(ctx context.Context, grantID string) (RewardRetryReport, error) {
+	grantID = strings.TrimSpace(grantID)
+	report := RewardRetryReport{GrantID: grantID}
+	if !validDBText(grantID, 64) {
+		return report, errors.New("invalid reward grant id")
+	}
+
+	var grant *ports.RewardGrant
+	var outbox *ports.SettlementOutbox
+	if err := s.unit.Do(ctx, func(repos ports.Repositories) error {
+		if repos.Reward == nil || repos.Settlement == nil {
+			return errors.New("settlement repositories are not initialized")
+		}
+		foundGrant, err := repos.Reward.FindGrantByPublicID(ctx, grantID)
+		if err != nil {
+			return err
+		}
+		foundOutbox, err := repos.Settlement.FindByGrant(ctx, foundGrant.ID)
+		if err != nil {
+			return err
+		}
+		grant = foundGrant
+		outbox = foundOutbox
+		return nil
+	}); err != nil {
+		return report, err
+	}
+	report.PreviousAttempts = outbox.Attempts
+	report.Attempt = outbox.Attempts
+	if grant.Status == GrantStatusSettled && outbox.Status == OutboxStatusCompleted {
+		report.Outcome = OutboxStatusCompleted
+		return report, nil
+	}
+	if grant.Status != RewardStatusPending || outbox.Status != OutboxStatusDead {
+		return report, ErrRewardRetryNotDead
+	}
+	loadedGrant, _, err := s.loadSettlement(ctx, *outbox)
+	if err != nil {
+		report.Outcome, err = s.failPayload(ctx, *outbox, err)
+		return report, err
+	}
+
+	state, err := s.client.Query(ctx, loadedGrant.SourceRef)
+	if err != nil {
+		report.Outcome = "query_failed"
+		return report, err
+	}
+	if !sameSourceRef(state.SourceRef, loadedGrant.SourceRef) {
+		report.Outcome, err = s.failPayload(ctx, *outbox, fmt.Errorf("%w: query returned source_ref %q", ErrSettlementConflict, state.SourceRef))
+		return report, err
+	}
+	switch state.Status {
+	case ports.BenefitStatusRolledBack:
+		report.Outcome, err = s.failPayload(ctx, *outbox, fmt.Errorf("%w: benefit was rolled back", ErrSettlementConflict))
+		return report, err
+	case ports.BenefitStatusApplied, ports.BenefitStatusAlreadyApplied:
+		if !state.Applied || state.RolledBack {
+			report.Outcome, err = s.failPayload(ctx, *outbox, fmt.Errorf("%w: inconsistent applied benefit state", ErrSettlementConflict))
+			return report, err
+		}
+		if err := s.complete(ctx, *outbox, loadedGrant); err != nil {
+			return report, err
+		}
+		report.Outcome = OutboxStatusCompleted
+		return report, nil
+	case ports.BenefitStatusNotFound:
+		if state.Applied || state.RolledBack {
+			report.Outcome, err = s.failPayload(ctx, *outbox, fmt.Errorf("%w: inconsistent not_found benefit state", ErrSettlementConflict))
+			return report, err
+		}
+	default:
+		report.Outcome, err = s.failPayload(ctx, *outbox, fmt.Errorf("%w: unexpected benefit state %q", ErrSettlementConflict, state.Status))
+		return report, err
+	}
+
+	now := s.cfg.Now()
+	var claimed ports.SettlementOutbox
+	if err := s.unit.Do(ctx, func(repos ports.Repositories) error {
+		if repos.Settlement == nil {
+			return errors.New("settlement repository is not initialized")
+		}
+		var claimErr error
+		claimed, claimErr = repos.Settlement.ClaimDead(ctx, loadedGrant.ID, outbox.Attempts, now, now.Add(s.cfg.Lease))
+		return claimErr
+	}); err != nil {
+		return report, err
+	}
+	report.Attempt = claimed.Attempts
+	report.Outcome, err = s.processOne(ctx, claimed)
+	return report, err
 }
 
 func (s *SettlementService) ProcessBatch(ctx context.Context) (SettlementReport, error) {

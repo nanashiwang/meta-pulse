@@ -24,6 +24,16 @@ func (u settlementUnit) Do(ctx context.Context, fn func(ports.Repositories) erro
 
 type memorySettlementStore struct{ outboxes []ports.SettlementOutbox }
 
+func (m *memorySettlementStore) FindByGrant(_ context.Context, rewardGrantID uint64) (*ports.SettlementOutbox, error) {
+	for _, outbox := range m.outboxes {
+		if outbox.RewardGrantID == rewardGrantID {
+			copy := outbox
+			return &copy, nil
+		}
+	}
+	return nil, ports.ErrNotFound
+}
+
 func (m *memorySettlementStore) ClaimDue(_ context.Context, now time.Time, limit int, leaseUntil time.Time) ([]ports.SettlementOutbox, error) {
 	result := make([]ports.SettlementOutbox, 0, limit)
 	for i := range m.outboxes {
@@ -38,6 +48,20 @@ func (m *memorySettlementStore) ClaimDue(_ context.Context, now time.Time, limit
 	}
 	return result, nil
 }
+func (m *memorySettlementStore) ClaimDead(_ context.Context, rewardGrantID uint64, expectedAttempts uint32, _ time.Time, leaseUntil time.Time) (ports.SettlementOutbox, error) {
+	for i := range m.outboxes {
+		outbox := &m.outboxes[i]
+		if outbox.RewardGrantID != rewardGrantID || outbox.Status != OutboxStatusDead || outbox.Attempts != expectedAttempts {
+			continue
+		}
+		outbox.Status = OutboxStatusProcessing
+		outbox.Attempts++
+		outbox.LeasedUntil = &leaseUntil
+		return *outbox, nil
+	}
+	return ports.SettlementOutbox{}, ports.ErrConflict
+}
+
 func (m *memorySettlementStore) ListForReconciliation(_ context.Context, limit int) ([]ports.SettlementOutbox, error) {
 	result := make([]ports.SettlementOutbox, 0, limit)
 	for _, outbox := range m.outboxes {
@@ -74,19 +98,23 @@ type fakeBenefitClient struct {
 	lastGrant     ports.BenefitGrantRequest
 	queryRef      string
 	rollbackRef   string
+	callOrder     []string
 }
 
 func (f *fakeBenefitClient) Grant(_ context.Context, request ports.BenefitGrantRequest) (ports.BenefitGrantResponse, error) {
+	f.callOrder = append(f.callOrder, "grant")
 	f.grantCalls++
 	f.lastGrant = request
 	return f.grantResponse, f.grantErr
 }
 func (f *fakeBenefitClient) Query(_ context.Context, sourceRef string) (ports.BenefitState, error) {
+	f.callOrder = append(f.callOrder, "query")
 	f.queryCalls++
 	f.queryRef = sourceRef
 	return f.queryState, f.queryErr
 }
 func (f *fakeBenefitClient) Rollback(_ context.Context, sourceRef, _ string) (ports.BenefitState, error) {
+	f.callOrder = append(f.callOrder, "rollback")
 	f.rollbackCalls++
 	f.rollbackRef = sourceRef
 	return f.rollbackState, f.rollbackErr
@@ -334,5 +362,93 @@ func TestSettlementRejectsUnexpectedGrantState(t *testing.T) {
 	budget := rewards.budgets[budgetKey(4, ActionBudgetType)]
 	if budget.ReservedAmount != 10 || budget.SettledAmount != 0 || rewards.grants[0].Status != GrantStatusReversed {
 		t.Fatalf("state changed grant=%+v budget=%+v", rewards.grants[0], budget)
+	}
+}
+
+func TestRewardRetryQueriesBeforeOneTargetedDeadAttempt(t *testing.T) {
+	client := &fakeBenefitClient{
+		queryState:    ports.BenefitState{Status: ports.BenefitStatusNotFound, SourceRef: "pg_test"},
+		grantResponse: ports.BenefitGrantResponse{Applied: true, Status: ports.BenefitStatusApplied, SourceRef: "pg_test"},
+	}
+	service, rewards, outboxes, _ := settlementFixture(t, client)
+	outboxes.outboxes[0].Status = OutboxStatusDead
+	outboxes.outboxes[0].Attempts = 3
+	outboxes.outboxes[0].LastError = "retry exhausted"
+
+	report, err := service.RetryDead(context.Background(), "pg_test")
+	if err != nil || report.Outcome != OutboxStatusCompleted || report.PreviousAttempts != 3 || report.Attempt != 4 {
+		t.Fatalf("report=%+v err=%v", report, err)
+	}
+	if len(client.callOrder) != 2 || client.callOrder[0] != "query" || client.callOrder[1] != "grant" {
+		t.Fatalf("manual retry order=%v", client.callOrder)
+	}
+	if outboxes.outboxes[0].Status != OutboxStatusCompleted || outboxes.outboxes[0].Attempts != 4 || rewards.grants[0].Status != GrantStatusSettled {
+		t.Fatalf("outbox=%+v grant=%+v", outboxes.outboxes[0], rewards.grants[0])
+	}
+}
+
+func TestRewardRetrySettlesDeadRowFromQueryWithoutGrant(t *testing.T) {
+	client := &fakeBenefitClient{queryState: ports.BenefitState{Applied: true, Status: ports.BenefitStatusApplied, SourceRef: "pg_test"}}
+	service, rewards, outboxes, _ := settlementFixture(t, client)
+	outboxes.outboxes[0].Status = OutboxStatusDead
+	outboxes.outboxes[0].Attempts = 3
+	outboxes.outboxes[0].LastError = "response lost"
+
+	report, err := service.RetryDead(context.Background(), "pg_test")
+	if err != nil || report.Outcome != OutboxStatusCompleted || client.queryCalls != 1 || client.grantCalls != 0 {
+		t.Fatalf("report=%+v err=%v client=%+v", report, err, client)
+	}
+	if outboxes.outboxes[0].Attempts != 3 || rewards.grants[0].Status != GrantStatusSettled {
+		t.Fatalf("outbox=%+v grant=%+v", outboxes.outboxes[0], rewards.grants[0])
+	}
+	// Lost CLI output is safe to retry and does not call new-api again.
+	second, err := service.RetryDead(context.Background(), "pg_test")
+	if err != nil || second.Outcome != OutboxStatusCompleted || client.queryCalls != 1 || client.grantCalls != 0 {
+		t.Fatalf("second=%+v err=%v client=%+v", second, err, client)
+	}
+}
+
+func TestRewardRetryLeavesDeadRowUntouchedWhenQueryFails(t *testing.T) {
+	client := &fakeBenefitClient{queryErr: errors.New("query unavailable")}
+	service, rewards, outboxes, _ := settlementFixture(t, client)
+	outboxes.outboxes[0].Status = OutboxStatusDead
+	outboxes.outboxes[0].Attempts = 3
+	outboxes.outboxes[0].LastError = "retry exhausted"
+
+	report, err := service.RetryDead(context.Background(), "pg_test")
+	if err == nil || report.Outcome != "query_failed" || client.grantCalls != 0 {
+		t.Fatalf("report=%+v err=%v client=%+v", report, err, client)
+	}
+	if outboxes.outboxes[0].Status != OutboxStatusDead || outboxes.outboxes[0].Attempts != 3 || rewards.grants[0].Status != RewardStatusPending {
+		t.Fatalf("outbox=%+v grant=%+v", outboxes.outboxes[0], rewards.grants[0])
+	}
+}
+
+func TestRewardRetryRefusesTerminalConflict(t *testing.T) {
+	client := &fakeBenefitClient{}
+	service, _, outboxes, _ := settlementFixture(t, client)
+	outboxes.outboxes[0].Status = OutboxStatusConflict
+	outboxes.outboxes[0].Attempts = 3
+	outboxes.outboxes[0].LastError = "payload conflict"
+
+	_, err := service.RetryDead(context.Background(), "pg_test")
+	if !errors.Is(err, ErrRewardRetryNotDead) || client.queryCalls != 0 || client.grantCalls != 0 {
+		t.Fatalf("err=%v client=%+v", err, client)
+	}
+}
+
+func TestRewardRetryTurnsMismatchedQueryIntoConflict(t *testing.T) {
+	client := &fakeBenefitClient{queryState: ports.BenefitState{Status: ports.BenefitStatusNotFound, SourceRef: "other-grant"}}
+	service, rewards, outboxes, _ := settlementFixture(t, client)
+	outboxes.outboxes[0].Status = OutboxStatusDead
+	outboxes.outboxes[0].Attempts = 3
+	outboxes.outboxes[0].LastError = "retry exhausted"
+
+	report, err := service.RetryDead(context.Background(), "pg_test")
+	if err != nil || report.Outcome != OutboxStatusConflict || client.grantCalls != 0 {
+		t.Fatalf("report=%+v err=%v client=%+v", report, err, client)
+	}
+	if outboxes.outboxes[0].Status != OutboxStatusConflict || rewards.grants[0].Status != RewardStatusPending {
+		t.Fatalf("outbox=%+v grant=%+v", outboxes.outboxes[0], rewards.grants[0])
 	}
 }

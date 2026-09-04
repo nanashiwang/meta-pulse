@@ -63,6 +63,15 @@ func (m *memoryRewardStore) FindGrantByID(_ context.Context, grantID uint64) (*p
 	}
 	return nil, ports.ErrNotFound
 }
+func (m *memoryRewardStore) FindGrantByPublicID(_ context.Context, grantID string) (*ports.RewardGrant, error) {
+	for _, grant := range m.grants {
+		if grant.GrantID == grantID {
+			copy := grant
+			return &copy, nil
+		}
+	}
+	return nil, ports.ErrNotFound
+}
 func (m *memoryRewardStore) FindGrantByIDForUpdate(ctx context.Context, grantID uint64) (*ports.RewardGrant, error) {
 	return m.FindGrantByID(ctx, grantID)
 }

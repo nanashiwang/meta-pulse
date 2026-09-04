@@ -80,6 +80,7 @@ type RewardRepository interface {
 	SaveBudget(ctx context.Context, budget RewardBudget) error
 	FindGrantByAction(ctx context.Context, periodID, userID uint64, actionID string) (*RewardGrant, error)
 	FindGrantByID(ctx context.Context, grantID uint64) (*RewardGrant, error)
+	FindGrantByPublicID(ctx context.Context, grantID string) (*RewardGrant, error)
 	FindGrantByIDForUpdate(ctx context.Context, grantID uint64) (*RewardGrant, error)
 	TransitionGrantStatus(ctx context.Context, grantID uint64, fromStatus, toStatus string, at time.Time) error
 	CreateGrant(ctx context.Context, grant RewardGrant) (RewardGrant, error)
@@ -92,7 +93,9 @@ type IdempotencyRepository interface {
 }
 
 type SettlementRepository interface {
+	FindByGrant(ctx context.Context, rewardGrantID uint64) (*SettlementOutbox, error)
 	ClaimDue(ctx context.Context, now time.Time, limit int, leaseUntil time.Time) ([]SettlementOutbox, error)
+	ClaimDead(ctx context.Context, rewardGrantID uint64, expectedAttempts uint32, now time.Time, leaseUntil time.Time) (SettlementOutbox, error)
 	ListForReconciliation(ctx context.Context, limit int) ([]SettlementOutbox, error)
 	SaveOutbox(ctx context.Context, outbox SettlementOutbox) error
 }
