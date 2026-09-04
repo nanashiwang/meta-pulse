@@ -61,7 +61,7 @@ Log.user_id    = 用户 ID
 Log.quota      = 用户侧计费额度
 ```
 
-Pulse 使用独立只读账号读取 `LOG_SQL_DSN` 指向的日志库。`quota` 是第一阶段的 Eligible Paid Usage；当前 Provider 成本不是日志事实源，已决策在成本快照上线前仅使用“用户收费 × 配置倍率”的估算值，并在报告中明确标注，不宣称真实毛利。
+Pulse 使用独立只读账号读取 `NEWAPI_LOG_DSN` 指向的日志库。`quota` 是第一阶段的 Eligible Paid Usage；当前 Provider 成本不是日志事实源，已决策在成本快照上线前仅使用“用户收费 × 配置倍率”的估算值，并在报告中明确标注，不宣称真实毛利。
 
 关联契约已统一：普通消费和异步任务退款/差额结算使用 `logs.request_id`；任务日志额外保留 `logs.other.task_id`，差额日志保留 `pre_consumed_quota`、`actual_quota`、`reason`；明确的历史 `origin_log_id` 等字段优先。缺少稳定关联时进入人工复核，不猜测因果。
 
@@ -368,7 +368,7 @@ type UnitOfWork interface {
 以下项目已有代码、测试或验收脚本，但必须接入真实部署配置后才能勾选完成：
 
 - new-api `LOG_DB` 只读账号、Pulse 独立数据库及无主库写权限；
-- 真实 LOG_DB 回放、参数定标和 Provider 成本快照决策；
+- 真实 LOG_DB 回放与参数定标；Provider 成本快照的正式接入仍待 new-api 变更；
 - Answer 真实 schema、SSO、等级降级和跨实例 Nonce；
 - new-api Benefit 真实到账、重放 100 次、timeout Query、rollback 及密钥轮换演练；
 - 生产环境的 SSO/Benefit 审计、限流压测、真实域名和跨实例 Redis nonce 演练。

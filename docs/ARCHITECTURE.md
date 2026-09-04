@@ -867,7 +867,7 @@ Redis
 建议：
 
 - Pulse DB 用户：Pulse DB read/write；
-- NEWAPI_LOG_DSN 用户：new-api LOG_DB read only；
+- NEWAPI_LOG_DSN 用户：new-api LOG_DB 仅授予 `logs` 表的 SELECT（及必要的 USAGE/SHOW VIEW），由 `access-check` fail closed 验收；
 - Internal Benefit API：内网/localhost + HMAC；
 - Pulse 原始用户 API：仅内网，由 new-api Signed BFF 代理；
 - 对外 `/api/pulse/*`：由 new-api BFF 接管并清除浏览器提交的 Pulse 服务签名头，不把浏览器请求直接转发为 Pulse 原始请求；
