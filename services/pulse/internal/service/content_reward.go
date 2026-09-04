@@ -72,11 +72,14 @@ func NewContentAwardService(unit ports.UnitOfWork, cfg ContentAwardConfig, rollb
 	if cfg.BudgetType == "" {
 		cfg.BudgetType = "content_reward"
 	}
+	if cfg.BudgetType != "content_reward" {
+		return nil, errors.New("content reward budget type must be content_reward")
+	}
 	cfg.ConfigVersion = strings.TrimSpace(cfg.ConfigVersion)
 	if cfg.ConfigVersion == "" {
 		cfg.ConfigVersion = "content-v1"
 	}
-	if !validDBText(cfg.BudgetType, 64) || !validDBText(cfg.ConfigVersion, 64) {
+	if !validDBText(cfg.ConfigVersion, 64) {
 		return nil, errors.New("content reward configuration value is too long")
 	}
 	if cfg.Now == nil {
@@ -162,7 +165,8 @@ func (s *ContentAwardService) ReviewAndAward(ctx context.Context, command Conten
 		award := ports.ContentAward{CandidateID: candidate.ID, AwardVersion: command.AwardVersion, ActionID: actionID, PeriodID: periodID, UserID: candidate.AuthorUserID, Amount: command.Amount, RewardType: command.RewardType, BudgetType: s.cfg.BudgetType, Status: ports.ContentAwardPending, Reason: command.Reason, CreatedAt: now}
 		if lifetimeContribution < s.cfg.MinPaidContributionMilli {
 			award.Status = ports.ContentAwardIneligible
-			if _, err := repos.Content.CreateAward(ctx, award); err != nil {
+			award, err = repos.Content.CreateAward(ctx, award)
+			if err != nil {
 				return err
 			}
 			result = ContentAwardResult{Award: award, Eligibility: award.Status}
@@ -187,7 +191,8 @@ func (s *ContentAwardService) ReviewAndAward(ctx context.Context, command Conten
 		}
 		if userTotal > s.cfg.MaxUserPeriodAmount-command.Amount || dailyTotal > s.cfg.MaxDailyAmount-command.Amount {
 			award.Status = ports.ContentAwardLimited
-			if _, err := repos.Content.CreateAward(ctx, award); err != nil {
+			award, err = repos.Content.CreateAward(ctx, award)
+			if err != nil {
 				return err
 			}
 			result = ContentAwardResult{Award: award, Eligibility: award.Status}
@@ -224,7 +229,8 @@ func (s *ContentAwardService) ReviewAndAward(ctx context.Context, command Conten
 			return err
 		}
 		award.GrantID = persistedGrant.GrantID
-		if _, err := repos.Content.CreateAward(ctx, award); err != nil {
+		award, err = repos.Content.CreateAward(ctx, award)
+		if err != nil {
 			return err
 		}
 		result = ContentAwardResult{Award: award, Grant: &persistedGrant, Eligibility: "eligible"}

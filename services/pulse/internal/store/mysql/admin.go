@@ -20,6 +20,7 @@ const (
 	maxAuditJSONBytes         = 64 << 10
 	maxMetricDimensionsBytes  = 64 << 10
 	emptyMetricDimensionsHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+	contentRewardBudgetType   = "content_reward"
 )
 
 type auditLogModel struct {
@@ -441,6 +442,9 @@ func (r *contentRepository) FindAwardByActionForUpdate(ctx context.Context, acti
 }
 
 func (r *contentRepository) findAwardByAction(ctx context.Context, actionID string, lock bool) (*ports.ContentAward, error) {
+	if !validMySQLText(actionID, 191) {
+		return nil, fmt.Errorf("%w: invalid content award action id", ports.ErrConflict)
+	}
 	var model contentAwardModel
 	query := r.db.WithContext(ctx)
 	if lock {
@@ -454,14 +458,17 @@ func (r *contentRepository) findAwardByAction(ctx context.Context, actionID stri
 		return nil, fmt.Errorf("find content award: %w", err)
 	}
 	award := contentAwardFromModel(model)
+	if err := validatePersistedContentAward(award); err != nil {
+		return nil, err
+	}
 	return &award, nil
 }
 
 func (r *contentRepository) CreateAward(ctx context.Context, award ports.ContentAward) (ports.ContentAward, error) {
-	if award.CandidateID == 0 || award.AwardVersion == 0 || award.ActionID == "" || award.PeriodID == 0 || award.UserID == 0 || award.Amount < 0 || award.RewardType == "" || award.BudgetType == "" || award.Status == "" || award.Reason == "" {
-		return ports.ContentAward{}, errors.New("invalid content award")
+	if err := validateContentAwardCreate(award); err != nil {
+		return ports.ContentAward{}, err
 	}
-	model := contentAwardModel{ID: award.ID, CandidateID: award.CandidateID, AwardVersion: award.AwardVersion, ActionID: award.ActionID, PeriodID: award.PeriodID, UserID: award.UserID, Amount: award.Amount, RewardType: award.RewardType, BudgetType: award.BudgetType, GrantID: award.GrantID, Status: award.Status, Reason: award.Reason, CreatedAt: award.CreatedAt}
+	model := contentAwardModel{CandidateID: award.CandidateID, AwardVersion: award.AwardVersion, ActionID: award.ActionID, PeriodID: award.PeriodID, UserID: award.UserID, Amount: award.Amount, RewardType: award.RewardType, BudgetType: award.BudgetType, GrantID: award.GrantID, Status: award.Status, Reason: award.Reason, CreatedAt: award.CreatedAt}
 	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
 			return ports.ContentAward{}, ports.ErrConflict
@@ -469,18 +476,57 @@ func (r *contentRepository) CreateAward(ctx context.Context, award ports.Content
 		return ports.ContentAward{}, fmt.Errorf("create content award: %w", err)
 	}
 	award.ID = model.ID
-	if award.CreatedAt.IsZero() {
-		award.CreatedAt = model.CreatedAt
-	}
 	return award, nil
 }
 
+func validateContentAwardCreate(award ports.ContentAward) error {
+	if award.ID != 0 || award.CandidateID == 0 || award.AwardVersion == 0 || award.PeriodID == 0 || award.UserID == 0 ||
+		award.Amount <= 0 || award.BudgetType != contentRewardBudgetType || !validMySQLText(award.ActionID, 191) ||
+		!validMySQLText(award.RewardType, 64) || !validMySQLText(award.Reason, 500) || !validMySQLTime(award.CreatedAt) {
+		return fmt.Errorf("%w: invalid content award create state", ports.ErrConflict)
+	}
+	switch award.Status {
+	case ports.ContentAwardPending:
+		if !validMySQLText(award.GrantID, 64) {
+			return fmt.Errorf("%w: pending content award requires grant", ports.ErrConflict)
+		}
+	case ports.ContentAwardIneligible, ports.ContentAwardLimited:
+		if award.GrantID != "" {
+			return fmt.Errorf("%w: ineligible content award cannot have grant", ports.ErrConflict)
+		}
+	default:
+		return fmt.Errorf("%w: invalid initial content award status", ports.ErrConflict)
+	}
+	return nil
+}
+
+func validatePersistedContentAward(award ports.ContentAward) error {
+	if award.ID == 0 || award.CandidateID == 0 || award.AwardVersion == 0 || award.PeriodID == 0 || award.UserID == 0 ||
+		award.Amount <= 0 || award.BudgetType != contentRewardBudgetType || !validMySQLText(award.ActionID, 191) ||
+		!validMySQLText(award.RewardType, 64) || !validMySQLText(award.Reason, 500) || !validMySQLTime(award.CreatedAt) {
+		return fmt.Errorf("%w: invalid persisted content award", ports.ErrConflict)
+	}
+	switch award.Status {
+	case ports.ContentAwardPending, ports.ContentAwardSettled, ports.ContentAwardReversed:
+		if !validMySQLText(award.GrantID, 64) {
+			return fmt.Errorf("%w: content award grant binding is missing", ports.ErrConflict)
+		}
+	case ports.ContentAwardIneligible, ports.ContentAwardLimited:
+		if award.GrantID != "" {
+			return fmt.Errorf("%w: non-granted content award has grant binding", ports.ErrConflict)
+		}
+	default:
+		return fmt.Errorf("%w: invalid persisted content award status", ports.ErrConflict)
+	}
+	return nil
+}
+
 func (r *contentRepository) TransitionAwardStatus(ctx context.Context, actionID, fromStatus, toStatus string) error {
-	if actionID == "" || fromStatus != ports.ContentAwardSettled || toStatus != ports.ContentAwardReversed {
-		return errors.New("invalid content award status transition")
+	if !validMySQLText(actionID, 191) || fromStatus != ports.ContentAwardSettled || toStatus != ports.ContentAwardReversed {
+		return fmt.Errorf("%w: invalid content award status transition", ports.ErrConflict)
 	}
 	result := r.db.WithContext(ctx).Model(&contentAwardModel{}).
-		Where("action_id = ? AND status = ?", actionID, fromStatus).
+		Where("action_id = ? AND status = ? AND budget_type = ? AND grant_id <> ''", actionID, fromStatus, contentRewardBudgetType).
 		Updates(map[string]any{"status": toStatus})
 	if result.Error != nil {
 		return fmt.Errorf("transition content award status: %w", result.Error)
@@ -492,21 +538,28 @@ func (r *contentRepository) TransitionAwardStatus(ctx context.Context, actionID,
 }
 
 func (r *contentRepository) MarkAwardSettledByGrantID(ctx context.Context, grantID string) error {
-	if grantID == "" {
-		return errors.New("invalid content grant id")
+	if !validMySQLText(grantID, 64) {
+		return fmt.Errorf("%w: invalid content grant id", ports.ErrConflict)
 	}
 	// A loyalty grant has no content award, and a repeated settlement may
 	// already have moved this row. Both cases are safe no-ops. Only pending
-	// awards can transition to settled; reversed awards must never be revived.
-	if err := r.db.WithContext(ctx).Model(&contentAwardModel{}).Where("grant_id = ? AND status = ?", grantID, ports.ContentAwardPending).Updates(map[string]any{"status": ports.ContentAwardSettled}).Error; err != nil {
-		return fmt.Errorf("mark content award settled: %w", err)
+	// content-budget awards can transition to settled; reversed awards must
+	// never be revived.
+	result := r.db.WithContext(ctx).Model(&contentAwardModel{}).
+		Where("grant_id = ? AND status = ? AND budget_type = ?", grantID, ports.ContentAwardPending, contentRewardBudgetType).
+		Updates(map[string]any{"status": ports.ContentAwardSettled})
+	if result.Error != nil {
+		return fmt.Errorf("mark content award settled: %w", result.Error)
+	}
+	if result.RowsAffected > 1 {
+		return fmt.Errorf("%w: grant is bound to multiple content awards", ports.ErrConflict)
 	}
 	return nil
 }
 
 func (r *contentRepository) LockAwardLimits(ctx context.Context, userID, periodID uint64, day time.Time) error {
-	if userID == 0 || periodID == 0 || day.IsZero() {
-		return errors.New("invalid content award limit scope")
+	if userID == 0 || periodID == 0 || !validMySQLTime(day) {
+		return fmt.Errorf("%w: invalid content award limit scope", ports.ErrConflict)
 	}
 	// Content awards are manually reviewed and low throughput. One seeded row
 	// serializes all cap checks, avoiding dynamic-row insert/gap-lock deadlocks
@@ -519,26 +572,38 @@ func (r *contentRepository) LockAwardLimits(ctx context.Context, userID, periodI
 }
 
 func (r *contentRepository) SumUserActiveAwards(ctx context.Context, userID, periodID uint64) (int64, error) {
+	if userID == 0 || periodID == 0 {
+		return 0, fmt.Errorf("%w: invalid user content award scope", ports.ErrConflict)
+	}
 	var raw string
-	if err := r.db.WithContext(ctx).Model(&contentAwardModel{}).Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ? AND period_id = ? AND status IN ?", userID, periodID, []string{ports.ContentAwardPending, ports.ContentAwardSettled}).Select("COALESCE(SUM(amount), 0)").Row().Scan(&raw); err != nil {
+	if err := r.db.WithContext(ctx).Model(&contentAwardModel{}).Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ? AND period_id = ? AND budget_type = ? AND status IN ?", userID, periodID, contentRewardBudgetType, []string{ports.ContentAwardPending, ports.ContentAwardSettled}).Select("COALESCE(SUM(amount), 0)").Row().Scan(&raw); err != nil {
 		return 0, fmt.Errorf("sum user content awards: %w", err)
 	}
 	total, err := parseAggregateInt64(raw)
 	if err != nil {
 		return 0, fmt.Errorf("sum user content awards: %w", err)
+	}
+	if total < 0 {
+		return 0, fmt.Errorf("%w: negative user content award total", ports.ErrConflict)
 	}
 	return total, nil
 }
 
 func (r *contentRepository) SumDailyActiveAwards(ctx context.Context, day time.Time) (int64, error) {
+	if !validMySQLTime(day) {
+		return 0, fmt.Errorf("%w: invalid daily content award scope", ports.ErrConflict)
+	}
 	start, end := contentBusinessDayBounds(day)
 	var raw string
-	if err := r.db.WithContext(ctx).Model(&contentAwardModel{}).Clauses(clause.Locking{Strength: "UPDATE"}).Where("created_at >= ? AND created_at < ? AND status IN ?", start, end, []string{ports.ContentAwardPending, ports.ContentAwardSettled}).Select("COALESCE(SUM(amount), 0)").Row().Scan(&raw); err != nil {
+	if err := r.db.WithContext(ctx).Model(&contentAwardModel{}).Clauses(clause.Locking{Strength: "UPDATE"}).Where("created_at >= ? AND created_at < ? AND budget_type = ? AND status IN ?", start, end, contentRewardBudgetType, []string{ports.ContentAwardPending, ports.ContentAwardSettled}).Select("COALESCE(SUM(amount), 0)").Row().Scan(&raw); err != nil {
 		return 0, fmt.Errorf("sum daily content awards: %w", err)
 	}
 	total, err := parseAggregateInt64(raw)
 	if err != nil {
 		return 0, fmt.Errorf("sum daily content awards: %w", err)
+	}
+	if total < 0 {
+		return 0, fmt.Errorf("%w: negative daily content award total", ports.ErrConflict)
 	}
 	return total, nil
 }

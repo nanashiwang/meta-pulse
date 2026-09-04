@@ -170,7 +170,7 @@ func TestContentAwardHasFourGatesAndStableIdempotency(t *testing.T) {
 			t.Fatalf("replay %d: %v", i, err)
 		}
 	}
-	if first.Grant == nil || first.Award.ActionID != "content_award:question:42:1" || len(content.awards) != 1 || len(rewards.grants) != 1 || len(rewards.outboxes) != 1 || len(audit.logs) != 1 {
+	if first.Grant == nil || first.Award.ID == 0 || first.Award.ActionID != "content_award:question:42:1" || len(content.awards) != 1 || len(rewards.grants) != 1 || len(rewards.outboxes) != 1 || len(audit.logs) != 1 {
 		t.Fatalf("result=%+v awards=%d grants=%d outboxes=%d audits=%d", first, len(content.awards), len(rewards.grants), len(rewards.outboxes), len(audit.logs))
 	}
 	if len(rewardsStorePending(rewards)) != 1 || rewards.budgets[budgetKey(4, "content_reward")].ReservedAmount != 10 {
@@ -197,7 +197,7 @@ func rewardsStorePending(rewards *memoryRewardStore) []ports.RewardGrant {
 func TestContentAwardPaidThresholdProducesHonorOnlyRecord(t *testing.T) {
 	s, _, content, rewards, audit := newContentAwardFixture(t, 999)
 	result, err := s.ReviewAndAward(context.Background(), ContentAwardCommand{CandidateID: 1, AwardVersion: 1, RewardType: "quota", Amount: 10, Reason: "优质内容", ActorType: "admin", ActorID: "op-1", RequestID: "review-1"})
-	if err != nil || result.Eligibility != ports.ContentAwardIneligible || len(rewards.grants) != 0 || len(rewards.outboxes) != 0 || content.awards[result.Award.ActionID].Status != ports.ContentAwardIneligible || len(audit.logs) != 1 {
+	if err != nil || result.Award.ID == 0 || result.Eligibility != ports.ContentAwardIneligible || len(rewards.grants) != 0 || len(rewards.outboxes) != 0 || content.awards[result.Award.ActionID].Status != ports.ContentAwardIneligible || len(audit.logs) != 1 {
 		t.Fatalf("result=%+v err=%v awards=%+v audits=%d", result, err, content.awards, len(audit.logs))
 	}
 }
@@ -206,7 +206,7 @@ func TestContentAwardUserAndDailyCapsLimitWithoutGrant(t *testing.T) {
 	s, _, content, rewards, _ := newContentAwardFixture(t, 1000)
 	content.awards["existing"] = ports.ContentAward{ActionID: "existing", UserID: 9, PeriodID: 4, Amount: 45, Status: ports.ContentAwardPending}
 	result, err := s.ReviewAndAward(context.Background(), ContentAwardCommand{CandidateID: 1, AwardVersion: 1, RewardType: "quota", Amount: 10, Reason: "超额测试", ActorType: "admin", ActorID: "op-1", RequestID: "review-1"})
-	if err != nil || result.Eligibility != ports.ContentAwardLimited || len(rewards.grants) != 0 {
+	if err != nil || result.Award.ID == 0 || result.Eligibility != ports.ContentAwardLimited || len(rewards.grants) != 0 {
 		t.Fatalf("result=%+v err=%v grants=%d", result, err, len(rewards.grants))
 	}
 }
@@ -391,5 +391,25 @@ func TestContentAwardKeepsLongReviewReasonOutOfGrantRow(t *testing.T) {
 	}
 	if result.Award.Reason != reason || result.Grant == nil || result.Grant.Reason != "content reward" || rewards.grants[0].Reason != "content reward" || audit.logs[0].Reason != reason {
 		t.Fatalf("result=%+v grant=%+v audit=%+v", result, rewards.grants[0], audit.logs[0])
+	}
+}
+
+func TestContentAwardConfigurationFixesDedicatedBudget(t *testing.T) {
+	unit := contentAwardUnit{}
+	base := ContentAwardConfig{MinPaidContributionMilli: 0, MaxUserPeriodAmount: 1, MaxDailyAmount: 1}
+	service, err := NewContentAwardService(unit, base)
+	if err != nil {
+		t.Fatalf("default content budget rejected: %v", err)
+	}
+	if service.cfg.BudgetType != "content_reward" {
+		t.Fatalf("default budget type=%q", service.cfg.BudgetType)
+	}
+	base.BudgetType = "loyalty"
+	if _, err := NewContentAwardService(unit, base); err == nil {
+		t.Fatal("non-content reward budget type was accepted")
+	}
+	base.BudgetType = " content_reward "
+	if _, err := NewContentAwardService(unit, base); err != nil {
+		t.Fatalf("trimmed content reward budget rejected: %v", err)
 	}
 }

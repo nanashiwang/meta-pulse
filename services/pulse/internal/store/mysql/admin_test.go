@@ -276,3 +276,91 @@ func TestContentCandidateQueriesValidateIdentityBeforeDatabase(t *testing.T) {
 		t.Fatal("zero candidate id accepted")
 	}
 }
+
+func TestContentAwardCreateValidatesBudgetGrantAndInitialStatus(t *testing.T) {
+	now := time.Now()
+	valid := ports.ContentAward{
+		CandidateID: 1, AwardVersion: 1, ActionID: "content_award:question:42:1",
+		PeriodID: 2, UserID: 3, Amount: 10, RewardType: "quota",
+		BudgetType: contentRewardBudgetType, GrantID: "pg_content_1",
+		Status: ports.ContentAwardPending, Reason: "quality content", CreatedAt: now,
+	}
+	if err := validateContentAwardCreate(valid); err != nil {
+		t.Fatalf("valid content award rejected: %v", err)
+	}
+	for _, status := range []string{ports.ContentAwardIneligible, ports.ContentAwardLimited} {
+		withoutGrant := valid
+		withoutGrant.Status = status
+		withoutGrant.GrantID = ""
+		if err := validateContentAwardCreate(withoutGrant); err != nil {
+			t.Fatalf("valid %s award rejected: %v", status, err)
+		}
+	}
+	persisted := valid
+	persisted.ID = 9
+	persisted.Status = ports.ContentAwardSettled
+	if err := validatePersistedContentAward(persisted); err != nil {
+		t.Fatalf("valid persisted award rejected: %v", err)
+	}
+
+	cases := []struct {
+		name   string
+		mutate func(*ports.ContentAward)
+	}{
+		{"explicit id", func(v *ports.ContentAward) { v.ID = 1 }},
+		{"missing candidate", func(v *ports.ContentAward) { v.CandidateID = 0 }},
+		{"missing version", func(v *ports.ContentAward) { v.AwardVersion = 0 }},
+		{"padded action", func(v *ports.ContentAward) { v.ActionID = " " + v.ActionID }},
+		{"long action", func(v *ports.ContentAward) { v.ActionID = strings.Repeat("a", 192) }},
+		{"missing period", func(v *ports.ContentAward) { v.PeriodID = 0 }},
+		{"missing user", func(v *ports.ContentAward) { v.UserID = 0 }},
+		{"zero amount", func(v *ports.ContentAward) { v.Amount = 0 }},
+		{"negative amount", func(v *ports.ContentAward) { v.Amount = -1 }},
+		{"long reward type", func(v *ports.ContentAward) { v.RewardType = strings.Repeat("r", 65) }},
+		{"wrong budget", func(v *ports.ContentAward) { v.BudgetType = "loyalty" }},
+		{"pending without grant", func(v *ports.ContentAward) { v.GrantID = "" }},
+		{"long grant", func(v *ports.ContentAward) { v.GrantID = strings.Repeat("g", 65) }},
+		{"settled on create", func(v *ports.ContentAward) { v.Status = ports.ContentAwardSettled }},
+		{"unknown status", func(v *ports.ContentAward) { v.Status = "unknown" }},
+		{"long reason", func(v *ports.ContentAward) { v.Reason = strings.Repeat("理", 501) }},
+		{"zero creation time", func(v *ports.ContentAward) { v.CreatedAt = time.Time{} }},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			value := valid
+			test.mutate(&value)
+			if err := validateContentAwardCreate(value); err == nil {
+				t.Fatal("invalid content award was accepted")
+			}
+		})
+	}
+
+	ineligibleWithGrant := valid
+	ineligibleWithGrant.ID = 1
+	ineligibleWithGrant.Status = ports.ContentAwardIneligible
+	if err := validatePersistedContentAward(ineligibleWithGrant); err == nil {
+		t.Fatal("persisted ineligible award with grant was accepted")
+	}
+}
+
+func TestContentAwardQueriesAndLimitsValidateIdentityBeforeDatabase(t *testing.T) {
+	repo := &contentRepository{}
+	if _, err := repo.FindAwardByAction(context.Background(), " "); err == nil {
+		t.Fatal("blank content award action accepted")
+	}
+	if _, err := repo.FindAwardByActionForUpdate(context.Background(), strings.Repeat("a", 192)); err == nil {
+		t.Fatal("oversized content award action accepted")
+	}
+	if err := repo.MarkAwardSettledByGrantID(context.Background(), " "); err == nil {
+		t.Fatal("blank grant id accepted")
+	}
+	if _, err := repo.SumUserActiveAwards(context.Background(), 0, 1); err == nil {
+		t.Fatal("zero user award scope accepted")
+	}
+	if _, err := repo.SumUserActiveAwards(context.Background(), 1, 0); err == nil {
+		t.Fatal("zero period award scope accepted")
+	}
+	if _, err := repo.SumDailyActiveAwards(context.Background(), time.Time{}); err == nil {
+		t.Fatal("zero daily award scope accepted")
+	}
+}
