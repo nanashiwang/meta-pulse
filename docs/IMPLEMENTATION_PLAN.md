@@ -61,7 +61,7 @@ Log.user_id    = 用户 ID
 Log.quota      = 用户侧计费额度
 ```
 
-Pulse 使用独立只读账号读取 `LOG_SQL_DSN` 指向的日志库。`quota` 是第一阶段的 Eligible Paid Usage；Provider 实际成本目前不是日志事实源，必须在回测阶段明确采用“估算毛利”还是扩展 new-api 记录成本快照。
+Pulse 使用独立只读账号读取 `LOG_SQL_DSN` 指向的日志库。`quota` 是第一阶段的 Eligible Paid Usage；当前 Provider 成本不是日志事实源，已决策在成本快照上线前仅使用“用户收费 × 配置倍率”的估算值，并在报告中明确标注，不宣称真实毛利。
 
 关联契约已统一：普通消费和异步任务退款/差额结算使用 `logs.request_id`；任务日志额外保留 `logs.other.task_id`，差额日志保留 `pre_consumed_quota`、`actual_quota`、`reason`；明确的历史 `origin_log_id` 等字段优先。缺少稳定关联时进入人工复核，不猜测因果。
 
@@ -303,7 +303,7 @@ type UnitOfWork interface {
 - [x] `/console/pulse` 路由、页面和导航入口；
 - [x] 明确 `LOG_CONSUME_ENABLED` 的生产门禁：new-api 新增 `PULSE_USAGE_LOG_REQUIRED=true`，启用后拒绝后台和配置同步关闭消费日志；
 - [x] 明确 refund/task/correction 关联字段：`request_id` 为主关联，`other.task_id` 为任务键，差额用 consume/refund 正负事件表达，缺失关联进入人工复核；
-- [ ] 评估增加 Provider 成本快照；
+- [x] 完成 Provider 成本快照评估：当前不具备成本事实，先采用估算口径；正式上线前由 new-api 增加不可变整数定点成本快照并由 Pulse 只读消费；
 - [ ] Benefit 与 SSO 服务密钥轮换、审计和限流。
 
 ### YuanHeng Desktop
@@ -335,9 +335,9 @@ type UnitOfWork interface {
 
 ## 7. 待决策事项
 
-### D1｜毛利事实源（M2.5 前）
+### D1｜毛利事实源（已决策）
 
-当前 new-api 日志只有用户收费 `quota`，没有 Provider 成本。建议先以估算倍率完成回测，同时预留成本快照字段；若正式目标是 Margin-aware，最终应补充不可变成本快照。
+当前 new-api 日志只有用户收费 `quota`，没有 Provider 成本。M2.5 使用“用户收费 × 配置倍率”的估算口径，报告和预算告警必须标注“成本代理值”；正式 Margin-aware 运营前，new-api 需要新增不可变整数定点成本快照（金额、币种、Provider/价格版本），Pulse 仅只读消费。
 
 ### D2｜Period 口径（已决策）
 

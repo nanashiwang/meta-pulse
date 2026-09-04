@@ -322,6 +322,10 @@ Usage 关联契约如下：
 
 无法确认关联时不得直接改变贡献值。上述字段均为最小化关联元数据，禁止复制 prompt、response、IP、Token 或 Cookie。
 
+### Provider 成本事实
+
+当前 new-api `LOG_DB` 只有用户侧 `quota`，没有可审计的 Provider 实际成本。Pulse 回测和预算在成本快照上线前只能使用“用户收费 × 已配置倍率”的估算值，报告必须明确标注为成本代理值，不得宣称真实毛利。若进入正式 Margin-aware 运营，new-api 需在消费日志写入时保存不可变的整数定点成本快照（金额、币种、Provider/价格版本），退款和差额日志只关联原消费，不重算或覆盖该快照；Pulse 只读消费这些最小字段。
+
 ## 11. Economics Engine
 
 核心公式：
