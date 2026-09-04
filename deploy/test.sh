@@ -23,7 +23,12 @@ for key in PULSE_DB_PASSWORD PULSE_DB_ROOT_PASSWORD FORUM_DB_PASSWORD FORUM_DB_R
   [[ "$value" != replace-me && "$value" != __GENERATE__ ]] || { echo "$key 仍是占位值" >&2; exit 1; }
 done
 
-mode="$(stat -f '%Lp' "$ENV_FILE" 2>/dev/null || stat -c '%a' "$ENV_FILE")"
+# GNU stat -f treats %Lp as a filename and may emit filesystem data even
+# when it fails. Select the platform syntax instead of combining stdout.
+case "$(uname -s)" in
+  Darwin) mode="$(stat -f '%Lp' "$ENV_FILE")" ;;
+  *) mode="$(stat -c '%a' "$ENV_FILE")" ;;
+esac
 [[ "$mode" == 600 ]] || { echo ".env 权限不是 600：$mode" >&2; exit 1; }
 
 # Compose 中 API 不应拥有 new-api LOG_DB 读取凭据；只有 worker 可以拥有。
