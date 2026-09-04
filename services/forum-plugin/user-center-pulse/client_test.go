@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -74,5 +75,47 @@ func TestUserCenterLoginUsesSSOBridge(t *testing.T) {
 	description := uc.Description()
 	if description.LoginRedirectURL != "https://api.example.test/api/forum/sso/start" {
 		t.Fatalf("login redirect=%q", description.LoginRedirectURL)
+	}
+}
+
+func TestPulseClientRejectsTrailingJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"user_id":42,"level":{"key":"pulse","name":"脉冲者"}} {"user_id":43}`)
+	}))
+	defer server.Close()
+
+	client := NewPulseClient(&Config{PulseBaseURL: server.URL, PulseHMACSecret: "secret"})
+	client.http = server.Client()
+	if _, err := client.GetUserProfile("42"); err == nil {
+		t.Fatal("profile response with trailing JSON was accepted")
+	}
+}
+
+func TestPulseClientRejectsOversizedResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"user_id":42,"level":{"key":"pulse","name":"脉冲者"},"padding":"%s"}`, strings.Repeat("x", maxProfileResponseBytes))
+	}))
+	defer server.Close()
+
+	client := NewPulseClient(&Config{PulseBaseURL: server.URL, PulseHMACSecret: "secret"})
+	client.http = server.Client()
+	if _, err := client.GetUserProfile("42"); err == nil {
+		t.Fatal("oversized profile response was accepted")
+	}
+}
+
+func TestPulseClientRejectsNegativeContribution(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"user_id":42,"level":{"key":"pulse","name":"脉冲者"},"lifetime_contribution_milli":-1}`)
+	}))
+	defer server.Close()
+
+	client := NewPulseClient(&Config{PulseBaseURL: server.URL, PulseHMACSecret: "secret"})
+	client.http = server.Client()
+	if _, err := client.GetUserProfile("42"); err == nil {
+		t.Fatal("negative profile contribution was accepted")
 	}
 }

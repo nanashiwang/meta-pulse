@@ -1,11 +1,13 @@
 package pulse_user_center
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,12 +18,13 @@ import (
 )
 
 const (
-	pulseHeaderUserID    = "X-Pulse-User-Id"
-	pulseHeaderRole      = "X-Pulse-Role"
-	pulseHeaderTimestamp = "X-Pulse-Timestamp"
-	pulseHeaderNonce     = "X-Pulse-Nonce"
-	pulseHeaderSignature = "X-Pulse-Signature"
-	forumServiceRole     = "forum"
+	pulseHeaderUserID       = "X-Pulse-User-Id"
+	pulseHeaderRole         = "X-Pulse-Role"
+	pulseHeaderTimestamp    = "X-Pulse-Timestamp"
+	pulseHeaderNonce        = "X-Pulse-Nonce"
+	pulseHeaderSignature    = "X-Pulse-Signature"
+	forumServiceRole        = "forum"
+	maxProfileResponseBytes = 64 << 10
 )
 
 // UserProfile is the read-only projection Meta Pulse exposes to the forum.
@@ -94,12 +97,30 @@ func (c *PulseClient) GetUserProfile(externalID string) (*UserProfile, error) {
 		return nil, fmt.Errorf("pulse profile request failed: %d", resp.StatusCode)
 	}
 
-	profile := &UserProfile{}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(profile); err != nil {
-		return nil, err
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxProfileResponseBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read pulse profile response: %w", err)
 	}
-	if profile.UserID != int64(userID) {
+	if len(body) > maxProfileResponseBytes {
+		return nil, fmt.Errorf("pulse profile response exceeds %d bytes", maxProfileResponseBytes)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	profile := &UserProfile{}
+	if err := decoder.Decode(profile); err != nil {
+		return nil, fmt.Errorf("decode pulse profile response: %w", err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return nil, fmt.Errorf("pulse profile response contains trailing JSON")
+		}
+		return nil, fmt.Errorf("decode trailing pulse profile response: %w", err)
+	}
+	if profile.UserID <= 0 || uint64(profile.UserID) != userID {
 		return nil, fmt.Errorf("pulse profile identity mismatch")
+	}
+	if profile.LifetimeContributionMi < 0 {
+		return nil, fmt.Errorf("pulse profile contribution is negative")
 	}
 	return profile, nil
 }
