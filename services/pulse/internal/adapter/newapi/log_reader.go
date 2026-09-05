@@ -209,7 +209,7 @@ func (r *LogReader) Fetch(ctx context.Context, after Cursor, limit int) ([]LogRe
 		return nil, errors.New("log batch size must be between 1 and 5000")
 	}
 	rows, err := r.db.QueryContext(ctx, `
-SELECT id, user_id, created_at, type, model_name, quota, channel, request_id, other
+SELECT id, user_id, created_at, type, model_name, quota, channel_id, request_id, other
 FROM logs
 WHERE type IN (?, ?)
   AND (created_at > ? OR (created_at = ? AND id > ?))
