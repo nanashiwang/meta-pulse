@@ -48,6 +48,17 @@ NEWAPI_INTERNAL_BASE_URL='http://new-api:3000' \
 
 注意：脚本生成的 `PULSE_SERVICE_HMAC_SECRET`、`PULSE_USER_BFF_HMAC_SECRET`、`PULSE_ADMIN_HMAC_SECRET` 需要同步配置到 new-api / 论坛插件的对应服务端；配置不一致时应保持服务不可用，不要降低验签要求。
 
+跨服务器部署时，可以创建仓库根目录下忽略提交的 `docker-compose.override.yml`，安装、更新、备份和健康检查会自动合并该文件。它只适合保存宿主机专属的端口绑定等配置，禁止写入密钥。例如只将 Pulse API 发布到 WireGuard 地址：
+
+```yaml
+services:
+  pulse-api:
+    ports:
+      - "10.77.0.2:8088:8088"
+```
+
+也可以通过 `META_PULSE_COMPOSE_OVERRIDE_FILE=/绝对路径/compose.yml` 指定其他覆盖文件。生产环境不得将 `8088` 无限制发布到公网。
+
 部署成功后查看：
 
 ```bash

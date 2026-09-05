@@ -9,6 +9,9 @@ coverage/
 *.log
 *.pid
 
+# Host-specific Compose overrides
+docker-compose.override.yml
+
 # Environment / secrets
 .env
 .env.*

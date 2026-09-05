@@ -100,9 +100,17 @@ cmp "$tmp/original.env" "$backup"
 cmp "$tmp/original.env" "$tmp/repo/.env"
 # The lock precedes the first Compose config rendering (not just Git fetch).
 awk '/^lock$/{locked=1} / config$/{if(!locked) exit 1}' "$MOCK_LOG"
-# Successful rollout must drain all old API writers before migration/restart.
+# Successful rollout must include the host-local Compose override and drain all
+# old API writers before migration/restart.
+cat >"$tmp/repo/docker-compose.override.yml" <<'OVERRIDE'
+services:
+  pulse-api:
+    ports:
+      - "10.77.0.2:8088:8088"
+OVERRIDE
 : >"$MOCK_LOG"
 MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" >"$tmp/output" 2>&1 || { cat "$tmp/output" >&2; exit 1; }
+grep -Eq -- '-f .*/docker-compose\.yml -f .*/docker-compose\.override\.yml config' "$MOCK_LOG"
 cmp "$tmp/original.env" "$tmp/repo/.env"
 awk '
  / stop -t 15 pulse-api$/{stopped=1}

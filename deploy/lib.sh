@@ -6,6 +6,7 @@ REPO_ROOT="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
 TEMPLATE_FILE="$SCRIPT_DIR/meta-pulse.env.example"
 ENV_FILE="${META_PULSE_ENV_FILE:-$REPO_ROOT/.env}"
 COMPOSE_FILE="$REPO_ROOT/docker-compose.yml"
+COMPOSE_OVERRIDE_FILE="${META_PULSE_COMPOSE_OVERRIDE_FILE:-$REPO_ROOT/docker-compose.override.yml}"
 
 log() {
   printf '[meta-pulse] %s\n' "$*"
@@ -167,7 +168,11 @@ compose() (
       PULSE_*|NEWAPI_*|FORUM_*|COMPOSE_PROJECT_NAME) unset "$key" ;;
     esac
   done
-  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+  local -a compose_files=(-f "$COMPOSE_FILE")
+  if [[ -f "$COMPOSE_OVERRIDE_FILE" ]]; then
+    compose_files+=(-f "$COMPOSE_OVERRIDE_FILE")
+  fi
+  docker compose --env-file "$ENV_FILE" "${compose_files[@]}" "$@"
 )
 
 validate_compose() {
@@ -245,6 +250,9 @@ check_host_prerequisites() {
   docker info >/dev/null 2>&1 || die "Docker daemon 未运行，或当前用户无权访问 Docker"
   docker compose version >/dev/null 2>&1 || die "需要 Docker Compose v2（docker compose）"
   [[ -f "$COMPOSE_FILE" ]] || die "找不到 Compose 文件：$COMPOSE_FILE"
+  if [[ -e "$COMPOSE_OVERRIDE_FILE" && ! -f "$COMPOSE_OVERRIDE_FILE" ]]; then
+    die "Compose 覆盖配置不是普通文件：$COMPOSE_OVERRIDE_FILE"
+  fi
   git -C "$REPO_ROOT" rev-parse --show-toplevel >/dev/null 2>&1 || die "当前目录不是 Git 仓库"
 }
 
