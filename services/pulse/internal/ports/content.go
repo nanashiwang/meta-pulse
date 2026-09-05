@@ -9,6 +9,10 @@ import (
 // ingestion. Adapters may read a forum schema, but services do not depend on
 // a concrete forum implementation.
 type ContentEvent struct {
+	// SkipCandidate advances the durable source cursor without creating a
+	// candidate. Adapters use it for unbound, pre-binding or non-public rows so
+	// long runs of ineligible content cannot be rescanned forever.
+	SkipCandidate   bool
 	SourceContentID string
 	ContentType     string
 	AuthorUserID    uint64

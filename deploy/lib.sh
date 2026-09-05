@@ -103,6 +103,7 @@ ensure_env_file() {
   ensure_generated_password FORUM_DB_PASSWORD
   ensure_generated_password FORUM_DB_ROOT_PASSWORD
   ensure_generated_secret PULSE_SERVICE_HMAC_SECRET
+  ensure_generated_secret PULSE_FORUM_HMAC_SECRET
   ensure_generated_secret PULSE_USER_BFF_HMAC_SECRET
   ensure_generated_secret PULSE_ADMIN_HMAC_SECRET
   ensure_generated_secret PULSE_REWARD_RANDOM_SECRET
@@ -142,7 +143,7 @@ validate_environment() {
       replace-me|CHANGE_ME|__GENERATE__) die "$key 仍为占位密码，请恢复真实凭据" ;;
     esac
   done
-  for key in PULSE_SERVICE_HMAC_SECRET PULSE_USER_BFF_HMAC_SECRET PULSE_ADMIN_HMAC_SECRET PULSE_REWARD_RANDOM_SECRET; do
+  for key in PULSE_SERVICE_HMAC_SECRET PULSE_FORUM_HMAC_SECRET PULSE_USER_BFF_HMAC_SECRET PULSE_ADMIN_HMAC_SECRET PULSE_REWARD_RANDOM_SECRET; do
     value="$(env_value "$key")"
     [[ "${#value}" -ge 32 && "$value" != replace-me && "$value" != CHANGE_ME && "$value" != __GENERATE__ ]] \
       || die "$key 必须是至少 32 字节的非占位密钥"

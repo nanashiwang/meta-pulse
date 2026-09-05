@@ -23,6 +23,13 @@ type LoginTicketNonceStore interface {
 	Claim(ctx context.Context, nonce string, expiresAt time.Time) (bool, error)
 }
 
+// LoginFlowStore binds acceptance to a browser-initiated connector flow and
+// consumes that flow together with the signed ticket nonce.
+type LoginFlowStore interface {
+	Begin(ctx context.Context, flowID string, expiresAt time.Time) error
+	Consume(ctx context.Context, flowID, nonce string, expiresAt time.Time) (bool, error)
+}
+
 // LoginTicket is the only trusted way for the browser to assert an identity.
 //
 // The user center callback is reached by a browser redirect, not a server-to-
@@ -81,20 +88,8 @@ func (t *LoginTicket) Verify(ctx context.Context, secret string, nonces LoginTic
 // previous secret during a controlled rotation window. The nonce is consumed
 // only after the ticket authenticates with one of the configured keys.
 func (t *LoginTicket) VerifyWithSecrets(ctx context.Context, secrets []string, nonces LoginTicketNonceStore, now time.Time) error {
-	configured := false
-	for _, secret := range secrets {
-		if strings.TrimSpace(secret) != "" {
-			configured = true
-			break
-		}
-	}
-	if !configured {
-		return fmt.Errorf("hmac secret not configured")
-	}
-	if t.UserID == "" || t.Nonce == "" || t.Signature == "" {
-		return fmt.Errorf("incomplete login ticket")
-	}
-	if err := t.validateSignedFields(); err != nil {
+	expiresAt, err := t.AuthenticateWithSecrets(secrets, now)
+	if err != nil {
 		return err
 	}
 	if nonces == nil {
@@ -103,18 +98,48 @@ func (t *LoginTicket) VerifyWithSecrets(ctx context.Context, secrets []string, n
 	if ctx == nil {
 		return fmt.Errorf("login ticket context not configured")
 	}
+	unused, err := nonces.Claim(ctx, t.Nonce, expiresAt)
+	if err != nil {
+		return fmt.Errorf("login ticket nonce store unavailable: %w", err)
+	}
+	if !unused {
+		return fmt.Errorf("login ticket already used")
+	}
+	return nil
+}
 
-	// Reject stale tickets in both directions: an old ticket may have leaked,
-	// and a far-future one indicates a forged or clock-skewed timestamp.
+// AuthenticateWithSecrets validates every signed field, freshness and HMAC but
+// deliberately does not mutate replay state. ConnectorReceiver uses this first
+// and then atomically consumes the browser flow and ticket nonce together.
+func (t *LoginTicket) AuthenticateWithSecrets(secrets []string, now time.Time) (time.Time, error) {
+	configured := false
+	for _, secret := range secrets {
+		if strings.TrimSpace(secret) != "" {
+			configured = true
+			break
+		}
+	}
+	if !configured {
+		return time.Time{}, fmt.Errorf("hmac secret not configured")
+	}
+	if t == nil || t.UserID == "" || t.Nonce == "" || t.Signature == "" {
+		return time.Time{}, fmt.Errorf("incomplete login ticket")
+	}
+	if err := t.validateSignedFields(); err != nil {
+		return time.Time{}, err
+	}
+
 	issuedAt := time.Unix(t.Timestamp, 0)
 	age := now.Sub(issuedAt)
 	if age > ticketTTL || age < -ticketTTL {
-		return fmt.Errorf("login ticket expired or not yet valid")
+		return time.Time{}, fmt.Errorf("login ticket expired or not yet valid")
 	}
-
+	if len(t.Signature) != sha256.Size*2 {
+		return time.Time{}, fmt.Errorf("malformed login ticket signature")
+	}
 	got, err := hex.DecodeString(t.Signature)
 	if err != nil {
-		return fmt.Errorf("malformed login ticket signature")
+		return time.Time{}, fmt.Errorf("malformed login ticket signature")
 	}
 	matched := false
 	for _, secret := range secrets {
@@ -130,17 +155,9 @@ func (t *LoginTicket) VerifyWithSecrets(ctx context.Context, secrets []string, n
 		}
 	}
 	if !matched {
-		return fmt.Errorf("invalid login ticket signature")
+		return time.Time{}, fmt.Errorf("invalid login ticket signature")
 	}
-
-	unused, err := nonces.Claim(ctx, t.Nonce, issuedAt.Add(ticketTTL))
-	if err != nil {
-		return fmt.Errorf("login ticket nonce store unavailable: %w", err)
-	}
-	if !unused {
-		return fmt.Errorf("login ticket already used")
-	}
-	return nil
+	return issuedAt.Add(ticketTTL), nil
 }
 
 // NonceCache is a process-local implementation for unit tests only. Production

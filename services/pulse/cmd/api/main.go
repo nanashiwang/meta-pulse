@@ -115,7 +115,9 @@ func main() {
 		switch role {
 		case "new-api":
 			return cfg.UserBFFHMACSecrets()
-		case "forum", "worker", "service":
+		case "forum":
+			return cfg.ForumHMACSecrets()
+		case "worker", "service":
 			return cfg.ServiceHMACSecrets()
 		case "admin":
 			return cfg.AdminHMACSecrets()

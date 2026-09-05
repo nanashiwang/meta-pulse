@@ -34,6 +34,7 @@ func TestValidateProductionSecretsFailClosed(t *testing.T) {
 	cfg := validConfig()
 	cfg.Environment = "production"
 	cfg.ServiceHMACSecret = "replace-me"
+	cfg.ForumHMACSecret = "short"
 	cfg.UserBFFHMACSecret = "short"
 	cfg.AdminHMACSecret = ""
 	if err := cfg.ValidateAPI(); err == nil {
@@ -41,6 +42,7 @@ func TestValidateProductionSecretsFailClosed(t *testing.T) {
 	}
 
 	cfg.ServiceHMACSecret = strings.Repeat("s", 32)
+	cfg.ForumHMACSecret = strings.Repeat("f", 32)
 	cfg.UserBFFHMACSecret = strings.Repeat("u", 32)
 	cfg.AdminHMACSecret = strings.Repeat("a", 32)
 	if err := cfg.ValidateAPI(); err != nil {
@@ -82,6 +84,15 @@ func TestLoadRejectsInvalidIntegerInsteadOfFallingBack(t *testing.T) {
 	}
 }
 
+func TestValidateProductionRejectsWhitespacePaddedPreviousSecret(t *testing.T) {
+	cfg := validConfig()
+	cfg.Environment = "production"
+	cfg.ServiceHMACSecretPrevious = strings.Repeat(" ", 40) + "replace-me" + strings.Repeat(" ", 40)
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "PULSE_SERVICE_HMAC_SECRET_PREVIOUS") {
+		t.Fatalf("whitespace-padded previous secret error = %v", err)
+	}
+}
+
 func TestValidateRejectsDuplicatePreviousSecret(t *testing.T) {
 	cfg := validConfig()
 	cfg.ServiceHMACSecret = "same-secret"
@@ -98,6 +109,25 @@ func TestSecretPairsKeepActiveBeforePrevious(t *testing.T) {
 	secrets := cfg.ServiceHMACSecrets()
 	if len(secrets) != 2 || string(secrets[0]) != "active" || string(secrets[1]) != "previous" {
 		t.Fatalf("unexpected secret order: %#v", secrets)
+	}
+}
+
+func TestValidateRejectsSecretReuseAcrossTrustRoles(t *testing.T) {
+	cfg := validConfig()
+	cfg.ServiceHMACSecret = "shared-secret"
+	cfg.ForumHMACSecret = "shared-secret"
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "must not reuse") {
+		t.Fatalf("cross-role secret reuse error = %v", err)
+	}
+}
+
+func TestForumSecretPairsKeepActiveBeforePrevious(t *testing.T) {
+	cfg := validConfig()
+	cfg.ForumHMACSecret = "forum-active"
+	cfg.ForumHMACSecretPrevious = "forum-previous"
+	secrets := cfg.ForumHMACSecrets()
+	if len(secrets) != 2 || string(secrets[0]) != "forum-active" || string(secrets[1]) != "forum-previous" {
+		t.Fatalf("unexpected forum secret order: %#v", secrets)
 	}
 }
 
@@ -131,10 +161,9 @@ func TestLoadProductionWorkerWithoutAPISecrets(t *testing.T) {
 	t.Setenv("PULSE_DB_DSN", "pulse@tcp(mysql:3306)/meta_pulse")
 	t.Setenv("NEWAPI_LOG_DSN", "readonly@tcp(logs:3306)/logs")
 	t.Setenv("NEWAPI_INTERNAL_BASE_URL", "http://new-api:3000")
-	for _, key := range []string{"PULSE_SERVICE_HMAC_SECRET", "PULSE_REWARD_RANDOM_SECRET"} {
-		t.Setenv(key, strings.Repeat("s", 32))
-	}
-	for _, key := range []string{"PULSE_USER_BFF_HMAC_SECRET", "PULSE_ADMIN_HMAC_SECRET", "PULSE_SERVICE_HMAC_SECRET_PREVIOUS", "PULSE_USER_BFF_HMAC_SECRET_PREVIOUS", "PULSE_ADMIN_HMAC_SECRET_PREVIOUS"} {
+	t.Setenv("PULSE_SERVICE_HMAC_SECRET", strings.Repeat("s", 32))
+	t.Setenv("PULSE_REWARD_RANDOM_SECRET", strings.Repeat("r", 32))
+	for _, key := range []string{"PULSE_FORUM_HMAC_SECRET", "PULSE_USER_BFF_HMAC_SECRET", "PULSE_ADMIN_HMAC_SECRET", "PULSE_SERVICE_HMAC_SECRET_PREVIOUS", "PULSE_FORUM_HMAC_SECRET_PREVIOUS", "PULSE_USER_BFF_HMAC_SECRET_PREVIOUS", "PULSE_ADMIN_HMAC_SECRET_PREVIOUS"} {
 		t.Setenv(key, "")
 	}
 	cfg, err := Load()

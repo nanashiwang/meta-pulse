@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -70,11 +71,11 @@ func TestPulseClientRejectsProfileIdentityMismatch(t *testing.T) {
 	}
 }
 
-func TestUserCenterLoginUsesSSOBridge(t *testing.T) {
+func TestUserCenterDoesNotHijackLocalLogin(t *testing.T) {
 	uc := &UserCenter{Config: &Config{NewAPIBaseURL: "https://api.example.test"}}
 	description := uc.Description()
-	if description.LoginRedirectURL != "https://api.example.test/api/forum/sso/start" {
-		t.Fatalf("login redirect=%q", description.LoginRedirectURL)
+	if description.LoginRedirectURL != "" || description.SignUpRedirectURL != "" {
+		t.Fatalf("local identity was redirected: login=%q signup=%q", description.LoginRedirectURL, description.SignUpRedirectURL)
 	}
 }
 
@@ -89,6 +90,38 @@ func TestPulseClientRejectsTrailingJSON(t *testing.T) {
 	client.http = server.Client()
 	if _, err := client.GetUserProfile("42"); err == nil {
 		t.Fatal("profile response with trailing JSON was accepted")
+	}
+}
+
+func TestPulseClientDisablesProxyAndRedirectForwarding(t *testing.T) {
+	client := NewPulseClient(&Config{})
+	transport, ok := client.http.Transport.(*http.Transport)
+	if !ok || transport.Proxy != nil {
+		t.Fatal("Pulse client inherited an ambient HTTP proxy")
+	}
+	if err := client.http.CheckRedirect(&http.Request{}, nil); !errors.Is(err, http.ErrUseLastResponse) {
+		t.Fatalf("redirect policy error=%v", err)
+	}
+}
+
+func TestPulseClientRejectsNonCanonicalExternalIdentity(t *testing.T) {
+	client := NewPulseClient(&Config{PulseBaseURL: "http://pulse.internal", PulseHMACSecret: testSecret})
+	for _, externalID := range []string{" 42", "042", "+42", "0"} {
+		if _, err := client.GetUserProfile(externalID); err == nil {
+			t.Fatalf("non-canonical external id %q accepted", externalID)
+		}
+	}
+}
+
+func TestPulseClientAcceptsCanonicalUint64Identity(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, `{"user_id":18446744073709551615,"level":{"key":"pulse","name":"脉冲者"},"lifetime_contribution_milli":1}`)
+	}))
+	defer server.Close()
+	client := NewPulseClient(&Config{PulseBaseURL: server.URL, PulseHMACSecret: testSecret})
+	profile, err := client.GetUserProfile("18446744073709551615")
+	if err != nil || profile.UserID != ^uint64(0) {
+		t.Fatalf("profile=%+v err=%v", profile, err)
 	}
 }
 

@@ -5,13 +5,16 @@ plugin:
         name:
           other: 元衡用户中心
         description:
-          other: 将论坛身份委托给 new-api，并在个人页展示元衡脉冲等级徽章
+          other: 允许 Answer 本地注册，并可选择绑定元衡 API 账号以展示脉冲权益
+      connector:
+        name:
+          other: 绑定元衡 API 账号
       config:
         newapi_base_url:
           title:
             other: new-api 基础地址
           description:
-            other: new-api 控制台地址，用于登录与注册跳转。
+            other: 元衡 API 控制台的 HTTPS 根地址，用于可选账号绑定。
         pulse_base_url:
           title:
             other: Meta Pulse 内部地址
@@ -21,7 +24,7 @@ plugin:
           title:
             other: 论坛 SSO HMAC 密钥
           description:
-            other: 与 new-api 的 PULSE_FORUM_SSO_SECRET 相同，仅用于 Login Ticket 验签。
+            other: 与 new-api 的 PULSE_FORUM_SSO_SECRET 相同，仅用于 Login Ticket 验签；不得与 Pulse 档案密钥复用。
         sso_hmac_secret_previous:
           title:
             other: 论坛 SSO 旧 HMAC 密钥（轮换期间）
@@ -31,12 +34,12 @@ plugin:
           title:
             other: Pulse 服务 HMAC 密钥
           description:
-            other: 与 Pulse 的 PULSE_SERVICE_HMAC_SECRET 相同，仅用于签名只读档案请求。
+            other: 与 Pulse 的 PULSE_FORUM_HMAC_SECRET 相同，仅用于签名只读档案请求；不得与 Forum SSO 或结算密钥复用。
         nonce_redis_url:
           title:
             other: Login Ticket Nonce Redis 地址
           description:
-            other: 所有 Answer 实例共享的 Redis 连接地址，用于原子消费一次性登录凭证；不可用时登录会安全拒绝。
+            other: 所有 Answer 实例共享的 Redis 连接地址，用于浏览器绑定流程与 Login Ticket 单次消费；不可用时绑定会安全拒绝。
         level_badge_enabled:
           label:
             other: 显示脉冲等级徽章

@@ -3,6 +3,7 @@ package i18n
 const (
 	InfoName        = "plugin.pulse_user_center.backend.info.name"
 	InfoDescription = "plugin.pulse_user_center.backend.info.description"
+	ConnectorName   = "plugin.pulse_user_center.backend.connector.name"
 
 	ConfigNewAPIBaseURLTitle       = "plugin.pulse_user_center.backend.config.newapi_base_url.title"
 	ConfigNewAPIBaseURLDescription = "plugin.pulse_user_center.backend.config.newapi_base_url.description"

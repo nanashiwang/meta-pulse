@@ -72,9 +72,64 @@ func TestRedisNonceStoreFailsClosedWhenUnavailable(t *testing.T) {
 	}
 }
 
+func TestRedisLoginFlowAndTicketNonceAreConsumedAtomically(t *testing.T) {
+	server := miniredis.RunT(t)
+	rawURL := "redis://" + server.Addr() + "/0"
+	first, err := NewRedisNonceStore(rawURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	second, err := NewRedisNonceStore(rawURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+
+	expiresAt := time.Now().Add(ticketTTL)
+	if err := first.Begin(context.Background(), "browser-flow", time.Now().Add(loginFlowTTL)); err != nil {
+		t.Fatal(err)
+	}
+	const attempts = 100
+	results := make(chan bool, attempts)
+	var wait sync.WaitGroup
+	for i := 0; i < attempts; i++ {
+		wait.Add(1)
+		go func(index int) {
+			defer wait.Done()
+			store := first
+			if index%2 == 1 {
+				store = second
+			}
+			accepted, consumeErr := store.Consume(context.Background(), "browser-flow", "signed-ticket", expiresAt)
+			if consumeErr != nil {
+				t.Errorf("consume: %v", consumeErr)
+				return
+			}
+			results <- accepted
+		}(i)
+	}
+	wait.Wait()
+	close(results)
+	accepted := 0
+	for result := range results {
+		if result {
+			accepted++
+		}
+	}
+	if accepted != 1 {
+		t.Fatalf("accepted=%d, want 1", accepted)
+	}
+	if ok, err := first.Consume(context.Background(), "missing-flow", "new-ticket", expiresAt); err != nil || ok {
+		t.Fatalf("unsolicited callback accepted=%v err=%v", ok, err)
+	}
+}
+
 func TestConfigReceiverInstallsSharedNonceStore(t *testing.T) {
 	server := miniredis.RunT(t)
-	uc := &UserCenter{Config: &Config{}}
+	guard := &fakeBindingGuard{}
+	uc := &UserCenter{Config: &Config{}, newBindingGuard: func(string) (BindingGuard, error) { return guard, nil }}
+	t.Setenv("FORUM_BINDING_GUARD_DSN", "ignored-by-test")
 	payload := []byte(fmt.Sprintf(`{
 		"newapi_base_url":"https://api.example.test",
 		"pulse_base_url":"https://pulse.example.test",
@@ -86,9 +141,38 @@ func TestConfigReceiverInstallsSharedNonceStore(t *testing.T) {
 	if err := uc.ConfigReceiver(payload); err != nil {
 		t.Fatal(err)
 	}
-	store, ok := uc.Nonces.(*RedisNonceStore)
+	store, ok := uc.Logins.(*RedisNonceStore)
 	if !ok || store == nil {
-		t.Fatalf("nonce store=%T, want RedisNonceStore", uc.Nonces)
+		t.Fatalf("login store=%T, want RedisNonceStore", uc.Logins)
+	}
+	if uc.Guard != guard {
+		t.Fatalf("binding guard=%T, want configured fake", uc.Guard)
 	}
 	t.Cleanup(func() { _ = store.Close() })
+}
+
+func TestConfigReceiverRejectsNilBindingGuard(t *testing.T) {
+	server := miniredis.RunT(t)
+	oldConfig := &Config{NewAPIBaseURL: "https://old.example.test"}
+	uc := &UserCenter{
+		Config: oldConfig,
+		newBindingGuard: func(string) (BindingGuard, error) {
+			return nil, nil
+		},
+	}
+	t.Setenv("FORUM_BINDING_GUARD_DSN", "ignored-by-test")
+	payload := []byte(fmt.Sprintf(`{
+		"newapi_base_url":"https://api.example.test",
+		"pulse_base_url":"https://pulse.example.test",
+		"sso_hmac_secret":"%s",
+		"pulse_hmac_secret":"%s",
+		"nonce_redis_url":"redis://%s/0",
+		"level_badge_enabled":true
+	}`, strings.Repeat("s", minimumConfigSecretLength), strings.Repeat("p", minimumConfigSecretLength), server.Addr()))
+	if err := uc.ConfigReceiver(payload); err == nil {
+		t.Fatal("nil binding guard was accepted")
+	}
+	if uc.Config != oldConfig || uc.Logins != nil || uc.Guard != nil {
+		t.Fatal("failed config replaced the last known-good runtime")
+	}
 }

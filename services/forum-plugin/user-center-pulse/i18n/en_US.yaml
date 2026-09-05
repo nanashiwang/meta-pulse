@@ -5,13 +5,16 @@ plugin:
         name:
           other: Meta Pulse User Center
         description:
-          other: Delegate forum identity to new-api and render Meta Pulse levels as profile badges
+          other: Keep local Answer accounts and optionally bind a Meta API account for Pulse benefits
+      connector:
+        name:
+          other: Connect Meta API account
       config:
         newapi_base_url:
           title:
             other: new-api Base URL
           description:
-            other: Base URL of the new-api console used for login and sign-up redirects.
+            other: HTTPS root URL of the Meta API console used for optional account linking.
         pulse_base_url:
           title:
             other: Meta Pulse Internal Base URL
@@ -21,7 +24,7 @@ plugin:
           title:
             other: Forum SSO HMAC Secret
           description:
-            other: Must match new-api PULSE_FORUM_SSO_SECRET and is only used to verify Login Tickets.
+            other: Must match new-api PULSE_FORUM_SSO_SECRET, is only used to verify Login Tickets, and must not be reused as the Pulse profile secret.
         sso_hmac_secret_previous:
           title:
             other: Previous Forum SSO HMAC Secret (rotation)
@@ -31,12 +34,12 @@ plugin:
           title:
             other: Pulse Service HMAC Secret
           description:
-            other: Must match Pulse PULSE_SERVICE_HMAC_SECRET and is only used to sign read-only profile requests.
+            other: Must match Pulse PULSE_FORUM_HMAC_SECRET, is only used for read-only profile requests, and must not reuse the Forum SSO or settlement secret.
         nonce_redis_url:
           title:
             other: Login Ticket Nonce Redis URL
           description:
-            other: Redis URL shared by every Answer instance to atomically consume one-time login tickets; login fails closed when unavailable.
+            other: Redis URL shared by every Answer instance for browser-bound flows and one-time Login Tickets; linking fails closed when unavailable.
         level_badge_enabled:
           label:
             other: Show Meta Pulse level badges

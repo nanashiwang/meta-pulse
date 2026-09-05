@@ -48,6 +48,8 @@ services:
       NEWAPI_INTERNAL_BASE_URL: ${NEWAPI_INTERNAL_BASE_URL:-}
       PULSE_SERVICE_HMAC_SECRET: ${PULSE_SERVICE_HMAC_SECRET:-}
       PULSE_SERVICE_HMAC_SECRET_PREVIOUS: ${PULSE_SERVICE_HMAC_SECRET_PREVIOUS:-}
+      PULSE_FORUM_HMAC_SECRET: ${PULSE_FORUM_HMAC_SECRET:-}
+      PULSE_FORUM_HMAC_SECRET_PREVIOUS: ${PULSE_FORUM_HMAC_SECRET_PREVIOUS:-}
       PULSE_USER_BFF_HMAC_SECRET: ${PULSE_USER_BFF_HMAC_SECRET:-}
       PULSE_USER_BFF_HMAC_SECRET_PREVIOUS: ${PULSE_USER_BFF_HMAC_SECRET_PREVIOUS:-}
       PULSE_ADMIN_HMAC_SECRET: ${PULSE_ADMIN_HMAC_SECRET:-}
@@ -142,6 +144,10 @@ services:
       context: .
       dockerfile: services/forum/Dockerfile
     restart: unless-stopped
+    environment:
+      # The plugin uses Answer's own database account to install and verify
+      # one-to-one immutable binding constraints. The DSN never reaches Pulse.
+      FORUM_BINDING_GUARD_DSN: forum:${FORUM_DB_PASSWORD}@tcp(forum-mysql:3306)/meta_pulse_forum?charset=utf8mb4&parseTime=True&loc=Local
     # Internal-only: the HTTPS gateway is the sole public Answer entry.
     expose:
       - "80"

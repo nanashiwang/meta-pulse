@@ -11,6 +11,8 @@ require (
 	github.com/segmentfault/pacman v1.0.5-0.20230822083413-c0075a2d401f
 )
 
+require filippo.io/edwards25519 v1.1.0 // indirect
+
 require (
 	github.com/LinkinStars/go-i18n/v2 v2.2.2 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
@@ -26,6 +28,7 @@ require (
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.30.1 // indirect
+	github.com/go-sql-driver/mysql v1.8.1
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/goccy/go-yaml v1.19.2 // indirect
 	github.com/golang/snappy v0.0.4 // indirect

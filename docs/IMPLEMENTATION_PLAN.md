@@ -17,6 +17,7 @@
 ✅ M2 Ingest      只读日志游标、统一 Mapper、单事务记账、退款复核、等级 Profile
 ✅ M2.5 回测工具   只读回放、半开范围、异常/覆盖率报告、倍率对比与溢出保护
 ✅ M3 只读入口     new-api BFF/UI、YuanHeng 隔离 WebView、论坛等级与降级
+✅ M3.5 社区账号   Answer 本地注册、可选绑定、一对一约束、flow/nonce 与内容身份映射
 ✅ M4 Reward      Shadow Mode、确定性随机、Ticket/Budget/Grant/Outbox 与并发恢复
 ✅ M5 Settlement  Benefit Client、退避、Query/Reconcile/Rollback、死信安全重试与终态冲突
 ✅ M6 运营闭环     可重入 Period Close、周期奖励、Holdout 固化、Audit、日指标与告警
@@ -24,29 +25,22 @@
 ✅ 部署自动化       生产配置模板、随机密钥初始化、迁移、健康检查、加锁更新与失败回滚提示
 ```
 
-**P0–M7 功能里程碑已落地；本轮补齐第 12 节的可靠性加固与回归。** 功能实现不等于生产验收；真实 LOG_DB、new-api、Answer、公网域名和生产密钥等外部环境仍按第 8 节验收，不能用内存 fake、静态代码检查或本地桩冒充完成。
+**P0–M7 及 M3.5 社区账号改造已落地；本轮补齐第 12 节的可靠性与对抗性回归。** 功能实现不等于生产验收；真实 LOG_DB、new-api、Answer、邮件、正式社区域名和生产密钥等外部环境仍按第 8 节验收，不能用内存 fake、静态代码检查或本地桩冒充完成。
 
 ## 2. 已确认的跨仓库事实
 
 ### 2.1 身份事实源
 
-new-api 的登录入口为：
+身份拆分为两个事实源：
 
 ```text
-POST /api/user/login
-POST /api/user/login/2fa（启用 2FA 时）
+new-api = API 登录、2FA、模型调用与资金身份事实源
+Answer  = 社区注册、密码、会话、封禁、资料与内容事实源
 ```
 
-登录完成后由 new-api session Cookie 保存用户身份；受保护 API 同时要求 `New-Api-User`，且该 ID 必须与 session 中的用户一致。
+new-api 的登录入口仍为 `POST /api/user/login` 和可选的 `/api/user/login/2fa`；YuanHeng 继续使用 session Cookie + `New-Api-User`，Pulse 不接收密码、Cookie 或客户端自报的可信 `user_id`。
 
-YuanHeng Desktop 已采用：
-
-```text
-登录 → 捕获 Set-Cookie → 处理 pending 2FA session → 保存正式 session
-     → Cookie + New-Api-User 查询用户/模型 → 创建或复用本机 API Token
-```
-
-结论：Pulse 不实现登录，不接收密码、Cookie 或客户端自报的可信 `user_id`。
+Answer 开启本地注册和密码登录。用户可选通过 new-api 现有 `/api/forum/sso/start` 建立绑定；绑定事实源为 Answer `user_external_login(provider=pulse_user_center)`，并由数据库 guard 保证 new-api ID 与 Answer ID 一对一、不可静默换绑或普通解绑。未绑定用户仍能使用社区，但不能获得 Pulse 权益。
 
 ### 2.2 Usage 事实源
 
@@ -89,18 +83,22 @@ Meta Pulse 用户 API
 
 浏览器和桌面端都不直接访问 Pulse 原始 API，也不直接向 Pulse 传 session Cookie。
 
-### 3.2 论坛登录
+### 3.2 社区本地登录与可选绑定
 
 ```text
-Answer
-  → new-api /forum/sso/start
-  → 未登录：/login?next=/forum/sso/start
-  → 已登录：new-api 从 session 读取用户并签发短期单次 Login Ticket
-  → 302 到固定 Answer callback
-  → 插件验签、消费 nonce、建立论坛会话
+普通社区使用：Answer 本地注册/密码登录 → Answer session
+
+可选绑定：
+Answer Connector → 浏览器 flow Cookie + Redis marker
+  → new-api /api/forum/sso/start（从 new-api session 派生用户）
+  → 固定社区 callback
+  → Nginx rewrite 到 Connector receiver
+  → 严格字段解析 + Ticket HMAC + Binding Guard
+  → Redis 原子消费 flow + nonce
+  → Answer 邮箱确认后创建/绑定本地账号
 ```
 
-Ticket 的用户字段必须由 new-api 服务端读取，不能由浏览器提交后直接签名。Callback 地址使用固定配置或严格 allowlist，禁止开放重定向。Nonce 必须使用跨实例可共享的原子存储。
+new-api Email 未证明 verified，Connector 必须留空 Email/Avatar，禁止静默按邮箱接管。现有 Ticket 未签名 state；本轮不改 new-api，以固定 callback、短期 flow、单次 nonce、邮箱确认和不可转移绑定收敛风险，未来最小升级再把 state 纳入签名。
 
 ### 3.3 奖励结算
 
@@ -155,24 +153,24 @@ type UnitOfWork interface {
 
 **负责人：new-api + Meta Pulse + 论坛插件 + 部署配置。M0 前置。**
 
-- [x] new-api 实现 `/forum/sso/start`，使用固定登录回跳，禁止开放重定向；
+- [x] new-api 已有 `/api/forum/sso/start`，使用固定 callback，禁止开放重定向；
 - [x] new-api 从 session 读取用户资料并签发 Login Ticket；
-- [x] Ticket 具备 TTL、未来时间拒绝、HMAC 验签、单次 nonce、固定 callback allowlist；
-- [x] 论坛插件将登录入口切换到 SSO Bridge；
-- [x] Nonce 使用 Redis 原子消费，进程内存实现仅保留给测试；
-- [x] 论坛固定使用独立 HTTPS 子域；Nginx 仅向 Answer 转发 `visit` Cookie，旧 `/forum/*` 只重定向；
+- [x] Ticket 具备 TTL、未来时间拒绝、HMAC 验签、单次 nonce 和固定 callback；
+- [x] Answer 保留本地账号体系，插件以 Connector 提供可选 new-api 绑定；
+- [x] 浏览器 flow 与 Ticket nonce 使用 Redis 原子消费，进程内存实现仅保留给测试；
+- [x] 新社区域名以 Answer 根路径为主、`/blog/` 为辅；Nginx 按路由使用 Cookie allowlist；
 - [x] new-api 实现 Pulse Signed BFF，浏览器访问 new-api，用户 ID 由 session 派生；
-- [x] 更新 Nginx/网关：对外 `/api/pulse/*` 只进入 new-api BFF，Pulse/Answer 均不发布宿主机端口；
+- [x] 更新社区 Nginx/网关：不代理 new-api/Pulse；callback 清除 Authorization、全部路由清除 Pulse 签名头，普通路由保留 Answer API Authorization；Pulse/Answer 不发布宿主机端口；
 - [x] 统一服务签名覆盖 method、path、user、timestamp、nonce、body hash；
 - [x] 定义 Benefit API 的 grant/query/rollback、payload fingerprint、conflict 和错误码；Grant 的请求体 `user_id` 必须与已验签 `X-Pulse-User-Id` 一致；
 - [x] 定义 Usage Mapper：consume、refund、correction、异步 task 退款、差额结算；不确定关联进入人工复核；
 - [x] 生产密钥不进入 Git，支持 current/previous 平滑轮换和 fail closed；
 - [x] SSO 入口使用 CriticalRateLimit；Benefit 内部接口使用独立的已验签服务身份限流，不受公共 API IP 限流影响；
 - [x] Pulse 侧实现规范化 `method/path/user/timestamp/nonce/body_hash` 验签、时间窗和重放拒绝，生产 Nonce 适配 Redis 原子 `SETNX`；签名请求体上限 64 KiB，角色/Nonce 头长度分别限制为 64/128 字节；
-- [x] Pulse 内部用户路由按签名角色最小权限隔离：`new-api` 仅访问用户摘要、Action、奖励历史，`forum` 仅访问用户 Profile，内容奖励管理仅接受 `admin`；角色缺失、未知或不匹配时 fail closed，且不触发业务查询；
+- [x] Pulse 内部用户路由按签名角色最小权限隔离：`new-api` 仅访问用户摘要、Action、奖励历史，`forum` 仅使用独立 `PULSE_FORUM_HMAC_SECRET` 访问用户 Profile，内容奖励管理仅接受 `admin`；不同信任角色、Forum SSO 与只读 Profile 密钥禁止复用，角色缺失、未知或不匹配时 fail closed，且不触发业务查询；
 - [ ] 真实部署完成审计、限流压测、跨实例 Nonce 与密钥轮换演练。
 
-**代码出口：**登录、2FA、论坛 SSO、Ticket 重放、Cookie 隔离、BFF 越权和签名重放回归测试通过。真实域名、跨实例、轮换演练和公网门禁属于部署验收；P0 外部验收完成前论坛不得开放公网，Pulse 奖励不得上线。
+**代码出口：**登录、2FA、可选绑定、Ticket/flow 重放、Cookie 隔离、BFF 越权和签名重放回归测试通过。真实域名、Answer 邮件、跨实例、轮换演练和公网门禁属于部署验收；P0 外部验收完成前社区不得开放公网，Pulse 奖励不得上线。
 
 ### M0｜Pulse 地基
 
@@ -238,7 +236,20 @@ type UnitOfWork interface {
 - [x] 论坛展示 Pulse 等级，Pulse 故障时降级；
 - [x] 只读灰度入口保持无 Pulse Action；正式灰度仍需部署验收。
 
-**出口：**用户能看到数据；浏览器、桌面端、论坛均不能越过 new-api 身份边界；Pulse 故障不影响登录、模型调用、充值和论坛浏览。
+**出口：**用户能看到数据；浏览器/桌面端不能越过 new-api 的 Pulse 身份边界，论坛绑定不能越过 Answer/new-api 双身份边界；Pulse 故障不影响登录、模型调用、充值和论坛浏览。
+
+### M3.5｜社区独立账号与安全绑定 ✅
+
+- [x] Answer 保留本地注册、密码、会话、资料和封禁，`EnabledOriginalUserSystem=true`；
+- [x] Connector 复用 new-api 现有 SSO Bridge，不修改 new-api 源码；
+- [x] flow Cookie 与 Ticket nonce 在共享 Redis 原子消费，callback 严格拒绝缺失、重复和额外参数；
+- [x] `user_external_login` 增加条件生成列、单列唯一索引和不可变触发器，防账号冒领、重复绑定、换绑和普通解绑；
+- [x] new-api 未证明 verified 的 Email/Avatar 不传给 Answer；本地封禁和治理角色不被 UserCenter 覆盖；
+- [x] 内容采集只通过受保护绑定映射 new-api user ID，排除未绑定、绑定前、隐藏、待审核和删除内容；
+- [x] 社区网关不代理 new-api/Pulse；普通请求只转发 `visit` 且保留 Answer API Authorization，callback 只转发 flow 并清除 Authorization，所有路由清除 Pulse 签名头；
+- [x] 真实 MySQL 8 验证 Answer v1.7.1 schema、约束和绑定时间映射。
+
+**出口：**社区可独立注册和登录；绑定一对一、不可静默转移；未绑定或绑定前内容不解锁权益；Pulse 故障不阻断本地登录和浏览。
 
 ### M4｜Reward 内核与 Shadow Mode
 
@@ -286,7 +297,7 @@ type UnitOfWork interface {
 
 ### M7｜内容奖励 ✅（Pulse 侧完成）
 
-- [x] 论坛 DB 只读游标与 Content Candidate：Worker 通过可选 `FORUM_DB_DSN` 读取 Answer 问题元数据，只复制必要字段，不复制正文；论坛库不可用时仅停用内容采集；
+- [x] 论坛 DB 只读游标与 Content Candidate：Worker 通过可选 `FORUM_DB_DSN` 读取 Answer v1.7.1 公开问题，并经受保护绑定映射 new-api 作者；绑定时间采用严格 `<`，同秒关系不明时保守排除；原始 question ID 分页且不合格行只推进 durable cursor，未绑定/绑定前/同秒内容不采集、不反复扫描，不复制正文；论坛库不可用时仅停用内容采集；
 - [x] 人工审核、档位、reason、Audit Log：管理员请求必须使用已签名 `admin` Principal，actor 不从 JSON 读取；
 - [x] 独立 `content_reward` budget：内容奖励汇入通用 Reward Grant/Settlement，但预算线与 loyalty、period_reward 隔离；
 - [x] 付费门槛、单用户上限、全站日上限；持久化 MySQL guard 串行化跨候选/跨实例检查，锁定后使用当前读并按 Asia/Shanghai 半开日区间聚合；未达标/超限只写审核与资格结果，不生成 Grant；
@@ -301,7 +312,8 @@ type UnitOfWork interface {
 
 ### new-api
 
-- [x] Forum SSO Bridge 与 Login Ticket；
+- [x] 现有 Forum SSO Bridge 与 Login Ticket 可直接复用，本轮不改 new-api 源码；
+- [ ] 生产配置 `PULSE_FORUM_SSO_SECRET` 与新社区固定 callback，并做零停机容器重建验收；
 - [x] Pulse BFF，服务端派生 user ID；
 - [x] Pulse Internal Benefit API；
 - [x] Benefit 重复请求 payload 比较与 conflict；严格拒绝尾随 JSON，保持 Benefit 指纹边界一致；
@@ -333,10 +345,11 @@ type UnitOfWork interface {
 ### 论坛与博客
 
 - [x] Answer 继续使用插件，不 Fork 上游；
-- [x] 论坛切换到 new-api SSO；
-- [x] Nonce 使用共享 Redis 原子存储；
-- [x] Pulse 不可用时论坛降级；
-- [x] M5 前仅展示等级/徽章，不发内容额度；
+- [x] Answer 本地注册/密码登录保持开启，new-api 绑定可选；
+- [x] 一对一不可变 Binding Guard 与共享 Redis flow/nonce；
+- [x] 未验证 Email 不自动绑定，本地封禁/资料/治理权保持 Answer 权威；
+- [x] Pulse 不可用时徽章降级，不阻断本地登录或浏览；
+- [x] 内容仅在绑定后进入候选，且不产生 contribution/ticket；
 - [x] 博客独立使用 VitePress，内容不接入经济账本。
 
 ## 7. 待决策事项
@@ -353,9 +366,9 @@ type UnitOfWork interface {
 
 `request_id` 是普通消费与异步任务退款/差额结算的主关联键，任务使用 `other.task_id` 辅助审计，明确的 `origin_log_id` 等历史字段优先。差额不新增日志类型：补扣记 consume，退回记 refund，并保留预扣/实际额度。没有稳定原消费关联的记录进入 `manual_review` 与人工对账，禁止直接计入贡献。
 
-### D4｜Cookie 拓扑（已决策）
+### D4｜社区域名与 Cookie 拓扑（已决策）
 
-论坛固定使用 `forum.<主域>` 独立 HTTPS 子域；旧 `/forum/*` 仅做 308 跳转。网关以 Cookie allowlist 方式只向 Answer 转发 `visit`，并禁止 Pulse/Answer 容器直接发布宿主机端口。
+使用新的独立社区域名，根路径以 Answer 为主、`/blog/` 为辅；new-api 保持原域名和服务器。社区网关不代理 new-api/Pulse，普通请求只转发 `visit` 并保留 Answer API Authorization；callback 只转发 flow 且清除 Authorization；所有路由清除 Pulse 签名头，容器默认不发布宿主机端口。
 
 ### D5｜Ticket Debt 展示（M3 前）
 
@@ -371,7 +384,8 @@ type UnitOfWork interface {
 
 - new-api `LOG_DB` 只读账号、Pulse 独立数据库及无主库写权限；
 - 真实 LOG_DB 回放与参数定标；Provider 成本快照的正式接入仍待 new-api 变更；
-- Answer 真实 schema、SSO、等级降级和跨实例 Nonce；
+- 新社区正式域名、TLS、Answer 初始化/邮件发送、本地注册、绑定/登录、等级降级和跨实例 flow/nonce；
+- new-api 线上仅增加 SSO secret/callback 后的零停机重建与回滚验证；
 - new-api Benefit 真实到账、重放 100 次、timeout Query、rollback 及密钥轮换演练；
 - 生产环境的 SSO/Benefit 审计、限流压测、真实域名和跨实例 Redis nonce 演练。
 - 服务器首次部署与更新脚本已纳入仓库，但仍需在真实服务器完成 Docker、网络、备份和故障恢复演练。
@@ -392,7 +406,9 @@ type UnitOfWork interface {
 | DB commit 后响应丢失 | M4 | 同 key 可恢复 |
 | Benefit 成功但 Pulse timeout | M5 | Query/Reconciliation 恢复 |
 | Ledger/Account 重建 | M1 | 可重建、可对账 |
-| Login Ticket 重放 | P0 | 单次 nonce、过期拒绝 |
+| Login Ticket 重放 | P0/M3.5 | forged/expired/future/replay 拒绝，flow+nonce 原子消费 |
+| 账号绑定并发/转移 | M3.5 | 双向一对一，UPDATE/DELETE/复合索引削弱均拒绝 |
+| 内容身份映射 | M3.5/M7 | 只认受保护绑定，未绑定/绑定前内容排除 |
 | BFF 越权/签名重放 | P0 | 浏览器不能伪造身份 |
 | 签名请求体超限/尾随 JSON | P0/M5 | 超过 64 KiB 或存在第二个 JSON 值时拒绝，且不消费 nonce |
 | 内容撤销重放/同 key 改 payload | M7 | 只执行一次，改 payload 返回 conflict |
@@ -413,6 +429,8 @@ M2 Usage Ingest
 M2.5 真实回测
   ↓
 M3 new-api UI + YuanHeng 入口 + 论坛等级
+  ↓
+M3.5 Answer 独立账号 + 可选安全绑定
   ↓
 M4 Reward Shadow Mode
   ↓
@@ -443,7 +461,9 @@ M7 内容奖励
 - [x] 更新不初始化/轮换凭据；先加锁，缺配置/占位密码即停止；原文件备份可验证，外部 shell 应用变量不能隐式覆盖 Compose。
 - [x] Worker 提供私网业务监控与 `/readyz`；指标接入已提交运营快照，增加未知值、采集失败/最近成功时间、周期和任务失败计数；API 不再发布未采集的业务零值。
 - [x] CI 执行部署脚本回归、生产角色配置门禁、隔离 MySQL 事务/并发/重放与恢复测试；集成入口缺少 DSN 时失败，不允许全跳过后显示成功。
+- [x] 社区绑定完成对抗性回归：Ticket/callback/flow 重放，Redis/Guard 故障，一对一并发约束，UPDATE/DELETE/绑定时间篡改，复合索引与布尔分组削弱，跨角色密钥复用，未验证 Email、本地封禁、同秒绑定内容及连续不合格游标推进。
+- [x] 论坛集成测试增加可丢弃 schema 名门禁，防误把会 DROP Answer 测试表的 DSN 指向业务库。
 
-本轮验证：`make test`、`make vet`、`make deploy-config-test`、`make build-pulse`，以及隔离 MySQL 的 `make test-integration`（含 race）。新增跨周期/关闭后 100 次重放、100 个不同 key 并发复用同一 action、旧记录升级、配置缺失/锁竞争/原配置备份、慢任务超时与实际指标值回归。另以生产配置启动 API/Worker 原生进程，使用隔离 MySQL/Redis 验证 `/readyz` 和非零业务指标，未访问真实 new-api 或 Answer。
+本轮新增验证入口：`make test-forum-integration`，顺序执行 Binding Guard 与 Answer 内容映射真实 MySQL 回归；CI 与 Pulse 财务集成测试共用隔离 MySQL schema。2026 年 9 月 6 日已实际通过 `make fmt`、`make test`、全量 `go test -race`、`make vet`、`make deploy-config-test`、`make build-pulse`、`./deploy/nginx/test-config.sh`，以及一次性 MySQL 8 容器中的 Pulse/论坛集成回归。完整本地验证命令为 `make fmt test vet deploy-config-test build-pulse` 与 `./deploy/nginx/test-config.sh`。Answer 镜像构建仍需在可访问 Docker Registry 的 CI/服务器执行。
 
 发布注意：先备份并应用 `00009_action_replay_indexes.sql`，排空旧 API 写请求，禁止新旧 Action 实现并行发奖。Prometheus 需要新增 Worker `:8089` 内网抓取及采集过期告警。生产身份、真实额度到账、网络和备份恢复演练仍保留在第 8 节，不能直接关闭 Shadow Mode。

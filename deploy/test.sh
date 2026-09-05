@@ -17,7 +17,7 @@ ensure_env_file
 validate_environment
 
 for key in PULSE_DB_PASSWORD PULSE_DB_ROOT_PASSWORD FORUM_DB_PASSWORD FORUM_DB_ROOT_PASSWORD \
-  PULSE_SERVICE_HMAC_SECRET PULSE_USER_BFF_HMAC_SECRET PULSE_ADMIN_HMAC_SECRET PULSE_REWARD_RANDOM_SECRET; do
+  PULSE_SERVICE_HMAC_SECRET PULSE_FORUM_HMAC_SECRET PULSE_USER_BFF_HMAC_SECRET PULSE_ADMIN_HMAC_SECRET PULSE_REWARD_RANDOM_SECRET; do
   value="$(env_value "$key")"
   [[ "${#value}" -ge 32 ]] || { echo "$key 未生成有效随机值" >&2; exit 1; }
   [[ "$value" != replace-me && "$value" != __GENERATE__ ]] || { echo "$key 仍是占位值" >&2; exit 1; }
@@ -47,6 +47,20 @@ grep -q 'compose_files+=(.*COMPOSE_OVERRIDE_FILE' "$ROOT/deploy/lib.sh"
 grep -q 'chmod 600 "\$BACKUP_DIR/compose.before.yml"' "$ROOT/deploy/update.sh"
 grep -q 'mysqldump' "$ROOT/deploy/lib.sh"
 grep -q ': >"\$output_file"' "$ROOT/deploy/lib.sh"
+
+# Keep community callback and credential-isolation checks in the default test
+# path even on hosts where Docker is unavailable for nginx -t.
+grep -q 'location = /api/user-center/login/callback' "$ROOT/deploy/nginx/meta-pulse.conf"
+grep -q 'limit_req_zone $binary_remote_addr zone=community_connector:10m rate=10r/m;' "$ROOT/deploy/nginx/meta-pulse.conf"
+grep -qF 'location ~ ^/users/(?:auth-landing|confirm-email)$' "$ROOT/deploy/nginx/meta-pulse.conf"
+grep -q 'proxy_pass http://forum/answer/api/v1/connector/redirect/pulse_user_center;' "$ROOT/deploy/nginx/meta-pulse.conf"
+grep -q 'proxy_set_header Cookie "meta_pulse_forum_flow=\$cookie_meta_pulse_forum_flow";' "$ROOT/deploy/nginx/meta-pulse.conf"
+[[ "$(grep -c 'proxy_set_header Authorization "";' "$ROOT/deploy/nginx/meta-pulse.conf")" -eq 1 ]]
+[[ "$(grep -c 'proxy_set_header X-Pulse-Signature "";' "$ROOT/deploy/nginx/meta-pulse.conf")" -eq 4 ]]
+[[ "$(grep -c 'proxy_set_header New-Api-User "";' "$ROOT/deploy/nginx/meta-pulse.conf")" -eq 4 ]]
+grep -A12 'location /blog/' "$ROOT/deploy/nginx/meta-pulse.conf" | grep -q 'Strict-Transport-Security'
+! grep -Eq 'upstream[[:space:]]+(pulse|new_api)|proxy_pass[[:space:]]+http://(pulse|new_api)' "$ROOT/deploy/nginx/meta-pulse.conf"
+grep -q 'FORUM_BINDING_GUARD_DSN:' "$ROOT/docker-compose.yml"
 
 bash "$ROOT/deploy/update_test.sh"
 

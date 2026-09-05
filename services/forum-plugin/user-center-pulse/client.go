@@ -32,7 +32,7 @@ const (
 // Meta Pulse remains the source of truth for levels and contribution; the forum
 // never writes back. See docs/COMMUNITY.md for why this direction is enforced.
 type UserProfile struct {
-	UserID                 int64        `json:"user_id"`
+	UserID                 uint64       `json:"user_id"`
 	Level                  ProfileLevel `json:"level"`
 	LifetimeContributionMi int64        `json:"lifetime_contribution_milli"`
 }
@@ -52,11 +52,21 @@ type PulseClient struct {
 }
 
 func NewPulseClient(config *Config) *PulseClient {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	// Internal HMAC headers must not leave through an inherited HTTP proxy or
+	// be replayed to a redirect target controlled by another host.
+	transport.Proxy = nil
 	return &PulseClient{
 		config: config,
-		http:   &http.Client{Timeout: 3 * time.Second},
-		now:    time.Now,
-		nonce:  pulseRequestNonce,
+		http: &http.Client{
+			Timeout:   3 * time.Second,
+			Transport: transport,
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
+		now:   time.Now,
+		nonce: pulseRequestNonce,
 	}
 }
 
@@ -73,8 +83,8 @@ func (c *PulseClient) GetUserProfile(externalID string) (*UserProfile, error) {
 	if err != nil || parsedBase.Scheme == "" || parsedBase.Host == "" {
 		return nil, fmt.Errorf("pulse base url not configured")
 	}
-	userID, err := strconv.ParseUint(strings.TrimSpace(externalID), 10, 64)
-	if err != nil || userID == 0 {
+	userID, err := strconv.ParseUint(externalID, 10, 64)
+	if err != nil || userID == 0 || strconv.FormatUint(userID, 10) != externalID {
 		return nil, fmt.Errorf("invalid external user id")
 	}
 
@@ -116,7 +126,7 @@ func (c *PulseClient) GetUserProfile(externalID string) (*UserProfile, error) {
 		}
 		return nil, fmt.Errorf("decode trailing pulse profile response: %w", err)
 	}
-	if profile.UserID <= 0 || uint64(profile.UserID) != userID {
+	if profile.UserID == 0 || profile.UserID != userID {
 		return nil, fmt.Errorf("pulse profile identity mismatch")
 	}
 	if profile.LifetimeContributionMi < 0 {

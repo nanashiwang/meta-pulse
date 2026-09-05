@@ -97,6 +97,13 @@ func (s *ContentIngestService) IngestBatch(ctx context.Context) (ContentIngestRe
 }
 
 func (s *ContentIngestService) processOne(ctx context.Context, incoming ports.ContentEvent, result *ContentIngestResult, expectedCursor ...string) error {
+	if incoming.SkipCandidate {
+		if incoming.SourceContentID == "" || incoming.ContentType == "" || incoming.SourceCreatedAt.IsZero() || incoming.CursorValue == "" ||
+			!validDBText(incoming.SourceContentID, 191) || !validDBText(incoming.ContentType, 64) || !validDBText(incoming.CursorValue, 191) {
+			return errors.New("invalid skipped content event")
+		}
+		return s.advanceOnly(ctx, incoming, expectedCursor...)
+	}
 	if incoming.SourceContentID == "" || incoming.ContentType == "" || incoming.AuthorUserID == 0 || incoming.SourceCreatedAt.IsZero() || incoming.CursorValue == "" || incoming.PayloadHash == "" ||
 		!validDBText(incoming.SourceContentID, 191) || !validDBText(incoming.ContentType, 64) ||
 		!validDBText(incoming.Title, 500) || !validDBText(incoming.CursorValue, 191) || !validDBText(incoming.PayloadHash, 64) {
@@ -145,6 +152,19 @@ func (s *ContentIngestService) processOne(ctx context.Context, incoming ports.Co
 			return err
 		}
 		result.Accepted++
+		return saveContentCursor(ctx, repos.Cursor, cursor, incoming, expectedCursor...)
+	})
+}
+
+func (s *ContentIngestService) advanceOnly(ctx context.Context, incoming ports.ContentEvent, expectedCursor ...string) error {
+	return s.unit.Do(ctx, func(repos ports.Repositories) error {
+		if repos.Cursor == nil {
+			return errors.New("content cursor repository is not initialized")
+		}
+		cursor, err := repos.Cursor.GetOrCreateForUpdate(ctx, s.cfg.CursorName, s.cfg.SourceSystem)
+		if err != nil {
+			return err
+		}
 		return saveContentCursor(ctx, repos.Cursor, cursor, incoming, expectedCursor...)
 	})
 }

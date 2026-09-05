@@ -1,6 +1,8 @@
 # Meta Pulse｜元衡脉冲计划
 
-**元衡脉冲计划（Meta Pulse）是一套建立在元衡 API 真实付费调用之上的 C 端用户增长与回馈系统。**
+**元衡脉冲计划（Meta Pulse）是以社区为主要产品入口、以真实付费调用权益为增长内核的用户社区与回馈系统。**
+
+社区账号由 Apache Answer 独立管理，可单独注册；用户可选绑定元衡 new-api 账号，解锁等级、脉冲券和奖励。Pulse 的经济内核仍只建立在 new-api 的真实付费调用之上。
 
 它把原本单向的“充值 → 调用模型 → 扣费 → 再充值”，变成：
 
@@ -49,11 +51,11 @@ Meta Pulse = 调用之后的增长与权益系统
 
 Meta Pulse 负责 Usage Event、贡献值、脉冲券、经济规则、10 天周期、Reward、Budget、Experiment、增长分析和奖励结算状态。
 
-论坛与博客构成社区层，负责搜索引流、等级展示和内容沉淀；论坛身份完全委托给 new-api，详见 [docs/COMMUNITY.md](docs/COMMUNITY.md)。
+论坛与博客构成社区层，负责注册登录、搜索引流、内容沉淀和等级展示。Answer 是社区身份事实源；new-api 是 API/资金身份事实源；二者通过一对一、不可静默转移的可选绑定关联，详见 [docs/COMMUNITY.md](docs/COMMUNITY.md)。
 
 硬原则：
 
-> **Pulse 故障不得影响 new-api 模型调用、计费、充值和余额。**
+> **Pulse 故障不得影响 new-api 模型调用、计费、充值和余额，也不得阻断论坛本地登录或浏览。**
 
 ## 技术栈
 
@@ -70,7 +72,7 @@ Meta Pulse 负责 Usage Event、贡献值、脉冲券、经济规则、10 天周
 
 ### 服务器首次部署
 
-Meta Pulse 使用独立的 Pulse MySQL、Redis、API、Worker 和 Answer 容器；new-api、Nginx、TLS 和公网 DNS 由外部系统负责。推荐在 Linux 服务器执行：
+Meta Pulse 使用独立的 Pulse MySQL、Redis、API、Worker 和 Answer 容器；new-api 继续在原服务器独立运行，Nginx、TLS 和公网 DNS 由外部系统负责。推荐在 Linux 服务器执行：
 
 ```bash
 git clone https://github.com/nanashiwang/meta-pulse.git /opt/meta-pulse
@@ -78,7 +80,7 @@ cd /opt/meta-pulse
 ./deploy/install.sh
 ```
 
-首次执行会创建 `/opt/meta-pulse/.env` 并生成随机凭据。填写真实的 `NEWAPI_LOG_DSN`（只读账号）和 `NEWAPI_INTERNAL_BASE_URL`，同步 new-api / 论坛插件的 HMAC 密钥后，再次执行安装脚本。脚本在配置不完整时会安全退出，不会删除数据卷。
+首次执行会创建 `/opt/meta-pulse/.env` 并生成随机凭据。填写真实的 `NEWAPI_LOG_DSN`（只读账号）、`NEWAPI_INTERNAL_BASE_URL` 和可选的 `FORUM_DB_DSN` 后再次执行。论坛启用后，在 Answer 后台配置插件；new-api 仅需配置已有 SSO Bridge 的 `PULSE_FORUM_SSO_SECRET` 与固定 callback，无需修改源码或在本机再部署一套 new-api。脚本在配置不完整时会安全退出，不会删除数据卷。
 
 ### 一键更新
 
@@ -96,6 +98,7 @@ make test       # Go 测试 + 部署脚本离线测试
 make vet
 make deploy-test
 make deploy-config-test  # 生产 Compose 配置 + API/Worker/Tool 最小权限校验
+# FORUM_INTEGRATION_DSN=.../forum_integration?... make test-forum-integration
 ```
 
 ### 运行监控与数据库回归
@@ -103,6 +106,7 @@ make deploy-config-test  # 生产 Compose 配置 + API/Worker/Tool 最小权限�
 - API 的 `:8088/metrics` 提供 HTTP 指标；Worker 的 `:8089/metrics` 提供账本、结算、预算、周期失败与任务失败指标。两者均只允许内网采集，不发布宿主机端口。
 - 业务指标必须同时检查 `meta_pulse_operations_up` 和最近成功采集时间，不能把未采集/过期数据当作正常。
 - `make test-integration` 必须显式提供专用测试库的 `PULSE_INTEGRATION_DSN`，执行真实 MySQL 事务、100 并发/重放、跨周期和旧版幂等恢复测试；**禁止指向业务数据库**。CI 自动创建隔离 MySQL。
+- `make test-forum-integration` 验证 Answer v1.7.1 表结构、一对一不可变绑定及绑定后内容映射；测试会重建表，schema 名必须以 `_integration`、`-integration`、`_test` 或 `-test` 结尾。
 - 新的开启操作必须使用新的 `action_id` 和 `Idempotency-Key`；响应丢失时复用原值，即使周期已经结束，也返回首次结果。
 
 ## 仓库结构
@@ -121,7 +125,7 @@ meta-pulse/
 │   ├── forum/                       Track C｜论坛构建定义
 │   │   └── Dockerfile               重编译 Answer + 插件
 │   └── forum-plugin/
-│       └── user-center-pulse/       身份委托 + 等级徽章插件
+│       └── user-center-pulse/       可选账号绑定 + 等级徽章插件
 ├── sites/
 │   └── blog/                        Track B｜VitePress 博客
 ├── deploy/nginx/                    HTTPS 分域网关与 Cookie 隔离
@@ -141,10 +145,10 @@ Apache Answer 源码不进入仓库，通过官方镜像与 Go module 引入。
 
 ## 当前状态
 
-**P0–M7 功能里程碑已落地；已补齐跨周期幂等、Worker、更新安全与监控回归。正式上线仍需真实外部环境验收。**
+**P0–M7 功能里程碑已落地；社区身份已调整为“Answer 独立账号 + 可选绑定 new-api”，并补齐数据库约束、重放防护、内容映射和网关隔离。正式上线仍需真实外部环境验收。**
 
-已落地范围包括：身份与服务签名边界、Usage Ingest、Ledger/Account、等级、确定性 Reward、Hard Budget、Transactional Outbox、Benefit Query/Reconciliation/Rollback、可重入 Period Close、运营审计与指标、论坛 SSO/等级，以及独立预算的内容奖励。
+已落地范围包括：Usage Ingest、Ledger/Account、等级、确定性 Reward、Hard Budget、Transactional Outbox、Benefit Query/Reconciliation/Rollback、可重入 Period Close、运营审计与指标，以及论坛本地注册、一对一不可变绑定、Pulse 徽章和独立预算的内容奖励。
 
-仍需完成的外部验收包括真实 LOG_DB 样本与只读权限、Provider 成本快照、new-api Benefit 实际到账与密钥轮换、Answer 真实 schema/公网 SSO、跨实例 Redis Nonce、真实域名和生产灰度。明细见 [实施计划第 8 节](docs/IMPLEMENTATION_PLAN.md#8-当前未冒充完成的外部验收)。
+仍需完成的外部验收包括真实 LOG_DB 样本与只读权限、Provider 成本快照、new-api Benefit 实际到账与密钥轮换、社区正式域名、Answer 初始化/邮件发送、跨实例 Redis flow/nonce 和生产灰度。明细见 [实施计划第 8 节](docs/IMPLEMENTATION_PLAN.md#8-当前未冒充完成的外部验收)。
 
 实现不得改变 `docs/ARCHITECTURE.md` 定义的系统边界、事实源和工程红线，以及 `docs/COMMUNITY.md` 定义的社区层边界。里程碑、出口标准和外部验收清单见 `docs/IMPLEMENTATION_PLAN.md`。

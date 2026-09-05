@@ -21,6 +21,9 @@ jobs:
         with:
           go-version: '1.25.x'
           cache: true
+          cache-dependency-path: |
+            services/pulse/go.sum
+            services/forum-plugin/user-center-pulse/go.sum
 
       # Checks every Go file in the workspace, not a hardcoded directory list,
       # so new modules cannot silently escape formatting checks.
@@ -45,8 +48,19 @@ jobs:
       - name: Build
         run: make build-pulse
 
+  forum-image:
+    name: Forum image
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Answer with local plugin
+        run: make build-forum
+
   mysql-integration:
-    name: MySQL financial invariants (no skipped DB tests)
+    name: MySQL financial and forum identity invariants
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
@@ -65,13 +79,16 @@ jobs:
           --health-retries=30
     env:
       PULSE_INTEGRATION_DSN: root:pulse_ci_test_only@tcp(127.0.0.1:3306)/pulse_integration?charset=utf8mb4&parseTime=True&loc=Asia%2FShanghai
+      FORUM_INTEGRATION_DSN: root:pulse_ci_test_only@tcp(127.0.0.1:3306)/pulse_integration?charset=utf8mb4&parseTime=True&loc=Asia%2FShanghai
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25.x'
           cache: true
-          cache-dependency-path: services/pulse/go.sum
+          cache-dependency-path: |
+            services/pulse/go.sum
+            services/forum-plugin/user-center-pulse/go.sum
       - name: Enable append-only trigger migrations in disposable database
         env:
           MYSQL_CONTAINER: ${{ job.services.mysql.id }}
@@ -80,6 +97,8 @@ jobs:
           'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot -e "SET GLOBAL log_bin_trust_function_creators=1;"'
       - name: Transaction, concurrency, cross-period replay and recovery regressions
         run: make test-integration
+      - name: Forum binding and Answer schema regressions
+        run: make test-forum-integration
 
   blog:
     name: Blog

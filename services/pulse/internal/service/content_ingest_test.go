@@ -58,6 +58,24 @@ func TestContentIngestIsReadOnlyAndIdempotent(t *testing.T) {
 	}
 }
 
+func TestContentIngestAdvancesPastIneligibleRowsWithoutCandidate(t *testing.T) {
+	created := time.Unix(1700000000, 0).UTC()
+	events := []ports.ContentEvent{
+		{SkipCandidate: true, SourceContentID: "1", ContentType: "question", SourceCreatedAt: created, CursorValue: "1"},
+		{SkipCandidate: true, SourceContentID: "2", ContentType: "question", SourceCreatedAt: created.Add(time.Second), CursorValue: "2"},
+	}
+	store := newMemoryLedgerStore()
+	content := &memoryContentStore{}
+	s, err := NewContentIngestService(contentIngestUnit{store: store, content: content}, staticContentSource{events: events}, ContentIngestConfig{BatchSize: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := s.IngestBatch(context.Background())
+	if err != nil || report.Fetched != 2 || report.Accepted != 0 || len(content.candidates) != 0 || store.cursor.Value != "2" {
+		t.Fatalf("report=%+v err=%v candidates=%d cursor=%+v", report, err, len(content.candidates), store.cursor)
+	}
+}
+
 func TestContentIngestCanStageBeforeFirstActivePeriod(t *testing.T) {
 	created := time.Unix(1500000000, 0).UTC()
 	event := ports.ContentEvent{SourceContentID: "1", ContentType: "question", AuthorUserID: 9, SourceCreatedAt: created, CursorValue: "1", PayloadHash: "hash"}

@@ -1,10 +1,16 @@
 package pulse_user_center
 
 import (
+	"crypto/rand"
 	"embed"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/apache/answer-plugins/util"
@@ -14,24 +20,44 @@ import (
 	"github.com/segmentfault/pacman/log"
 )
 
+const (
+	forumLoginFlowCookie = "meta_pulse_forum_flow"
+	forumCallbackPath    = "/api/user-center/login/callback"
+	loginFlowTTL         = 10 * time.Minute
+	maxLoginQueryBytes   = 8 << 10
+)
+
+var loginTicketFields = []string{
+	"user_id", "username", "display_name", "email", "avatar", "timestamp", "nonce", "signature",
+}
+
 //go:embed info.yaml
 var Info embed.FS
 
-// UserCenter delegates all forum identity to new-api.
-//
-// Two deliberate constraints, both from docs/COMMUNITY.md:
-//
-//   - EnabledOriginalUserSystem is false: the forum has no independent
-//     registration path, so a browser can never assert a user_id the way
-//     AGENTS.md invariant 13 forbids.
-//   - RankAgentEnabled is false: Answer's native rank gates moderation
-//     privileges (voting, editing, closing). Handing that to Pulse would let
-//     paid spend buy community governance power. The two reputations stay
-//     separate and are only displayed side by side.
+// UserCenter is both an Answer Connector and a non-authoritative UserCenter.
+// Answer owns local registration, passwords, sessions, profile and moderation;
+// the Connector only binds one immutable new-api identity, while UserCenter
+// contributes optional Pulse branding for bound accounts.
 type UserCenter struct {
-	Config *Config
-	Client *PulseClient
-	Nonces LoginTicketNonceStore
+	runtimeMu sync.RWMutex
+	Config    *Config
+	Client    *PulseClient
+	Logins    LoginFlowStore
+	Guard     BindingGuard
+
+	newBindingGuard func(string) (BindingGuard, error)
+}
+
+func (uc *UserCenter) configSnapshot() Config {
+	if uc == nil {
+		return Config{}
+	}
+	uc.runtimeMu.RLock()
+	defer uc.runtimeMu.RUnlock()
+	if uc.Config == nil {
+		return Config{}
+	}
+	return *uc.Config
 }
 
 func init() {
@@ -53,170 +79,270 @@ func (uc *UserCenter) Info() plugin.Info {
 }
 
 func (uc *UserCenter) Description() plugin.UserCenterDesc {
+	config := uc.configSnapshot()
 	return plugin.UserCenterDesc{
 		Name:        "Meta Pulse",
 		DisplayName: plugin.MakeTranslator(i18n.InfoName),
 		Icon:        "",
-		Url:         uc.Config.NewAPIBaseURL,
+		Url:         config.NewAPIBaseURL,
 
-		LoginRedirectURL:  uc.Config.NewAPIBaseURL + "/api/forum/sso/start",
-		SignUpRedirectURL: uc.Config.NewAPIBaseURL + "/register?next=%2Fapi%2Fforum%2Fsso%2Fstart",
+		LoginRedirectURL:  "",
+		SignUpRedirectURL: "",
 
 		RankAgentEnabled:          false,
-		UserStatusAgentEnabled:    true,
+		UserStatusAgentEnabled:    false,
 		UserRoleAgentEnabled:      false,
 		MustAuthEmailEnabled:      false,
-		EnabledOriginalUserSystem: false,
+		EnabledOriginalUserSystem: true,
 	}
 }
 
 func (uc *UserCenter) ControlCenterItems() []plugin.ControlCenter {
+	config := uc.configSnapshot()
 	return []plugin.ControlCenter{
-		{
-			Name:  "Meta Pulse",
-			Label: "Meta Pulse",
-			Url:   uc.Config.NewAPIBaseURL + "/console/pulse",
-		},
-		{
-			Name:  "Console",
-			Label: "API Console",
-			Url:   uc.Config.NewAPIBaseURL + "/console",
-		},
+		{Name: "Meta Pulse", Label: "Meta Pulse", Url: config.NewAPIBaseURL + "/console/pulse"},
+		{Name: "Console", Label: "API Console", Url: config.NewAPIBaseURL + "/console"},
 	}
 }
 
-// LoginCallback resolves a new-api login ticket into a forum user.
-func (uc *UserCenter) LoginCallback(ctx *plugin.GinContext) (*plugin.UserCenterBasicUserInfo, error) {
-	return uc.resolveUser(ctx)
+func (uc *UserCenter) ConnectorLogoSVG() string {
+	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"><path d="M3 12h4l2-6 4 12 2-6h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
 }
 
-// SignUpCallback is identical to login: accounts are always created upstream in
-// new-api, never in the forum.
-func (uc *UserCenter) SignUpCallback(ctx *plugin.GinContext) (*plugin.UserCenterBasicUserInfo, error) {
-	return uc.resolveUser(ctx)
+func (uc *UserCenter) ConnectorName() plugin.Translator {
+	return plugin.MakeTranslator(i18n.ConnectorName)
 }
 
-// resolveUser verifies the signed ticket new-api issued for this browser.
-//
-// This callback is reached by a browser redirect, so every field is attacker-
-// controlled until the signature checks out. Nothing here may be trusted before
-// Verify returns nil.
-func (uc *UserCenter) resolveUser(ctx *gin.Context) (*plugin.UserCenterBasicUserInfo, error) {
-	timestamp, err := strconv.ParseInt(ctx.Query("timestamp"), 10, 64)
+func (uc *UserCenter) ConnectorSlugName() string { return pluginSlug }
+
+// ConnectorSender starts a browser-bound flow before leaving the forum. The
+// marker cannot replace an OAuth state (new-api's existing ticket has no state
+// field), but it prevents an unsolicited callback URL from being accepted and
+// is consumed atomically with the signed ticket nonce.
+func (uc *UserCenter) ConnectorSender(ctx *plugin.GinContext, _ string) string {
+	if ctx == nil || ctx.Request == nil || uc == nil {
+		return "/50x"
+	}
+	uc.runtimeMu.RLock()
+	defer uc.runtimeMu.RUnlock()
+	if uc.Config == nil || uc.Logins == nil {
+		return "/50x"
+	}
+	flowID, err := randomHex(32)
 	if err != nil {
-		return nil, fmt.Errorf("invalid timestamp in login ticket")
+		log.Errorf("create forum login flow: %v", err)
+		return "/50x"
 	}
-
-	ticket := &LoginTicket{
-		UserID:      ctx.Query("user_id"),
-		Username:    ctx.Query("username"),
-		DisplayName: ctx.Query("display_name"),
-		Email:       ctx.Query("email"),
-		Avatar:      ctx.Query("avatar"),
-		Timestamp:   timestamp,
-		Nonce:       ctx.Query("nonce"),
-		Signature:   ctx.Query("signature"),
+	expiresAt := time.Now().Add(loginFlowTTL)
+	if err := uc.Logins.Begin(ctx.Request.Context(), flowID, expiresAt); err != nil {
+		log.Errorf("store forum login flow: %v", err)
+		return "/50x"
 	}
+	http.SetCookie(ctx.Writer, &http.Cookie{
+		Name:     forumLoginFlowCookie,
+		Value:    flowID,
+		Path:     forumCallbackPath,
+		MaxAge:   int(loginFlowTTL.Seconds()),
+		Expires:  expiresAt,
+		Secure:   true,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+	ctx.Header("Cache-Control", "no-store")
+	ctx.Header("Referrer-Policy", "no-referrer")
+	return uc.Config.NewAPIBaseURL + "/api/forum/sso/start"
+}
 
+// ConnectorReceiver verifies the fixed new-api Login Ticket, requires a
+// browser-initiated flow, and returns only the stable external identity. Email
+// and avatar deliberately remain empty: new-api does not prove historical
+// email verification, and the local Answer profile belongs to the community.
+func (uc *UserCenter) ConnectorReceiver(ctx *plugin.GinContext, _ string) (plugin.ExternalLoginUserInfo, error) {
+	var empty plugin.ExternalLoginUserInfo
+	if ctx == nil || ctx.Request == nil || uc == nil {
+		return empty, errors.New("forum connector is not configured")
+	}
+	uc.runtimeMu.RLock()
+	defer uc.runtimeMu.RUnlock()
+	if uc.Config == nil || uc.Guard == nil || uc.Logins == nil {
+		return empty, errors.New("forum connector is not configured")
+	}
+	flowID, err := ctx.Cookie(forumLoginFlowCookie)
+	if err != nil || !validLoginFlowID(flowID) {
+		return empty, errors.New("forum login flow is missing or expired")
+	}
+	ticket, err := loginTicketFromRequest(ctx.Request)
+	if err != nil {
+		return empty, errors.New("login verification failed")
+	}
 	secrets := []string{uc.Config.SSOHMACSecret}
 	if previous := uc.Config.SSOHMACSecretPrevious; previous != "" && previous != uc.Config.SSOHMACSecret {
 		secrets = append(secrets, previous)
 	}
-	if err := ticket.VerifyWithSecrets(ctx.Request.Context(), secrets, uc.Nonces, time.Now()); err != nil {
-		log.Warnf("rejected user center login callback: %v", err)
-		return nil, fmt.Errorf("login verification failed")
+	expiresAt, err := ticket.AuthenticateWithSecrets(secrets, time.Now())
+	if err != nil {
+		log.Warnf("rejected forum connector callback: %v", err)
+		return empty, errors.New("login verification failed")
 	}
-
-	userInfo := &plugin.UserCenterBasicUserInfo{
+	// Expensive schema checks happen only after the callback proves both a
+	// browser-started flow and a valid new-api signature. Guard failure still
+	// occurs before the flow or ticket nonce is consumed.
+	if err := uc.Guard.Ready(ctx.Request.Context()); err != nil {
+		log.Errorf("forum binding guard unavailable: %v", err)
+		return empty, errors.New("forum account binding is temporarily unavailable")
+	}
+	accepted, err := uc.Logins.Consume(ctx.Request.Context(), flowID, ticket.Nonce, expiresAt)
+	if err != nil {
+		log.Errorf("consume forum login flow: %v", err)
+		return empty, errors.New("login verification temporarily unavailable")
+	}
+	if !accepted {
+		clearLoginFlowCookie(ctx)
+		return empty, errors.New("forum login flow was already used or expired")
+	}
+	clearLoginFlowCookie(ctx)
+	displayName := ticket.DisplayName
+	if displayName == "" {
+		displayName = ticket.Username
+	}
+	return plugin.ExternalLoginUserInfo{
 		ExternalID:  ticket.UserID,
 		Username:    ticket.Username,
-		DisplayName: ticket.DisplayName,
-		Email:       ticket.Email,
-		Avatar:      ticket.Avatar,
-		Status:      plugin.UserStatusAvailable,
-	}
-	if userInfo.DisplayName == "" {
-		userInfo.DisplayName = userInfo.Username
-	}
-	return userInfo, nil
-}
-
-func (uc *UserCenter) UserInfo(externalID string) (*plugin.UserCenterBasicUserInfo, error) {
-	return &plugin.UserCenterBasicUserInfo{
-		ExternalID: externalID,
-		Status:     uc.UserStatus(externalID),
+		DisplayName: displayName,
+		Email:       "",
+		Avatar:      "",
+		MetaInfo:    "",
 	}, nil
 }
 
-// UserStatus deliberately does not derive account suspension from Pulse.
-// new-api owns identity state; Pulse only supplies non-authoritative branding.
-func (uc *UserCenter) UserStatus(string) plugin.UserStatus {
-	return plugin.UserStatusAvailable
+func validLoginFlowID(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	decoded, err := hex.DecodeString(value)
+	return err == nil && hex.EncodeToString(decoded) == value && !strings.ContainsAny(value, "\r\n")
 }
+
+func clearLoginFlowCookie(ctx *gin.Context) {
+	http.SetCookie(ctx.Writer, &http.Cookie{
+		Name:     forumLoginFlowCookie,
+		Value:    "",
+		Path:     forumCallbackPath,
+		MaxAge:   -1,
+		Expires:  time.Unix(1, 0),
+		Secure:   true,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func loginTicketFromRequest(request *http.Request) (*LoginTicket, error) {
+	if request == nil || request.URL == nil || request.Method != http.MethodGet || len(request.URL.RawQuery) > maxLoginQueryBytes {
+		return nil, errors.New("invalid login callback request")
+	}
+	query, err := url.ParseQuery(request.URL.RawQuery)
+	if err != nil || len(query) != len(loginTicketFields) {
+		return nil, errors.New("invalid login callback query")
+	}
+	for _, field := range loginTicketFields {
+		if len(query[field]) != 1 {
+			return nil, fmt.Errorf("login callback field %s must occur exactly once", field)
+		}
+	}
+	rawTimestamp := query.Get("timestamp")
+	timestamp, err := strconv.ParseInt(rawTimestamp, 10, 64)
+	if err != nil || timestamp <= 0 || strconv.FormatInt(timestamp, 10) != rawTimestamp {
+		return nil, errors.New("invalid timestamp in login ticket")
+	}
+	return &LoginTicket{
+		UserID:      query.Get("user_id"),
+		Username:    query.Get("username"),
+		DisplayName: query.Get("display_name"),
+		Email:       query.Get("email"),
+		Avatar:      query.Get("avatar"),
+		Timestamp:   timestamp,
+		Nonce:       query.Get("nonce"),
+		Signature:   query.Get("signature"),
+	}, nil
+}
+
+func randomHex(size int) (string, error) {
+	if size <= 0 {
+		return "", errors.New("invalid random value size")
+	}
+	value := make([]byte, size)
+	if _, err := rand.Read(value); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(value), nil
+}
+
+// The old UserCenter SSO callbacks are disabled. The edge rewrites the fixed
+// new-api callback to the Connector receiver so users can keep local accounts.
+func (uc *UserCenter) LoginCallback(*plugin.GinContext) (*plugin.UserCenterBasicUserInfo, error) {
+	return nil, errors.New("user-center login is disabled; use the Meta API connector")
+}
+
+func (uc *UserCenter) SignUpCallback(*plugin.GinContext) (*plugin.UserCenterBasicUserInfo, error) {
+	return nil, errors.New("user-center sign-up is disabled; use local registration")
+}
+
+func (uc *UserCenter) UserInfo(externalID string) (*plugin.UserCenterBasicUserInfo, error) {
+	return &plugin.UserCenterBasicUserInfo{ExternalID: externalID, Status: plugin.UserStatusAvailable}, nil
+}
+
+// Local Answer status remains authoritative; Description disables this agent.
+func (uc *UserCenter) UserStatus(string) plugin.UserStatus { return plugin.UserStatusAvailable }
 
 func (uc *UserCenter) UserList(externalIDs []string) ([]*plugin.UserCenterBasicUserInfo, error) {
 	users := make([]*plugin.UserCenterBasicUserInfo, 0, len(externalIDs))
 	for _, externalID := range externalIDs {
-		users = append(users, &plugin.UserCenterBasicUserInfo{
-			ExternalID: externalID,
-			Status:     plugin.UserStatusAvailable,
-		})
+		users = append(users, &plugin.UserCenterBasicUserInfo{ExternalID: externalID, Status: plugin.UserStatusAvailable})
 	}
 	return users, nil
 }
 
-func (uc *UserCenter) UserSettings(externalID string) (*plugin.SettingInfo, error) {
-	return &plugin.SettingInfo{
-		ProfileSettingRedirectURL: uc.Config.NewAPIBaseURL + "/console/personal",
-		AccountSettingRedirectURL: uc.Config.NewAPIBaseURL + "/console/personal",
-	}, nil
+// Empty redirects preserve Answer's local profile/password settings.
+func (uc *UserCenter) UserSettings(string) (*plugin.SettingInfo, error) {
+	return &plugin.SettingInfo{}, nil
 }
 
-// PersonalBranding renders the Pulse level as a profile badge.
-//
-// This is the whole point of the integration: paid usage earns a level in
-// Pulse, and the level becomes visible social standing in the forum.
 func (uc *UserCenter) PersonalBranding(externalID string) []*plugin.PersonalBranding {
-	if !uc.Config.LevelBadgeEnabled {
+	if uc == nil {
 		return nil
 	}
-
-	profile, err := uc.Client.GetUserProfile(externalID)
+	uc.runtimeMu.RLock()
+	config, client := uc.Config, uc.Client
+	if config == nil || !config.LevelBadgeEnabled || client == nil {
+		uc.runtimeMu.RUnlock()
+		return nil
+	}
+	baseURL := config.NewAPIBaseURL
+	uc.runtimeMu.RUnlock()
+	profile, err := client.GetUserProfile(externalID)
 	if err != nil {
 		log.Debugf("pulse branding unavailable for %s: %v", externalID, err)
 		return nil
 	}
-
 	return []*plugin.PersonalBranding{
-		{
-			Name:  "pulse_level",
-			Label: profile.Level.Name,
-			Url:   uc.Config.NewAPIBaseURL + "/console/pulse",
-		},
-		{
-			Name:  "pulse_contribution",
-			Label: formatContribution(profile.LifetimeContributionMi),
-			Url:   uc.Config.NewAPIBaseURL + "/console/pulse",
-		},
+		{Name: "pulse_level", Label: profile.Level.Name, Url: baseURL + "/console/pulse"},
+		{Name: "pulse_contribution", Label: formatContribution(profile.LifetimeContributionMi), Url: baseURL + "/console/pulse"},
 	}
 }
 
-func (uc *UserCenter) AfterLogin(externalID, accessToken string) {
-	log.Debugf("pulse user center: user %s logged in", externalID)
+func (uc *UserCenter) AfterLogin(externalID, _ string) {
+	log.Debugf("pulse-bound forum user %s logged in", externalID)
 }
 
-func (uc *UserCenter) RegisterUnAuthRouter(r *gin.RouterGroup) {}
-
+func (uc *UserCenter) RegisterUnAuthRouter(r *gin.RouterGroup)   {}
 func (uc *UserCenter) RegisterAuthUserRouter(r *gin.RouterGroup) {}
 
 func (uc *UserCenter) RegisterAuthAdminRouter(r *gin.RouterGroup) {
 	r.GET("/pulse/health", func(ctx *gin.Context) {
-		ctx.JSON(http.StatusOK, gin.H{"pulse_base_url": uc.Config.PulseBaseURL})
+		config := uc.configSnapshot()
+		ctx.JSON(http.StatusOK, gin.H{"pulse_base_url": config.PulseBaseURL})
 	})
 }
 
-// formatContribution renders fixed-point contribution_milli for display only.
-// Never use this value for accounting; Pulse's ledger is the source of truth.
-func formatContribution(milli int64) string {
-	return strconv.FormatInt(milli/1000, 10)
-}
+// formatContribution is display-only fixed-point formatting.
+func formatContribution(milli int64) string { return strconv.FormatInt(milli/1000, 10) }

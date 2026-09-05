@@ -25,6 +25,10 @@ func TestValidateConfigRejectsUnsafeURLsAndSecrets(t *testing.T) {
 		{"URL query", func(c *Config) { c.PulseBaseURL = "https://pulse.example.test/?next=1" }},
 		{"short secret", func(c *Config) { c.SSOHMACSecret = "short" }},
 		{"duplicate previous secret", func(c *Config) { c.SSOHMACSecretPrevious = c.SSOHMACSecret }},
+		{"SSO and Profile secrets reused", func(c *Config) { c.PulseHMACSecret = c.SSOHMACSecret }},
+		{"old SSO and Profile secrets reused", func(c *Config) {
+			c.SSOHMACSecretPrevious = c.PulseHMACSecret
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

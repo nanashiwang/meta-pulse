@@ -23,6 +23,8 @@ type Config struct {
 	NewAPIInternalURL           string
 	ServiceHMACSecret           string
 	ServiceHMACSecretPrevious   string
+	ForumHMACSecret             string
+	ForumHMACSecretPrevious     string
 	UserBFFHMACSecret           string
 	UserBFFHMACSecretPrevious   string
 	AdminHMACSecret             string
@@ -104,6 +106,8 @@ func Load() (Config, error) {
 		NewAPIInternalURL:           os.Getenv("NEWAPI_INTERNAL_BASE_URL"),
 		ServiceHMACSecret:           os.Getenv("PULSE_SERVICE_HMAC_SECRET"),
 		ServiceHMACSecretPrevious:   os.Getenv("PULSE_SERVICE_HMAC_SECRET_PREVIOUS"),
+		ForumHMACSecret:             os.Getenv("PULSE_FORUM_HMAC_SECRET"),
+		ForumHMACSecretPrevious:     os.Getenv("PULSE_FORUM_HMAC_SECRET_PREVIOUS"),
 		UserBFFHMACSecret:           os.Getenv("PULSE_USER_BFF_HMAC_SECRET"),
 		UserBFFHMACSecretPrevious:   os.Getenv("PULSE_USER_BFF_HMAC_SECRET_PREVIOUS"),
 		AdminHMACSecret:             os.Getenv("PULSE_ADMIN_HMAC_SECRET"),
@@ -163,6 +167,7 @@ func (cfg Config) Validate() error {
 	if cfg.Environment == "production" {
 		for name, secret := range map[string]string{
 			"PULSE_SERVICE_HMAC_SECRET":  cfg.ServiceHMACSecret,
+			"PULSE_FORUM_HMAC_SECRET":    cfg.ForumHMACSecret,
 			"PULSE_USER_BFF_HMAC_SECRET": cfg.UserBFFHMACSecret,
 			"PULSE_ADMIN_HMAC_SECRET":    cfg.AdminHMACSecret,
 			"PULSE_REWARD_RANDOM_SECRET": cfg.RewardRandomSecret,
@@ -173,9 +178,11 @@ func (cfg Config) Validate() error {
 		}
 		for name, secret := range map[string]string{
 			"PULSE_SERVICE_HMAC_SECRET_PREVIOUS":  cfg.ServiceHMACSecretPrevious,
+			"PULSE_FORUM_HMAC_SECRET_PREVIOUS":    cfg.ForumHMACSecretPrevious,
 			"PULSE_USER_BFF_HMAC_SECRET_PREVIOUS": cfg.UserBFFHMACSecretPrevious,
 			"PULSE_ADMIN_HMAC_SECRET_PREVIOUS":    cfg.AdminHMACSecretPrevious,
 		} {
+			secret = strings.TrimSpace(secret)
 			if secret != "" && (len(secret) < minimumProductionSecretLength || secret == "replace-me") {
 				errs = append(errs, fmt.Errorf("%s must be at least %d bytes and cannot use a placeholder in production", name, minimumProductionSecretLength))
 			}
@@ -183,12 +190,35 @@ func (cfg Config) Validate() error {
 	}
 	for currentName, pair := range map[string][2]string{
 		"PULSE_SERVICE_HMAC_SECRET":  {cfg.ServiceHMACSecret, cfg.ServiceHMACSecretPrevious},
+		"PULSE_FORUM_HMAC_SECRET":    {cfg.ForumHMACSecret, cfg.ForumHMACSecretPrevious},
 		"PULSE_USER_BFF_HMAC_SECRET": {cfg.UserBFFHMACSecret, cfg.UserBFFHMACSecretPrevious},
 		"PULSE_ADMIN_HMAC_SECRET":    {cfg.AdminHMACSecret, cfg.AdminHMACSecretPrevious},
 	} {
 		if strings.TrimSpace(pair[1]) != "" && strings.TrimSpace(pair[0]) == strings.TrimSpace(pair[1]) {
 			errs = append(errs, fmt.Errorf("%s and its previous secret must differ", currentName))
 		}
+	}
+	secretOwners := make(map[string]string)
+	for _, item := range []struct{ name, value string }{
+		{"PULSE_SERVICE_HMAC_SECRET", cfg.ServiceHMACSecret},
+		{"PULSE_SERVICE_HMAC_SECRET_PREVIOUS", cfg.ServiceHMACSecretPrevious},
+		{"PULSE_FORUM_HMAC_SECRET", cfg.ForumHMACSecret},
+		{"PULSE_FORUM_HMAC_SECRET_PREVIOUS", cfg.ForumHMACSecretPrevious},
+		{"PULSE_USER_BFF_HMAC_SECRET", cfg.UserBFFHMACSecret},
+		{"PULSE_USER_BFF_HMAC_SECRET_PREVIOUS", cfg.UserBFFHMACSecretPrevious},
+		{"PULSE_ADMIN_HMAC_SECRET", cfg.AdminHMACSecret},
+		{"PULSE_ADMIN_HMAC_SECRET_PREVIOUS", cfg.AdminHMACSecretPrevious},
+		{"PULSE_REWARD_RANDOM_SECRET", cfg.RewardRandomSecret},
+	} {
+		value := strings.TrimSpace(item.value)
+		if value == "" {
+			continue
+		}
+		if owner, exists := secretOwners[value]; exists {
+			errs = append(errs, fmt.Errorf("%s must not reuse %s", item.name, owner))
+			continue
+		}
+		secretOwners[value] = item.name
 	}
 	return errors.Join(errs...)
 }
@@ -208,6 +238,10 @@ func secretPair(current, previous string) [][]byte {
 
 func (cfg Config) ServiceHMACSecrets() [][]byte {
 	return secretPair(cfg.ServiceHMACSecret, cfg.ServiceHMACSecretPrevious)
+}
+
+func (cfg Config) ForumHMACSecrets() [][]byte {
+	return secretPair(cfg.ForumHMACSecret, cfg.ForumHMACSecretPrevious)
 }
 
 func (cfg Config) UserBFFHMACSecrets() [][]byte {
@@ -239,6 +273,7 @@ func (cfg Config) validateRequiredSecrets(secrets map[string]string) error {
 func (cfg Config) ValidateAPI() error {
 	return errors.Join(cfg.Validate(), cfg.validateRequiredSecrets(map[string]string{
 		"PULSE_SERVICE_HMAC_SECRET":  cfg.ServiceHMACSecret,
+		"PULSE_FORUM_HMAC_SECRET":    cfg.ForumHMACSecret,
 		"PULSE_USER_BFF_HMAC_SECRET": cfg.UserBFFHMACSecret,
 		"PULSE_ADMIN_HMAC_SECRET":    cfg.AdminHMACSecret,
 		"PULSE_REWARD_RANDOM_SECRET": cfg.RewardRandomSecret,

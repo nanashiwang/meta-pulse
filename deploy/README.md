@@ -18,7 +18,7 @@
 - 删除 Docker 数据卷或执行 `docker compose down -v`；
 - 自动修改 Nginx、TLS、DNS 或公网防火墙。
 
-new-api 必须先独立部署，并完成 Signed BFF、Internal Benefit API、LOG_DB 只读账号和对应密钥配置。公网访问仍由外部 Nginx 通过 Docker 内网转发，参见 [`deploy/nginx/README.md`](nginx/README.md)。
+new-api 必须先独立部署，并提供 Signed BFF、Internal Benefit API、LOG_DB 只读账号及现有 Forum SSO Bridge。new-api 可以位于另一台服务器并独立更新；社区服务器不运行第二套 new-api。公网仅开放新的社区域名，参见 [`deploy/nginx/README.md`](nginx/README.md)。
 
 ## 首次部署
 
@@ -42,11 +42,11 @@ vi .env
 
 ```bash
 NEWAPI_LOG_DSN='只读账号 DSN' \
-NEWAPI_INTERNAL_BASE_URL='http://new-api:3000' \
+NEWAPI_INTERNAL_BASE_URL='http://<new-api私网地址>:3000' \
 ./deploy/install.sh
 ```
 
-注意：脚本生成的 `PULSE_SERVICE_HMAC_SECRET`、`PULSE_USER_BFF_HMAC_SECRET`、`PULSE_ADMIN_HMAC_SECRET` 需要同步配置到 new-api / 论坛插件的对应服务端；配置不一致时应保持服务不可用，不要降低验签要求。
+注意：脚本生成的 `PULSE_SERVICE_HMAC_SECRET`、`PULSE_FORUM_HMAC_SECRET`、`PULSE_USER_BFF_HMAC_SECRET`、`PULSE_ADMIN_HMAC_SECRET` 需要同步到对应服务。`PULSE_FORUM_HMAC_SECRET` 只用于 Answer → Pulse 的只读 Profile 请求，必须复制到插件 `pulse_hmac_secret`，不得复用可访问 new-api Benefit 的 `PULSE_SERVICE_HMAC_SECRET`。Forum SSO 另用独立密钥，可执行 `openssl rand -hex 32` 生成；它只配置到 new-api 的 `PULSE_FORUM_SSO_SECRET` 与 Answer 插件 `sso_hmac_secret`，且不得与插件 `pulse_hmac_secret` 复用。配置不一致或密钥复用时应保持功能不可用，不要降低验签要求。
 
 跨服务器部署时，可以创建仓库根目录下忽略提交的 `docker-compose.override.yml`，安装、更新、备份和健康检查会自动合并该文件。它只适合保存宿主机专属的端口绑定等配置，禁止写入密钥。例如只将 Pulse API 发布到 WireGuard 地址：
 
@@ -58,6 +58,35 @@ services:
 ```
 
 也可以通过 `META_PULSE_COMPOSE_OVERRIDE_FILE=/绝对路径/compose.yml` 指定其他覆盖文件。生产环境不得将 `8088` 无限制发布到公网。
+
+## Answer 初始化与账号绑定
+
+首次启动后，先通过新社区域名完成 Answer 初始化，并在后台确认：
+
+1. 开启本地注册和密码登录，配置站点 URL、发信服务与管理员；
+2. 启用 `Meta Pulse` 插件；Compose 已仅向 forum 容器注入 `FORUM_BINDING_GUARD_DSN`；
+3. 插件配置：
+
+   ```text
+   newapi_base_url       https://<现有 new-api 域名>
+   pulse_base_url        http://pulse-api:8088
+   sso_hmac_secret       与 new-api PULSE_FORUM_SSO_SECRET 相同
+   sso_hmac_secret_previous  仅密钥轮换窗口使用
+   pulse_hmac_secret     与 PULSE_FORUM_HMAC_SECRET 相同（只读 Profile 专用）
+   nonce_redis_url       redis://redis:6379/2
+   level_badge_enabled   true
+   ```
+
+4. 在 new-api 线上只增加：
+
+   ```env
+   PULSE_FORUM_SSO_SECRET=<论坛 SSO 独立密钥>
+   PULSE_FORUM_SSO_CALLBACK_URL=https://<新社区域名>/api/user-center/login/callback
+   ```
+
+5. 使用原 Compose/编排做零停机重建并验证；不改 new-api 源码、数据库或现有业务路由。
+
+绑定是可选的。Answer 本地账号、密码、资料和封禁保持权威；同一 Answer/new-api 账号只能一对一绑定，普通解绑和换绑会被数据库拒绝。身份纠错只能在备份、维护窗口和审计工单下处理。
 
 部署成功后查看：
 
@@ -85,7 +114,7 @@ cd /opt/meta-pulse
 
 ```bash
 ./deploy/update.sh --ref main       # 指定远程分支
-./deploy/update.sh --skip-forum    # 只更新 Pulse，不重建 Answer
+./deploy/update.sh --skip-forum    # 只更新 Pulse，不重建 Answer；new-api 始终独立更新
 ./deploy/update.sh --no-build      # 仅使用已有镜像（仅适合已预构建场景）
 ```
 
@@ -124,7 +153,7 @@ docker compose --env-file .env -f docker-compose.yml up -d pulse-api pulse-worke
 
 如果新版本已经写入不可逆 schema，必须按数据库备份/恢复方案处理，禁止用 `docker compose down -v`“解决”问题。
 
-正式关闭 `PULSE_REWARD_SHADOW_MODE` 前，仍需完成 new-api Benefit 实际到账、Query/Reconciliation、密钥轮换、限流和跨实例 Redis Nonce 等外部验收；本脚本不会替代这些验收。
+正式关闭 `PULSE_REWARD_SHADOW_MODE` 前，仍需完成 new-api Benefit 实际到账、Query/Reconciliation、密钥轮换、限流，以及 Answer 本地注册/邮件确认、绑定和跨实例 Redis flow/nonce 外部验收；本脚本不会替代这些验收。
 
 
 ## 监控与最小权限
@@ -150,7 +179,7 @@ scrape_configs:
 
 ## 幂等升级与回归
 
-首次从旧部署脚本升级到本版时，先备份已有 `.env`，在 tracked 工作区干净的前提下用 `git pull --ff-only` 获取新脚本，再执行 `./deploy/update.sh`；已经运行的旧脚本不会自动获得本版的保护。
+首次从旧部署脚本升级到本版时，先备份已有 `.env`，在 tracked 工作区干净的前提下用 `git pull --ff-only` 获取新脚本，再执行 `./deploy/update.sh`；已经运行的旧脚本不会自动获得本版的保护。旧 `.env` 还没有 `PULSE_FORUM_HMAC_SECRET` 时，先用 `openssl rand -hex 32` 生成并补入 `.env`，更新 Pulse API 后再把同值写入 Answer 插件 `pulse_hmac_secret`；过渡期只影响等级徽章，不影响 Answer 本地登录、论坛内容或 new-api 业务。不得继续让论坛复用 `PULSE_SERVICE_HMAC_SECRET`。
 
 本次新增 `00009_action_replay_indexes.sql`，只添加历史请求/动作查询索引，不改写任何账本、金额或旧幂等记录。更新脚本在迁移前通过 `compose stop -t 15 pulse-api` 排空/停止旧 API 的在途写请求，不能混跑新旧 Action 实现；这会短暂停用 Pulse API，但不会停止 new-api 的模型、计费或登录服务。新操作需要新的 action id/key；网络重试复用原值，跨周期也返回原结果。历史同 key/action 已有多笔结果时返回 conflict，必须人工核对，禁止删除记录后重发。
 
@@ -159,7 +188,8 @@ scrape_configs:
 ```bash
 make test                # Go + 更新脚本离线回归
 make deploy-config-test  # 实际 Compose 渲染 + 生产角色校验
-make test-integration    # 需要提前设置专用测试库 PULSE_INTEGRATION_DSN
+make test-integration          # 需要专用测试库 PULSE_INTEGRATION_DSN
+make test-forum-integration    # 需要专用测试库 FORUM_INTEGRATION_DSN
 ```
 
-集成 DSN 必须指向可丢弃的独立 MySQL 8 测试库，包含 `parseTime=True&loc=Asia%2FShanghai`，禁止指向现有业务库。MySQL 开启 binary logging 时需允许创建账本保护触发器（`log_bin_trust_function_creators=1`）；CI 自动创建隔离服务并设置该项。真实服务器的安装、更新、备份恢复和公网身份链路仍需另外验收。
+集成 DSN 必须指向可丢弃的独立 MySQL 8 测试库，禁止指向现有业务库。论坛集成测试会 DROP/重建 Answer 测试表，因此 schema 名必须以 `_integration`、`-integration`、`_test` 或 `-test` 结尾。MySQL 开启 binary logging 时需允许创建账本保护触发器（`log_bin_trust_function_creators=1`）；CI 自动创建隔离服务并设置该项。真实服务器的安装、更新、备份恢复和公网身份链路仍需另外验收。

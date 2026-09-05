@@ -49,9 +49,9 @@ func (r *Reader) Close() error {
 	return r.db.Close()
 }
 
-// Fetch reads only public question metadata. Answer's v1 schema uses
-// answer_question and Unix-second create_time; deployment can replace this
-// reader if its Answer schema is customized without changing the ingest port.
+// Fetch reads only public question metadata authored after an immutable
+// Meta API binding exists. Answer's local user_id is never a new-api identity;
+// the guarded user_external_login projection is the only allowed mapping.
 func (r *Reader) Fetch(ctx context.Context, after string, limit int) ([]ports.ContentEvent, error) {
 	if r == nil || r.db == nil {
 		return nil, errors.New("forum reader is not initialized")
@@ -67,30 +67,60 @@ func (r *Reader) Fetch(ctx context.Context, after string, limit int) ([]ports.Co
 			return nil, fmt.Errorf("invalid forum content cursor %q", after)
 		}
 	}
+	// Page by the raw Answer question id before applying eligibility. Returning
+	// cursor-only events for excluded rows prevents a tail of unbound/hidden
+	// content from being rescanned on every worker tick.
 	rows, err := r.db.QueryContext(ctx, `
-SELECT id, user_id, title, create_time
-FROM answer_question
-WHERE id > ?
-ORDER BY id ASC
-LIMIT ?`, lastID, limit)
+SELECT q.id, binding.meta_pulse_external_id_guard, q.title,
+       UNIX_TIMESTAMP(q.created_at), q.show, q.status
+FROM (
+  SELECT id, user_id, title, created_at, `+"`show`"+`, status
+  FROM question
+  WHERE id > ?
+  ORDER BY id ASC
+  LIMIT ?
+) AS q
+LEFT JOIN user_external_login AS binding
+  ON binding.meta_pulse_user_id_guard = q.user_id
+ AND binding.created_at < q.created_at
+ORDER BY q.id ASC`, lastID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("read forum questions: %w", err)
 	}
 	defer rows.Close()
 	result := make([]ports.ContentEvent, 0, limit)
+	previousID := lastID
 	for rows.Next() {
-		var id, userID, createdAt int64
-		var title sql.NullString
-		if err := rows.Scan(&id, &userID, &title, &createdAt); err != nil {
+		var id, createdAt int64
+		var externalID, title sql.NullString
+		var show, status int
+		if err := rows.Scan(&id, &externalID, &title, &createdAt, &show, &status); err != nil {
 			return nil, fmt.Errorf("scan forum question: %w", err)
 		}
-		if id <= 0 || userID <= 0 || createdAt <= 0 {
+		if id <= previousID || createdAt <= 0 {
+			return nil, fmt.Errorf("forum returned a non-monotonic or invalid question cursor row %d", id)
+		}
+		previousID = id
+		event := ports.ContentEvent{
+			SkipCandidate:   show != 1 || (status != 1 && status != 2) || !externalID.Valid,
+			SourceContentID: strconv.FormatInt(id, 10),
+			ContentType:     "question",
+			Title:           title.String,
+			SourceCreatedAt: time.Unix(createdAt, 0).UTC(),
+			CursorValue:     strconv.FormatInt(id, 10),
+		}
+		if event.SkipCandidate {
+			result = append(result, event)
 			continue
 		}
-		event := ports.ContentEvent{SourceContentID: strconv.FormatInt(id, 10), ContentType: "question", AuthorUserID: uint64(userID), Title: title.String, SourceCreatedAt: time.Unix(createdAt, 0).UTC(), CursorValue: strconv.FormatInt(id, 10)}
+		userID, err := strconv.ParseUint(externalID.String, 10, 64)
+		if err != nil || userID == 0 || strconv.FormatUint(userID, 10) != externalID.String {
+			return nil, fmt.Errorf("forum binding guard returned an invalid identity for question %d", id)
+		}
+		event.AuthorUserID = userID
 		payload, _ := json.Marshal(struct {
 			ID        int64  `json:"id"`
-			UserID    int64  `json:"user_id"`
+			UserID    uint64 `json:"user_id"`
 			Title     string `json:"title"`
 			CreatedAt int64  `json:"created_at"`
 		}{id, userID, title.String, createdAt})
