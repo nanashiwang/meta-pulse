@@ -8,7 +8,13 @@ FROM apache/answer:1.7.1 AS answer-base
 
 FROM golang:1.25-alpine AS builder
 
-RUN apk add --no-cache build-base git bash nodejs npm && npm install -g pnpm
+# Answer v1.7.1 declares pnpm@9.7.0 in ui/package.json. Installing the
+# floating latest pnpm makes old Answer releases depend on future package
+# manager behaviour and currently fails its pre-install identity check.
+ARG PNPM_VERSION=9.7.0
+RUN apk add --no-cache build-base git bash nodejs npm \
+    && npm install -g "pnpm@${PNPM_VERSION}" \
+    && test "$(pnpm --version)" = "${PNPM_VERSION}"
 
 COPY --from=answer-base /usr/bin/answer /usr/bin/answer
 
