@@ -147,7 +147,7 @@ fi
 validate_compose
 GATEWAY_ENABLED=0
 BLOG_CHANGED=0
-if compose config --services | grep -Fxq gateway; then
+if compose config --services | grep -Fx gateway >/dev/null; then
   GATEWAY_ENABLED=1
 fi
 if ! git -C "$REPO_ROOT" diff --quiet "$OLD_COMMIT" HEAD -- sites/blog; then

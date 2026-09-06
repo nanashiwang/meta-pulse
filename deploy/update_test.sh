@@ -43,6 +43,9 @@ cat >"$tmp/mock/docker" <<'MOCK'
 #!/usr/bin/env bash
 printf 'docker %s\n' "$*" >>"$MOCK_LOG"
 case " $* " in
+  *' config --services '*)
+    [[ "${MOCK_GATEWAY:-0}" == 1 ]] && printf 'gateway\n'
+    ;;
   *' inspect '*)
     if [[ "$*" == *'.State.Health'* ]]; then printf 'running healthy\n'; else printf 'running\n'; fi
     ;;
@@ -107,9 +110,13 @@ services:
   pulse-api:
     ports:
       - "10.77.0.2:8088:8088"
+  gateway:
+    image: nginx:1.27-alpine
 OVERRIDE
+mkdir -p "$tmp/repo/sites/blog/docs/.vitepress/dist"
+printf '<!doctype html>' >"$tmp/repo/sites/blog/docs/.vitepress/dist/index.html"
 : >"$MOCK_LOG"
-MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" >"$tmp/output" 2>&1 || { cat "$tmp/output" >&2; exit 1; }
+MOCK_GATEWAY=1 MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" >"$tmp/output" 2>&1 || { cat "$tmp/output" >&2; exit 1; }
 grep -Eq -- '-f .*/docker-compose\.yml -f .*/docker-compose\.override\.yml config' "$MOCK_LOG"
 cmp "$tmp/original.env" "$tmp/repo/.env"
 awk '
@@ -118,4 +125,7 @@ awk '
  / up -d pulse-api/{if(!migrated) exit 1; started=1}
  END {if(!stopped || !migrated || !started) exit 1}
 ' "$MOCK_LOG"
+grep -q 'run --rm --no-deps --entrypoint nginx gateway -t' "$MOCK_LOG"
+grep -q 'up -d gateway' "$MOCK_LOG"
+grep -q 'exec -T gateway nginx -s reload' "$MOCK_LOG"
 printf '更新配置只读、锁和原配置备份回归通过\n'
