@@ -891,7 +891,7 @@ new-api 与 Meta Pulse/社区允许部署在不同服务器并独立更新。推
 
 ```text
 new-api 服务器：现有域名 + new-api + LOG_DB / Benefit API
-社区服务器：新社区域名 + Nginx + Answer + VitePress + Pulse API/Worker + 独立 MySQL/Redis
+社区服务器：metar.uk + Nginx + Answer + VitePress + Pulse API/Worker + 独立 MySQL/Redis
 ```
 
 两端只通过受控的只读 LOG_DB、Internal Benefit API、Signed BFF 与浏览器 SSO Bridge 建立联系。社区服务器不运行第二套 new-api，社区网关也不代理 new-api/Pulse 公网接口。

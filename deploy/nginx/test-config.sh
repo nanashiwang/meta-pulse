@@ -10,11 +10,16 @@ die() {
   exit 1
 }
 
-grep -q 'server_name community.yourdomain.com;' "$config" || die 'community domain is missing'
+grep -q 'server_name metar.uk;' "$config" || die 'apex community domain is missing'
+grep -q 'server_name www.metar.uk;' "$config" || die 'www canonical redirect is missing'
+grep -q 'server_name metar.uk www.metar.uk;' "$config" || die 'HTTP ACME/canonical domain block is missing'
+grep -q 'location ^~ /.well-known/acme-challenge/' "$config" || die 'ACME webroot route is missing'
+grep -q 'return 308 https://metar.uk$request_uri;' "$config" || die 'canonical HTTPS redirect is missing'
+grep -A2 'location = /blog {' "$config" | grep -q 'return 308 /blog/;' || die 'slashless blog URL is not canonicalized'
 grep -q 'location = /api/user-center/login/callback' "$config" || die 'fixed new-api callback route is missing'
 grep -q 'limit_req_zone $binary_remote_addr zone=community_connector:10m rate=10r/m;' "$config" || die 'connector start rate-limit zone is missing'
 grep -q 'log_format community_no_query' "$config" || die 'query-free community access log format is missing'
-[ "$(grep -c 'access_log /var/log/nginx/community.access.log community_no_query;' "$config")" -eq 2 ] || die 'both HTTP and HTTPS servers must use query-free access logs'
+[ "$(grep -c 'access_log /var/log/nginx/community.access.log community_no_query;' "$config")" -eq 2 ] || die 'HTTP and apex HTTPS servers must use query-free access logs'
 if grep -q 'community.access.log combined' "$config"; then
   die 'default combined access log exposes sensitive query strings and referrers'
 fi
@@ -38,7 +43,7 @@ fi
 if grep -Eq 'upstream[[:space:]]+(pulse|new_api)|proxy_pass[[:space:]]+http://(pulse|new_api)' "$config"; then
   die 'community gateway must not proxy Pulse or new-api'
 fi
-grep -q 'PULSE_FORUM_SSO_CALLBACK_URL=https://community.yourdomain.com' "$repo_dir/deploy/nginx/README.md" || die 'fixed HTTPS callback is undocumented'
+grep -q 'PULSE_FORUM_SSO_CALLBACK_URL=https://metar.uk' "$repo_dir/deploy/nginx/README.md" || die 'fixed HTTPS callback is undocumented'
 
 for service in mysql redis pulse-api pulse-worker forum-mysql forum; do
   if awk -v target="$service" '
@@ -52,6 +57,7 @@ for service in mysql redis pulse-api pulse-worker forum-mysql forum; do
 done
 
 grep -q 'FORUM_BINDING_GUARD_DSN:' "$compose" || die 'forum binding guard DSN is missing'
+awk '/^  forum-mysql:/{inside=1; next} inside && /^  [[:alnum:]_-]+:/{inside=0} inside{print}' "$compose" | grep -q -- '--log-bin-trust-function-creators=1' || die 'forum MySQL cannot install binding guard triggers with binary logging enabled'
 
 command -v docker >/dev/null 2>&1 || die 'docker is required'
 command -v openssl >/dev/null 2>&1 || die 'openssl is required'
@@ -60,7 +66,7 @@ tmp_dir=$(mktemp -d)
 trap 'rm -rf "$tmp_dir"' EXIT INT TERM
 mkdir -p "$tmp_dir/tls" "$tmp_dir/blog"
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
-  -subj '/CN=community.yourdomain.com' \
+  -subj '/CN=metar.uk' \
   -keyout "$tmp_dir/tls/privkey.pem" \
   -out "$tmp_dir/tls/fullchain.pem" >/dev/null 2>&1
 
@@ -69,6 +75,7 @@ docker run --rm \
   -v "$config:/etc/nginx/conf.d/default.conf:ro" \
   -v "$tmp_dir/tls:/etc/nginx/tls:ro" \
   -v "$tmp_dir/blog:/var/www/blog:ro" \
+  -v "$tmp_dir/blog:/var/www/certbot:ro" \
   nginx:1.27-alpine nginx -t
 
 echo 'gateway config tests passed'

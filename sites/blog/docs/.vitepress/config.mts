@@ -1,8 +1,7 @@
 import { defineConfig } from 'vitepress'
 
 // The blog is a static site served under /blog/ by the same nginx that fronts
-// new-api and the forum, so all three share a cookie domain and accumulate
-// search authority on one hostname.
+// the forum. new-api remains on its independent domain and is linked explicitly.
 export default defineConfig({
   lang: 'zh-CN',
   title: '元衡技术博客',
@@ -11,7 +10,7 @@ export default defineConfig({
 
   // Content is the funnel entrance, so indexing settings are not optional.
   sitemap: {
-    hostname: 'https://example.com',
+    hostname: 'https://metar.uk',
   },
   lastUpdated: true,
   cleanUrls: true,
@@ -26,8 +25,8 @@ export default defineConfig({
       { text: '首页', link: '/' },
       { text: '模型评测', link: '/reviews/' },
       { text: '接入教程', link: '/guides/' },
-      { text: '论坛', link: 'https://example.com/forum/' },
-      { text: '控制台', link: 'https://example.com/console' },
+      { text: '论坛', link: 'https://metar.uk/' },
+      { text: '控制台', link: 'https://cn.meta-api.vip/console' },
     ],
 
     sidebar: {

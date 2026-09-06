@@ -103,7 +103,7 @@ Answer Connector 入口
 
 ```env
 PULSE_FORUM_SSO_SECRET=<与 Answer 插件 sso_hmac_secret 一致>
-PULSE_FORUM_SSO_CALLBACK_URL=https://<社区域名>/api/user-center/login/callback
+PULSE_FORUM_SSO_CALLBACK_URL=https://metar.uk/api/user-center/login/callback
 ```
 
 不需要把 new-api 部署到社区服务器，也不需要修改 new-api 数据库或代码。
@@ -134,11 +134,12 @@ SSO 密钥与 Pulse 只读 Profile、Settlement/Worker 服务签名密钥分离�
 
 ## 6. 网关与 Cookie 边界
 
-新社区域名是独立产品入口，例如：
+社区使用独立产品域名：
 
 ```text
-https://community.example.com/       Apache Answer
-https://community.example.com/blog/  VitePress
+https://metar.uk/       Apache Answer
+https://metar.uk/blog/  VitePress
+https://www.metar.uk/   跳转主域名
 ```
 
 new-api 继续运行在其现有域名和服务器。社区 Nginx：

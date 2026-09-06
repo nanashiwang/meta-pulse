@@ -130,6 +130,9 @@ services:
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
+      # The forum plugin installs immutable one-to-one binding triggers with
+      # the least-privileged forum account while MySQL binary logging remains on.
+      - --log-bin-trust-function-creators=1
     volumes:
       - forum_mysql_data:/var/lib/mysql
     healthcheck:

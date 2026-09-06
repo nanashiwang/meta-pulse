@@ -72,7 +72,7 @@ Meta Pulse 负责 Usage Event、贡献值、脉冲券、经济规则、10 天周
 
 ### 服务器首次部署
 
-Meta Pulse 使用独立的 Pulse MySQL、Redis、API、Worker 和 Answer 容器；new-api 继续在原服务器独立运行，Nginx、TLS 和公网 DNS 由外部系统负责。推荐在 Linux 服务器执行：
+Meta Pulse 使用独立的 Pulse MySQL、Redis、API、Worker 和 Answer 容器；new-api 继续在原服务器独立运行。正式社区入口为 `https://metar.uk/`，博客位于 `https://metar.uk/blog/`，`www.metar.uk` 跳转主域名。推荐在 Linux 服务器执行：
 
 ```bash
 git clone https://github.com/nanashiwang/meta-pulse.git /opt/meta-pulse
