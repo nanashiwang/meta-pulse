@@ -65,7 +65,7 @@ build-forum:
 	docker build -f services/forum/Dockerfile -t meta-pulse-forum:dev .
 
 build-blog:
-	cd sites/blog && pnpm install --frozen-lockfile && pnpm build
+	cd sites/blog && npm ci --ignore-scripts && npm run build
 
 run-api:
 	go run ./services/pulse/cmd/api

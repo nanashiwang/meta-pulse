@@ -145,6 +145,23 @@ else
 fi
 
 validate_compose
+GATEWAY_ENABLED=0
+BLOG_CHANGED=0
+if compose config --services | grep -Fxq gateway; then
+  GATEWAY_ENABLED=1
+fi
+if ! git -C "$REPO_ROOT" diff --quiet "$OLD_COMMIT" HEAD -- sites/blog; then
+  BLOG_CHANGED=1
+fi
+if (( GATEWAY_ENABLED == 1 && BLOG_CHANGED == 1 )); then
+  if (( NO_BUILD == 0 )); then
+    log "构建更新后的社区博客静态文件"
+    "$SCRIPT_DIR/build-blog.sh"
+  else
+    warn "检测到博客变更，但 --no-build 已跳过静态构建"
+  fi
+fi
+
 if (( NO_BUILD == 0 )); then
   build_services=(pulse-api)
   (( SKIP_WORKER == 0 )) && build_services+=(pulse-worker)
@@ -173,6 +190,15 @@ if (( SKIP_WORKER == 0 )); then
 fi
 if (( SKIP_FORUM == 0 )); then
   wait_for_service forum 120
+fi
+if (( GATEWAY_ENABLED == 1 )); then
+  [[ -f "$REPO_ROOT/sites/blog/docs/.vitepress/dist/index.html" ]] || die "社区网关已启用，但博客静态产物不存在"
+  log "校验并重载社区 HTTPS 网关"
+  compose run --rm --no-deps --entrypoint nginx gateway -t
+  compose up -d gateway
+  wait_for_service gateway 120
+  compose exec -T gateway nginx -t
+  compose exec -T gateway nginx -s reload
 fi
 
 trap - ERR

@@ -19,7 +19,7 @@ grep -A2 'location = /blog {' "$config" | grep -q 'return 308 /blog/;' || die 's
 grep -q 'location = /api/user-center/login/callback' "$config" || die 'fixed new-api callback route is missing'
 grep -q 'limit_req_zone $binary_remote_addr zone=community_connector:10m rate=10r/m;' "$config" || die 'connector start rate-limit zone is missing'
 grep -q 'log_format community_no_query' "$config" || die 'query-free community access log format is missing'
-[ "$(grep -c 'access_log /var/log/nginx/community.access.log community_no_query;' "$config")" -eq 2 ] || die 'HTTP and apex HTTPS servers must use query-free access logs'
+[ "$(grep -c 'access_log /dev/stdout community_no_query;' "$config")" -eq 2 ] || die 'HTTP and apex HTTPS servers must use query-free stdout logs'
 if grep -q 'community.access.log combined' "$config"; then
   die 'default combined access log exposes sensitive query strings and referrers'
 fi

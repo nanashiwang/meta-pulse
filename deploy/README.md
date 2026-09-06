@@ -7,6 +7,8 @@
 - `meta-pulse.env.example`：生产配置模板。
 - `test.sh` / `update_test.sh`：不连接真实 Docker、不执行远程更新的脚本回归。
 - `config-test.sh`：用测试凭据渲染实际生产 Compose，验证 API/Worker/Tool 的最小权限配置；不读取真实 `.env`、不连接业务数据库。
+- `build-blog.sh`：使用一次性 Node 容器和锁文件构建纯静态博客，不在生产机运行 Vite 开发服务。
+- `nginx/renew.sh` / `nginx/install-renewal-timer.sh`：续期 `metar.uk` 证书并安全重载网关。
 
 ## 部署边界
 
@@ -18,7 +20,7 @@
 - 删除 Docker 数据卷或执行 `docker compose down -v`；
 - 自动修改 Nginx、TLS、DNS 或公网防火墙。
 
-new-api 必须先独立部署，并提供 Signed BFF、Internal Benefit API、LOG_DB 只读账号及现有 Forum SSO Bridge。new-api 可以位于另一台服务器并独立更新；社区服务器不运行第二套 new-api。公网仅开放新的社区域名，参见 [`deploy/nginx/README.md`](nginx/README.md)。
+new-api 必须先独立部署，并提供 Signed BFF、Internal Benefit API、LOG_DB 只读账号及现有 Forum SSO Bridge。new-api 可以位于另一台服务器并独立更新；社区服务器不运行第二套 new-api。公网仅开放新的社区域名，参见 [`deploy/nginx/README.md`](nginx/README.md)。当根目录的宿主机覆盖配置包含 `gateway` 服务时，`update.sh` 会在博客变更后重建静态产物，并校验、启动和热重载网关。
 
 ## 首次部署
 

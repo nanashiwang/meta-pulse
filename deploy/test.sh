@@ -5,7 +5,7 @@ IFS=$'\n\t'
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
-bash -n "$ROOT/deploy/lib.sh" "$ROOT/deploy/install.sh" "$ROOT/deploy/update.sh"
+bash -n "$ROOT/deploy/lib.sh" "$ROOT/deploy/install.sh" "$ROOT/deploy/update.sh" "$ROOT/deploy/build-blog.sh" "$ROOT/deploy/nginx/renew.sh" "$ROOT/deploy/nginx/install-renewal-timer.sh"
 
 # 校验生产模板初始化会生成随机凭据，并保持最小文件权限。
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/meta-pulse-deploy-test.XXXXXX")"
@@ -50,6 +50,7 @@ grep -q ': >"\$output_file"' "$ROOT/deploy/lib.sh"
 
 # Keep community callback and credential-isolation checks in the default test
 # path even on hosts where Docker is unavailable for nginx -t.
+grep -q 'access_log /dev/stdout community_no_query;' "$ROOT/deploy/nginx/meta-pulse.conf"
 grep -q 'location = /api/user-center/login/callback' "$ROOT/deploy/nginx/meta-pulse.conf"
 grep -q 'limit_req_zone $binary_remote_addr zone=community_connector:10m rate=10r/m;' "$ROOT/deploy/nginx/meta-pulse.conf"
 grep -qF 'location ~ ^/users/(?:auth-landing|confirm-email)$' "$ROOT/deploy/nginx/meta-pulse.conf"
