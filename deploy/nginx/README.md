@@ -13,12 +13,14 @@ new-api 继续运行在原域名和原服务器。社区网关**不代理 new-ap
 ## 上线配置
 
 1. Nginx 必须加入 Meta Pulse Compose 网络，通过容器 DNS 访问 `forum:80`；不得发布 Answer 宿主机端口；
-2. 将证书挂载为：
+2. 将宿主机完整的 `/etc/letsencrypt` 只读挂载到容器同路径。Nginx 使用：
 
    ```text
-   /etc/nginx/tls/fullchain.pem
-   /etc/nginx/tls/privkey.pem
+   /etc/letsencrypt/live/metar.uk/fullchain.pem
+   /etc/letsencrypt/live/metar.uk/privkey.pem
    ```
+
+   不要只挂载 `live/` 中的单个软链接文件，否则续期后容器可能继续读取旧证书。
 
 3. 将 ACME webroot 挂载到 `/var/www/certbot`。首次签发可在 80/443 尚未监听时使用 standalone，后续使用 webroot 自动续期；
 4. 将 VitePress 构建目录挂载到 `/var/www/blog`；
