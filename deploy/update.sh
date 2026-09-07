@@ -147,11 +147,17 @@ fi
 validate_compose
 GATEWAY_ENABLED=0
 BLOG_CHANGED=0
+GATEWAY_CONFIG_CHANGED=0
 if compose config --services | grep -Fx gateway >/dev/null; then
   GATEWAY_ENABLED=1
 fi
 if ! git -C "$REPO_ROOT" diff --quiet "$OLD_COMMIT" HEAD -- sites/blog; then
   BLOG_CHANGED=1
+fi
+# 网关直接挂载 Nginx 文件。Git 快进可能替换源文件 inode，已有容器会继续
+# 使用旧的 bind mount；此时仅 reload 不足，必须重建网关容器。
+if ! git -C "$REPO_ROOT" diff --quiet "$OLD_COMMIT" HEAD -- deploy/nginx/meta-pulse.conf; then
+  GATEWAY_CONFIG_CHANGED=1
 fi
 if (( GATEWAY_ENABLED == 1 && BLOG_CHANGED == 1 )); then
   if (( NO_BUILD == 0 )); then
@@ -193,9 +199,14 @@ if (( SKIP_FORUM == 0 )); then
 fi
 if (( GATEWAY_ENABLED == 1 )); then
   [[ -f "$REPO_ROOT/sites/blog/docs/.vitepress/dist/index.html" ]] || die "社区网关已启用，但博客静态产物不存在"
-  log "校验并重载社区 HTTPS 网关"
+  log "校验并更新社区 HTTPS 网关"
   compose run --rm --no-deps --entrypoint nginx gateway -t
-  compose up -d gateway
+  if (( GATEWAY_CONFIG_CHANGED == 1 )); then
+    log "检测到 Nginx 配置文件变更，重建网关以刷新文件挂载"
+    compose up -d --force-recreate --no-deps gateway
+  else
+    compose up -d gateway
+  fi
   wait_for_service gateway 120
   compose exec -T gateway nginx -t
   compose exec -T gateway nginx -s reload

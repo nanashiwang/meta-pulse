@@ -120,7 +120,7 @@ cd /opt/meta-pulse
 ./deploy/update.sh --no-build      # 仅使用已有镜像（仅适合已预构建场景）
 ```
 
-更新顺序是：加锁 → 只读校验配置 → 备份原 `.env` 和 Compose → 备份运行中的 Pulse/Forum 数据库 → 拉取代码 → 校验 Compose → 构建新镜像 → 排空/停止旧 Pulse API → `migrate-up` → 重建服务 → API/Worker `/readyz`。迁移只前进，不执行 down；失败时会输出容器日志、原 commit 和备份位置，不会伪造成功。
+更新顺序是：加锁 → 只读校验配置 → 备份原 `.env` 和 Compose → 备份运行中的 Pulse/Forum 数据库 → 拉取代码 → 校验 Compose → 构建新镜像 → 排空/停止旧 Pulse API → `migrate-up` → 重建服务 → API/Worker `/readyz`。迁移只前进，不执行 down；失败时会输出容器日志、原 commit 和备份位置，不会伪造成功。若 `deploy/nginx/meta-pulse.conf` 发生变更，脚本会强制重建网关容器，避免直接文件挂载因 inode 未更新而继续使用旧配置；无网关配置变更时仅执行常规启动与 reload。
 
 每次更新的 `.env`、更新前 Compose 配置和数据库 dump 位于：
 

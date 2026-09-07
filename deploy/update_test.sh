@@ -6,13 +6,15 @@ ROOT="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/meta-pulse-update-test.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 export REAL_GIT="$(command -v git)"
-mkdir -p "$tmp/repo/deploy" "$tmp/mock"
+mkdir -p "$tmp/repo/deploy/nginx" "$tmp/mock"
 cp "$ROOT/deploy/"{update.sh,lib.sh,meta-pulse.env.example} "$tmp/repo/deploy/"
+printf 'server {}\n' >"$tmp/repo/deploy/nginx/meta-pulse.conf"
 cp "$ROOT/docker-compose.yml" "$tmp/repo/"
 "$REAL_GIT" -C "$tmp/repo" init -q
 "$REAL_GIT" -C "$tmp/repo" add deploy docker-compose.yml
 "$REAL_GIT" -C "$tmp/repo" -c user.name=Test -c user.email=test@example.invalid -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -qm fixture
 export MOCK_LOG="$tmp/commands.log"
+export MOCK_REPO="$tmp/repo"
 cat >"$tmp/mock/uname" <<'MOCK'
 #!/usr/bin/env bash
 printf 'Linux\n'
@@ -34,7 +36,15 @@ done
 if [[ "${MOCK_FETCH_SUCCEED:-0}" == 1 ]]; then
   case " $* " in
     *' show-ref --verify --quiet refs/remotes/origin/'*) exit 0 ;;
-    *' merge --ff-only origin/'*) printf 'merge\n' >>"$MOCK_LOG"; exit 0 ;;
+    *' merge --ff-only origin/'*)
+      if [[ "${MOCK_NGINX_CHANGED:-0}" == 1 ]]; then
+        printf '# updated\n' >>"$MOCK_REPO/deploy/nginx/meta-pulse.conf"
+        "$REAL_GIT" -C "$MOCK_REPO" add deploy/nginx/meta-pulse.conf
+        "$REAL_GIT" -C "$MOCK_REPO" -c user.name=Test -c user.email=test@example.invalid -c commit.gpgsign=false commit -qm fixture-update
+      fi
+      printf 'merge\n' >>"$MOCK_LOG"
+      exit 0
+      ;;
   esac
 fi
 exec "$REAL_GIT" "$@"
@@ -128,4 +138,10 @@ awk '
 grep -q 'run --rm --no-deps --entrypoint nginx gateway -t' "$MOCK_LOG"
 grep -q 'up -d gateway' "$MOCK_LOG"
 grep -q 'exec -T gateway nginx -s reload' "$MOCK_LOG"
-printf '更新配置只读、锁和原配置备份回归通过\n'
+# 直接挂载的 Nginx 文件在 Git 快进后可能更换 inode；配置变更时必须重建网关，不能只 reload。
+: >"$MOCK_LOG"
+MOCK_GATEWAY=1 MOCK_FETCH_SUCCEED=1 MOCK_NGINX_CHANGED=1 bash "$tmp/repo/deploy/update.sh" >"$tmp/output" 2>&1 || { cat "$tmp/output" >&2; exit 1; }
+grep -q 'up -d --force-recreate --no-deps gateway' "$MOCK_LOG"
+grep -q '检测到 Nginx 配置文件变更' "$tmp/output"
+
+printf '更新配置只读、锁、原配置备份和网关文件挂载回归通过\n'
