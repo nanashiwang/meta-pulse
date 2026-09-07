@@ -83,8 +83,11 @@ func TestDescriptionKeepsCommunityIdentityLocal(t *testing.T) {
 	if !desc.EnabledOriginalUserSystem {
 		t.Error("Answer local registration must remain enabled")
 	}
-	if desc.LoginRedirectURL != "" || desc.SignUpRedirectURL != "" {
-		t.Fatal("local login or sign-up was redirected to new-api")
+	if desc.LoginRedirectURL != forumConnectorLoginPath {
+		t.Fatalf("external login did not use Connector flow: %q", desc.LoginRedirectURL)
+	}
+	if desc.SignUpRedirectURL != forumLocalSignUpPath {
+		t.Fatalf("local sign-up was redirected: %q", desc.SignUpRedirectURL)
 	}
 	if desc.UserStatusAgentEnabled {
 		t.Error("new-api/Pulse status must not override Answer local bans")

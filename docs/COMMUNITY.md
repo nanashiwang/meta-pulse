@@ -108,7 +108,21 @@ PULSE_FORUM_SSO_CALLBACK_URL=https://metar.uk/api/user-center/login/callback
 
 不需要把 new-api 部署到社区服务器，也不需要修改 new-api 数据库或代码。
 
-### 5.1 Login Ticket
+### 5.1 Answer v1.7.1 跳转适配
+
+插件同时实现 Connector（安全绑定）和 UserCenter（Pulse 徽章展示）。Answer v1.7.1 只要检测到 UserCenter，就会在登录页展示 UserCenter 按钮，并把全站注册链接指向框架跳转端点；其 sign-up handler 还错误读取 `LoginRedirectURL`。如果插件把这两个地址留空，浏览器会落到不存在的 `/answer/api/v1/user-center/login/` 或 `/sign-up/`。
+
+为保持“双身份、可选绑定”：
+
+- 插件声明 UserCenter 登录目标为 `/answer/api/v1/connector/login/pulse_user_center`；
+- 插件声明注册目标为 Answer 本地 `/users/register`；
+- 公网 Nginx 对 `/answer/api/v1/user-center/agent` 的公开 JSON 响应做定点归一化：`login_redirect_url` 使用相对 Connector 路径，`sign_up_redirect_url` 必须保持字面值 `/users/register`，使 Answer 前端不再重定向本地注册页；代理关闭上游压缩与缓存，且仍执行 Cookie、身份头隔离；
+- 网关把框架 `/login/redirect`、`/sign-up/redirect` 以及已生成的 `/login/`、`/sign-up/` 旧链接作为兼容兜底，分别送往 Connector 和本地注册；
+- 登录入口不得直接跳到 new-api `/api/forum/sso/start`，否则不会先创建 HttpOnly 浏览器 flow。
+
+该适配只修复 Answer 框架跳转，不改变社区账号、密码、封禁和资料仍由 Answer 管理的事实源。
+
+### 5.2 Login Ticket
 
 ```text
 payload   = user_id \n username \n display_name \n email \n avatar \n timestamp \n nonce
@@ -126,7 +140,7 @@ signature = hex(HMAC-SHA256(PULSE_FORUM_SSO_SECRET, payload))
 
 SSO 密钥与 Pulse 只读 Profile、Settlement/Worker 服务签名密钥分离且禁止复用；轮换期只允许“当前密钥 + 明确配置的上一密钥”。
 
-### 5.2 已知剩余限制
+### 5.3 已知剩余限制
 
 现有 new-api Ticket 没有签名 `state`。当前浏览器 flow marker 能拒绝未从社区发起的 callback，并防止 flow/nonce 重放，但**不等价于 OAuth 的完整 signed state**。
 

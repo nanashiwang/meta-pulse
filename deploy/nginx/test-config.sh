@@ -23,6 +23,14 @@ grep -q 'log_format community_no_query' "$config" || die 'query-free community a
 if grep -q 'community.access.log combined' "$config"; then
   die 'default combined access log exposes sensitive query strings and referrers'
 fi
+grep -q 'location = /answer/api/v1/user-center/agent' "$config" || die 'UserCenter agent normalization route is missing'
+grep -A35 'location = /answer/api/v1/user-center/agent' "$config" | grep -qF 'proxy_set_header Accept-Encoding "";' || die 'compressed UserCenter agent response cannot be normalized'
+grep -A40 'location = /answer/api/v1/user-center/agent' "$config" | grep -qF '"login_redirect_url":"/answer/api/v1/connector/login/pulse_user_center"' || die 'UserCenter agent login URL bypasses Connector'
+grep -A40 'location = /answer/api/v1/user-center/agent' "$config" | grep -qF '"sign_up_redirect_url":"/users/register"' || die 'UserCenter agent sign-up URL hijacks local registration'
+grep -A8 'location = /answer/api/v1/user-center/login/redirect' "$config" | grep -q 'return 302 /answer/api/v1/connector/login/pulse_user_center;' || die 'UserCenter login does not enter Connector flow'
+grep -A8 'location = /answer/api/v1/user-center/login/ {' "$config" | grep -q 'return 302 /answer/api/v1/connector/login/pulse_user_center;' || die 'legacy empty UserCenter login redirect is not repaired'
+grep -A8 'location = /answer/api/v1/user-center/sign-up/redirect' "$config" | grep -q 'return 302 /users/register;' || die 'UserCenter sign-up does not preserve local registration'
+grep -A8 'location = /answer/api/v1/user-center/sign-up/ {' "$config" | grep -q 'return 302 /users/register;' || die 'legacy empty UserCenter sign-up redirect is not repaired'
 grep -A4 'location = /answer/api/v1/connector/login/pulse_user_center' "$config" | grep -q 'limit_req zone=community_connector' || die 'connector start endpoint is not rate limited'
 grep -qF 'location ~ ^/users/(?:auth-landing|confirm-email)$' "$config" || die 'sensitive Answer landing routes are missing'
 grep -F -A4 'location ~ ^/users/(?:auth-landing|confirm-email)$' "$config" | grep -q 'access_log off;' || die 'Answer token/binding-key landing URLs are logged'
@@ -33,8 +41,8 @@ grep -q 'access_log off;' "$config" || die 'callback query logging is not disabl
 grep -q 'add_header Referrer-Policy "no-referrer" always;' "$config" || die 'callback referrer protection is missing'
 grep -q 'proxy_set_header Cookie \$forum_cookie;' "$config" || die 'forum Cookie allowlist is missing'
 [ "$(grep -c 'proxy_set_header Authorization "";' "$config")" -eq 1 ] || die 'only the callback may strip Authorization; Answer API auth must remain usable'
-[ "$(grep -c 'proxy_set_header X-Pulse-Signature "";' "$config")" -eq 4 ] || die 'all forum routes must strip browser Pulse signatures'
-[ "$(grep -c 'proxy_set_header New-Api-User "";' "$config")" -eq 4 ] || die 'all forum routes must strip new-api identity headers'
+[ "$(grep -c 'proxy_set_header X-Pulse-Signature "";' "$config")" -eq 5 ] || die 'all forum routes must strip browser Pulse signatures'
+[ "$(grep -c 'proxy_set_header New-Api-User "";' "$config")" -eq 5 ] || die 'all forum routes must strip new-api identity headers'
 grep -A12 'location /blog/' "$config" | grep -q 'Strict-Transport-Security' || die 'blog location lost inherited security headers'
 grep -A12 'location = /api/user-center/login/callback' "$config" | grep -q 'Strict-Transport-Security' || die 'callback location lost HSTS'
 if grep -q 'proxy_set_header Cookie \$http_cookie' "$config"; then

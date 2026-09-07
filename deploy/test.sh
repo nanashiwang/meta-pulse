@@ -53,12 +53,20 @@ grep -q ': >"\$output_file"' "$ROOT/deploy/lib.sh"
 grep -q 'access_log /dev/stdout community_no_query;' "$ROOT/deploy/nginx/meta-pulse.conf"
 grep -q 'location = /api/user-center/login/callback' "$ROOT/deploy/nginx/meta-pulse.conf"
 grep -q 'limit_req_zone $binary_remote_addr zone=community_connector:10m rate=10r/m;' "$ROOT/deploy/nginx/meta-pulse.conf"
+grep -q 'location = /answer/api/v1/user-center/agent' "$ROOT/deploy/nginx/meta-pulse.conf"
+grep -A35 'location = /answer/api/v1/user-center/agent' "$ROOT/deploy/nginx/meta-pulse.conf" | grep -qF 'proxy_set_header Accept-Encoding "";'
+grep -A40 'location = /answer/api/v1/user-center/agent' "$ROOT/deploy/nginx/meta-pulse.conf" | grep -qF '"login_redirect_url":"/answer/api/v1/connector/login/pulse_user_center"'
+grep -A40 'location = /answer/api/v1/user-center/agent' "$ROOT/deploy/nginx/meta-pulse.conf" | grep -qF '"sign_up_redirect_url":"/users/register"'
+grep -A8 'location = /answer/api/v1/user-center/login/redirect' "$ROOT/deploy/nginx/meta-pulse.conf" | grep -q 'return 302 /answer/api/v1/connector/login/pulse_user_center;'
+grep -A8 'location = /answer/api/v1/user-center/login/ {' "$ROOT/deploy/nginx/meta-pulse.conf" | grep -q 'return 302 /answer/api/v1/connector/login/pulse_user_center;'
+grep -A8 'location = /answer/api/v1/user-center/sign-up/redirect' "$ROOT/deploy/nginx/meta-pulse.conf" | grep -q 'return 302 /users/register;'
+grep -A8 'location = /answer/api/v1/user-center/sign-up/ {' "$ROOT/deploy/nginx/meta-pulse.conf" | grep -q 'return 302 /users/register;'
 grep -qF 'location ~ ^/users/(?:auth-landing|confirm-email)$' "$ROOT/deploy/nginx/meta-pulse.conf"
 grep -q 'proxy_pass http://forum/answer/api/v1/connector/redirect/pulse_user_center;' "$ROOT/deploy/nginx/meta-pulse.conf"
 grep -q 'proxy_set_header Cookie "meta_pulse_forum_flow=\$cookie_meta_pulse_forum_flow";' "$ROOT/deploy/nginx/meta-pulse.conf"
 [[ "$(grep -c 'proxy_set_header Authorization "";' "$ROOT/deploy/nginx/meta-pulse.conf")" -eq 1 ]]
-[[ "$(grep -c 'proxy_set_header X-Pulse-Signature "";' "$ROOT/deploy/nginx/meta-pulse.conf")" -eq 4 ]]
-[[ "$(grep -c 'proxy_set_header New-Api-User "";' "$ROOT/deploy/nginx/meta-pulse.conf")" -eq 4 ]]
+[[ "$(grep -c 'proxy_set_header X-Pulse-Signature "";' "$ROOT/deploy/nginx/meta-pulse.conf")" -eq 5 ]]
+[[ "$(grep -c 'proxy_set_header New-Api-User "";' "$ROOT/deploy/nginx/meta-pulse.conf")" -eq 5 ]]
 grep -A12 'location /blog/' "$ROOT/deploy/nginx/meta-pulse.conf" | grep -q 'Strict-Transport-Security'
 ! grep -Eq 'upstream[[:space:]]+(pulse|new_api)|proxy_pass[[:space:]]+http://(pulse|new_api)' "$ROOT/deploy/nginx/meta-pulse.conf"
 grep -q 'FORUM_BINDING_GUARD_DSN:' "$ROOT/docker-compose.yml"

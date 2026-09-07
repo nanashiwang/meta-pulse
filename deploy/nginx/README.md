@@ -62,6 +62,8 @@ chmod 755 .data/certbot .data/certbot/.well-known .data/certbot/.well-known/acme
 ## 安全边界
 
 - 普通论坛请求只向 Answer 转发 `visit` Cookie；
+- Answer v1.7.1 的 `/answer/api/v1/user-center/agent` 响应在网关定点归一化：登录固定进入 `pulse_user_center` Connector，注册固定返回 `/users/register`；该代理关闭压缩与缓存，避免本地注册被 UserCenter 接管；
+- UserCenter 的 `/login/redirect`、`/sign-up/redirect` 及其旧空跳转父路径仅作兼容兜底，不承载独立认证逻辑；
 - 固定 callback 只转发 `meta_pulse_forum_flow` Cookie；
 - callback 清除 Authorization；普通请求保留 Answer 前端自己的 Authorization；两类请求都清除 new-api 身份头与 Pulse 签名头；
 - HTTP/HTTPS 使用不含 query/Referer 的 `community_no_query` 日志格式并写入 stdout；Compose 示例限制日志大小，callback、`/users/auth-landing`、`/users/confirm-email` 额外关闭访问日志；

@@ -21,10 +21,12 @@ import (
 )
 
 const (
-	forumLoginFlowCookie = "meta_pulse_forum_flow"
-	forumCallbackPath    = "/api/user-center/login/callback"
-	loginFlowTTL         = 10 * time.Minute
-	maxLoginQueryBytes   = 8 << 10
+	forumLoginFlowCookie    = "meta_pulse_forum_flow"
+	forumCallbackPath       = "/api/user-center/login/callback"
+	forumConnectorLoginPath = "/answer/api/v1/connector/login/pulse_user_center"
+	forumLocalSignUpPath    = "/users/register"
+	loginFlowTTL            = 10 * time.Minute
+	maxLoginQueryBytes      = 8 << 10
 )
 
 var loginTicketFields = []string{
@@ -86,8 +88,12 @@ func (uc *UserCenter) Description() plugin.UserCenterDesc {
 		Icon:        "",
 		Url:         config.NewAPIBaseURL,
 
-		LoginRedirectURL:  "",
-		SignUpRedirectURL: "",
+		// Answer v1.7.1 always exposes its UserCenter redirect endpoints when a
+		// UserCenter plugin is enabled. Leaving these empty makes the login button
+		// redirect to a non-existent parent path. Keep the optional external login
+		// on the hardened Connector flow and keep registration inside Answer.
+		LoginRedirectURL:  forumConnectorLoginPath,
+		SignUpRedirectURL: forumLocalSignUpPath,
 
 		RankAgentEnabled:          false,
 		UserStatusAgentEnabled:    false,

@@ -152,6 +152,8 @@ Pulse 权益：浏览器 / YuanHeng → new-api session → Signed BFF → Pulse
 
 Answer 用户可选通过 new-api 现有 `/api/forum/sso/start` 绑定 API 身份。绑定事实源是 Answer `user_external_login(provider=pulse_user_center)`；数据库约束保证 Answer user ID 与 new-api user ID 一对一且不可静默换绑、转移或普通解绑。未绑定用户仍可使用社区，但不能展示或领取 Pulse 权益。
 
+Answer v1.7.1 在启用 UserCenter 展示能力后会统一发布登录/注册链接，其注册跳转实现还会误读登录地址。公网网关因此归一化 `/answer/api/v1/user-center/agent` 返回的两个公开跳转字段：登录固定接入带浏览器 flow 的 Connector，注册固定留在 Answer `/users/register`；框架 redirect 路由只作为兼容兜底。不得把二者都直接指向 new-api，也不得绕过 Connector 创建 flow。
+
 Cookie 只发给各自服务。YuanHeng 可在隔离 WebView 中打开 new-api 控制台，但不得保存密码、向 Pulse 发送 Cookie，或自行声明可信 `user_id`。社区网关不得把 new-api session 或 Pulse 签名头转发给 Answer；Answer 前端自己的 Authorization 必须保留。
 
 ## 6. 总体系统架构

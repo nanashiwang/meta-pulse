@@ -71,11 +71,14 @@ func TestPulseClientRejectsProfileIdentityMismatch(t *testing.T) {
 	}
 }
 
-func TestUserCenterDoesNotHijackLocalLogin(t *testing.T) {
+func TestUserCenterUsesConnectorWithoutHijackingLocalSignUp(t *testing.T) {
 	uc := &UserCenter{Config: &Config{NewAPIBaseURL: "https://api.example.test"}}
 	description := uc.Description()
-	if description.LoginRedirectURL != "" || description.SignUpRedirectURL != "" {
-		t.Fatalf("local identity was redirected: login=%q signup=%q", description.LoginRedirectURL, description.SignUpRedirectURL)
+	if description.LoginRedirectURL != forumConnectorLoginPath {
+		t.Fatalf("external login bypassed Connector: %q", description.LoginRedirectURL)
+	}
+	if description.SignUpRedirectURL != forumLocalSignUpPath {
+		t.Fatalf("local sign-up was redirected: %q", description.SignUpRedirectURL)
 	}
 }
 
