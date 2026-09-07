@@ -48,7 +48,21 @@ chmod 755 .data/certbot .data/certbot/.well-known .data/certbot/.well-known/acme
    PULSE_FORUM_SSO_CALLBACK_URL=https://metar.uk/api/user-center/login/callback
    ```
 
-8. 使用原编排重建 new-api；无需修改源码或在社区服务器部署 new-api；
+   同时在 new-api 原站 Nginx 的 HTTPS `server` 内加入固定同源 bootstrap（可直接使用仓库的 `deploy/newapi/forum-sso-bootstrap.conf`），否则 new-api 的 `SameSite=Strict` session Cookie 在从 `metar.uk` 跨站首跳时不会发送：
+
+   ```nginx
+   location = /api/forum/sso/bootstrap {
+       default_type text/html;
+       add_header Cache-Control "no-store" always;
+       add_header Referrer-Policy "no-referrer" always;
+       add_header X-Content-Type-Options nosniff always;
+       add_header X-Frame-Options DENY always;
+       add_header Content-Security-Policy "default-src 'none'; base-uri 'none'; frame-ancestors 'none'" always;
+       return 200 '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=/api/forum/sso/start"><a href="/api/forum/sso/start">继续</a>';
+   }
+   ```
+
+8. 使用原编排重建 new-api；无需修改 new-api 业务源码或在社区服务器部署 new-api；Nginx reload 即可加载上述 bootstrap。
 9. 所有业务容器保持无宿主机 `ports`，不得直接暴露 Answer、MySQL 或 Redis。Pulse API 仅可绑定受控私网地址；
 10. 证书首次签发并启动网关后执行：
 

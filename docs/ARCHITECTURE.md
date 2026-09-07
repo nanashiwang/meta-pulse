@@ -987,7 +987,7 @@ Meta Pulse                贡献值 / 券 / 等级 / Reward 事实源
 - Answer 开启本地注册和密码登录；绑定 new-api 可选，未绑定用户仍可正常使用社区；
 - 插件同时实现 Connector 与非权威 UserCenter：Connector 处理绑定，UserCenter 只提供可降级徽章；
 - 绑定 guard 使用条件生成列、单列唯一索引和 INSERT/UPDATE/DELETE 触发器，防重复绑定、并发冒领、静默换绑和普通解绑；
-- new-api 现有 `/api/forum/sso/start` 从 session 签发短期 Ticket；插件要求浏览器 flow、严格字段集合、HMAC、时间窗及 Redis 原子 nonce，故障时 fail closed；
+- new-api 原有 `/api/forum/sso/start` 从 session 签发短期 Ticket；社区先经过 new-api 同源 bootstrap 页面，规避 `SameSite=Strict` session 在跨站首跳时不发送；插件要求浏览器 flow、严格字段集合、HMAC、时间窗及 Redis 原子 nonce，故障时 fail closed；
 - new-api Email 未证明已验证，Connector 不传 Email/Avatar，绑定沿用 Answer 邮箱确认；
 - Pulse 对论坛内容库只读；Answer 本地 ID 必须经受保护绑定映射为 new-api ID；
 - 只采集绑定后发布的公开 available/closed 问题，未绑定、绑定前、隐藏、待审核或删除内容不进入候选；

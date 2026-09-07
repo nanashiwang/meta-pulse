@@ -105,7 +105,7 @@ func TestConnectorSenderCreatesSecureBrowserFlow(t *testing.T) {
 	store := newMemoryLoginStore()
 	uc := &UserCenter{Config: &Config{NewAPIBaseURL: "https://api.example.test"}, Logins: store}
 	ctx := newTestContext("")
-	if got := uc.ConnectorSender(ctx, "https://forum.example.test/answer/api/v1/connector/redirect/pulse_user_center"); got != "https://api.example.test/api/forum/sso/start" {
+	if got := uc.ConnectorSender(ctx, "https://forum.example.test/answer/api/v1/connector/redirect/pulse_user_center"); got != "https://api.example.test/api/forum/sso/bootstrap" {
 		t.Fatalf("redirect=%q", got)
 	}
 	cookies := ctx.Writer.Header().Values("Set-Cookie")

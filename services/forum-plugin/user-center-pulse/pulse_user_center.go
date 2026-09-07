@@ -24,6 +24,7 @@ const (
 	forumLoginFlowCookie    = "meta_pulse_forum_flow"
 	forumCallbackPath       = "/api/user-center/login/callback"
 	forumConnectorLoginPath = "/answer/api/v1/connector/login/pulse_user_center"
+	forumSSOBootstrapPath   = "/api/forum/sso/bootstrap"
 	forumLocalSignUpPath    = "/users/register"
 	loginFlowTTL            = 10 * time.Minute
 	maxLoginQueryBytes      = 8 << 10
@@ -125,6 +126,11 @@ func (uc *UserCenter) ConnectorSlugName() string { return pluginSlug }
 // marker cannot replace an OAuth state (new-api's existing ticket has no state
 // field), but it prevents an unsolicited callback URL from being accepted and
 // is consumed atomically with the signed ticket nonce.
+//
+// The first hop is a same-origin bootstrap page on new-api. Its session cookie
+// is currently SameSite=Strict, so a direct cross-site navigation from metar.uk
+// would omit an otherwise valid new-api session. The bootstrap commits a
+// new-api document first, then navigates to /api/forum/sso/start same-origin.
 func (uc *UserCenter) ConnectorSender(ctx *plugin.GinContext, _ string) string {
 	if ctx == nil || ctx.Request == nil || uc == nil {
 		return "/50x"
@@ -156,7 +162,7 @@ func (uc *UserCenter) ConnectorSender(ctx *plugin.GinContext, _ string) string {
 	})
 	ctx.Header("Cache-Control", "no-store")
 	ctx.Header("Referrer-Policy", "no-referrer")
-	return uc.Config.NewAPIBaseURL + "/api/forum/sso/start"
+	return uc.Config.NewAPIBaseURL + forumSSOBootstrapPath
 }
 
 // ConnectorReceiver verifies the fixed new-api Login Ticket, requires a

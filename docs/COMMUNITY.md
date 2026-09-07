@@ -85,12 +85,28 @@ new-api 或 Pulse 不覆盖 Answer 的封禁、密码、资料和治理角色。
 
 ## 5. 绑定与登录链路
 
-不修改 new-api 源码，复用其现有 SSO Bridge：
+不修改 new-api 业务源码，复用其现有 SSO Bridge；原站 Nginx 增加固定的同源 bootstrap 页面，解决其 `SameSite=Strict` session Cookie 在 metar.uk 跨站跳转时不发送的问题：
+
+```nginx
+location = /api/forum/sso/bootstrap {
+    default_type text/html;
+    add_header Cache-Control "no-store" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options DENY always;
+    add_header Content-Security-Policy "default-src 'none'; base-uri 'none'; frame-ancestors 'none'" always;
+    return 200 '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=/api/forum/sso/start"><a href="/api/forum/sso/start">继续</a>';
+}
+```
+
+该页面只在 new-api 域名下提交一次文档，再导航到固定 SSO 路径；不接收用户输入、不携带凭据、不构造开放重定向。
+
 
 ```text
 Answer Connector 入口
   → 写入短期 HttpOnly/Secure/SameSite=Lax 浏览器 flow
-  → new-api GET /api/forum/sso/start
+  → new-api 同源 SSO bootstrap 页面
+  → 同源 GET /api/forum/sso/start（携带现有 new-api session）
   → new-api 从自己的 session 派生用户并签发短期 Login Ticket
   → 302 到社区固定 callback
   → Nginx rewrite 到 Answer Connector receiver
@@ -118,7 +134,7 @@ PULSE_FORUM_SSO_CALLBACK_URL=https://metar.uk/api/user-center/login/callback
 - 插件声明注册目标为 Answer 本地 `/users/register`；
 - 公网 Nginx 对 `/answer/api/v1/user-center/agent` 的公开 JSON 响应做定点归一化：`login_redirect_url` 使用相对 Connector 路径，`sign_up_redirect_url` 必须保持字面值 `/users/register`，使 Answer 前端不再重定向本地注册页；代理关闭上游压缩与缓存，且仍执行 Cookie、身份头隔离；
 - 网关把框架 `/login/redirect`、`/sign-up/redirect` 以及已生成的 `/login/`、`/sign-up/` 旧链接作为兼容兜底，分别送往 Connector 和本地注册；
-- 登录入口不得直接跳到 new-api `/api/forum/sso/start`，否则不会先创建 HttpOnly 浏览器 flow。
+- 登录入口不得直接跳到 new-api `/api/forum/sso/start`，必须先经过 `/api/forum/sso/bootstrap`，否则浏览器可能因 `SameSite=Strict` 不发送已有 new-api session。
 
 该适配只修复 Answer 框架跳转，不改变社区账号、密码、封禁和资料仍由 Answer 管理的事实源。
 
