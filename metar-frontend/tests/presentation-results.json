@@ -1,0 +1,96 @@
+{
+  "checks": [
+    {
+      "width": 1440,
+      "height": 1050,
+      "copy_removed": true,
+      "review_bar_absent": true,
+      "card_edges_aligned": true,
+      "no_horizontal_overflow": true
+    },
+    {
+      "width": 1024,
+      "height": 900,
+      "copy_removed": true,
+      "review_bar_absent": true,
+      "card_edges_aligned": true,
+      "no_horizontal_overflow": true
+    },
+    {
+      "width": 768,
+      "height": 1024,
+      "copy_removed": true,
+      "review_bar_absent": true,
+      "card_edges_aligned": true,
+      "no_horizontal_overflow": true
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "copy_removed": true,
+      "review_bar_absent": true,
+      "card_edges_aligned": true,
+      "no_horizontal_overflow": true
+    },
+    {
+      "width": 375,
+      "height": 812,
+      "copy_removed": true,
+      "review_bar_absent": true,
+      "card_edges_aligned": true,
+      "no_horizontal_overflow": true
+    },
+    {
+      "width": 320,
+      "height": 740,
+      "copy_removed": true,
+      "review_bar_absent": true,
+      "card_edges_aligned": true,
+      "no_horizontal_overflow": true
+    },
+    {
+      "path": "/questions",
+      "no_removed_rails": true,
+      "no_empty_grid_columns": true
+    },
+    {
+      "path": "/topic/dev",
+      "no_removed_rails": true,
+      "no_empty_grid_columns": true
+    },
+    {
+      "path": "/question/q1",
+      "no_removed_rails": true,
+      "no_empty_grid_columns": true
+    },
+    {
+      "path": "/article/start",
+      "no_removed_rails": true,
+      "no_empty_grid_columns": true
+    },
+    {
+      "path": "/publish",
+      "no_removed_rails": true,
+      "no_empty_grid_columns": true
+    },
+    {
+      "path": "/pulse",
+      "no_removed_rails": true,
+      "no_empty_grid_columns": true
+    },
+    {
+      "path": "/me",
+      "no_removed_rails": true,
+      "no_empty_grid_columns": true
+    },
+    {
+      "functional_pulse_navigation": true
+    },
+    {
+      "separate_review_entry": true,
+      "home_title_configuration": true
+    }
+  ],
+  "errors": [],
+  "network_requests": []
+}

@@ -1,0 +1,60 @@
+{
+  "siteName": "METAR",
+  "slogan": "与创造者一起，把 AI 用出价值",
+  "consoleUrl": "",
+  "pulseUrl": "",
+  "docsUrl": "",
+  "statusUrl": "",
+  "heroTitle": "发现",
+  "heroText": "",
+  "entries": [
+    {
+      "id": "discover",
+      "label": "发现",
+      "target": "/discover",
+      "icon": "compass",
+      "order": 1,
+      "enabled": true
+    },
+    {
+      "id": "questions",
+      "label": "问答广场",
+      "target": "/questions",
+      "icon": "chat",
+      "order": 2,
+      "enabled": true
+    },
+    {
+      "id": "topics",
+      "label": "全部话题",
+      "target": "/topics",
+      "icon": "grid",
+      "order": 3,
+      "enabled": true
+    },
+    {
+      "id": "knowledge",
+      "label": "知识库",
+      "target": "/knowledge",
+      "icon": "book",
+      "order": 4,
+      "enabled": true
+    },
+    {
+      "id": "pulse",
+      "label": "Pulse 权益",
+      "target": "/pulse",
+      "icon": "pulse",
+      "order": 5,
+      "enabled": true
+    },
+    {
+      "id": "developers",
+      "label": "开发者入口",
+      "target": "/developers",
+      "icon": "code",
+      "order": 6,
+      "enabled": true
+    }
+  ]
+}

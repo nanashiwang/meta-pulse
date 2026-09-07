@@ -1,0 +1,368 @@
+{
+  "version": "1.0.0",
+  "date": "2026-09-07",
+  "prototype_only": true,
+  "route_count": 43,
+  "notes": [
+    "Hash 路由只用于离线导航，不是生产 URL 声明。",
+    "43 个入口包含筛选和绑定冲突示例，并非 43 个独立页面模板。",
+    "动态问题、文章、话题和成员详情共享模板。",
+    "生产 BFF、权限和事实源不得由本地 mock 状态取代。"
+  ],
+  "routes": [
+    {
+      "group": "发现与内容",
+      "label": "发现首页",
+      "prototype_route": "#/discover",
+      "owner": "Answer 社区身份 / 内容；超出现有插件能力的布局需独立评估",
+      "access": "公开或身份流程页面；动作按实际权限限制",
+      "production_path_verified": false
+    },
+    {
+      "group": "发现与内容",
+      "label": "问答广场",
+      "prototype_route": "#/questions",
+      "owner": "Answer 社区身份 / 内容；超出现有插件能力的布局需独立评估",
+      "access": "公开或身份流程页面；动作按实际权限限制",
+      "production_path_verified": false
+    },
+    {
+      "group": "发现与内容",
+      "label": "待回答问题",
+      "prototype_route": "#/questions?tab=unanswered",
+      "owner": "Answer 社区身份 / 内容；超出现有插件能力的布局需独立评估",
+      "access": "公开或身份流程页面；动作按实际权限限制",
+      "production_path_verified": false
+    },
+    {
+      "group": "发现与内容",
+      "label": "问题详情",
+      "prototype_route": "#/question/q1",
+      "owner": "Answer 社区身份 / 内容；超出现有插件能力的布局需独立评估",
+      "access": "公开或身份流程页面；动作按实际权限限制",
+      "production_path_verified": false
+    },
+    {
+      "group": "发现与内容",
+      "label": "全部话题",
+      "prototype_route": "#/topics",
+      "owner": "Answer 社区身份 / 内容；超出现有插件能力的布局需独立评估",
+      "access": "公开或身份流程页面；动作按实际权限限制",
+      "production_path_verified": false
+    },
+    {
+      "group": "发现与内容",
+      "label": "Agent 话题",
+      "prototype_route": "#/topic/agents",
+      "owner": "Answer 社区身份 / 内容；超出现有插件能力的布局需独立评估",
+      "access": "公开或身份流程页面；动作按实际权限限制",
+      "production_path_verified": false
+    },
+    {
+      "group": "发现与内容",
+      "label": "知识库",
+      "prototype_route": "#/knowledge",
+      "owner": "VitePress（生产保留 /blog/ 基址）；跨内容收藏需适配",
+      "access": "公开或身份流程页面；动作按实际权限限制",
+      "production_path_verified": false
+    },
+    {
+      "group": "发现与内容",
+      "label": "文章详情",
+      "prototype_route": "#/article/start",
+      "owner": "VitePress（生产保留 /blog/ 基址）；跨内容收藏需适配",
+      "access": "公开或身份流程页面；动作按实际权限限制",
+      "production_path_verified": false
+    },
+    {
+      "group": "发现与内容",
+      "label": "搜索",
+      "prototype_route": "#/search?q=API",
+      "owner": "Answer 与 VitePress 搜索适配；跨服务索引设计待确认",
+      "access": "公开或身份流程页面；动作按实际权限限制",
+      "production_path_verified": false
+    },
+    {
+      "group": "发现与内容",
+      "label": "发布 / 投稿",
+      "prototype_route": "#/publish",
+      "owner": "Answer 社区身份 / 内容；超出现有插件能力的布局需独立评估",
+      "access": "社区登录；绑定可选",
+      "production_path_verified": false
+    },
+    {
+      "group": "账号与个人空间",
+      "label": "社区登录",
+      "prototype_route": "#/login",
+      "owner": "Answer 社区身份 / 内容；超出现有插件能力的布局需独立评估",
+      "access": "公开或身份流程页面；动作按实际权限限制",
+      "production_path_verified": false
+    },
+    {
+      "group": "账号与个人空间",
+      "label": "独立注册",
+      "prototype_route": "#/register",
+      "owner": "Answer 社区身份 / 内容；超出现有插件能力的布局需独立评估",
+      "access": "公开或身份流程页面；动作按实际权限限制",
+      "production_path_verified": false
+    },
+    {
+      "group": "账号与个人空间",
+      "label": "找回密码",
+      "prototype_route": "#/forgot",
+      "owner": "Answer 社区身份 / 内容；超出现有插件能力的布局需独立评估",
+      "access": "公开或身份流程页面；动作按实际权限限制",
+      "production_path_verified": false
+    },
+    {
+      "group": "账号与个人空间",
+      "label": "验证邮箱",
+      "prototype_route": "#/verify-email",
+      "owner": "Answer 社区身份 / 内容；超出现有插件能力的布局需独立评估",
+      "access": "公开或身份流程页面；动作按实际权限限制",
+      "production_path_verified": false
+    },
+    {
+      "group": "账号与个人空间",
+      "label": "新手引导",
+      "prototype_route": "#/onboarding",
+      "owner": "Answer 社区身份 / 内容；超出现有插件能力的布局需独立评估",
+      "access": "公开或身份流程页面；动作按实际权限限制",
+      "production_path_verified": false
+    },
+    {
+      "group": "账号与个人空间",
+      "label": "个人主页",
+      "prototype_route": "#/me",
+      "owner": "Answer 社区身份 / 内容；超出现有插件能力的布局需独立评估",
+      "access": "社区登录；绑定可选",
+      "production_path_verified": false
+    },
+    {
+      "group": "账号与个人空间",
+      "label": "成员主页",
+      "prototype_route": "#/profile/Jo",
+      "owner": "Answer 社区身份 / 内容；超出现有插件能力的布局需独立评估",
+      "access": "公开或身份流程页面；动作按实际权限限制",
+      "production_path_verified": false
+    },
+    {
+      "group": "账号与个人空间",
+      "label": "收藏",
+      "prototype_route": "#/bookmarks",
+      "owner": "Answer 社区身份 / 内容；超出现有插件能力的布局需独立评估",
+      "access": "社区登录；绑定可选",
+      "production_path_verified": false
+    },
+    {
+      "group": "账号与个人空间",
+      "label": "草稿",
+      "prototype_route": "#/drafts",
+      "owner": "Answer 社区身份 / 内容；超出现有插件能力的布局需独立评估",
+      "access": "社区登录；绑定可选",
+      "production_path_verified": false
+    },
+    {
+      "group": "账号与个人空间",
+      "label": "通知中心",
+      "prototype_route": "#/notifications",
+      "owner": "Answer 社区身份 / 内容；超出现有插件能力的布局需独立评估",
+      "access": "社区登录；绑定可选",
+      "production_path_verified": false
+    },
+    {
+      "group": "账号与个人空间",
+      "label": "个人资料",
+      "prototype_route": "#/settings/account",
+      "owner": "Answer 社区身份 / 内容；超出现有插件能力的布局需独立评估",
+      "access": "社区登录；绑定可选",
+      "production_path_verified": false
+    },
+    {
+      "group": "账号与个人空间",
+      "label": "可选绑定",
+      "prototype_route": "#/settings/binding",
+      "owner": "Answer 绑定关系 + 既有 new-api SSO Connector 链路",
+      "access": "社区登录；绑定可选",
+      "production_path_verified": false
+    },
+    {
+      "group": "账号与个人空间",
+      "label": "绑定冲突",
+      "prototype_route": "#/settings/binding?case=conflict",
+      "owner": "Answer 绑定关系 + 既有 new-api SSO Connector 链路",
+      "access": "社区登录；绑定可选",
+      "production_path_verified": false
+    },
+    {
+      "group": "账号与个人空间",
+      "label": "消息偏好",
+      "prototype_route": "#/settings/notifications",
+      "owner": "Answer 社区身份 / 内容；超出现有插件能力的布局需独立评估",
+      "access": "社区登录；绑定可选",
+      "production_path_verified": false
+    },
+    {
+      "group": "账号与个人空间",
+      "label": "账号安全",
+      "prototype_route": "#/settings/security",
+      "owner": "Answer 社区身份 / 内容；超出现有插件能力的布局需独立评估",
+      "access": "社区登录；绑定可选",
+      "production_path_verified": false
+    },
+    {
+      "group": "权益与服务",
+      "label": "Pulse 权益",
+      "prototype_route": "#/pulse",
+      "owner": "Pulse 权益事实源；正式动作由 new-api session / Signed BFF 承载，非社区直连",
+      "access": "公开说明；已绑定显示个人权益",
+      "production_path_verified": false
+    },
+    {
+      "group": "权益与服务",
+      "label": "本期规则",
+      "prototype_route": "#/pulse/rules",
+      "owner": "Pulse 权益事实源；正式动作由 new-api session / Signed BFF 承载，非社区直连",
+      "access": "公开或身份流程页面；动作按实际权限限制",
+      "production_path_verified": false
+    },
+    {
+      "group": "权益与服务",
+      "label": "回馈记录",
+      "prototype_route": "#/pulse/rewards",
+      "owner": "Pulse 权益事实源；正式动作由 new-api session / Signed BFF 承载，非社区直连",
+      "access": "已绑定；生产后端鉴权",
+      "production_path_verified": false
+    },
+    {
+      "group": "权益与服务",
+      "label": "开发者入口",
+      "prototype_route": "#/developers",
+      "owner": "公开服务入口配置；真实地址与状态源待核验",
+      "access": "公开或身份流程页面；动作按实际权限限制",
+      "production_path_verified": false
+    },
+    {
+      "group": "权益与服务",
+      "label": "控制台桥接",
+      "prototype_route": "#/api-hub",
+      "owner": "公开服务入口配置；真实地址与状态源待核验",
+      "access": "公开或身份流程页面；动作按实际权限限制",
+      "production_path_verified": false
+    },
+    {
+      "group": "权益与服务",
+      "label": "帮助与反馈",
+      "prototype_route": "#/support",
+      "owner": "支持工单适配能力待确认；不直接修改账号或资金",
+      "access": "公开或身份流程页面；动作按实际权限限制",
+      "production_path_verified": false
+    },
+    {
+      "group": "权益与服务",
+      "label": "服务状态",
+      "prototype_route": "#/status",
+      "owner": "公开服务入口配置；真实地址与状态源待核验",
+      "access": "公开或身份流程页面；动作按实际权限限制",
+      "production_path_verified": false
+    },
+    {
+      "group": "权益与服务",
+      "label": "关于 METAR",
+      "prototype_route": "#/about",
+      "owner": "静态社区内容；隐私说明需按真实运营审阅",
+      "access": "公开或身份流程页面；动作按实际权限限制",
+      "production_path_verified": false
+    },
+    {
+      "group": "权益与服务",
+      "label": "社区规范",
+      "prototype_route": "#/guidelines",
+      "owner": "静态社区内容；隐私说明需按真实运营审阅",
+      "access": "公开或身份流程页面；动作按实际权限限制",
+      "production_path_verified": false
+    },
+    {
+      "group": "权益与服务",
+      "label": "隐私说明",
+      "prototype_route": "#/privacy",
+      "owner": "静态社区内容；隐私说明需按真实运营审阅",
+      "access": "公开或身份流程页面；动作按实际权限限制",
+      "production_path_verified": false
+    },
+    {
+      "group": "运营与配置",
+      "label": "运营概览",
+      "prototype_route": "#/admin",
+      "owner": "运营概念工作台；按社区、展示配置、工单服务分别鉴权适配",
+      "access": "独立运营权限（原型仅模拟）",
+      "production_path_verified": false
+    },
+    {
+      "group": "运营与配置",
+      "label": "内容审核",
+      "prototype_route": "#/admin/content",
+      "owner": "运营概念工作台；按社区、展示配置、工单服务分别鉴权适配",
+      "access": "独立运营权限（原型仅模拟）",
+      "production_path_verified": false
+    },
+    {
+      "group": "运营与配置",
+      "label": "导航与入口配置",
+      "prototype_route": "#/admin/entries",
+      "owner": "运营概念工作台；按社区、展示配置、工单服务分别鉴权适配",
+      "access": "独立运营权限（原型仅模拟）",
+      "production_path_verified": false
+    },
+    {
+      "group": "运营与配置",
+      "label": "品牌与外链配置",
+      "prototype_route": "#/admin/settings",
+      "owner": "运营概念工作台；按社区、展示配置、工单服务分别鉴权适配",
+      "access": "独立运营权限（原型仅模拟）",
+      "production_path_verified": false
+    },
+    {
+      "group": "运营与配置",
+      "label": "Pulse 运营",
+      "prototype_route": "#/admin/pulse",
+      "owner": "Pulse 授权运营服务，与 Answer 治理权限分离",
+      "access": "独立运营权限（原型仅模拟）",
+      "production_path_verified": false
+    },
+    {
+      "group": "运营与配置",
+      "label": "成员与权限",
+      "prototype_route": "#/admin/members",
+      "owner": "运营概念工作台；按社区、展示配置、工单服务分别鉴权适配",
+      "access": "独立运营权限（原型仅模拟）",
+      "production_path_verified": false
+    },
+    {
+      "group": "运营与配置",
+      "label": "支持工单",
+      "prototype_route": "#/admin/support",
+      "owner": "运营概念工作台；按社区、展示配置、工单服务分别鉴权适配",
+      "access": "独立运营权限（原型仅模拟）",
+      "production_path_verified": false
+    },
+    {
+      "group": "运营与配置",
+      "label": "操作审计",
+      "prototype_route": "#/admin/audit",
+      "owner": "运营概念工作台；按社区、展示配置、工单服务分别鉴权适配",
+      "access": "独立运营权限（原型仅模拟）",
+      "production_path_verified": false
+    }
+  ],
+  "additional_routes": [
+    {
+      "prototype_route": "#/sitemap",
+      "label": "原型页面地图，仅验收用"
+    },
+    {
+      "prototype_route": "#/未定义路径",
+      "label": "404 恢复状态"
+    }
+  ]
+}

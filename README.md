@@ -68,6 +68,13 @@ Meta Pulse 负责 Usage Event、贡献值、脉冲券、经济规则、10 天周
 - Apache Answer（论坛）/ VitePress（博客）
 - Docker / Docker Compose / Nginx
 
+## METAR 前端改造
+
+`metar-frontend/` 是 METAR 新版社区前端的离线原型与视觉基线，包含 43 个页面入口、桌面/移动布局、账号绑定状态和 Pulse 交互示例。它当前只使用本地 mock，**不能直接作为生产站点部署**。
+
+生产化改造按 [`docs/METAR_FRONTEND_REFACTOR_PLAN.md`](docs/METAR_FRONTEND_REFACTOR_PLAN.md) 推进：先接通 Answer 社区真实接口，再增加受保护的社区 BFF，最后接通 Pulse 权益和运营工作台。
+
+
 ## 快速开始
 
 ### 服务器首次部署

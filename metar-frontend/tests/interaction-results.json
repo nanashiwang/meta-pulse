@@ -1,0 +1,83 @@
+{
+  "harness": "Exact generated HTML via Playwright set_content; native hash routing; no security-policy change",
+  "tests": [
+    {
+      "test": "Guest → independent community login → return to editor",
+      "passed": true
+    },
+    {
+      "test": "Registration → email-verification demonstration → onboarding; no credential storage",
+      "passed": true
+    },
+    {
+      "test": "Search, content-type filtering and empty result recovery",
+      "passed": true
+    },
+    {
+      "test": "Question and article bookmarks, including article-only collection",
+      "passed": true
+    },
+    {
+      "test": "Vote and answer persist locally without generating Pulse tickets",
+      "passed": true
+    },
+    {
+      "test": "Draft → edit → submit → pending hidden from guest → independent moderation",
+      "passed": true
+    },
+    {
+      "test": "Optional binding requires acknowledgement and offers no self-unbind",
+      "passed": true
+    },
+    {
+      "test": "Binding conflict fails closed",
+      "passed": true
+    },
+    {
+      "test": "Pulse confirmation → one ticket consumption → stable action → query original grant",
+      "passed": true
+    },
+    {
+      "test": "Pulse degradation blocks reward mutation but preserves community and local login",
+      "passed": true
+    },
+    {
+      "test": "Independent content reward approval, no ticket issuance, no re-approval, ineligible blocked",
+      "passed": true
+    },
+    {
+      "test": "Navigation label and visibility configuration reflected immediately and audited",
+      "passed": true
+    },
+    {
+      "test": "Public HTTPS entry configuration, explicit leave confirmation, credential URLs rejected",
+      "passed": true
+    },
+    {
+      "test": "Support submission → local ticket → operator resolution without account mutation",
+      "passed": true
+    },
+    {
+      "test": "Demo rollback appends reversal while retaining original amount",
+      "passed": true
+    },
+    {
+      "test": "Notifications mark all as read and recover to unread-empty state",
+      "passed": true
+    },
+    {
+      "test": "Keyboard search, modal focus containment and Escape dismissal",
+      "passed": true
+    },
+    {
+      "test": "Administrative routes present an explicit separate-role guard",
+      "passed": true
+    },
+    {
+      "test": "Graceful in-memory fallback when persistent storage is unavailable",
+      "passed": true
+    }
+  ],
+  "page_errors": [],
+  "network_requests": []
+}

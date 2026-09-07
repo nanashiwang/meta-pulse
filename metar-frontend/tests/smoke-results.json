@@ -1,0 +1,751 @@
+{
+  "harness": "Exact HTML via set_content; native hash routing; no policy changes",
+  "viewports": [
+    {
+      "width": 1440,
+      "height": 1050
+    },
+    {
+      "width": 390,
+      "height": 844
+    }
+  ],
+  "console_errors": [],
+  "network_requests": [],
+  "route_checks": [
+    {
+      "path": "/discover",
+      "title": "发现",
+      "ok": true
+    },
+    {
+      "path": "/questions",
+      "title": "问答广场",
+      "ok": true
+    },
+    {
+      "path": "/questions?tab=unanswered",
+      "title": "问答广场",
+      "ok": true
+    },
+    {
+      "path": "/question/q1",
+      "title": "你在用 Agent 自动化哪些重复工作？来分享一个真实场景",
+      "ok": true
+    },
+    {
+      "path": "/topics",
+      "title": "全部话题",
+      "ok": true
+    },
+    {
+      "path": "/topic/agents",
+      "title": "Agent 与自动化",
+      "ok": true
+    },
+    {
+      "path": "/knowledge",
+      "title": "知识库",
+      "ok": true
+    },
+    {
+      "path": "/article/start",
+      "title": "第一次 API 调用之前，先把这五件事弄清楚",
+      "ok": true
+    },
+    {
+      "path": "/search?q=API",
+      "title": "“API” 的搜索结果",
+      "ok": true
+    },
+    {
+      "path": "/publish",
+      "title": "发布内容",
+      "ok": true
+    },
+    {
+      "path": "/login",
+      "title": "欢迎回来。",
+      "ok": true
+    },
+    {
+      "path": "/register",
+      "title": "欢迎加入 METAR",
+      "ok": true
+    },
+    {
+      "path": "/forgot",
+      "title": "找回社区密码",
+      "ok": true
+    },
+    {
+      "path": "/verify-email",
+      "title": "让社区身份，完整地属于你。",
+      "ok": true
+    },
+    {
+      "path": "/onboarding",
+      "title": "先选几个你感兴趣的话题。",
+      "ok": true
+    },
+    {
+      "path": "/me",
+      "title": "林一",
+      "ok": true
+    },
+    {
+      "path": "/profile/Jo",
+      "title": "Jo",
+      "ok": true
+    },
+    {
+      "path": "/bookmarks",
+      "title": "我的收藏",
+      "ok": true
+    },
+    {
+      "path": "/drafts",
+      "title": "内容草稿",
+      "ok": true
+    },
+    {
+      "path": "/notifications",
+      "title": "通知中心",
+      "ok": true
+    },
+    {
+      "path": "/settings/account",
+      "title": "账号设置",
+      "ok": true
+    },
+    {
+      "path": "/settings/binding",
+      "title": "账号绑定",
+      "ok": true
+    },
+    {
+      "path": "/settings/binding?case=conflict",
+      "title": "账号绑定",
+      "ok": true
+    },
+    {
+      "path": "/settings/notifications",
+      "title": "通知设置",
+      "ok": true
+    },
+    {
+      "path": "/settings/security",
+      "title": "账号安全",
+      "ok": true
+    },
+    {
+      "path": "/pulse",
+      "title": "每一次调用，都有回响。",
+      "ok": true
+    },
+    {
+      "path": "/pulse/rules",
+      "title": "看得懂的积累，查得到的回馈。",
+      "ok": true
+    },
+    {
+      "path": "/pulse/rewards",
+      "title": "每一份回馈，都可以被核对。",
+      "ok": true
+    },
+    {
+      "path": "/developers",
+      "title": "开发者入口",
+      "ok": true
+    },
+    {
+      "path": "/api-hub",
+      "title": "API 控制台",
+      "ok": true
+    },
+    {
+      "path": "/support",
+      "title": "帮助与反馈",
+      "ok": true
+    },
+    {
+      "path": "/status",
+      "title": "每个服务，都有明确的状态。",
+      "ok": true
+    },
+    {
+      "path": "/about",
+      "title": "关于 METAR",
+      "ok": true
+    },
+    {
+      "path": "/guidelines",
+      "title": "社区规范",
+      "ok": true
+    },
+    {
+      "path": "/privacy",
+      "title": "隐私说明",
+      "ok": true
+    },
+    {
+      "path": "/admin",
+      "title": "运营概览",
+      "ok": true
+    },
+    {
+      "path": "/admin/content",
+      "title": "内容审核",
+      "ok": true
+    },
+    {
+      "path": "/admin/entries",
+      "title": "导航与入口",
+      "ok": true
+    },
+    {
+      "path": "/admin/settings",
+      "title": "站点配置",
+      "ok": true
+    },
+    {
+      "path": "/admin/pulse",
+      "title": "Pulse 运营",
+      "ok": true
+    },
+    {
+      "path": "/admin/members",
+      "title": "成员与权限",
+      "ok": true
+    },
+    {
+      "path": "/admin/support",
+      "title": "支持工单",
+      "ok": true
+    },
+    {
+      "path": "/admin/audit",
+      "title": "操作审计",
+      "ok": true
+    }
+  ],
+  "viewport_checks": [
+    {
+      "path": "/discover",
+      "title": "发现",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/questions",
+      "title": "问答广场",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/questions?tab=unanswered",
+      "title": "问答广场",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/question/q1",
+      "title": "你在用 Agent 自动化哪些重复工作？来分享一个真实场景",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/topics",
+      "title": "全部话题",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/topic/agents",
+      "title": "Agent 与自动化",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/knowledge",
+      "title": "知识库",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/article/start",
+      "title": "第一次 API 调用之前，先把这五件事弄清楚",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/search?q=API",
+      "title": "“API” 的搜索结果",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/publish",
+      "title": "发布内容",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/login",
+      "title": "欢迎回来。",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/register",
+      "title": "欢迎加入 METAR",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/forgot",
+      "title": "找回社区密码",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/verify-email",
+      "title": "让社区身份，完整地属于你。",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/onboarding",
+      "title": "先选几个你感兴趣的话题。",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/me",
+      "title": "林一",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/profile/Jo",
+      "title": "Jo",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/bookmarks",
+      "title": "我的收藏",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/drafts",
+      "title": "内容草稿",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/notifications",
+      "title": "通知中心",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/settings/account",
+      "title": "账号设置",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/settings/binding",
+      "title": "账号绑定",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/settings/binding?case=conflict",
+      "title": "账号绑定",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/settings/notifications",
+      "title": "通知设置",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/settings/security",
+      "title": "账号安全",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/pulse",
+      "title": "每一次调用，都有回响。",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/pulse/rules",
+      "title": "看得懂的积累，查得到的回馈。",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/pulse/rewards",
+      "title": "每一份回馈，都可以被核对。",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/developers",
+      "title": "开发者入口",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/api-hub",
+      "title": "API 控制台",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/support",
+      "title": "帮助与反馈",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/status",
+      "title": "每个服务，都有明确的状态。",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/about",
+      "title": "关于 METAR",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/guidelines",
+      "title": "社区规范",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/privacy",
+      "title": "隐私说明",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/admin",
+      "title": "运营概览",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/admin/content",
+      "title": "内容审核",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/admin/entries",
+      "title": "导航与入口",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/admin/settings",
+      "title": "站点配置",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/admin/pulse",
+      "title": "Pulse 运营",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/admin/members",
+      "title": "成员与权限",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/admin/support",
+      "title": "支持工单",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/admin/audit",
+      "title": "操作审计",
+      "ok": true,
+      "width": 1440
+    },
+    {
+      "path": "/discover",
+      "title": "发现",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/questions",
+      "title": "问答广场",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/questions?tab=unanswered",
+      "title": "问答广场",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/question/q1",
+      "title": "你在用 Agent 自动化哪些重复工作？来分享一个真实场景",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/topics",
+      "title": "全部话题",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/topic/agents",
+      "title": "Agent 与自动化",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/knowledge",
+      "title": "知识库",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/article/start",
+      "title": "第一次 API 调用之前，先把这五件事弄清楚",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/search?q=API",
+      "title": "“API” 的搜索结果",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/publish",
+      "title": "发布内容",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/login",
+      "title": "欢迎回来。",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/register",
+      "title": "欢迎加入 METAR",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/forgot",
+      "title": "找回社区密码",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/verify-email",
+      "title": "让社区身份，完整地属于你。",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/onboarding",
+      "title": "先选几个你感兴趣的话题。",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/me",
+      "title": "林一",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/profile/Jo",
+      "title": "Jo",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/bookmarks",
+      "title": "我的收藏",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/drafts",
+      "title": "内容草稿",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/notifications",
+      "title": "通知中心",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/settings/account",
+      "title": "账号设置",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/settings/binding",
+      "title": "账号绑定",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/settings/binding?case=conflict",
+      "title": "账号绑定",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/settings/notifications",
+      "title": "通知设置",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/settings/security",
+      "title": "账号安全",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/pulse",
+      "title": "每一次调用，都有回响。",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/pulse/rules",
+      "title": "看得懂的积累，查得到的回馈。",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/pulse/rewards",
+      "title": "每一份回馈，都可以被核对。",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/developers",
+      "title": "开发者入口",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/api-hub",
+      "title": "API 控制台",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/support",
+      "title": "帮助与反馈",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/status",
+      "title": "每个服务，都有明确的状态。",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/about",
+      "title": "关于 METAR",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/guidelines",
+      "title": "社区规范",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/privacy",
+      "title": "隐私说明",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/admin",
+      "title": "运营概览",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/admin/content",
+      "title": "内容审核",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/admin/entries",
+      "title": "导航与入口",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/admin/settings",
+      "title": "站点配置",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/admin/pulse",
+      "title": "Pulse 运营",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/admin/members",
+      "title": "成员与权限",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/admin/support",
+      "title": "支持工单",
+      "ok": true,
+      "width": 390
+    },
+    {
+      "path": "/admin/audit",
+      "title": "操作审计",
+      "ok": true,
+      "width": 390
+    }
+  ],
+  "overflow": []
+}
