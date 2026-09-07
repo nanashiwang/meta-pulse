@@ -74,31 +74,34 @@ new-api
 
 ## 5. 分阶段实施
 
-### F0：前端生产边界（当前优先）
+### F0：前端生产边界 ✅
 
-- 将 `metar-frontend/` 作为设计源和离线原型保留；
-- 增加生产适配契约，明确 ContentAdapter、IdentityAdapter、BindingAdapter、PulseAdapter、OperationsAdapter；
-- 增加 runtime config，所有外部入口由服务端注入，禁止写死生产地址；
-- 增加构建门禁：生产构建不能包含演示身份切换、固定奖励、localStorage 业务账和“未发送到线上”的 mock 提示；
-- 不把原型直接挂到线上，避免展示假数据。
+- [x] 将 `metar-frontend/` 作为设计源和离线原型保留；
+- [x] 新增 `metar-frontend/production/`，生产 Adapter 与原型脚本完全分离；
+- [x] 增加 runtime config，外部入口只允许同源路径或无凭据 HTTPS 地址；
+- [x] 增加构建门禁：生产产物禁止 mock 数据、演示身份、Pulse 身份头和本地业务账；
+- [x] 增加 Python 构建测试、Node Adapter 对抗测试和部署静态检查。
 
 **出口标准**：前端可以独立构建；生产与 preview 明确分离；没有任何浏览器代码可以伪造 Pulse 身份或结果。
 
-### F1：METAR 社区壳层 + Answer 适配
+### F1：METAR 社区壳层 + Answer 适配 ✅（首轮）
 
-- 新增正式静态前端构建产物和 Nginx `/` 静态托管；
-- 保留 `/answer/api/*`、Connector、callback、`/blog/` 兼容路径；
-- 实现发现首页、问题列表、问题详情、话题、搜索、发布入口、登录/注册入口；
-- 访客可浏览，登录后才展示互动和个人空间；
-- 首先接通真实 Answer API，再逐步替换 Answer 默认页面，不改变 Answer 数据事实源。
+- [x] 新增正式静态前端构建，并由 Nginx 精确匹配 `/` 托管；
+- [x] 保留 `/answer/api/*`、`/questions`、`/users/*`、Connector、callback 与 `/blog/`；
+- [x] 接通真实发现、问题列表/详情/回答、话题、搜索和知识库入口；
+- [x] 登录、注册、找回、发布和写操作继续进入 Answer 原生安全流程；
+- [x] 访客可浏览，个人资料、收藏、通知和绑定状态只在真实登录后读取；
+- [x] 修正 Answer 找回入口、未激活账号操作拦截、收藏时间字段与通知对象跳转；
+- [x] 首页 CSP 禁止内联样式，稳定资源更新时强制重新验证；
+- [ ] 后续在不复制 Answer 权限逻辑的前提下，继续统一原生写页面视觉。
 
 **出口标准**：公共内容可读、登录/注册可用、问题详情和发布入口不走 mock。
 
-### F2：账号空间和安全绑定
+### F2：账号空间和安全绑定 🟡
 
-- 实现个人主页、资料、收藏、草稿、通知、账号安全；
-- 实现“未绑定 / 已绑定 / 冲突 / 暂不可用 / 处理中”状态；
-- 绑定按钮只跳现有 Connector，不接受 user_id、邮箱或 API Key 输入；
+- [x] 实现个人主页、资料、收藏和通知的 Answer 只读适配；资料修改与写操作进入 Answer 原生页面；
+- [x] 实现未登录、未激活、未绑定、已绑定与暂不可用状态；冲突/处理中待真实回调状态补充；
+- [x] 绑定按钮只跳现有 Connector，不接受 user_id、邮箱或 API Key 输入；
 - 修复并配置 Answer SMTP，确保激活/绑定邮件真实可达；
 - 保留本地封禁、密码、资料和治理角色由 Answer 管理。
 

@@ -3,7 +3,8 @@
 正式社区入口：
 
 ```text
-https://metar.uk/       Apache Answer（主入口）
+https://metar.uk/       METAR 正式首页（真实 Answer API 数据）
+https://metar.uk/questions  Apache Answer 原生论坛
 https://metar.uk/blog/  VitePress
 https://www.metar.uk/   308 跳转至 metar.uk
 ```
@@ -16,6 +17,7 @@ new-api 继续运行在原域名和原服务器。社区网关**不代理 new-ap
 
 ```bash
 ./deploy/build-blog.sh
+./deploy/build-community.sh
 mkdir -p .data/certbot/.well-known/acme-challenge
 chmod 755 .data/certbot .data/certbot/.well-known .data/certbot/.well-known/acme-challenge
 ```
@@ -31,7 +33,7 @@ chmod 755 .data/certbot .data/certbot/.well-known .data/certbot/.well-known/acme
    不要只挂载 `live/` 中的单个软链接文件，否则续期后容器可能继续读取旧证书。
 
 3. 将 ACME webroot 挂载到 `/var/www/certbot`。首次签发可在 80/443 尚未监听时使用 standalone，后续使用 webroot 自动续期；
-4. 将 VitePress 构建目录挂载到 `/var/www/blog`；
+4. 将 VitePress 构建目录挂载到 `/var/www/blog`；METAR 正式前端会构建到该目录的 `metar/` 子目录，无需增加新的宿主机挂载；
 5. Answer 站点 URL 设置为 `https://metar.uk`，开启本地注册和密码登录并配置发信；
 6. Answer 插件配置：
 
@@ -71,11 +73,12 @@ chmod 755 .data/certbot .data/certbot/.well-known .data/certbot/.well-known/acme
     sudo ./deploy/nginx/renew.sh --dry-run
     ```
 
-    后续 `./deploy/update.sh` 会在宿主机覆盖中检测 `gateway`，自动更新博客并热重载 Nginx。
+    后续 `./deploy/update.sh` 会在宿主机覆盖中检测 `gateway`：博客或 METAR 前端变化时按正确顺序重建静态产物，并校验后热重载 Nginx。
 
 ## 安全边界
 
-- 普通论坛请求只向 Answer 转发 `visit` Cookie；
+- 精确根路径 `/` 只提供无 mock 的静态壳层；其脚本只访问同源 Answer API，Pulse 尚未接 BFF 时不展示虚构权益；
+- `/questions`、`/users/*`、`/answer/api/*` 等普通论坛请求仍由 Answer 处理，并只向 Answer 转发 `visit` Cookie；
 - Answer v1.7.1 的 `/answer/api/v1/user-center/agent` 响应在网关定点归一化：登录固定进入 `pulse_user_center` Connector，注册固定返回 `/users/register`；该代理关闭压缩与缓存，避免本地注册被 UserCenter 接管；
 - UserCenter 的 `/login/redirect`、`/sign-up/redirect` 及其旧空跳转父路径仅作兼容兜底，不承载独立认证逻辑；
 - 固定 callback 只转发 `meta_pulse_forum_flow` Cookie；

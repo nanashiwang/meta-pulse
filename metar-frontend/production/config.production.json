@@ -1,0 +1,15 @@
+{
+  "siteName": "METAR",
+  "siteTagline": "与创造者一起，把 AI 用出价值",
+  "answerApiBase": "/answer/api/v1",
+  "answerLoginPath": "/users/login",
+  "answerRegisterPath": "/users/register",
+  "answerPasswordResetPath": "/users/account-recovery",
+  "answerAskPath": "/questions/ask",
+  "answerSettingsPath": "/users/settings/profile",
+  "answerBindingPath": "/answer/api/v1/connector/login/pulse_user_center",
+  "blogBasePath": "/blog/",
+  "consoleUrl": "https://cn.meta-api.vip/console",
+  "docsUrl": "",
+  "statusUrl": ""
+}

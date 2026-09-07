@@ -147,14 +147,15 @@ Answer  = 社区注册、密码、会话、封禁、资料与内容事实源
 
 ```text
 Pulse 权益：浏览器 / YuanHeng → new-api session → Signed BFF → Pulse
-社区使用：浏览器 → Answer 本地注册/登录 → Answer session
+社区浏览：浏览器 → METAR 静态壳层 → 同源 Answer API
+社区写入/登录：浏览器 → Answer 原生页面 → Answer session
 ```
 
 Answer 用户可选通过 new-api 现有 `/api/forum/sso/start` 绑定 API 身份。绑定事实源是 Answer `user_external_login(provider=pulse_user_center)`；数据库约束保证 Answer user ID 与 new-api user ID 一对一且不可静默换绑、转移或普通解绑。未绑定用户仍可使用社区，但不能展示或领取 Pulse 权益。
 
 Answer v1.7.1 在启用 UserCenter 展示能力后会统一发布登录/注册链接，其注册跳转实现还会误读登录地址。公网网关因此归一化 `/answer/api/v1/user-center/agent` 返回的两个公开跳转字段：登录固定接入带浏览器 flow 的 Connector，注册固定留在 Answer `/users/register`；框架 redirect 路由只作为兼容兜底。不得把二者都直接指向 new-api，也不得绕过 Connector 创建 flow。
 
-Cookie 只发给各自服务。YuanHeng 可在隔离 WebView 中打开 new-api 控制台，但不得保存密码、向 Pulse 发送 Cookie，或自行声明可信 `user_id`。社区网关不得把 new-api session 或 Pulse 签名头转发给 Answer；Answer 前端自己的 Authorization 必须保留。
+Cookie 只发给各自服务。YuanHeng 可在隔离 WebView 中打开 new-api 控制台，但不得保存密码、向 Pulse 发送 Cookie，或自行声明可信 `user_id`。社区网关不得把 new-api session 或 Pulse 签名头转发给 Answer；Answer 前端自己的 Authorization 必须保留。METAR 静态壳层只读取同源 Answer API，并复用 Answer 已有 `_a_ltk_` token；不得复制 token 到自有存储、外部入口或 Pulse 请求。
 
 ## 6. 总体系统架构
 
@@ -235,6 +236,9 @@ meta-pulse/
 │   └── migrations/           Goose SQL migration
 ├── services/forum-plugin/    Answer UserCenter 插件
 ├── sites/blog/               VitePress
+├── metar-frontend/
+│   ├── src/                  离线视觉/交互原型
+│   └── production/           无 mock 的 Answer 生产适配层
 └── deploy/                   Docker / Nginx
 ```
 
@@ -824,7 +828,7 @@ Pulse 不保存：
 
 只使用 new-api `user_id` 作为 opaque principal。
 
-Pulse 对 new-api LOG_DB 使用只读账号，并且无权限直接写 new-api 用户余额表。new-api session Cookie 不得转发给 Pulse 或论坛；YuanHeng 的 Cookie 必须隔离在 new-api WebView / 客户端安全存储边界内。社区使用新的独立 HTTPS 域名，根路径由 Answer 提供、`/blog/` 由 VitePress 提供；社区网关仅按 allowlist 转发 Answer `visit` 或 callback flow Cookie；callback 清除 Authorization，所有路由清除 Pulse 签名头，普通路由保留 Answer 自己的 Authorization；网关不代理 new-api 或 Pulse。
+Pulse 对 new-api LOG_DB 使用只读账号，并且无权限直接写 new-api 用户余额表。new-api session Cookie 不得转发给 Pulse 或论坛；YuanHeng 的 Cookie 必须隔离在 new-api WebView / 客户端安全存储边界内。社区使用新的独立 HTTPS 域名：精确根路径 `/` 由无 mock 的 METAR 静态壳层提供，`/blog/` 由 VitePress 提供，其余 `/questions`、`/users/*` 和 `/answer/api/*` 仍由 Answer 提供。静态壳层只调用同源 Answer API，不实现社区写权限。社区网关仅按 allowlist 转发 Answer `visit` 或 callback flow Cookie；callback 清除 Authorization，所有代理路由清除 Pulse 签名头，普通路由保留 Answer 自己的 Authorization；网关不代理 new-api 或 Pulse。
 
 ## 29. 对账与可观测性
 
@@ -913,7 +917,7 @@ new-api 服务器：现有域名 + new-api + LOG_DB / Benefit API
 - Internal Benefit API：内网/localhost + HMAC；
 - Pulse 原始用户 API：仅内网，由 new-api Signed BFF 代理；
 - 对外 `/api/pulse/*`：由 new-api BFF 接管并清除浏览器提交的 Pulse 服务签名头，不把浏览器请求直接转发为 Pulse 原始请求；
-- 社区使用新的独立 HTTPS 域名；根路径进入 Answer、`/blog/` 进入 VitePress，网关使用 Cookie allowlist，Login Ticket callback query 不进入边缘 access log；
+- 社区使用新的独立 HTTPS 域名；精确根路径进入 METAR 静态壳层、Answer 原生/API 路径保持代理、`/blog/` 进入 VitePress，网关使用 Cookie allowlist，Login Ticket callback query 不进入边缘 access log；
 - 社区上线不要求修改 new-api 源码；生产仅配置现有 SSO Bridge 的共享密钥与固定 callback；
 - Secret 仅存服务器 Secret / 密码管理器，不写 GitHub。
 - 生产配置按角色校验：API 需要服务/BFF/Admin/随机密钥，不持有 LOG_DB 凭据；Worker 仅需要服务/随机密钥及只读 LOG_DB/Benefit 配置，不注入 BFF/Admin 密钥；迁移和只读工具不因公共配置加载而被迫持有签名密钥，实际操作另行检查所需能力。
@@ -992,7 +996,7 @@ Meta Pulse                贡献值 / 券 / 等级 / Reward 事实源
 - Pulse 对论坛内容库只读；Answer 本地 ID 必须经受保护绑定映射为 new-api ID；
 - 只采集绑定后发布的公开 available/closed 问题，未绑定、绑定前、隐藏、待审核或删除内容不进入候选；
 - 内容奖励直接生成独立预算 Reward Grant，**不产生 contribution 或 ticket**；
-- 社区网关不代理 new-api/Pulse，只转发 allowlist Cookie；callback 清除 Authorization，普通路由保留 Answer API Authorization，所有路由清除 Pulse 签名头；
+- 社区首页静态壳层只读访问 Answer API，不保存业务状态、不复制 Answer token、不直接调用 Pulse；社区网关不代理 new-api/Pulse，只转发 allowlist Cookie；callback 清除 Authorization，普通代理路由保留 Answer API Authorization，所有代理路由清除 Pulse 签名头；
 - Pulse 故障时等级徽章降级为空，不影响 Answer 本地登录和浏览。
 
 完整定义、剩余 signed-state 限制和上线门禁见 `docs/COMMUNITY.md`。

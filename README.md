@@ -70,16 +70,27 @@ Meta Pulse 负责 Usage Event、贡献值、脉冲券、经济规则、10 天周
 
 ## METAR 前端改造
 
-`metar-frontend/` 是 METAR 新版社区前端的离线原型与视觉基线，包含 43 个页面入口、桌面/移动布局、账号绑定状态和 Pulse 交互示例。它当前只使用本地 mock，**不能直接作为生产站点部署**。
+`metar-frontend/` 保留 43 个页面入口的离线视觉/交互原型；原型仍只使用本地 mock，**不能直接部署**。正式实现位于 [`metar-frontend/production/`](metar-frontend/production/)，已经与原型彻底分离，并接通 Apache Answer 的真实只读能力：
 
-生产化改造按 [`docs/METAR_FRONTEND_REFACTOR_PLAN.md`](docs/METAR_FRONTEND_REFACTOR_PLAN.md) 推进：先接通 Answer 社区真实接口，再增加受保护的社区 BFF，最后接通 Pulse 权益和运营工作台。
+- 发现、问题列表、详情、回答、话题与搜索；
+- 当前用户、个人资料、收藏、通知与账号绑定状态；
+- Answer 原生登录、注册、找回、发帖和写操作入口；
+- VitePress 知识库入口，以及未登录、未激活、未绑定和服务不可用状态。
 
+正式首页由 Nginx 精确匹配 `/` 提供；`/questions`、`/users/*`、`/answer/api/*` 等路径仍由 Answer 原生 UI/API 负责，因此前端回退不会修改社区数据、会话或权限规则。Pulse 用户数据尚未通过社区 BFF 前，正式页面明确显示“暂未开放”，不会展示固定等级、余额、券或奖励。后续阶段见 [`docs/METAR_FRONTEND_REFACTOR_PLAN.md`](docs/METAR_FRONTEND_REFACTOR_PLAN.md)。
+
+本地验证：
+
+```bash
+make test-community
+make build-community  # 产物写入现有博客静态卷的 metar/ 子目录
+```
 
 ## 快速开始
 
 ### 服务器首次部署
 
-Meta Pulse 使用独立的 Pulse MySQL、Redis、API、Worker 和 Answer 容器；new-api 继续在原服务器独立运行。正式社区入口为 `https://metar.uk/`，博客位于 `https://metar.uk/blog/`，`www.metar.uk` 跳转主域名。推荐在 Linux 服务器执行：
+Meta Pulse 使用独立的 Pulse MySQL、Redis、API、Worker 和 Answer 容器；new-api 继续在原服务器独立运行。正式社区首页为 `https://metar.uk/`，Answer 原生论坛路由继续位于同域名，博客位于 `https://metar.uk/blog/`，`www.metar.uk` 跳转主域名。推荐在 Linux 服务器执行：
 
 ```bash
 git clone https://github.com/nanashiwang/meta-pulse.git /opt/meta-pulse
@@ -101,7 +112,8 @@ cd /opt/meta-pulse
 ### 本地验证
 
 ```bash
-make test       # Go 测试 + 部署脚本离线测试
+make test       # Go 测试 + 部署脚本 + METAR 正式前端测试
+make test-community
 make vet
 make deploy-test
 make deploy-config-test  # 生产 Compose 配置 + API/Worker/Tool 最小权限校验

@@ -44,6 +44,16 @@ grep -q 'proxy_set_header Cookie \$forum_cookie;' "$config" || die 'forum Cookie
 [ "$(grep -c 'proxy_set_header X-Pulse-Signature "";' "$config")" -eq 5 ] || die 'all forum routes must strip browser Pulse signatures'
 [ "$(grep -c 'proxy_set_header New-Api-User "";' "$config")" -eq 5 ] || die 'all forum routes must strip new-api identity headers'
 grep -A12 'location /blog/' "$config" | grep -q 'Strict-Transport-Security' || die 'blog location lost inherited security headers'
+grep -q 'location = / {' "$config" || die 'METAR exact homepage route is missing'
+grep -A14 'location = / {' "$config" | grep -q 'try_files /blog/metar/index.html =404;' || die 'METAR homepage does not fail closed on missing production build'
+grep -A14 'location = / {' "$config" | grep -q 'Content-Security-Policy' || die 'METAR homepage CSP is missing'
+grep -A14 'location = / {' "$config" | grep -q "style-src 'self';" || die 'METAR homepage CSP must allow only self-hosted styles'
+if grep -A14 'location = / {' "$config" | grep -q 'unsafe-inline'; then
+  die 'METAR homepage CSP must not allow inline scripts or styles'
+fi
+grep -q 'location = /metar-runtime-config.js' "$config" || die 'METAR runtime configuration route is missing'
+grep -q 'location ^~ /metar-assets/' "$config" || die 'METAR asset route is missing'
+grep -A10 'location \^~ /metar-assets/' "$config" | grep -q 'Cache-Control "no-cache"' || die 'METAR stable asset names must revalidate after deploy'
 grep -A12 'location = /api/user-center/login/callback' "$config" | grep -q 'Strict-Transport-Security' || die 'callback location lost HSTS'
 if grep -q 'proxy_set_header Cookie \$http_cookie' "$config"; then
   die 'raw browser cookies must not be forwarded to Answer'

@@ -22,6 +22,17 @@
 
 new-api 必须先独立部署，并提供 Signed BFF、Internal Benefit API、LOG_DB 只读账号及现有 Forum SSO Bridge。new-api 可以位于另一台服务器并独立更新；社区服务器不运行第二套 new-api。公网仅开放新的社区域名，参见 [`deploy/nginx/README.md`](nginx/README.md)。当根目录的宿主机覆盖配置包含 `gateway` 服务时，`update.sh` 会在博客变更后重建静态产物，并校验、启动和热重载网关。
 
+## 社区静态前端
+
+启用 `gateway` 时，部署脚本会依次构建 VitePress 与 METAR 正式前端：
+
+```bash
+./deploy/build-blog.sh
+./deploy/build-community.sh
+```
+
+正式产物位于 `sites/blog/docs/.vitepress/dist/metar/`，复用现有 `/var/www/blog` 只读挂载。Nginx 只在精确 `/` 返回该首页；Answer 的 `/questions`、`/users/*`、`/answer/api/*`、Connector 和 callback 路径不被静态前端接管。生产构建缺失时网关返回 404，不回退到原型或 mock。
+
 ## 首次部署
 
 服务器要求：Linux、Docker、Docker Compose v2、Git、OpenSSL、`flock`（通常由 util-linux 提供）。推荐使用专用部署用户，并让该用户加入 `docker` 用户组。

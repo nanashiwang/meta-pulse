@@ -23,6 +23,8 @@
 ✅ M6 运营闭环     可重入 Period Close、周期奖励、Holdout 固化、Audit、日指标与告警
 ✅ M7 内容奖励     候选采集、首次审核固化、独立预算、限额、幂等、结算、撤销与审计
 ✅ 部署自动化       生产配置模板、随机密钥初始化、迁移、健康检查、加锁更新与失败回滚提示
+✅ METAR F0         原型/生产分离、runtime config、mock/身份头构建门禁与前端适配测试
+🟡 METAR F1/F2     真实 Answer 浏览/个人/绑定状态已接通；原生写入口保留，SMTP 与完整个人操作待验收
 ```
 
 **P0–M7 及 M3.5 社区账号改造已落地；本轮补齐第 12 节的可靠性与对抗性回归。** 功能实现不等于生产验收；真实 LOG_DB、new-api、Answer、邮件、正式社区域名和生产密钥等外部环境仍按第 8 节验收，不能用内存 fake、静态代码检查或本地桩冒充完成。
@@ -158,7 +160,7 @@ type UnitOfWork interface {
 - [x] Ticket 具备 TTL、未来时间拒绝、HMAC 验签、单次 nonce 和固定 callback；
 - [x] Answer 保留本地账号体系，插件以 Connector 提供可选 new-api 绑定；
 - [x] 浏览器 flow 与 Ticket nonce 使用 Redis 原子消费，进程内存实现仅保留给测试；
-- [x] 新社区域名以 Answer 根路径为主、`/blog/` 为辅；Nginx 按路由使用 Cookie allowlist；
+- [x] 新社区域名以 METAR 精确首页为入口、Answer 原生/API 路径为社区事实源、`/blog/` 为知识库；Nginx 按路由使用 Cookie allowlist；
 - [x] new-api 实现 Pulse Signed BFF，浏览器访问 new-api，用户 ID 由 session 派生；
 - [x] 更新社区 Nginx/网关：不代理 new-api/Pulse；callback 清除 Authorization、全部路由清除 Pulse 签名头，普通路由保留 Answer API Authorization；Pulse/Answer 不发布宿主机端口；
 - [x] 统一服务签名覆盖 method、path、user、timestamp、nonce、body hash；
@@ -368,7 +370,7 @@ type UnitOfWork interface {
 
 ### D4｜社区域名与 Cookie 拓扑（已决策）
 
-使用新的独立社区域名，根路径以 Answer 为主、`/blog/` 为辅；new-api 保持原域名和服务器。社区网关不代理 new-api/Pulse，普通请求只转发 `visit` 并保留 Answer API Authorization；callback 只转发 flow 且清除 Authorization；所有路由清除 Pulse 签名头，容器默认不发布宿主机端口。
+使用新的独立社区域名，精确根路径由 METAR 正式壳层提供，Answer 继续负责原生页面/API，`/blog/` 由 VitePress 提供；new-api 保持原域名和服务器。社区网关不代理 new-api/Pulse，普通请求只转发 `visit` 并保留 Answer API Authorization；callback 只转发 flow 且清除 Authorization；所有路由清除 Pulse 签名头，容器默认不发布宿主机端口。
 
 ### D5｜Ticket Debt 展示（M3 前）
 

@@ -5,7 +5,7 @@ IFS=$'\n\t'
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
-bash -n "$ROOT/deploy/lib.sh" "$ROOT/deploy/install.sh" "$ROOT/deploy/update.sh" "$ROOT/deploy/build-blog.sh" "$ROOT/deploy/nginx/renew.sh" "$ROOT/deploy/nginx/install-renewal-timer.sh"
+bash -n "$ROOT/deploy/lib.sh" "$ROOT/deploy/install.sh" "$ROOT/deploy/update.sh" "$ROOT/deploy/build-blog.sh" "$ROOT/deploy/build-community.sh" "$ROOT/deploy/nginx/renew.sh" "$ROOT/deploy/nginx/install-renewal-timer.sh"
 
 # 校验生产模板初始化会生成随机凭据，并保持最小文件权限。
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/meta-pulse-deploy-test.XXXXXX")"
@@ -68,8 +68,20 @@ grep -q 'proxy_set_header Cookie "meta_pulse_forum_flow=\$cookie_meta_pulse_foru
 [[ "$(grep -c 'proxy_set_header X-Pulse-Signature "";' "$ROOT/deploy/nginx/meta-pulse.conf")" -eq 5 ]]
 [[ "$(grep -c 'proxy_set_header New-Api-User "";' "$ROOT/deploy/nginx/meta-pulse.conf")" -eq 5 ]]
 grep -A12 'location /blog/' "$ROOT/deploy/nginx/meta-pulse.conf" | grep -q 'Strict-Transport-Security'
+grep -q 'location = / {' "$ROOT/deploy/nginx/meta-pulse.conf"
+grep -A14 'location = / {' "$ROOT/deploy/nginx/meta-pulse.conf" | grep -q 'try_files /blog/metar/index.html =404;'
+grep -q 'location = /metar-runtime-config.js' "$ROOT/deploy/nginx/meta-pulse.conf"
+grep -q 'location ^~ /metar-assets/' "$ROOT/deploy/nginx/meta-pulse.conf"
+grep -A14 'location = / {' "$ROOT/deploy/nginx/meta-pulse.conf" | grep -q "style-src 'self';"
+! grep -A14 'location = / {' "$ROOT/deploy/nginx/meta-pulse.conf" | grep -q 'unsafe-inline'
+grep -A10 'location \^~ /metar-assets/' "$ROOT/deploy/nginx/meta-pulse.conf" | grep -q 'Cache-Control "no-cache"'
 ! grep -Eq 'upstream[[:space:]]+(pulse|new_api)|proxy_pass[[:space:]]+http://(pulse|new_api)' "$ROOT/deploy/nginx/meta-pulse.conf"
 grep -q 'FORUM_BINDING_GUARD_DSN:' "$ROOT/docker-compose.yml"
+
+community_dist="$tmp_dir/community"
+python3 "$ROOT/metar-frontend/production/build.py" --output "$community_dist" >/dev/null
+[[ -s "$community_dist/index.html" && -s "$community_dist/assets/app.js" && -s "$community_dist/assets/favicon.svg" && -s "$community_dist/runtime-config.js" ]]
+! grep -R -E 'SEED_POSTS|CANDIDATES|X-Pulse-Signature|New-Api-User|未发送到线上' "$community_dist" >/dev/null
 
 bash "$ROOT/deploy/update_test.sh"
 

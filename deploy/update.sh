@@ -147,6 +147,7 @@ fi
 validate_compose
 GATEWAY_ENABLED=0
 BLOG_CHANGED=0
+COMMUNITY_CHANGED=0
 GATEWAY_CONFIG_CHANGED=0
 if compose config --services | grep -Fx gateway >/dev/null; then
   GATEWAY_ENABLED=1
@@ -154,17 +155,26 @@ fi
 if ! git -C "$REPO_ROOT" diff --quiet "$OLD_COMMIT" HEAD -- sites/blog; then
   BLOG_CHANGED=1
 fi
+if ! git -C "$REPO_ROOT" diff --quiet "$OLD_COMMIT" HEAD -- metar-frontend/production metar-frontend/src/styles.css deploy/build-community.sh; then
+  COMMUNITY_CHANGED=1
+fi
 # 网关直接挂载 Nginx 文件。Git 快进可能替换源文件 inode，已有容器会继续
 # 使用旧的 bind mount；此时仅 reload 不足，必须重建网关容器。
 if ! git -C "$REPO_ROOT" diff --quiet "$OLD_COMMIT" HEAD -- deploy/nginx/meta-pulse.conf; then
   GATEWAY_CONFIG_CHANGED=1
 fi
-if (( GATEWAY_ENABLED == 1 && BLOG_CHANGED == 1 )); then
+if (( GATEWAY_ENABLED == 1 && (BLOG_CHANGED == 1 || COMMUNITY_CHANGED == 1) )); then
   if (( NO_BUILD == 0 )); then
-    log "构建更新后的社区博客静态文件"
-    "$SCRIPT_DIR/build-blog.sh"
+    if (( BLOG_CHANGED == 1 )); then
+      log "构建更新后的社区博客静态文件"
+      "$SCRIPT_DIR/build-blog.sh"
+    fi
+    # VitePress rebuild clears its dist directory, therefore the METAR shell
+    # must be rebuilt after every blog rebuild even when its own source did not change.
+    log "构建更新后的 METAR 正式前端"
+    "$SCRIPT_DIR/build-community.sh"
   else
-    warn "检测到博客变更，但 --no-build 已跳过静态构建"
+    warn "检测到社区静态前端变更，但 --no-build 已跳过构建"
   fi
 fi
 
@@ -198,7 +208,8 @@ if (( SKIP_FORUM == 0 )); then
   wait_for_service forum 120
 fi
 if (( GATEWAY_ENABLED == 1 )); then
-  [[ -f "$REPO_ROOT/sites/blog/docs/.vitepress/dist/index.html" ]] || die "社区网关已启用，但博客静态产物不存在"
+  [[ -s "$REPO_ROOT/sites/blog/docs/.vitepress/dist/index.html" ]] || die "社区网关已启用，但博客静态产物不存在"
+  [[ -s "$REPO_ROOT/sites/blog/docs/.vitepress/dist/metar/index.html" ]] || die "社区网关已启用，但 METAR 正式前端产物不存在"
   log "校验并更新社区 HTTPS 网关"
   compose run --rm --no-deps --entrypoint nginx gateway -t
   if (( GATEWAY_CONFIG_CHANGED == 1 )); then

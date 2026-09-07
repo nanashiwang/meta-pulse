@@ -66,6 +66,10 @@ if (( SKIP_WORKER == 0 )); then
   validate_worker_environment
 fi
 validate_compose
+GATEWAY_ENABLED=0
+if compose config --services | grep -Fx gateway >/dev/null; then
+  GATEWAY_ENABLED=1
+fi
 
 on_error() {
   local rc=$?
@@ -85,6 +89,16 @@ if (( NO_BUILD == 0 )); then
   (( SKIP_FORUM == 0 )) && build_services+=(forum)
   log "构建服务镜像：${build_services[*]}"
   compose build "${build_services[@]}"
+  if (( GATEWAY_ENABLED == 1 )); then
+    log "构建社区博客与 METAR 正式前端"
+    "$SCRIPT_DIR/build-blog.sh"
+    "$SCRIPT_DIR/build-community.sh"
+  fi
+fi
+
+if (( GATEWAY_ENABLED == 1 )); then
+  [[ -s "$REPO_ROOT/sites/blog/docs/.vitepress/dist/index.html" ]] || die "社区网关已启用，但博客静态产物不存在"
+  [[ -s "$REPO_ROOT/sites/blog/docs/.vitepress/dist/metar/index.html" ]] || die "社区网关已启用，但 METAR 正式前端产物不存在"
 fi
 
 log "启动数据库和 Redis"
@@ -108,6 +122,13 @@ if (( SKIP_WORKER == 0 )); then
 fi
 if (( SKIP_FORUM == 0 )); then
   wait_for_service forum 120 || die "Forum 未就绪"
+fi
+if (( GATEWAY_ENABLED == 1 )); then
+  log "启动并校验社区 HTTPS 网关"
+  compose run --rm --no-deps --entrypoint nginx gateway -t
+  compose up -d gateway
+  wait_for_service gateway 120 || die "社区网关未就绪"
+  compose exec -T gateway nginx -t
 fi
 
 trap - ERR
