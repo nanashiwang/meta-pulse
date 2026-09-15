@@ -15,9 +15,36 @@ type Task struct {
 	Interval time.Duration
 	Timeout  time.Duration
 	Run      func(context.Context) error
+
+	// MaxBackoff caps the delay applied after consecutive failures. Zero
+	// disables backoff and the task retries every Interval regardless of
+	// outcome. Set it on tasks whose failure mode is an expensive dependency
+	// call: retrying a query that times out at fixed Interval turns one slow
+	// statement into sustained load on the dependency, which is how a stuck
+	// cursor keeps a remote database saturated indefinitely.
+	MaxBackoff time.Duration
 }
 
 type Observer func(name string, err error)
+
+// nextDelay returns how long to wait before a task's next attempt. Failures
+// double the delay from Interval up to MaxBackoff; any success resets it.
+func nextDelay(task Task, consecutiveFailures int) time.Duration {
+	if task.MaxBackoff <= 0 || consecutiveFailures <= 0 {
+		return task.Interval
+	}
+	delay := task.Interval
+	for i := 0; i < consecutiveFailures; i++ {
+		if delay >= task.MaxBackoff/2 {
+			return task.MaxBackoff
+		}
+		delay *= 2
+	}
+	if delay > task.MaxBackoff {
+		return task.MaxBackoff
+	}
+	return delay
+}
 
 // Run starts one non-overlapping loop per task and waits for cancellation.
 // Each invocation derives its timeout from the root context, never another job.
@@ -34,8 +61,9 @@ func Run(ctx context.Context, tasks []Task, observe Observer) error {
 		workers.Add(1)
 		go func(task Task) {
 			defer workers.Done()
-			ticker := time.NewTicker(task.Interval)
-			defer ticker.Stop()
+			timer := time.NewTimer(task.Interval)
+			defer timer.Stop()
+			consecutiveFailures := 0
 			for {
 				if ctx.Err() != nil {
 					return
@@ -47,13 +75,20 @@ func Run(ctx context.Context, tasks []Task, observe Observer) error {
 				}
 				cancel()
 				// Normal process shutdown is not an operational job failure.
-				if observe != nil && !(ctx.Err() != nil && errors.Is(err, context.Canceled)) {
+				shuttingDown := ctx.Err() != nil && errors.Is(err, context.Canceled)
+				if observe != nil && !shuttingDown {
 					observe(task.Name, err)
 				}
+				if err != nil && !shuttingDown {
+					consecutiveFailures++
+				} else {
+					consecutiveFailures = 0
+				}
+				timer.Reset(nextDelay(task, consecutiveFailures))
 				select {
 				case <-ctx.Done():
 					return
-				case <-ticker.C:
+				case <-timer.C:
 				}
 			}
 		}(task)

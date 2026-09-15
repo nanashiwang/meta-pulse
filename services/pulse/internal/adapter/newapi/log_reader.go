@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -201,6 +202,29 @@ func (r *LogReader) Close() error {
 	return r.db.Close()
 }
 
+// logFetchColumns is the read-only projection shared by every per-type page.
+// It stays in sync with LogRecord's scan order.
+const logFetchColumns = "id, user_id, created_at, type, model_name, quota, channel_id, request_id, other"
+
+// logFetchStatementTimeoutMillis caps each page inside MySQL itself so a
+// pathological plan cannot hold a LOG_DB worker thread for the whole job
+// timeout. The Go context deadline remains the outer bound.
+const logFetchStatementTimeoutMillis = 5000
+
+// Fetch reads the next keyset page of consume and refund logs after the given
+// cursor.
+//
+// The page is assembled from one query per log type rather than a single
+// `type IN (2, 6)` scan. new-api indexes logs on (created_at, type), so a
+// single-valued type predicate lets MySQL walk that index in cursor order and
+// stop at LIMIT. An IN list interleaves two created_at sequences that the index
+// cannot emit in order, which degrades the plan to a full scan plus filesort
+// over the whole logs table — the same query then costs seconds instead of
+// milliseconds and never completes on a large deployment.
+//
+// Each type is over-fetched to limit rows and the pages are merged here, so the
+// result is byte-identical to what the single-statement form would have
+// returned.
 func (r *LogReader) Fetch(ctx context.Context, after Cursor, limit int) ([]LogRecord, error) {
 	if r == nil || r.db == nil {
 		return nil, errors.New("new-api log reader is not initialized")
@@ -208,13 +232,45 @@ func (r *LogReader) Fetch(ctx context.Context, after Cursor, limit int) ([]LogRe
 	if limit <= 0 || limit > 5000 {
 		return nil, errors.New("log batch size must be between 1 and 5000")
 	}
+
+	merged := make([]LogRecord, 0, limit)
+	for _, logType := range []int{LogTypeConsume, LogTypeRefund} {
+		page, err := r.fetchByType(ctx, logType, after, limit)
+		if err != nil {
+			return nil, err
+		}
+		merged = append(merged, page...)
+	}
+
+	sort.Slice(merged, func(i, j int) bool {
+		if merged[i].CreatedAt != merged[j].CreatedAt {
+			return merged[i].CreatedAt < merged[j].CreatedAt
+		}
+		return merged[i].ID < merged[j].ID
+	})
+	if len(merged) > limit {
+		merged = merged[:limit]
+	}
+	return merged, nil
+}
+
+// fetchByType reads one keyset page for a single log type.
+//
+// The redundant `created_at >= ?` is what makes the page a range scan. The
+// cursor boundary alone — whether written as an OR or as a row-value
+// comparison — is not sargable, because id is not part of (created_at, type);
+// MySQL answers it by walking the whole index from the oldest row forward. The
+// extra predicate gives the optimizer a seek position, and the OR clause then
+// only breaks the tie among rows sharing the cursor's created_at.
+func (r *LogReader) fetchByType(ctx context.Context, logType int, after Cursor, limit int) ([]LogRecord, error) {
 	rows, err := r.db.QueryContext(ctx, `
-SELECT id, user_id, created_at, type, model_name, quota, channel_id, request_id, other
+SELECT /*+ MAX_EXECUTION_TIME(`+strconv.Itoa(logFetchStatementTimeoutMillis)+`) */ `+logFetchColumns+`
 FROM logs
-WHERE type IN (?, ?)
+WHERE type = ?
+  AND created_at >= ?
   AND (created_at > ? OR (created_at = ? AND id > ?))
 ORDER BY created_at ASC, id ASC
-LIMIT ?`, LogTypeConsume, LogTypeRefund, after.CreatedAt, after.CreatedAt, after.ID, limit)
+LIMIT ?`, logType, after.CreatedAt, after.CreatedAt, after.CreatedAt, after.ID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("read new-api logs: %w", err)
 	}

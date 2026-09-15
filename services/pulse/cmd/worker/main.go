@@ -142,12 +142,18 @@ func main() {
 
 	// Each task has its own non-overlapping loop and root-derived deadline.
 	// Slow LOG_DB, forum or metrics queries cannot consume settlement's timeout.
+	// Tasks that call an external database also back off on consecutive
+	// failures, so a dependency that is timing out is not hammered at a fixed
+	// interval until it recovers.
 	var tasks []job.Task
 	addTask := func(name string, run func(context.Context) error) {
 		tasks = append(tasks, job.Task{Name: name, Interval: 30 * time.Second, Timeout: 20 * time.Second, Run: run})
 	}
+	addExternalTask := func(name string, run func(context.Context) error) {
+		tasks = append(tasks, job.Task{Name: name, Interval: 30 * time.Second, Timeout: 20 * time.Second, MaxBackoff: 10 * time.Minute, Run: run})
+	}
 
-	addTask("usage_ingest", func(checkCtx context.Context) error {
+	addExternalTask("usage_ingest", func(checkCtx context.Context) error {
 		usageResult, usageErr := ingest.IngestBatch(checkCtx)
 		if usageErr != nil {
 			logger.Warn("usage ingest failed", "error", usageErr, "fetched", usageResult.Fetched)
@@ -219,7 +225,7 @@ func main() {
 	})
 
 	if contentIngest != nil {
-		addTask("content_ingest", func(checkCtx context.Context) error {
+		addExternalTask("content_ingest", func(checkCtx context.Context) error {
 			contentResult, contentErr := contentIngest.IngestBatch(checkCtx)
 			if contentErr != nil {
 				// Content is a sidecar projection; never return or panic here.

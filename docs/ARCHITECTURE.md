@@ -316,6 +316,8 @@ logs.quota    → 用户侧计费额度
 
 当前 new-api 中 `LogTypeConsume = 2`、`LogTypeRefund = 6`。`quota` 是用户收费事实，不等同于 Provider 成本；在成本快照接入前，不能把它宣称为真实毛利。Pulse 使用 `(created_at, id)` 复合游标、UTC+8 的 `source_created_at` 半开周期归属，并在同一 Pulse 事务内提交事件、账本、券、统计和游标。
 
+游标翻页对 LOG_DB 的查询形状是硬约束，不是实现细节。new-api 的 `logs` 索引为 `(created_at, type)`，因此每一页必须满足两点：**按单个 type 分别查询后在 Pulse 侧归并**，以及**带上冗余的 `created_at >= cursor.created_at` 下界**。`type IN (2, 6)` 会让两个 created_at 序列交错，索引无法按序输出，计划退化为全表扫描加 filesort；而只写 `(created_at, id) > (?, ?)` 或等价的 OR 形式同样不可索引 —— `id` 不在该索引中，优化器只能从最早一行开始走完整个索引。两者都会把一次毫秒级翻页变成分钟级全表读取。归并后按 `(created_at, id)` 排序并截断到 batch size，结果与单语句形式一致。
+
 Usage 关联契约如下：
 
 - 普通消费：`logs.request_id` 是请求关联键，`logs.id` 是事件主键；
@@ -874,6 +876,8 @@ Pulse 不可用，new-api 正常。
 ### new-api LOG_DB 不可用
 
 Ingest 暂停，恢复后从 Cursor 继续。运行中的 Usage、Settlement、Reconciliation、Period Close、运营聚合和可选 Content Ingest 各用独立任务循环与超时；慢日志读取不能消耗结算/对账的时间预算。单个任务自身不重叠执行，停机统一取消并等待在途任务退出；数据库事务和 Outbox fence 仍负责跨实例幂等，调度器不是记账锁。启动时的 LOG_DB 只读权限门禁仍保持 fail closed。
+
+调用外部数据库的任务（Usage Ingest、Content Ingest）在连续失败时按指数退避重试，从 Interval 翻倍至 10 分钟封顶，任何一次成功立即重置。这条约束针对的失败模式是：游标停滞时每次重试都是同一条昂贵查询，固定间隔重试会把一条慢语句变成对外部库的持续压力，使故障无法自愈。只访问 Pulse 自身数据库的任务不退避。除调度节奏外，每页读取还带语句级 `MAX_EXECUTION_TIME` 上限作为内层兜底，使异常执行计划无法长时间占用 LOG_DB 线程；Go context deadline 仍是外层边界。
 
 ### Benefit API 不可用
 
