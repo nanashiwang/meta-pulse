@@ -24,6 +24,7 @@ type Repositories struct {
 	Metric         MetricRepository
 	Content        ContentRepository
 	Operations     OperationsRepository
+	Overview       OperationsOverviewRepository
 }
 
 // UnitOfWork is the only transaction boundary exposed to services. The

@@ -18,27 +18,26 @@ type ReadinessChecker interface {
 	Check(context.Context) error
 }
 
+// APIRoutes carries the optional handlers a deployment wires in. A nil field
+// simply leaves that route unregistered, so a partially configured process
+// still serves health checks instead of failing to start.
+type APIRoutes struct {
+	Profile    transporthttp.ProfileReader
+	Summary    transporthttp.SummaryReader
+	Action     transporthttp.ActionExecutor
+	Content    transporthttp.ContentAwardExecutor
+	History    transporthttp.RewardHistoryReader
+	Operations transporthttp.OperationsOverviewReader
+	// Auth guards every route above. Without it none are registered: an
+	// unauthenticated internal route would expose user data.
+	Auth gin.HandlerFunc
+}
+
 func NewRouter(logger *slog.Logger, readiness ReadinessChecker, metrics ...*observability.Metrics) *gin.Engine {
-	return NewRouterWithProfile(logger, readiness, nil, nil, metrics...)
+	return NewRouterWithRoutes(logger, readiness, APIRoutes{}, metrics...)
 }
 
-func NewRouterWithProfile(logger *slog.Logger, readiness ReadinessChecker, profile transporthttp.ProfileReader, profileAuth gin.HandlerFunc, metrics ...*observability.Metrics) *gin.Engine {
-	return NewRouterWithProfileAndSummary(logger, readiness, profile, nil, profileAuth, metrics...)
-}
-
-func NewRouterWithProfileAndSummary(logger *slog.Logger, readiness ReadinessChecker, profile transporthttp.ProfileReader, summary transporthttp.SummaryReader, profileAuth gin.HandlerFunc, metrics ...*observability.Metrics) *gin.Engine {
-	return NewRouterWithProfileSummaryAndAction(logger, readiness, profile, summary, nil, profileAuth, metrics...)
-}
-
-func NewRouterWithProfileSummaryAndAction(logger *slog.Logger, readiness ReadinessChecker, profile transporthttp.ProfileReader, summary transporthttp.SummaryReader, action transporthttp.ActionExecutor, profileAuth gin.HandlerFunc, metrics ...*observability.Metrics) *gin.Engine {
-	return NewRouterWithProfileSummaryActionAndContent(logger, readiness, profile, summary, action, nil, profileAuth, metrics...)
-}
-
-func NewRouterWithProfileSummaryActionAndContent(logger *slog.Logger, readiness ReadinessChecker, profile transporthttp.ProfileReader, summary transporthttp.SummaryReader, action transporthttp.ActionExecutor, content transporthttp.ContentAwardExecutor, profileAuth gin.HandlerFunc, metrics ...*observability.Metrics) *gin.Engine {
-	return NewRouterWithProfileSummaryActionContentAndHistory(logger, readiness, profile, summary, action, content, nil, profileAuth, metrics...)
-}
-
-func NewRouterWithProfileSummaryActionContentAndHistory(logger *slog.Logger, readiness ReadinessChecker, profile transporthttp.ProfileReader, summary transporthttp.SummaryReader, action transporthttp.ActionExecutor, content transporthttp.ContentAwardExecutor, history transporthttp.RewardHistoryReader, profileAuth gin.HandlerFunc, metrics ...*observability.Metrics) *gin.Engine {
+func NewRouterWithRoutes(logger *slog.Logger, readiness ReadinessChecker, routes APIRoutes, metrics ...*observability.Metrics) *gin.Engine {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -63,20 +62,27 @@ func NewRouterWithProfileSummaryActionContentAndHistory(logger *slog.Logger, rea
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "meta-pulse-api"})
 	})
-	if profile != nil && profileAuth != nil {
-		transporthttp.ProfileRoute(router.Group("/v1/internal"), profile, profileAuth)
+	if routes.Auth == nil {
+		return router
 	}
-	if summary != nil && profileAuth != nil {
-		transporthttp.SummaryRoute(router.Group("/v1/internal"), summary, profileAuth)
+	internal := router.Group("/v1/internal")
+	if routes.Profile != nil {
+		transporthttp.ProfileRoute(internal, routes.Profile, routes.Auth)
 	}
-	if action != nil && profileAuth != nil {
-		transporthttp.ActionRoute(router.Group("/v1/internal"), action, profileAuth)
+	if routes.Summary != nil {
+		transporthttp.SummaryRoute(internal, routes.Summary, routes.Auth)
 	}
-	if content != nil && profileAuth != nil {
-		transporthttp.ContentAwardRoute(router.Group("/v1/internal"), content, profileAuth)
+	if routes.Action != nil {
+		transporthttp.ActionRoute(internal, routes.Action, routes.Auth)
 	}
-	if history != nil && profileAuth != nil {
-		transporthttp.RewardHistoryRoute(router.Group("/v1/internal"), history, profileAuth)
+	if routes.Content != nil {
+		transporthttp.ContentAwardRoute(internal, routes.Content, routes.Auth)
+	}
+	if routes.History != nil {
+		transporthttp.RewardHistoryRoute(internal, routes.History, routes.Auth)
+	}
+	if routes.Operations != nil {
+		transporthttp.OperationsOverviewRoute(internal, routes.Operations, routes.Auth)
 	}
 	return router
 }

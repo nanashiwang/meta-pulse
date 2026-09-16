@@ -1117,3 +1117,22 @@ tool cursor-seek --skip-before … --reason … --confirm
 - 游标值是 `"<unix 秒>:<id>"`，比较必须逐段按数值进行；字符串序会把 `"999:1"` 排在 `"1000:1"` 之后，从而放过一次跨位数的回退。
 
 两条命令都强制携带操作人与原因，并在同一事务追加 `pulse_audit_log`（不变量 #16）。
+
+## 40. 运营只读概览接口
+
+`GET /v1/internal/admin/operations/overview` 是运营控制台的唯一数据源。它只读，且**没有注册任何写动词**：周期创建、规则写入和游标前移全部留在 `cmd/tool` 的审计路径上，控制台看得到状态，改不了状态。
+
+```text
+admin Principal（签名派生，不信任请求体）
+  → ListPeriods（含规则数、用户数、事件数、券数）
+  → ListRules（仅 draft/active 周期）
+  → ListCursors（游标位置 + watermark 滞后）
+  → OperationalSnapshot（可失败，失败不影响其余投影）
+```
+
+- 路由限定 `admin` 角色，并要求 Principal 带有非零 user_id。投影包含周期、游标和券计数，非管理员不可读，即使它不写入任何状态。
+- 响应带 `Cache-Control: no-store`。控制台靠轮询判断摄入是否停摆，缓存页面会把停滞的游标显示成健康。
+- 规则只为 `draft` 和 `active` 周期查询。closed 周期的规则是历史，不会再变，不值得每次刷新都付一次查询。
+- `health` 区分两种停摆，因为运营动作不同：**没有覆盖当前时刻的 active 周期**（需要建周期），与 **active 周期没有任何经济规则**（每个事件都会记为 `eligible=false / contribution=0`，且不变量 #11 使其无法原地修复，只能关闭后重建）。后者比前者危险，因为它表面上看起来正常。
+- 错误响应不回传底层错误文本。该文本会包含内部表名和列名，控制台只需要知道投影不可用。
+- 投影不包含任何 Ledger 金额。控制台不应成为账本事实源的第二份、更弱的渲染。

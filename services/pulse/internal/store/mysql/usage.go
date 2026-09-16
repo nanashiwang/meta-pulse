@@ -133,6 +133,7 @@ func newRepositories(db *gorm.DB) ports.Repositories {
 		Experiment:     &experimentRepository{db: db},
 		Metric:         &metricRepository{db: db},
 		Operations:     &operationsRepository{db: db},
+		Overview:       &operationsOverviewRepository{db: db},
 		Content:        &contentRepository{db: db},
 	}
 }

@@ -84,3 +84,54 @@ type MetricValue struct {
 type MetricRepository interface {
 	Upsert(ctx context.Context, metric MetricValue) error
 }
+
+// PeriodOverview is a read-only projection for the operations console. It
+// carries no Ledger amount: the console must not become a second, weaker
+// rendering of the accounting source of truth.
+type PeriodOverview struct {
+	ID              uint64
+	Key             string
+	Status          string
+	StartsAt        time.Time
+	EndsAt          time.Time
+	Timezone        string
+	ConfigVersion   string
+	RandomVersion   string
+	RuleCount       int64
+	UserCount       int64
+	UsageEventCount int64
+	EntitledTickets int64
+	SpentTickets    int64
+}
+
+// EconomicsRuleOverview renders the rules frozen with a period so an operator
+// can read what a running period will do before the next one is created.
+type EconomicsRuleOverview struct {
+	RuleKey       string
+	Priority      int
+	ModelPattern  string
+	ChannelID     *uint64
+	Eligible      bool
+	MultiplierBps int32
+	ConfigVersion string
+}
+
+// CursorOverview exposes ingest progress. LagSeconds is derived from the
+// cursor's own position against the observation time, not from LOG_DB: the
+// console must never reach into new-api's database.
+type CursorOverview struct {
+	Name         string
+	SourceSystem string
+	Value        string
+	WatermarkAt  *time.Time
+	Version      uint64
+	LagSeconds   int64
+}
+
+// OperationsOverviewRepository is strictly read-only. Every mutation stays on
+// the audited service paths; a console query must not be able to change state.
+type OperationsOverviewRepository interface {
+	ListPeriods(ctx context.Context, limit int) ([]PeriodOverview, error)
+	ListRules(ctx context.Context, periodID uint64) ([]EconomicsRuleOverview, error)
+	ListCursors(ctx context.Context, now time.Time) ([]CursorOverview, error)
+}

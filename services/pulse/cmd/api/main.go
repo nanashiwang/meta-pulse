@@ -110,6 +110,13 @@ func main() {
 		logger.Error("initialize reward history service", "error", err)
 		os.Exit(1)
 	}
+	operationsOverview, err := service.NewOperationsOverviewService(unit, service.OperationsOverviewConfig{
+		CursorName: service.DefaultUsageCursorName, SourceSystem: "new-api-log",
+	}, time.Now)
+	if err != nil {
+		logger.Error("initialize operations overview service", "error", err)
+		os.Exit(1)
+	}
 
 	profileAuth := transporthttp.SignedRequestWithSecrets(func(role string) [][]byte {
 		switch role {
@@ -128,7 +135,7 @@ func main() {
 	metrics := observability.NewHTTPMetrics()
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           app.NewRouterWithProfileSummaryActionContentAndHistory(logger, readiness, profile, profile, action, content, rewardHistory, profileAuth, metrics),
+		Handler:           app.NewRouterWithRoutes(logger, readiness, app.APIRoutes{Profile: profile, Summary: profile, Action: action, Content: content, History: rewardHistory, Operations: operationsOverview, Auth: profileAuth}, metrics),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
