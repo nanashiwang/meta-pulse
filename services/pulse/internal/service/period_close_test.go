@@ -18,6 +18,7 @@ type periodAdminMemory struct {
 	transitions       []string
 	failClosingOnce   bool
 	closeBeforeReRead bool
+	nextID            uint64
 }
 
 func (m *periodAdminMemory) ListDueForClose(_ context.Context, now time.Time, limit int) ([]period.Period, error) {
@@ -66,6 +67,33 @@ func (m *periodAdminMemory) Transition(_ context.Context, periodID uint64, from,
 		}
 	}
 	return ports.ErrConflict
+}
+
+func (m *periodAdminMemory) Create(_ context.Context, activity period.Period) (period.Period, error) {
+	m.nextID++
+	activity.ID = m.nextID
+	activity.Status = period.StatusDraft
+	m.periods = append(m.periods, activity)
+	return activity, nil
+}
+
+func (m *periodAdminMemory) FindByKeyForUpdate(_ context.Context, key string) (period.Period, error) {
+	for _, candidate := range m.periods {
+		if candidate.Key == key {
+			return candidate, nil
+		}
+	}
+	return period.Period{}, ports.ErrNotFound
+}
+
+func (m *periodAdminMemory) ListOverlapping(_ context.Context, startsAt, endsAt time.Time) ([]period.Period, error) {
+	var result []period.Period
+	for _, candidate := range m.periods {
+		if candidate.StartsAt.Before(endsAt) && candidate.EndsAt.After(startsAt) {
+			result = append(result, candidate)
+		}
+	}
+	return result, nil
 }
 
 type periodCloseUnit struct {

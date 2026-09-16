@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/nanashiwang/meta-pulse/internal/domain/economics"
 	"github.com/nanashiwang/meta-pulse/internal/domain/period"
 )
 
@@ -11,6 +12,18 @@ type PeriodAdminRepository interface {
 	ListDueForClose(ctx context.Context, now time.Time, limit int) ([]period.Period, error)
 	FindByIDForUpdate(ctx context.Context, periodID uint64) (period.Period, error)
 	Transition(ctx context.Context, periodID uint64, from, to period.Status, at time.Time) error
+	Create(ctx context.Context, activity period.Period) (period.Period, error)
+	FindByKeyForUpdate(ctx context.Context, key string) (period.Period, error)
+	// ListOverlapping covers every status, not just active ones. Two periods
+	// sharing a moment would make a usage event's period assignment ambiguous
+	// even after both are closed.
+	ListOverlapping(ctx context.Context, startsAt, endsAt time.Time) ([]period.Period, error)
+}
+
+// EconomicsAdminRepository writes rules for a period that has not been
+// activated. Rules of an active period are immutable by invariant #11.
+type EconomicsAdminRepository interface {
+	CreateRule(ctx context.Context, periodID uint64, rule economics.Rule) (economics.Rule, error)
 }
 
 type AuditLog struct {

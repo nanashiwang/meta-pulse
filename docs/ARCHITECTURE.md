@@ -1090,3 +1090,30 @@ Pulse 侧 M7 已具备实现和回归测试；Answer v1.7.1 表结构、绑定�
 ## 38. 用户奖励历史只读投影
 
 `GET /v1/internal/me/rewards` 由已验签 Principal 派生用户身份，查询 Pulse 内部 Grant 记录但只返回 `grant_id`、周期、action、奖励类型、额度、状态和创建时间。`budget_type`、`source_ref`、随机值、内部 payload 和管理审计字段不得进入该响应；`user_id` 查询参数即使出现也不会改变查询主体。该接口只读，不改变任何 Ledger、Budget、Grant 或 Settlement 状态。
+
+## 39. 周期开局与游标运营命令
+
+周期只能由运营通过 `cmd/tool` 显式创建，Worker 不会自动开周期。没有 Active Period 时 `usage_ingest` 会直接失败并且**不推进游标**，源行原样保留等待重试，因此"缺周期"是可安全恢复的停摆，不是数据丢失。
+
+```text
+tool period-create --key … --starts-at … --multiplier-bps … [--activate]
+  → 单事务：检查窗口重叠 → 建 draft 周期 → 写死经济规则 → ValidateRules → 可选 draft→active → pulse_audit_log
+```
+
+- 周期窗口固定 10 天、半开区间 `[starts_at, ends_at)`，`ends_at` 由服务端推导，不接受调用方传入。
+- 创建时必须至少写入一条经济规则，且规则与周期在**同一事务**内落库。这是不变量 #11 的直接结果：周期 Active 后规则不可原地修改，而无匹配规则的事件会被记为 `eligible=false / contribution=0` —— 那是被记录的不合格事件，不是隐式的默认奖励规则，事后无法补救。
+- 重叠检查覆盖全部状态而非仅 Active。两个周期共享任一时刻都会让事件的周期归属产生歧义，即使它们都已 closed。窗口首尾相接不算重叠，与 `period.Contains` 的半开语义一致。
+- 激活前调用 `economics.ValidateRules`，走与 ingest 热路径相同的校验，避免周期带着"每批都会失败"的规则上线。
+
+游标前移是独立的、不可逆的运营动作：
+
+```text
+tool cursor-seek --skip-before … --reason … --confirm
+  → 单事务：锁游标 → 断言只能前进 → 写入 "<skip_before-1>:<max_id>" 与 watermark → pulse_audit_log
+```
+
+- 被跳过的源行**永久放弃记账**：它们不会再产生 usage event、贡献、券或奖励。命令要求显式 `--confirm`。
+- 游标只能前进。后退虽然对 `source_event_id` 幂等，却会把 period close 依赖的 `watermark_at` 一并回退。
+- 游标值是 `"<unix 秒>:<id>"`，比较必须逐段按数值进行；字符串序会把 `"999:1"` 排在 `"1000:1"` 之后，从而放过一次跨位数的回退。
+
+两条命令都强制携带操作人与原因，并在同一事务追加 `pulse_audit_log`（不变量 #16）。

@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/nanashiwang/meta-pulse/internal/domain/economics"
 	"github.com/nanashiwang/meta-pulse/internal/domain/period"
 	"github.com/nanashiwang/meta-pulse/internal/ports"
 	"gorm.io/gorm"
@@ -641,4 +642,100 @@ func contentBusinessDayBounds(at time.Time) (time.Time, time.Time) {
 	local := at.In(location)
 	start := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, location)
 	return start, start.AddDate(0, 0, 1)
+}
+
+type economicsAdminRepository struct{ db *gorm.DB }
+
+// Create inserts a draft period. Activation is a separate Transition so the
+// rules of the period are written before any usage event can be assigned to
+// it, which invariant #11 then freezes.
+func (r *periodAdminRepository) Create(ctx context.Context, activity period.Period) (period.Period, error) {
+	if err := validatePeriodCreate(activity); err != nil {
+		return period.Period{}, err
+	}
+	model := periodModel{
+		PeriodKey: activity.Key, Status: string(period.StatusDraft),
+		StartsAt: activity.StartsAt, EndsAt: activity.EndsAt, Timezone: activity.Timezone,
+		ConfigVersion: activity.ConfigVersion, RandomVersion: activity.RandomVersion,
+	}
+	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
+		return period.Period{}, fmt.Errorf("create period: %w", err)
+	}
+	return model.toDomain(), nil
+}
+
+func validatePeriodCreate(activity period.Period) error {
+	if activity.ID != 0 || activity.Status != period.StatusDraft {
+		return fmt.Errorf("%w: a new period must be an unsaved draft", ports.ErrConflict)
+	}
+	if !validMySQLText(activity.Key, 64) || !validMySQLText(activity.Timezone, 64) ||
+		!validMySQLText(activity.ConfigVersion, 64) || !validMySQLText(activity.RandomVersion, 64) {
+		return fmt.Errorf("%w: invalid period create state", ports.ErrConflict)
+	}
+	if activity.StartsAt.IsZero() || !activity.EndsAt.After(activity.StartsAt) {
+		return fmt.Errorf("%w: period must end after it starts", ports.ErrConflict)
+	}
+	return nil
+}
+
+func (r *periodAdminRepository) FindByKeyForUpdate(ctx context.Context, key string) (period.Period, error) {
+	if strings.TrimSpace(key) == "" {
+		return period.Period{}, errors.New("invalid period key")
+	}
+	var model periodModel
+	if err := r.db.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).Where("period_key = ?", key).Take(&model).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return period.Period{}, ports.ErrNotFound
+		}
+		return period.Period{}, fmt.Errorf("find period by key: %w", err)
+	}
+	return model.toDomain(), nil
+}
+
+// ListOverlapping uses the same half-open interval as period.Contains, so two
+// periods touching at a single instant are not reported as overlapping.
+func (r *periodAdminRepository) ListOverlapping(ctx context.Context, startsAt, endsAt time.Time) ([]period.Period, error) {
+	if !endsAt.After(startsAt) {
+		return nil, errors.New("period must end after it starts")
+	}
+	var models []periodModel
+	if err := r.db.WithContext(ctx).Where("starts_at < ? AND ends_at > ?", endsAt, startsAt).Order("starts_at ASC, id ASC").Find(&models).Error; err != nil {
+		return nil, fmt.Errorf("list overlapping periods: %w", err)
+	}
+	result := make([]period.Period, len(models))
+	for i, model := range models {
+		result[i] = model.toDomain()
+	}
+	return result, nil
+}
+
+func (r *economicsAdminRepository) CreateRule(ctx context.Context, periodID uint64, rule economics.Rule) (economics.Rule, error) {
+	if err := validateEconomicsRuleCreate(periodID, rule); err != nil {
+		return economics.Rule{}, err
+	}
+	model := economicsRuleModel{
+		PeriodID: periodID, RuleKey: rule.Key, Priority: rule.Priority,
+		ModelPattern: rule.ModelPattern, ChannelID: rule.ChannelID, Eligible: rule.Eligible,
+		MultiplierBps: int32(rule.MultiplierBps), ConfigVersion: rule.ConfigVersion,
+	}
+	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
+		return economics.Rule{}, fmt.Errorf("create economics rule: %w", err)
+	}
+	return model.toDomain(), nil
+}
+
+func validateEconomicsRuleCreate(periodID uint64, rule economics.Rule) error {
+	if periodID == 0 || rule.ID != 0 {
+		return fmt.Errorf("%w: invalid economics rule create state", ports.ErrConflict)
+	}
+	if !validMySQLText(rule.Key, 128) || !validMySQLText(rule.ConfigVersion, 64) {
+		return fmt.Errorf("%w: invalid economics rule identity", ports.ErrConflict)
+	}
+	if rule.ModelPattern != "" && !validMySQLText(rule.ModelPattern, 191) {
+		return fmt.Errorf("%w: invalid economics rule model pattern", ports.ErrConflict)
+	}
+	if err := rule.MultiplierBps.Validate(); err != nil {
+		return err
+	}
+	return nil
 }
