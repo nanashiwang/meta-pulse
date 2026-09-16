@@ -9,7 +9,7 @@
 
 set -euo pipefail
 
-PULSE_DIR="${PULSE_DIR:-/root/meta-pulse}"   # 按实际路径调整
+PULSE_DIR="${PULSE_DIR:-/opt/meta-pulse}"
 
 echo "==> 1/4 停止仍在死循环的旧 worker（立即止血）"
 # 它已十天没有产出任何数据，停掉不损失任何东西，但 MySQL CPU 会立刻下降。
