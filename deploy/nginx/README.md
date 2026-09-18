@@ -38,7 +38,7 @@ chmod 755 .data/certbot .data/certbot/.well-known .data/certbot/.well-known/acme
 6. Answer 插件配置：
 
    ```text
-   newapi_base_url=https://cn.meta-api.vip
+   newapi_base_url=https://meta-api.vip
    pulse_base_url=http://pulse-api:8088
    nonce_redis_url=redis://redis:6379/2
    ```

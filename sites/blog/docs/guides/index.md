@@ -4,4 +4,4 @@
 
 - [返回技术博客](/)
 - [进入 MetaR 社区](https://metar.uk/)
-- [打开元衡控制台](https://cn.meta-api.vip/console)
+- [打开元衡控制台](https://meta-api.vip/console)

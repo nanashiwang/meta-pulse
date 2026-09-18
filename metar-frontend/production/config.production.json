@@ -9,7 +9,7 @@
   "answerSettingsPath": "/users/settings/profile",
   "answerBindingPath": "/answer/api/v1/connector/login/pulse_user_center",
   "blogBasePath": "/blog/",
-  "consoleUrl": "https://cn.meta-api.vip/console",
+  "consoleUrl": "https://meta-api.vip/console",
   "docsUrl": "",
   "statusUrl": ""
 }

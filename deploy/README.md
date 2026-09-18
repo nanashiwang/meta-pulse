@@ -81,7 +81,7 @@ services:
 3. 插件配置：
 
    ```text
-   newapi_base_url       https://<现有 new-api 域名>
+   newapi_base_url       https://meta-api.vip
    pulse_base_url        http://pulse-api:8088
    sso_hmac_secret       与 new-api PULSE_FORUM_SSO_SECRET 相同
    sso_hmac_secret_previous  仅密钥轮换窗口使用
@@ -89,6 +89,8 @@ services:
    nonce_redis_url       redis://redis:6379/2
    level_badge_enabled   true
    ```
+
+已部署站点的“登录元衡用户”跳转地址来自 Answer 后台 Meta Pulse 插件的 `newapi_base_url`，不是静态前端配置。请将该字段设置为 `https://meta-api.vip` 并保存；更新仓库不会覆盖数据库中已保存的插件配置。
 
 4. 在 new-api 线上只增加：
 
