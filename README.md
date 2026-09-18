@@ -106,7 +106,7 @@ cd /opt/meta-pulse
 
 ```bash
 cd /opt/meta-pulse
-git pull --ff-only
+./deploy/update.sh --ref main
 bash deploy/install-cli.sh
 metar
 ```

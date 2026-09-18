@@ -241,11 +241,11 @@ docker compose --env-file .env -f docker-compose.yml logs --since 10m pulse-work
 
 ## metar 快捷管理命令
 
-已有部署只需注册一次入口。默认位置为 `/usr/local/bin/metar`：
+已有部署先用原更新脚本获取新命令并完成构建，再注册一次入口。默认位置为 `/usr/local/bin/metar`；不要先手动拉取再升级，以免丢失静态资源变更检测所需的旧 commit：
 
 ```bash
 cd /opt/meta-pulse
-git pull --ff-only
+./deploy/update.sh --ref main
 bash deploy/install-cli.sh
 metar
 ```
