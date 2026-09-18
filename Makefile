@@ -76,6 +76,7 @@ build-community:
 test-community:
 	python3 -m unittest discover -s metar-frontend/production/tests -v
 	node --test metar-frontend/production/tests/*.test.js
+	node --test services/forum/customization/*.test.js
 
 run-api:
 	go run ./services/pulse/cmd/api

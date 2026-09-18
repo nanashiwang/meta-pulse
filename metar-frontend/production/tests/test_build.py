@@ -24,11 +24,16 @@ class ProductionBuildTest(unittest.TestCase):
             self.assertIn("/metar-assets/app.js", (output / "index.html").read_text(encoding="utf-8"))
             self.assertIn("/metar-assets/favicon.svg", (output / "index.html").read_text(encoding="utf-8"))
             self.assertTrue((output / "assets/favicon.svg").is_file())
+            index = (output / "index.html").read_text(encoding="utf-8")
+            self.assertIn("/metar-assets/avatars.js", index)
+            self.assertLess(index.index("/metar-assets/avatars.js"), index.index("/metar-assets/app.js"))
+            self.assertTrue((output / "assets/avatars.js").is_file())
             self.assertNotIn('style="', (output / "assets/app.js").read_text(encoding="utf-8"))
             self.assertIn('data-action="skip"', (output / "index.html").read_text(encoding="utf-8"))
 
     def test_javascript_syntax(self):
         subprocess.run(["node", "--check", str(ROOT / "src/adapters.js")], check=True)
+        subprocess.run(["node", "--check", str(ROOT / "src/avatars.js")], check=True)
         subprocess.run(["node", "--check", str(ROOT / "src/app.js")], check=True)
 
     def test_ui_state_regressions(self):

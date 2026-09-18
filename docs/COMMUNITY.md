@@ -43,6 +43,8 @@ services/forum-plugin/user-center-pulse Connector + Pulse 徽章插件
 
 Go 无动态插件机制，因此 Answer 升级后必须重新编译并做真实 schema、登录、绑定、资料和封禁回归。v2 当前模块路径兼容问题未解决前不升级。
 
+头像使用 Answer 官方外观扩展：默认设为系统头像，并安装 [`avatar-head.html`](../services/forum/customization/avatar-head.html)，将默认/失败头像显示为本地生成的用户名首字符。用户仍通过 Answer「编辑资料 → 头像 → 自定义」上传更换；不会修改头像数据库字段或关闭外部媒体保护。安装、升级与回退见[头像定制说明](../services/forum/customization/README.md)。METAR 静态首页同样支持同源上传头像和首字符回退。
+
 ## 4. 双身份与可选绑定
 
 ### 4.1 账号原则

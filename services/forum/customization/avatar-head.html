@@ -1,0 +1,143 @@
+<!-- METAR local avatars v1: append to Answer Admin > Appearance > CSS/HTML > Head. -->
+<script id="metar-local-avatars">
+(() => {
+  'use strict';
+  const segmenter = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
+  const initial = (name) => {
+    const value = String(name || '').trim().toUpperCase() || 'M';
+    return segmenter ? segmenter.segment(value)[Symbol.iterator]().next().value.segment : Array.from(value)[0];
+  };
+  const escapeXML = (value) => value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
+  const avatarURL = (name) => 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">' +
+    '<rect width="160" height="160" fill="#4059d8"/>' +
+    '<text x="80" y="82" text-anchor="middle" dominant-baseline="central" fill="white" font-family="system-ui,sans-serif" font-size="76" font-weight="600">' + escapeXML(initial(name)) + '</text></svg>');
+  function profileName(href, origin) {
+    try {
+      const url = new URL(href, origin);
+      const match = url.origin === origin && url.pathname.match(/^\/users\/([^/]+)\/?$/);
+      return match && !['settings', 'login', 'logout', 'register', 'notifications'].includes(match[1]) ? decodeURIComponent(match[1]) : '';
+    } catch (_) { return ''; }
+  }
+  function isDefault(source, origin) {
+    if (!source) return true;
+    try {
+      const url = new URL(source, origin);
+      return /(^|\.)gravatar\.(com|cn)$/i.test(url.hostname) ||
+        (url.origin === origin && /\/default-avatar(?:[.-][^/]*)?\.svg$/.test(url.pathname));
+    } catch (_) { return false; }
+  }
+  // The same functions are exercised by the offline regression tests.
+  if (typeof module === 'object' && module.exports) {
+    module.exports = { initial, avatarURL, profileName, isDefault };
+    return;
+  }
+  // Answer may activate custom_head again during SPA navigation.
+  if (window.__metarLocalAvatars) return;
+  window.__metarLocalAvatars = true;
+  const selector = 'img[width][height][alt]';
+  const states = new WeakMap();
+  const navUsers = new WeakMap();
+  let queued = false;
+  function isAvatar(img) {
+    return img.matches?.(selector) && /(^|\s)rounded(?:-circle)?(?:\s|$)/.test(img.className) &&
+      !img.closest('.fmt, .toastui-editor-contents, [contenteditable="true"]');
+  }
+  function username(img) {
+    const link = img.closest('a[href]');
+    const linked = profileName(link?.getAttribute('href') || '', location.origin);
+    if (linked) return linked;
+    const dropdown = img.closest('.dropdown');
+    if (dropdown) {
+      for (const a of dropdown.querySelectorAll('a[href]')) {
+        const name = profileName(a.getAttribute('href'), location.origin);
+        if (name) return name;
+      }
+      const current = navUsers.get(img);
+      if (current?.alt === img.alt && current.name) return current.name;
+    }
+    if (location.pathname === '/users/settings/profile') {
+      const input = document.querySelector('input#username');
+      if (input?.value) return input.value;
+    }
+    return img.alt;
+  }
+  function readNavUsername(img) {
+    if (!img.closest('#dropdown-basic')) return;
+    if (navUsers.get(img)?.alt === img.alt) return;
+    const state = { alt: img.alt, name: '' };
+    navUsers.set(img, state);
+    // Reuse Answer's session only for its fixed same-origin read endpoint.
+    // Never persist, log or send the token to an avatar provider.
+    try {
+      const raw = localStorage.getItem('_a_ltk_');
+      const token = raw?.startsWith('"') ? JSON.parse(raw) : raw;
+      if (typeof token !== 'string' || !token) return;
+      fetch('/answer/api/v1/user/info', {
+        credentials: 'same-origin', redirect: 'error', cache: 'no-store',
+        headers: { Authorization: token.startsWith('Bearer ') ? token : 'Bearer ' + token },
+      }).then((r) => r.ok ? r.json() : null).then((r) => {
+        if (navUsers.get(img) !== state || !img.isConnected) return;
+        if (typeof r?.data?.username === 'string') state.name = r.data.username;
+        schedule();
+      }).catch(() => {});
+    } catch (_) { /* A missing session must never prevent an avatar fallback. */ }
+  }
+  function enhance(img, failed = false) {
+    if (!isAvatar(img)) return;
+    readNavUsername(img);
+    const src = img.getAttribute('src') || '';
+    const blocked = img.getAttribute('data-src') || '';
+    let previous = states.get(img);
+    if (previous?.external) {
+      if (!src && blocked === previous.blocked) {
+        const fallback = avatarURL(username(img));
+        if (previous.fallback !== fallback) {
+          previous.fallback = fallback;
+          img.style.content = 'url("' + fallback + '")';
+        }
+        return;
+      }
+      img.style.content = previous.content;
+      states.delete(img);
+      previous = null;
+    }
+    if (previous && src === previous.fallback && blocked === previous.blocked) {
+      const fallback = avatarURL(username(img));
+      if (fallback !== src) { previous.fallback = fallback; img.setAttribute('src', fallback); }
+      return;
+    }
+    const source = blocked || src;
+    const isBlocked = !src && Boolean(blocked);
+    const broken = src && img.complete && img.naturalWidth === 0;
+    if (!isDefault(source, location.origin) && !isBlocked && !failed && !broken) {
+      states.delete(img);
+      return;
+    }
+    const fallback = avatarURL(username(img));
+    // Answer restores blocked media only when src is empty. A CSS replacement
+    // keeps that contract intact until the user explicitly reveals the image.
+    if (isBlocked && !isDefault(source, location.origin)) {
+      states.set(img, { fallback, blocked, external: true, content: img.style.content });
+      img.style.content = 'url("' + fallback + '")';
+      return;
+    }
+    // Default Gravatar must not be restored by "show external media".
+    if (isDefault(source, location.origin)) img.removeAttribute('data-src');
+    states.set(img, { fallback, blocked: img.getAttribute('data-src') || '' });
+    if (src !== fallback) img.setAttribute('src', fallback);
+  }
+  function scan() { document.querySelectorAll(selector).forEach((img) => enhance(img)); }
+  function schedule() {
+    if (queued) return;
+    queued = true;
+    queueMicrotask(() => { queued = false; scan(); });
+  }
+  document.addEventListener('error', (event) => enhance(event.target, true), true);
+  new MutationObserver(schedule).observe(document.documentElement, {
+    subtree: true, childList: true, attributes: true,
+    attributeFilter: ['src', 'data-src', 'alt', 'href'],
+  });
+  scan();
+})();
+</script>
