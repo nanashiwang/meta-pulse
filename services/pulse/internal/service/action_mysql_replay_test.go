@@ -35,7 +35,7 @@ func assertMySQLActionPeriodReplay(t *testing.T, db *sql.DB, action *ActionServi
 		}
 	}
 	now := time.Now()
-	r := mustExec(`INSERT INTO pulse_period (period_key,status,starts_at,ends_at,timezone,config_version,random_version) VALUES (?,'active',?,?,'Asia/Shanghai','replay-v2','hmac-v1')`, fmt.Sprintf("integration-replay-%d", now.UnixNano()), now.Add(-time.Minute), now.Add(time.Hour))
+	r := mustExec(`INSERT INTO pulse_period (period_key,status,starts_at,ends_at,timezone,config_version,random_version) VALUES (?,'draft',?,?,'Asia/Shanghai','replay-v2','hmac-v1')`, fmt.Sprintf("integration-replay-%d", now.UnixNano()), now.Add(-time.Minute), now.Add(time.Hour))
 	nextID, err := r.LastInsertId()
 	if err != nil {
 		t.Fatal(err)
@@ -43,6 +43,7 @@ func assertMySQLActionPeriodReplay(t *testing.T, db *sql.DB, action *ActionServi
 	t.Cleanup(func() { _, _ = db.Exec(`UPDATE pulse_period SET status='closed' WHERE id=?`, nextID) })
 	mustExec(`INSERT INTO pulse_reward_definition (period_id,reward_key,reward_type,amount,weight,transferable_quota,config_version,enabled) VALUES (?,'replay-quota','quota',7,1,0,'replay-v2',1)`, nextID)
 	mustExec(`INSERT INTO pulse_reward_budget (period_id,budget_type,hard_cap,reserved_amount,settled_amount,released_amount,version) VALUES (?,'loyalty',100,0,0,0,0)`, nextID)
+	mustExec(`UPDATE pulse_period SET status='active' WHERE id=?`, nextID)
 	mustExec(`INSERT INTO pulse_account (user_id,period_id,asset_type,balance,version) VALUES (?,?,'ticket',1,1)`, command.UserID, nextID)
 	mustExec(`INSERT INTO pulse_ledger_entry (user_id,period_id,asset_type,operation,amount,balance_after,source_type,source_ref,idempotency_key,payload_hash,reason) VALUES (?,?,'ticket','ticket_mint',1,1,'integration',?,?,?,'replay fixture')`, command.UserID, nextID, fmt.Sprint(nextID), fmt.Sprintf("replay-mint:%d", nextID), fmt.Sprintf("%064d", 1))
 	got, err := action.Execute(ctx, command)

@@ -84,8 +84,13 @@ func (s *BacktestService) Run(ctx context.Context, from, to time.Time) (Backtest
 	report := BacktestReport{From: from, To: to, DataGaps: make(map[string]int), MarginFactSource: "estimated_user_quota", ProviderCostAvailable: false}
 	users := make(map[uint64]struct{})
 	nets := make(map[string]int64)
+	thresholds := make(map[string]int64)
 	seenRequests := make(map[string]usage.Event)
 	seenConsumes := make(map[string]usage.Event)
+	// This is an in-memory simulation only; a backtest must never claim or
+	// update the production idempotency table. Keep proofs across pages and
+	// before the date filter so moving --from cannot mint the same proof again.
+	seenProofs := make(map[[2]string]struct{})
 	after := ""
 	for {
 		pageStart := after
@@ -94,11 +99,20 @@ func (s *BacktestService) Run(ctx context.Context, from, to time.Time) (Backtest
 			return report, err
 		}
 		if len(events) == 0 {
-			return s.finish(report, users, nets)
+			return s.finish(report, users, nets, thresholds)
 		}
 		for _, event := range events {
 			report.Fetched++
 			after = event.CursorValue
+			if event.EventType == usage.EventConsume && !event.NeedsReview && event.FundingProof != "" {
+				key := [2]string{event.SourceSystem, event.FundingProof}
+				if _, exists := seenProofs[key]; exists {
+					event.NeedsReview = true
+					event.ReviewReason = "paid funding proof already seen in backtest"
+				} else {
+					seenProofs[key] = struct{}{}
+				}
+			}
 			// Keep consume metadata before the range filter. A refund inside the
 			// selected window may legitimately point to a consume before --from;
 			// the correlation must still be checked rather than assumed.
@@ -109,7 +123,7 @@ func (s *BacktestService) Run(ctx context.Context, from, to time.Time) (Backtest
 				}
 			}
 			if !to.IsZero() && !event.SourceCreatedAt.Before(to) {
-				return s.finish(report, users, nets)
+				return s.finish(report, users, nets, thresholds)
 			}
 			if !from.IsZero() && event.SourceCreatedAt.Before(from) {
 				continue
@@ -132,7 +146,7 @@ func (s *BacktestService) Run(ctx context.Context, from, to time.Time) (Backtest
 				report.DataGaps["refund has no stable consume correlation"]++
 				continue
 			}
-			if err := s.evaluate(ctx, event, seenRequests, seenConsumes, &report, nets); err != nil {
+			if err := s.evaluate(ctx, event, seenRequests, seenConsumes, &report, nets, thresholds); err != nil {
 				return report, err
 			}
 		}
@@ -142,11 +156,11 @@ func (s *BacktestService) Run(ctx context.Context, from, to time.Time) (Backtest
 	}
 }
 
-func (s *BacktestService) finish(report BacktestReport, users map[uint64]struct{}, nets map[string]int64) (BacktestReport, error) {
+func (s *BacktestService) finish(report BacktestReport, users map[uint64]struct{}, nets, thresholds map[string]int64) (BacktestReport, error) {
 	report.UniqueUsers = len(users)
 	report.CoverageBps = ratioBps(report.EligibleEvents, report.InRange)
 	report.AnomalyBps = ratioBps(report.ManualReviewEvents+report.NoActivePeriodEvents+report.NoMatchingRuleEvents+report.RefundCorrelationGaps, report.InRange)
-	finalTickets, err := finalTickets(nets, s.cfg.TicketThresholdMilli)
+	finalTickets, err := finalTickets(nets, s.cfg.TicketThresholdMilli, thresholds)
 	if err != nil {
 		return report, err
 	}
@@ -154,7 +168,7 @@ func (s *BacktestService) finish(report BacktestReport, users map[uint64]struct{
 	return report, nil
 }
 
-func (s *BacktestService) evaluate(ctx context.Context, event usage.Event, seenRequests, seenConsumes map[string]usage.Event, report *BacktestReport, nets map[string]int64) error {
+func (s *BacktestService) evaluate(ctx context.Context, event usage.Event, seenRequests, seenConsumes map[string]usage.Event, report *BacktestReport, nets, thresholds map[string]int64) error {
 	return s.unit.Do(ctx, func(repos ports.Repositories) error {
 		if repos.Period == nil || repos.Economics == nil {
 			return errors.New("backtest read repositories are not initialized")
@@ -195,6 +209,7 @@ func (s *BacktestService) evaluate(ctx context.Context, event usage.Event, seenR
 				return err
 			}
 			key := fmt.Sprintf("%d:%d", event.UserID, activity.ID)
+			thresholds[key] = activity.TicketThresholdMilli
 			nets[key], err = addBacktestInt64(nets[key], int64(decision.Contribution), "user-period contribution")
 			if err != nil {
 				return err
@@ -264,16 +279,20 @@ func contributionWithMultiplier(quota int64, multiplier money.Bps) (int64, error
 	return int64(value), nil
 }
 
-func finalTickets(nets map[string]int64, threshold int64) (int64, error) {
+func finalTickets(nets map[string]int64, threshold int64, overrides ...map[string]int64) (int64, error) {
 	var total int64
-	for _, net := range nets {
+	for key, net := range nets {
+		periodThreshold := threshold
+		if len(overrides) > 0 && overrides[0][key] > 0 {
+			periodThreshold = overrides[0][key]
+		}
 		if net <= 0 {
 			continue
 		}
-		if net/threshold > math.MaxInt64-total {
+		if net/periodThreshold > math.MaxInt64-total {
 			return 0, fmt.Errorf("%w: final ticket entitlement", ErrBacktestOverflow)
 		}
-		total += net / threshold
+		total += net / periodThreshold
 	}
 	return total, nil
 }

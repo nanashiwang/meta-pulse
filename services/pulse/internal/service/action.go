@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/nanashiwang/meta-pulse/internal/domain/ledger"
+	"github.com/nanashiwang/meta-pulse/internal/domain/period"
 	"github.com/nanashiwang/meta-pulse/internal/domain/reward"
 	"github.com/nanashiwang/meta-pulse/internal/ports"
 )
@@ -25,6 +26,7 @@ const (
 )
 
 var (
+	ErrActionsUnavailable    = errors.New("new pulse actions are unavailable")
 	ErrMissingIdempotencyKey = errors.New("idempotency key is required")
 	ErrInvalidAction         = errors.New("invalid action command")
 	ErrInsufficientTickets   = errors.New("insufficient tickets")
@@ -32,10 +34,12 @@ var (
 )
 
 type ActionConfig struct {
-	RandomSecret []byte
-	ShadowMode   bool
-	BudgetType   string
-	Now          func() time.Time
+	RandomSecret           []byte
+	ShadowMode             bool
+	DisableNewActions      bool
+	RequireVerifiedFunding bool
+	BudgetType             string
+	Now                    func() time.Time
 }
 
 type ActionCommand struct {
@@ -188,11 +192,17 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 			result = actionResultFromGrant(grants[0])
 			return saveResult()
 		}
+		if s.cfg.DisableNewActions {
+			return ErrActionsUnavailable
+		}
 		activity, err := repos.Period.FindActiveAt(ctx, s.cfg.Now())
 		if err != nil {
 			return err
 		}
 
+		if s.cfg.RequireVerifiedFunding && (activity.FundingPolicy != period.VerifiedPaidFunding || activity.TicketThresholdMilli <= 0) {
+			return ErrActionsUnavailable
+		}
 		definitions, err := repos.Reward.ListDefinitions(ctx, activity.ID)
 		if err != nil {
 			return err
@@ -218,6 +228,17 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 		budget, err := repos.Reward.GetBudgetForUpdate(ctx, activity.ID, s.cfg.BudgetType)
 		if err != nil {
 			return err
+		}
+		// Stop the pool before any remaining budget can change advertised odds.
+		var maxPrize int64
+		for _, d := range definitions {
+			if d.Enabled && d.Amount > maxPrize {
+				maxPrize = d.Amount
+			}
+		}
+		available := budget.HardCap - budget.SettledAmount - budget.ReservedAmount
+		if budget.SettledAmount < 0 || budget.ReservedAmount < 0 || budget.HardCap < budget.SettledAmount || budget.ReservedAmount > budget.HardCap-budget.SettledAmount || available < maxPrize {
+			return ErrBudgetExceeded
 		}
 		if err := reserveBudget(&budget, definition.Amount); err != nil {
 			return err
@@ -252,7 +273,7 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 			TriggerType: command.TriggerType, RewardDefinitionID: definition.ID, RewardType: definition.RewardType,
 			Amount: definition.Amount, TransferableQuota: false, BudgetType: s.cfg.BudgetType, RandomValue: reward.RandomHex(randomBytes),
 			ConfigVersion: activity.ConfigVersion, Status: RewardStatusPending, SourceRef: grantID,
-			Reason: "shadow mode", CreatedAt: s.cfg.Now(),
+			Reason: "pulse action", CreatedAt: s.cfg.Now(),
 		}
 		persistedGrant, err := repos.Reward.CreateGrant(ctx, grant)
 		if err != nil {

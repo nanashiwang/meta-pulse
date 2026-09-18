@@ -193,3 +193,45 @@ func TestLoadProductionWorkerWithoutAPISecrets(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestAPIStartsWithoutGrantAuthority(t *testing.T) {
+	cfg := validConfig()
+	cfg.Environment = "production"
+	cfg.ForumHMACSecret = strings.Repeat("f", 32)
+	cfg.UserBFFHMACSecret = strings.Repeat("u", 32)
+	cfg.AdminHMACSecret = strings.Repeat("a", 32)
+	if err := cfg.ValidateAPI(); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ActionsEnabled {
+		t.Fatal("actions must default closed")
+	}
+	cfg.ActionsEnabled = true
+	if err := cfg.ValidateAPI(); err == nil {
+		t.Fatal("enabled without quota conversion")
+	}
+	cfg.QuotaPerUnit = 500000
+	if err := cfg.ValidateAPI(); err != nil {
+		t.Fatal(err)
+	}
+	cfg.QuotaPerUnit = 1 << 53
+	if err := cfg.ValidateAPI(); err == nil {
+		t.Fatal("unsafe JSON integer conversion accepted")
+	}
+}
+
+func TestNewRewardAuthoritiesCannotReuseKeys(t *testing.T) {
+	for _, mutate := range []func(*Config){
+		func(c *Config) { c.CommunityBFFHMACSecret = c.ServiceHMACSecret },
+		func(c *Config) { c.RollbackHMACSecret = c.ServiceHMACSecret },
+		func(c *Config) { c.CommunityBFFHMACSecretPrevious = c.ServiceHMACSecret },
+		func(c *Config) { c.RollbackHMACSecretPrevious = c.ServiceHMACSecret },
+	} {
+		cfg := validConfig()
+		cfg.ServiceHMACSecret = strings.Repeat("s", 32)
+		mutate(&cfg)
+		if err := cfg.Validate(); err == nil {
+			t.Fatal("cross-role key reuse accepted")
+		}
+	}
+}

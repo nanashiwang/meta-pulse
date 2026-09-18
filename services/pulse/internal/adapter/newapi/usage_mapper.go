@@ -66,6 +66,17 @@ func (m UsageMapper) Map(record LogRecord) (usage.Event, error) {
 	default:
 		return usage.Event{}, usage.ErrUnsupportedLog
 	}
+
+	// Only the paid portion of an immutable new-api receipt may earn tickets.
+	proof, paid, err := verifiedPaidFunding(record)
+	if err != nil {
+		event.NeedsReview = true
+		event.ReviewReason = "paid funding proof missing or invalid"
+		event.QuotaDelta = 0
+	} else {
+		event.FundingProof = proof
+		event.QuotaDelta = paid
+	}
 	return event, nil
 }
 
@@ -132,4 +143,34 @@ func sourceTime(unixSeconds int64) time.Time {
 		location = time.FixedZone("CST", 8*60*60)
 	}
 	return time.Unix(unixSeconds, 0).In(location)
+}
+
+// Decode only the allowlisted funding snapshot; raw Other is never persisted.
+func verifiedPaidFunding(record LogRecord) (string, int64, error) {
+	var envelope struct {
+		Funding struct {
+			Version int    `json:"version"`
+			Status  string `json:"status"`
+			Paid    int64  `json:"paid_quota"`
+			NonPaid int64  `json:"non_paid_quota"`
+			Unknown int64  `json:"unknown_quota"`
+			Proof   string `json:"proof_ref"`
+		} `json:"pulse_funding"`
+	}
+	if record.Type != LogTypeConsume || record.RequestID == "" {
+		return "", 0, usage.ErrNeedsReview
+	}
+	decoder := json.NewDecoder(strings.NewReader(record.Other))
+	if err := decoder.Decode(&envelope); err != nil {
+		return "", 0, err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return "", 0, usage.ErrNeedsReview
+	}
+	f := envelope.Funding
+	if f.Version != 1 || f.Status != "verified" || len(f.Proof) == 0 || len(f.Proof) > 191 || strings.ContainsAny(f.Proof, "\r\n") || f.Paid < 0 || f.NonPaid < 0 || f.Unknown < 0 || f.Paid > record.Quota || f.NonPaid > record.Quota-f.Paid || f.Unknown != record.Quota-f.Paid-f.NonPaid {
+		return "", 0, usage.ErrNeedsReview
+	}
+	return f.Proof, f.Paid, nil
 }

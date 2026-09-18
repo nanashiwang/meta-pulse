@@ -457,6 +457,9 @@ func runPeriodCreate(args []string) error {
 	randomVersion := flags.String("random-version", "", "immutable random version (defaults to config version)")
 	multiplierBps := flags.Int("multiplier-bps", 0, "catch-all contribution multiplier in basis points (10000 = 1.0x)")
 	ruleKey := flags.String("rule-key", "default", "catch-all rule key")
+	rewardsFile := flags.String("rewards-file", "", "strict JSON prize array [{key,amount,weight}]; amounts are integer quota")
+	rewardBudget := flags.Int64("reward-budget", 0, "positive loyalty hard budget in integer quota; requires --rewards-file")
+	ticketThreshold := flags.Int64("ticket-threshold-milli", 0, "positive contribution milli per ticket, frozen with a reward pool")
 	activate := flags.Bool("activate", false, "activate the period immediately")
 	reason := flags.String("reason", "", "required audit reason")
 	actorID := flags.String("actor-id", "", "required operator identity for the audit log")
@@ -478,6 +481,18 @@ func runPeriodCreate(args []string) error {
 	}
 	if *randomVersion == "" {
 		*randomVersion = *configVersion
+	}
+	var rewards []service.PeriodRewardSpec
+	if *rewardsFile != "" {
+		if *rewardBudget <= 0 || *ticketThreshold <= 0 {
+			return errors.New("--rewards-file requires positive --reward-budget and --ticket-threshold-milli")
+		}
+		rewards, err = readPeriodRewardsFile(*rewardsFile)
+		if err != nil {
+			return err
+		}
+	} else if *rewardBudget != 0 || *ticketThreshold != 0 {
+		return errors.New("--reward-budget and --ticket-threshold-milli require --rewards-file")
 	}
 
 	cfg, err := config.Load()
@@ -505,7 +520,7 @@ func runPeriodCreate(args []string) error {
 		Rules: []service.PeriodRuleSpec{{
 			Key: *ruleKey, Priority: 0, Eligible: true, MultiplierBps: int32(*multiplierBps),
 		}},
-		Activate: *activate, Reason: *reason,
+		Activate: *activate, Reason: *reason, Rewards: rewards, RewardBudget: *rewardBudget, TicketThresholdMilli: *ticketThreshold,
 	})
 	if err != nil {
 		return err

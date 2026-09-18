@@ -11,39 +11,53 @@ import (
 const minimumProductionSecretLength = 32
 
 type Config struct {
-	Environment                 string
-	HTTPAddr                    string
-	WorkerHTTPAddr              string
-	PulseDBDSN                  string
-	RedisAddr                   string
-	RedisPassword               string
-	RedisDB                     int
-	NewAPILogDSN                string
-	ForumDBDSN                  string
-	NewAPIInternalURL           string
-	ServiceHMACSecret           string
-	ServiceHMACSecretPrevious   string
-	ForumHMACSecret             string
-	ForumHMACSecretPrevious     string
-	UserBFFHMACSecret           string
-	UserBFFHMACSecretPrevious   string
-	AdminHMACSecret             string
-	AdminHMACSecretPrevious     string
-	RewardRandomSecret          string
-	RewardShadowMode            bool
-	IngestBatchSize             int
-	SettlementBatchSize         int
-	PeriodCloseBatchSize        int
-	PeriodCloseRequireWatermark bool
-	PeriodRewardsEnabled        bool
-	ContentIngestBatchSize      int
-	ContentMinPaidContribution  int64
-	ContentMaxUserPeriodAmount  int64
-	ContentMaxDailyAmount       int64
-	TicketThresholdMilli        int64
+	QuotaPerUnit                   int64
+	Environment                    string
+	HTTPAddr                       string
+	WorkerHTTPAddr                 string
+	PulseDBDSN                     string
+	RedisAddr                      string
+	RedisPassword                  string
+	RedisDB                        int
+	NewAPILogDSN                   string
+	ForumDBDSN                     string
+	NewAPIInternalURL              string
+	ServiceHMACSecret              string
+	ServiceHMACSecretPrevious      string
+	ForumHMACSecret                string
+	ForumHMACSecretPrevious        string
+	UserBFFHMACSecret              string
+	UserBFFHMACSecretPrevious      string
+	AdminHMACSecret                string
+	AdminHMACSecretPrevious        string
+	RewardRandomSecret             string
+	RewardShadowMode               bool
+	ActionsEnabled                 bool
+	CommunityBFFHMACSecret         string
+	CommunityBFFHMACSecretPrevious string
+	RollbackHMACSecret             string
+	RollbackHMACSecretPrevious     string
+	IngestBatchSize                int
+	SettlementBatchSize            int
+	PeriodCloseBatchSize           int
+	PeriodCloseRequireWatermark    bool
+	PeriodRewardsEnabled           bool
+	ContentIngestBatchSize         int
+	ContentMinPaidContribution     int64
+	ContentMaxUserPeriodAmount     int64
+	ContentMaxDailyAmount          int64
+	TicketThresholdMilli           int64
 }
 
 func Load() (Config, error) {
+	quotaPerUnit, err := getenvInt64("PULSE_QUOTA_PER_UNIT", 0, true)
+	if err != nil {
+		return Config{}, err
+	}
+	actionsEnabled, err := getenvBool("PULSE_ACTIONS_ENABLED", false)
+	if err != nil {
+		return Config{}, err
+	}
 	redisDB, err := getenvInt("PULSE_REDIS_DB", 0, true)
 	if err != nil {
 		return Config{}, err
@@ -94,36 +108,42 @@ func Load() (Config, error) {
 	}
 
 	cfg := Config{
-		Environment:                 strings.ToLower(getenv("PULSE_ENV", "development")),
-		HTTPAddr:                    getenv("PULSE_HTTP_ADDR", ":8088"),
-		WorkerHTTPAddr:              getenv("PULSE_WORKER_HTTP_ADDR", ":8089"),
-		PulseDBDSN:                  os.Getenv("PULSE_DB_DSN"),
-		RedisAddr:                   getenv("PULSE_REDIS_ADDR", "127.0.0.1:6379"),
-		RedisPassword:               os.Getenv("PULSE_REDIS_PASSWORD"),
-		RedisDB:                     redisDB,
-		NewAPILogDSN:                os.Getenv("NEWAPI_LOG_DSN"),
-		ForumDBDSN:                  os.Getenv("FORUM_DB_DSN"),
-		NewAPIInternalURL:           os.Getenv("NEWAPI_INTERNAL_BASE_URL"),
-		ServiceHMACSecret:           os.Getenv("PULSE_SERVICE_HMAC_SECRET"),
-		ServiceHMACSecretPrevious:   os.Getenv("PULSE_SERVICE_HMAC_SECRET_PREVIOUS"),
-		ForumHMACSecret:             os.Getenv("PULSE_FORUM_HMAC_SECRET"),
-		ForumHMACSecretPrevious:     os.Getenv("PULSE_FORUM_HMAC_SECRET_PREVIOUS"),
-		UserBFFHMACSecret:           os.Getenv("PULSE_USER_BFF_HMAC_SECRET"),
-		UserBFFHMACSecretPrevious:   os.Getenv("PULSE_USER_BFF_HMAC_SECRET_PREVIOUS"),
-		AdminHMACSecret:             os.Getenv("PULSE_ADMIN_HMAC_SECRET"),
-		AdminHMACSecretPrevious:     os.Getenv("PULSE_ADMIN_HMAC_SECRET_PREVIOUS"),
-		RewardRandomSecret:          os.Getenv("PULSE_REWARD_RANDOM_SECRET"),
-		RewardShadowMode:            rewardShadowMode,
-		IngestBatchSize:             ingestBatchSize,
-		SettlementBatchSize:         settlementBatchSize,
-		PeriodCloseBatchSize:        periodCloseBatchSize,
-		PeriodCloseRequireWatermark: periodCloseRequireWatermark,
-		PeriodRewardsEnabled:        periodRewardsEnabled,
-		ContentIngestBatchSize:      contentIngestBatchSize,
-		ContentMinPaidContribution:  contentMinPaidContribution,
-		ContentMaxUserPeriodAmount:  contentMaxUserPeriodAmount,
-		ContentMaxDailyAmount:       contentMaxDailyAmount,
-		TicketThresholdMilli:        int64(ticketThresholdMilli),
+		QuotaPerUnit:                   quotaPerUnit,
+		Environment:                    strings.ToLower(getenv("PULSE_ENV", "development")),
+		HTTPAddr:                       getenv("PULSE_HTTP_ADDR", ":8088"),
+		WorkerHTTPAddr:                 getenv("PULSE_WORKER_HTTP_ADDR", ":8089"),
+		PulseDBDSN:                     os.Getenv("PULSE_DB_DSN"),
+		RedisAddr:                      getenv("PULSE_REDIS_ADDR", "127.0.0.1:6379"),
+		RedisPassword:                  os.Getenv("PULSE_REDIS_PASSWORD"),
+		RedisDB:                        redisDB,
+		NewAPILogDSN:                   os.Getenv("NEWAPI_LOG_DSN"),
+		ForumDBDSN:                     os.Getenv("FORUM_DB_DSN"),
+		NewAPIInternalURL:              os.Getenv("NEWAPI_INTERNAL_BASE_URL"),
+		ServiceHMACSecret:              os.Getenv("PULSE_SERVICE_HMAC_SECRET"),
+		ServiceHMACSecretPrevious:      os.Getenv("PULSE_SERVICE_HMAC_SECRET_PREVIOUS"),
+		ForumHMACSecret:                os.Getenv("PULSE_FORUM_HMAC_SECRET"),
+		ForumHMACSecretPrevious:        os.Getenv("PULSE_FORUM_HMAC_SECRET_PREVIOUS"),
+		UserBFFHMACSecret:              os.Getenv("PULSE_USER_BFF_HMAC_SECRET"),
+		UserBFFHMACSecretPrevious:      os.Getenv("PULSE_USER_BFF_HMAC_SECRET_PREVIOUS"),
+		AdminHMACSecret:                os.Getenv("PULSE_ADMIN_HMAC_SECRET"),
+		AdminHMACSecretPrevious:        os.Getenv("PULSE_ADMIN_HMAC_SECRET_PREVIOUS"),
+		RewardRandomSecret:             os.Getenv("PULSE_REWARD_RANDOM_SECRET"),
+		RewardShadowMode:               rewardShadowMode,
+		ActionsEnabled:                 actionsEnabled,
+		CommunityBFFHMACSecret:         os.Getenv("PULSE_COMMUNITY_BFF_HMAC_SECRET"),
+		CommunityBFFHMACSecretPrevious: os.Getenv("PULSE_COMMUNITY_BFF_HMAC_SECRET_PREVIOUS"),
+		RollbackHMACSecret:             os.Getenv("PULSE_ROLLBACK_HMAC_SECRET"),
+		RollbackHMACSecretPrevious:     os.Getenv("PULSE_ROLLBACK_HMAC_SECRET_PREVIOUS"),
+		IngestBatchSize:                ingestBatchSize,
+		SettlementBatchSize:            settlementBatchSize,
+		PeriodCloseBatchSize:           periodCloseBatchSize,
+		PeriodCloseRequireWatermark:    periodCloseRequireWatermark,
+		PeriodRewardsEnabled:           periodRewardsEnabled,
+		ContentIngestBatchSize:         contentIngestBatchSize,
+		ContentMinPaidContribution:     contentMinPaidContribution,
+		ContentMaxUserPeriodAmount:     contentMaxUserPeriodAmount,
+		ContentMaxDailyAmount:          contentMaxDailyAmount,
+		TicketThresholdMilli:           int64(ticketThresholdMilli),
 	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
@@ -136,6 +156,9 @@ func Load() (Config, error) {
 // Read-only/migration tools do not need BFF, admin or reward credentials.
 func (cfg Config) Validate() error {
 	var errs []error
+	if cfg.ActionsEnabled && (cfg.QuotaPerUnit <= 0 || cfg.QuotaPerUnit > (1<<53)-1) {
+		errs = append(errs, errors.New("PULSE_QUOTA_PER_UNIT must match new-api before enabling actions"))
+	}
 	if strings.TrimSpace(cfg.HTTPAddr) == "" {
 		errs = append(errs, errors.New("PULSE_HTTP_ADDR is required"))
 	}
@@ -166,21 +189,25 @@ func (cfg Config) Validate() error {
 
 	if cfg.Environment == "production" {
 		for name, secret := range map[string]string{
-			"PULSE_SERVICE_HMAC_SECRET":  cfg.ServiceHMACSecret,
-			"PULSE_FORUM_HMAC_SECRET":    cfg.ForumHMACSecret,
-			"PULSE_USER_BFF_HMAC_SECRET": cfg.UserBFFHMACSecret,
-			"PULSE_ADMIN_HMAC_SECRET":    cfg.AdminHMACSecret,
-			"PULSE_REWARD_RANDOM_SECRET": cfg.RewardRandomSecret,
+			"PULSE_SERVICE_HMAC_SECRET":       cfg.ServiceHMACSecret,
+			"PULSE_FORUM_HMAC_SECRET":         cfg.ForumHMACSecret,
+			"PULSE_USER_BFF_HMAC_SECRET":      cfg.UserBFFHMACSecret,
+			"PULSE_ADMIN_HMAC_SECRET":         cfg.AdminHMACSecret,
+			"PULSE_REWARD_RANDOM_SECRET":      cfg.RewardRandomSecret,
+			"PULSE_COMMUNITY_BFF_HMAC_SECRET": cfg.CommunityBFFHMACSecret,
+			"PULSE_ROLLBACK_HMAC_SECRET":      cfg.RollbackHMACSecret,
 		} {
 			if secret != "" && (len(strings.TrimSpace(secret)) < minimumProductionSecretLength || secret == "replace-me") {
 				errs = append(errs, fmt.Errorf("%s must be at least %d bytes and cannot use a placeholder in production", name, minimumProductionSecretLength))
 			}
 		}
 		for name, secret := range map[string]string{
-			"PULSE_SERVICE_HMAC_SECRET_PREVIOUS":  cfg.ServiceHMACSecretPrevious,
-			"PULSE_FORUM_HMAC_SECRET_PREVIOUS":    cfg.ForumHMACSecretPrevious,
-			"PULSE_USER_BFF_HMAC_SECRET_PREVIOUS": cfg.UserBFFHMACSecretPrevious,
-			"PULSE_ADMIN_HMAC_SECRET_PREVIOUS":    cfg.AdminHMACSecretPrevious,
+			"PULSE_SERVICE_HMAC_SECRET_PREVIOUS":       cfg.ServiceHMACSecretPrevious,
+			"PULSE_FORUM_HMAC_SECRET_PREVIOUS":         cfg.ForumHMACSecretPrevious,
+			"PULSE_USER_BFF_HMAC_SECRET_PREVIOUS":      cfg.UserBFFHMACSecretPrevious,
+			"PULSE_ADMIN_HMAC_SECRET_PREVIOUS":         cfg.AdminHMACSecretPrevious,
+			"PULSE_COMMUNITY_BFF_HMAC_SECRET_PREVIOUS": cfg.CommunityBFFHMACSecretPrevious,
+			"PULSE_ROLLBACK_HMAC_SECRET_PREVIOUS":      cfg.RollbackHMACSecretPrevious,
 		} {
 			secret = strings.TrimSpace(secret)
 			if secret != "" && (len(secret) < minimumProductionSecretLength || secret == "replace-me") {
@@ -189,10 +216,12 @@ func (cfg Config) Validate() error {
 		}
 	}
 	for currentName, pair := range map[string][2]string{
-		"PULSE_SERVICE_HMAC_SECRET":  {cfg.ServiceHMACSecret, cfg.ServiceHMACSecretPrevious},
-		"PULSE_FORUM_HMAC_SECRET":    {cfg.ForumHMACSecret, cfg.ForumHMACSecretPrevious},
-		"PULSE_USER_BFF_HMAC_SECRET": {cfg.UserBFFHMACSecret, cfg.UserBFFHMACSecretPrevious},
-		"PULSE_ADMIN_HMAC_SECRET":    {cfg.AdminHMACSecret, cfg.AdminHMACSecretPrevious},
+		"PULSE_SERVICE_HMAC_SECRET":       {cfg.ServiceHMACSecret, cfg.ServiceHMACSecretPrevious},
+		"PULSE_FORUM_HMAC_SECRET":         {cfg.ForumHMACSecret, cfg.ForumHMACSecretPrevious},
+		"PULSE_USER_BFF_HMAC_SECRET":      {cfg.UserBFFHMACSecret, cfg.UserBFFHMACSecretPrevious},
+		"PULSE_ADMIN_HMAC_SECRET":         {cfg.AdminHMACSecret, cfg.AdminHMACSecretPrevious},
+		"PULSE_COMMUNITY_BFF_HMAC_SECRET": {cfg.CommunityBFFHMACSecret, cfg.CommunityBFFHMACSecretPrevious},
+		"PULSE_ROLLBACK_HMAC_SECRET":      {cfg.RollbackHMACSecret, cfg.RollbackHMACSecretPrevious},
 	} {
 		if strings.TrimSpace(pair[1]) != "" && strings.TrimSpace(pair[0]) == strings.TrimSpace(pair[1]) {
 			errs = append(errs, fmt.Errorf("%s and its previous secret must differ", currentName))
@@ -209,6 +238,10 @@ func (cfg Config) Validate() error {
 		{"PULSE_ADMIN_HMAC_SECRET", cfg.AdminHMACSecret},
 		{"PULSE_ADMIN_HMAC_SECRET_PREVIOUS", cfg.AdminHMACSecretPrevious},
 		{"PULSE_REWARD_RANDOM_SECRET", cfg.RewardRandomSecret},
+		{"PULSE_COMMUNITY_BFF_HMAC_SECRET", cfg.CommunityBFFHMACSecret},
+		{"PULSE_COMMUNITY_BFF_HMAC_SECRET_PREVIOUS", cfg.CommunityBFFHMACSecretPrevious},
+		{"PULSE_ROLLBACK_HMAC_SECRET", cfg.RollbackHMACSecret},
+		{"PULSE_ROLLBACK_HMAC_SECRET_PREVIOUS", cfg.RollbackHMACSecretPrevious},
 	} {
 		value := strings.TrimSpace(item.value)
 		if value == "" {
@@ -272,7 +305,6 @@ func (cfg Config) validateRequiredSecrets(secrets map[string]string) error {
 
 func (cfg Config) ValidateAPI() error {
 	return errors.Join(cfg.Validate(), cfg.validateRequiredSecrets(map[string]string{
-		"PULSE_SERVICE_HMAC_SECRET":  cfg.ServiceHMACSecret,
 		"PULSE_FORUM_HMAC_SECRET":    cfg.ForumHMACSecret,
 		"PULSE_USER_BFF_HMAC_SECRET": cfg.UserBFFHMACSecret,
 		"PULSE_ADMIN_HMAC_SECRET":    cfg.AdminHMACSecret,
@@ -352,4 +384,8 @@ func getenvBool(key string, fallback bool) (bool, error) {
 		return false, fmt.Errorf("invalid %s: must be true or false", key)
 	}
 	return parsed, nil
+}
+
+func (cfg Config) CommunityBFFHMACSecrets() [][]byte {
+	return secretPair(cfg.CommunityBFFHMACSecret, cfg.CommunityBFFHMACSecretPrevious)
 }

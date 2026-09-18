@@ -18,14 +18,16 @@ const (
 var ErrNoActivePeriod = errors.New("no active period for event time")
 
 type Period struct {
-	ID            uint64
-	Key           string
-	Status        Status
-	StartsAt      time.Time
-	EndsAt        time.Time
-	Timezone      string
-	ConfigVersion string
-	RandomVersion string
+	ID                   uint64
+	Key                  string
+	Status               Status
+	StartsAt             time.Time
+	EndsAt               time.Time
+	Timezone             string
+	ConfigVersion        string
+	RandomVersion        string
+	FundingPolicy        string
+	TicketThresholdMilli int64
 }
 
 // Contains uses a half-open interval [starts_at, ends_at). A boundary event
@@ -50,3 +52,5 @@ func ResolveActive(periods []Period, at time.Time) (Period, error) {
 	}
 	return match, nil
 }
+
+const VerifiedPaidFunding = "verified-paid-v1"

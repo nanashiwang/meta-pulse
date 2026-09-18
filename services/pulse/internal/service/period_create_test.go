@@ -9,6 +9,7 @@ import (
 
 	"github.com/nanashiwang/meta-pulse/internal/domain/economics"
 	"github.com/nanashiwang/meta-pulse/internal/domain/period"
+	"github.com/nanashiwang/meta-pulse/internal/domain/reward"
 	"github.com/nanashiwang/meta-pulse/internal/ports"
 )
 
@@ -29,9 +30,15 @@ func (m *economicsAdminMemory) CreateRule(_ context.Context, periodID uint64, ru
 	return rule, nil
 }
 
-type auditMemory struct{ logs []ports.AuditLog }
+type auditMemory struct {
+	logs []ports.AuditLog
+	err  error
+}
 
 func (m *auditMemory) Append(_ context.Context, log ports.AuditLog) error {
+	if m.err != nil {
+		return m.err
+	}
 	m.logs = append(m.logs, log)
 	return nil
 }
@@ -40,6 +47,7 @@ type periodCreateUnit struct {
 	admin     *periodAdminMemory
 	economics *economicsAdminMemory
 	audit     *auditMemory
+	reward    *rewardAdminMemory
 	cursor    ports.CursorRepository
 	// rollback mirrors the real transaction: a failed callback discards every
 	// write the callback made.
@@ -50,13 +58,17 @@ func (u *periodCreateUnit) Do(ctx context.Context, fn func(ports.Repositories) e
 	adminSnapshot := append([]period.Period(nil), u.admin.periods...)
 	rulesSnapshot := append([]economics.Rule(nil), u.economics.rules...)
 	auditSnapshot := append([]ports.AuditLog(nil), u.audit.logs...)
+	rewardSnapshot := append([]reward.Definition(nil), u.reward.definitions...)
+	budgetSnapshot := append([]ports.RewardBudget(nil), u.reward.budgets...)
 	err := fn(ports.Repositories{
-		PeriodAdmin: u.admin, EconomicsAdmin: u.economics, Audit: u.audit, Cursor: u.cursor,
+		PeriodAdmin: u.admin, EconomicsAdmin: u.economics, RewardAdmin: u.reward, Audit: u.audit, Cursor: u.cursor,
 	})
 	if err != nil && u.rollback {
 		u.admin.periods = adminSnapshot
 		u.economics.rules = rulesSnapshot
 		u.audit.logs = auditSnapshot
+		u.reward.definitions = rewardSnapshot
+		u.reward.budgets = budgetSnapshot
 	}
 	return err
 }
@@ -64,7 +76,7 @@ func (u *periodCreateUnit) Do(ctx context.Context, fn func(ports.Repositories) e
 func newPeriodCreateUnit() *periodCreateUnit {
 	return &periodCreateUnit{
 		admin: &periodAdminMemory{}, economics: &economicsAdminMemory{},
-		audit: &auditMemory{}, rollback: true,
+		audit: &auditMemory{}, reward: &rewardAdminMemory{}, rollback: true,
 	}
 }
 

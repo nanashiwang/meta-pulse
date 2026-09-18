@@ -106,6 +106,8 @@ ensure_env_file() {
   ensure_generated_secret PULSE_FORUM_HMAC_SECRET
   ensure_generated_secret PULSE_USER_BFF_HMAC_SECRET
   ensure_generated_secret PULSE_ADMIN_HMAC_SECRET
+  ensure_generated_secret PULSE_COMMUNITY_BFF_HMAC_SECRET
+  ensure_generated_secret PULSE_ROLLBACK_HMAC_SECRET
   ensure_generated_secret PULSE_REWARD_RANDOM_SECRET
 
   # Optional shell variables make non-interactive provisioning possible while

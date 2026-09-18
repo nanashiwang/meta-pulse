@@ -64,7 +64,7 @@ Meta Pulse 负责 Usage Event、贡献值、脉冲券、经济规则、10 天周
 - GORM
 - MySQL 8.0+
 - Redis 7+
-- React 18 / Vite / Semi Design（用户页面复用 new-api 前端）
+- React 18 / Vite / Semi Design（new-api 控制台）与 METAR 静态社区壳层
 - Apache Answer（论坛）/ VitePress（博客）
 - Docker / Docker Compose / Nginx
 
@@ -78,7 +78,7 @@ Meta Pulse 负责 Usage Event、贡献值、脉冲券、经济规则、10 天周
 - Answer 原生登录、注册、找回、发帖和写操作入口；
 - VitePress 知识库入口，以及未登录、未激活、未绑定和服务不可用状态。
 
-正式首页由 Nginx 精确匹配 `/` 提供；`/questions`、`/users/*`、`/answer/api/*` 等路径仍由 Answer 原生 UI/API 负责，因此前端回退不会修改社区数据、会话或权限规则。Pulse 用户数据尚未通过社区 BFF 前，正式页面明确显示“暂未开放”，不会展示固定等级、余额、券或奖励。后续阶段见 [`docs/METAR_FRONTEND_REFACTOR_PLAN.md`](docs/METAR_FRONTEND_REFACTOR_PLAN.md)。
+正式首页由 Nginx 精确匹配 `/` 提供；`/questions`、`/users/*`、`/answer/api/*` 等路径仍由 Answer 原生 UI/API 负责，因此前端回退不会修改社区数据、会话或权限规则。Pulse 用户权益通过受 Answer 身份保护的社区 BFF 接通总览、奖池、抽奖及奖励记录；默认关闭新抽奖，未完成配置时明确显示不可用状态。后续阶段见 [`docs/METAR_FRONTEND_REFACTOR_PLAN.md`](docs/METAR_FRONTEND_REFACTOR_PLAN.md)。
 
 本地验证：
 
@@ -99,7 +99,7 @@ cd /opt/meta-pulse
 ./deploy/install.sh
 ```
 
-首次执行会创建 `/opt/meta-pulse/.env` 并生成随机凭据。填写真实的 `NEWAPI_LOG_DSN`（只读账号）、`NEWAPI_INTERNAL_BASE_URL` 和可选的 `FORUM_DB_DSN` 后再次执行。论坛启用后，在 Answer 后台配置插件；new-api 仅需配置已有 SSO Bridge 的 `PULSE_FORUM_SSO_SECRET` 与固定 callback，无需修改源码或在本机再部署一套 new-api。脚本在配置不完整时会安全退出，不会删除数据卷。
+首次执行会创建 `/opt/meta-pulse/.env` 并生成随机凭据。填写真实的 `NEWAPI_LOG_DSN`（只读账号）、`NEWAPI_INTERNAL_BASE_URL` 和可选的 `FORUM_DB_DSN` 后再次执行。论坛启用后，在 Answer 后台配置插件。本地论坛和可选账号绑定复用 new-api 已有 SSO Bridge，配置 `PULSE_FORUM_SSO_SECRET` 与固定 callback 即可；自动抽奖还必须升级独立运行的 new-api 付费来源证明及 Benefit 接收端，完成限额和实际到账验收，不能仅靠 SSO 配置开放。无需在社区服务器再部署一套 new-api。脚本在配置不完整时会安全退出，不会删除数据卷。
 
 ### 一键更新
 
@@ -122,6 +122,8 @@ cd /opt/meta-pulse
 ```
 
 更新脚本会先加锁、只读校验已有配置，再备份数据库和原配置、fast-forward 拉取代码、执行迁移、重建服务并检查 API/Worker 的 `/readyz`。更新不会生成或轮换凭据；配置缺失时必须先恢复原配置。详细参数、日志、回滚和外部依赖见 [`deploy/README.md`](deploy/README.md)。
+
+Pulse API 不持有发奖用的 `PULSE_SERVICE_HMAC_SECRET`，该密钥只交给 Worker 与 new-api 接收端；API 按需配置独立 `PULSE_ROLLBACK_HMAC_SECRET`，仅用于受控查询和撤销。Worker 不持有撤销、BFF 或 Admin 密钥。
 
 更新后自动摄入验收：`./deploy/update.sh --ref main --accept-ingest`。只读观察三个以上 Worker 批次及游标前后变化；无流量时输出“证据不足”，不宣称追平。详见 [验收命令](deploy/README.md#自动摄入验收只读)。
 
@@ -178,6 +180,10 @@ Apache Answer 源码不进入仓库，通过官方镜像与 Go module 引入。
 - [工程约束](AGENTS.md)
 - [数据库迁移说明](services/pulse/migrations/README.md)
 - [服务器一键部署与更新](deploy/README.md)
+
+## 社区抽奖与自动到账
+
+代码已接通绑定本人账号的自动到账链路、Pulse 预算与 new-api 独立金额上限、付费来源证明、操作恢复和独立撤销权限。新抽奖与新到账默认关闭，旧周期不直接开放发奖；新奖池需审计创建与真实环境验收。首版只认升级后支持的在线支付与普通同步钱包结算凭证中的付费部分；历史余额、赠送和未覆盖的计费路径不自动产券，也不回填付费资格。配置和发布步骤见 [REWARDS_ROLLOUT.md](docs/REWARDS_ROLLOUT.md)。
 
 ## 当前状态
 

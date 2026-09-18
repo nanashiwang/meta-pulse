@@ -60,7 +60,19 @@ func NewBenefitClient(baseURL string, secret []byte, client *http.Client) (*Bene
 	return &BenefitClient{baseURL: parsed.String(), secret: append([]byte(nil), secret...), role: "pulse-settlement", http: client, now: time.Now}, nil
 }
 
+func NewRollbackClient(baseURL string, secret []byte, client *http.Client) (*BenefitClient, error) {
+	c, err := NewBenefitClient(baseURL, secret, client)
+	if err != nil {
+		return nil, err
+	}
+	c.role = "pulse-rollback"
+	return c, nil
+}
+
 func (c *BenefitClient) Grant(ctx context.Context, request ports.BenefitGrantRequest) (ports.BenefitGrantResponse, error) {
+	if c.role != "pulse-settlement" {
+		return ports.BenefitGrantResponse{}, errors.New("rollback client cannot grant benefits")
+	}
 	if request.GrantID == "" || request.GrantID != request.SourceRef || request.UserID == 0 || request.Amount <= 0 || request.TransferableQuota || len(request.PayloadHash) != sha256.Size*2 {
 		return ports.BenefitGrantResponse{}, errors.New("invalid benefit grant request")
 	}
@@ -90,6 +102,9 @@ func (c *BenefitClient) Query(ctx context.Context, sourceRef string) (ports.Bene
 }
 
 func (c *BenefitClient) Rollback(ctx context.Context, sourceRef, reason string) (ports.BenefitState, error) {
+	if c.role != "pulse-rollback" {
+		return ports.BenefitState{}, errors.New("settlement client cannot roll back benefits")
+	}
 	if strings.TrimSpace(sourceRef) == "" || strings.TrimSpace(reason) == "" {
 		return ports.BenefitState{}, errors.New("benefit rollback request is incomplete")
 	}

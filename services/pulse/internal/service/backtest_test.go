@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"testing"
 	"time"
@@ -87,6 +88,62 @@ func TestBacktestIsReadOnlyAndUsesHalfOpenRange(t *testing.T) {
 	}
 	if len(store.usageEvents) != 0 || len(store.entries) != 0 || len(store.accounts) != 0 {
 		t.Fatalf("backtest mutated pulse state: usage=%d ledger=%d accounts=%d", len(store.usageEvents), len(store.entries), len(store.accounts))
+	}
+}
+
+func TestBacktestFundingProofDedupAcrossPagesAndBeforeRange(t *testing.T) {
+	for _, outsideRange := range []bool{false, true} {
+		t.Run(fmt.Sprintf("first_outside_range_%t", outsideRange), func(t *testing.T) {
+			store := newMemoryLedgerStore()
+			at := time.Unix(1_700_000_000, 0).UTC()
+			store.periods = []period.Period{{ID: 4, Status: period.StatusActive, ConfigVersion: "v1", StartsAt: at.Add(-time.Hour), EndsAt: at.Add(time.Hour)}}
+			store.rules[4] = []economics.Rule{{ID: 1, Key: "default", Eligible: true, MultiplierBps: 10000, ConfigVersion: "v1"}}
+			first := backtestEvent("1", at, usage.EventConsume, 1000)
+			first.FundingProof = "wallet:one-proof"
+			duplicate := backtestEvent("2", at.Add(time.Second), usage.EventConsume, 1000)
+			duplicate.FundingProof = first.FundingProof
+			independent := backtestEvent("3", at.Add(2*time.Second), usage.EventConsume, 1000)
+			independent.FundingProof = first.FundingProof
+			independent.SourceSystem = "another-new-api"
+			s := newBacktest(t, store, backtestSource{events: []usage.Event{first, duplicate, independent}})
+			s.cfg.BatchSize = 1
+			from := at
+			expected := int64(2000)
+			if outsideRange {
+				from = at.Add(time.Second)
+				expected = 1000
+			}
+			report, err := s.Run(context.Background(), from, at.Add(time.Minute))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if report.NetContributionMilli != expected || report.FinalTicketEntitlement != expected/1000 || report.ManualReviewEvents != 1 || report.DataGaps["paid funding proof already seen in backtest"] != 1 {
+				t.Fatalf("duplicate proof inflated report: %+v", report)
+			}
+			if len(store.usageEvents) != 0 || len(store.entries) != 0 || len(store.accounts) != 0 {
+				t.Fatal("proof dedup mutated production state")
+			}
+		})
+	}
+}
+
+func TestBacktestUsesFrozenTicketThresholdForEachPeriod(t *testing.T) {
+	store := newMemoryLedgerStore()
+	at := time.Unix(1_700_000_000, 0).UTC()
+	store.periods = []period.Period{
+		{ID: 4, Status: period.StatusActive, ConfigVersion: "v1", StartsAt: at.Add(-time.Hour), EndsAt: at.Add(time.Hour), TicketThresholdMilli: 2000},
+		{ID: 5, Status: period.StatusActive, ConfigVersion: "v1", StartsAt: at.Add(time.Hour), EndsAt: at.Add(3 * time.Hour), TicketThresholdMilli: 500},
+	}
+	for _, id := range []uint64{4, 5} {
+		store.rules[id] = []economics.Rule{{ID: 1, Key: "default", Eligible: true, MultiplierBps: 10000, ConfigVersion: "v1"}}
+	}
+	events := []usage.Event{backtestEvent("1", at, usage.EventConsume, 3000), backtestEvent("2", at.Add(2*time.Hour), usage.EventConsume, 1000)}
+	report, err := newBacktest(t, store, backtestSource{events: events}).Run(context.Background(), time.Time{}, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.FinalTicketEntitlement != 3 || report.NetContributionMilli != 4000 {
+		t.Fatalf("backtest ignored frozen period thresholds: %+v", report)
 	}
 }
 

@@ -25,9 +25,10 @@
 ✅ 部署自动化       生产配置模板、随机密钥初始化、迁移、健康检查、加锁更新与失败回滚提示
 ✅ METAR F0         原型/生产分离、runtime config、mock/身份头构建门禁与前端适配测试
 🟡 METAR F1/F2     真实 Answer 浏览/个人/绑定状态已接通；原生写入口保留，SMTP 与完整个人操作待验收
+✅ METAR F3 代码    社区认证 BFF、规则/抽奖/原动作恢复已接通；新抽奖和新到账默认关闭，生产待验收
 ```
 
-**P0–M7 及 M3.5 社区账号改造已落地；本轮补齐第 12 节的可靠性与对抗性回归。** 功能实现不等于生产验收；真实 LOG_DB、new-api、Answer、邮件、正式社区域名和生产密钥等外部环境仍按第 8 节验收，不能用内存 fake、静态代码检查或本地桩冒充完成。
+**P0–M7 及 M3.5 社区账号改造已落地；第 12 节记录前期可靠性加固，第 13 节记录本次社区自动到账实现。** 功能实现不等于生产验收；真实 LOG_DB、new-api、Answer、邮件、正式社区域名和生产密钥等外部环境仍按第 8 节验收，不能用内存 fake、静态代码检查或本地桩冒充完成。
 
 ## 2. 已确认的跨仓库事实
 
@@ -56,20 +57,22 @@ Log.user_id    = 用户 ID
 Log.quota      = 用户侧计费额度
 ```
 
-Pulse 使用独立只读账号读取 `NEWAPI_LOG_DSN` 指向的日志库。`quota` 是第一阶段的 Eligible Paid Usage；当前 Provider 成本不是日志事实源，已决策在成本快照上线前仅使用“用户收费 × 配置倍率”的估算值，并在报告中明确标注，不宣称真实毛利。
+Pulse 使用独立只读账号读取 `NEWAPI_LOG_DSN` 指向的日志库。`quota` 是总消费额；自动发奖阶段仅 verified v1 的 paid_quota 作为 Eligible Paid Usage，其他来源不自动产券；当前 Provider 成本不是日志事实源，已决策在成本快照上线前仅使用“用户收费 × 配置倍率”的估算值，并在报告中明确标注，不宣称真实毛利。
+
+首版只覆盖升级后的 Stripe/Creem/易支付真实支付回调入账，以及随后普通同步钱包结算。历史余额来源保持未知、不回填资格；赠送、手动加额和兑换码不提供付费资格。订阅、独立套餐令牌、异步任务、Realtime、强制预扣图像与未归因路径暂不产券。混合来源的 verified 凭证仅 paid 部分有效，不能把其中 unknown 部分当作已付费。
 
 关联契约已统一：普通消费和异步任务退款/差额结算使用 `logs.request_id`；任务日志额外保留 `logs.other.task_id`，差额日志保留 `pre_consumed_quota`、`actual_quota`、`reason`；明确的历史 `origin_log_id` 等字段优先。缺少稳定关联时进入人工复核，不猜测因果。
 
 ### 2.3 Benefit 事实边界
 
-new-api 已有 `BenefitChangeRecord` 唯一索引和 `GrantUserQuotaTx`，但现有重复记录处理只吞掉 duplicate，未比较请求 payload。因此 Pulse 专用 Benefit API 必须补齐：
+new-api 的 Pulse 专用 Benefit API 已在 `BenefitChangeRecord` 和 `GrantUserQuotaTx` 基础上实现 payload 比较与明确冲突语义：
 
 ```text
 同 key + 同 payload    → 返回第一次结果
 同 key + 不同 payload  → conflict
 ```
 
-Pulse 奖励必须通过 new-api Internal Benefit API 发放，建议 `transferable_quota = 0`，禁止直接写 `users.quota`。
+Pulse 奖励必须通过 new-api Internal Benefit API 发放，新奖励强制 `transferable_quota = false`，禁止直接写 `users.quota`。接收端独立发放限额已实现，新发放默认关闭。
 
 ## 3. 跨仓库目标链路
 
@@ -100,7 +103,7 @@ Answer Connector → 浏览器 flow Cookie + Redis marker
   → Answer 邮箱确认后创建/绑定本地账号
 ```
 
-new-api Email 未证明 verified，Connector 必须留空 Email/Avatar，禁止静默按邮箱接管。现有 Ticket 未签名 state；本轮不改 new-api，以固定 callback、短期 flow、单次 nonce、邮箱确认和不可转移绑定收敛风险，未来最小升级再把 state 纳入签名。
+new-api Email 未证明 verified，Connector 必须留空 Email/Avatar，禁止静默按邮箱接管。现有 Ticket 未签名 state；绑定链路以固定 callback、短期 flow、单次 nonce、邮箱确认和不可转移绑定收敛风险，后续 SSO 专项升级再把 state 纳入签名。本次付费来源和 Benefit 升级不改变该 Ticket 契约。
 
 ### 3.3 奖励结算
 
@@ -111,6 +114,15 @@ Pulse Worker 调用 new-api Benefit API
         ↓ timeout 时先 Query(source_ref)，不得换 source_ref
 new-api 在自己的事务内变更用户额度并写 BenefitChangeRecord
 ```
+
+### 3.4 社区 Pulse 权益
+
+```text
+浏览器 → 同源 /metar/api/pulse/* → Answer 插件认证、激活和本地状态检查
+  → 受保护的一对一绑定 → 独立 community-bff 签名 → Pulse 本人安全投影
+```
+
+已实现 summary、rules、rewards 与 actions。周期包含在 summary/rules 中，原动作通过 rewards 的 action_id 精确查询。浏览器只提交 action_id 和 Idempotency-Key；新抽奖默认关闭，关闭后仍可恢复原结果。
 
 ## 4. 目录职责
 
@@ -169,7 +181,7 @@ type UnitOfWork interface {
 - [x] 生产密钥不进入 Git，支持 current/previous 平滑轮换和 fail closed；
 - [x] SSO 入口使用 CriticalRateLimit；Benefit 内部接口使用独立的已验签服务身份限流，不受公共 API IP 限流影响；
 - [x] Pulse 侧实现规范化 `method/path/user/timestamp/nonce/body_hash` 验签、时间窗和重放拒绝，生产 Nonce 适配 Redis 原子 `SETNX`；签名请求体上限 64 KiB，角色/Nonce 头长度分别限制为 64/128 字节；
-- [x] Pulse 内部用户路由按签名角色最小权限隔离：`new-api` 仅访问用户摘要、Action、奖励历史，`forum` 仅使用独立 `PULSE_FORUM_HMAC_SECRET` 访问用户 Profile，内容奖励管理仅接受 `admin`；不同信任角色、Forum SSO 与只读 Profile 密钥禁止复用，角色缺失、未知或不匹配时 fail closed，且不触发业务查询；
+- [x] Pulse 内部用户路由按签名角色最小权限隔离：`new-api` 与独立 `community-bff` 访问本人摘要、Action、规则和奖励历史，`forum` 仅使用独立 `PULSE_FORUM_HMAC_SECRET` 访问用户 Profile，内容奖励管理仅接受 `admin`；Benefit 结算与撤销使用独立角色/密钥，Worker 不持有撤销密钥。不同信任角色、Forum SSO 与只读 Profile 密钥禁止复用，角色缺失、未知或不匹配时 fail closed，且不触发业务查询；
 - [ ] 真实部署完成审计、限流压测、跨实例 Nonce 与密钥轮换演练。
 
 **代码出口：**登录、2FA、可选绑定、Ticket/flow 重放、Cookie 隔离、BFF 越权和签名重放回归测试通过。真实域名、Answer 邮件、跨实例、轮换演练和公网门禁属于部署验收；P0 外部验收完成前社区不得开放公网，Pulse 奖励不得上线。
@@ -317,8 +329,8 @@ type UnitOfWork interface {
 
 ### new-api
 
-- [x] 现有 Forum SSO Bridge 与 Login Ticket 可直接复用，本轮不改 new-api 源码；
-- [ ] 生产配置 `PULSE_FORUM_SSO_SECRET` 与新社区固定 callback，并做零停机容器重建验收；
+- [x] 可选账号绑定复用现有 Forum SSO Bridge 与 Login Ticket，无须为绑定修改其契约；自动奖励另需付费来源和 Benefit 接收端升级；
+- [ ] 生产配置 `PULSE_FORUM_SSO_SECRET` 与新社区固定 callback；付费来源升级前排空旧实例在途请求与余额批处理，再整体切换，禁止新旧钱包实现混跑；
 - [x] Pulse BFF，服务端派生 user ID；
 - [x] Pulse Internal Benefit API；
 - [x] Benefit 重复请求 payload 比较与 conflict；严格拒绝尾随 JSON，保持 Benefit 指纹边界一致；
@@ -361,7 +373,7 @@ type UnitOfWork interface {
 
 ### D1｜毛利事实源（已决策）
 
-当前 new-api 日志只有用户收费 `quota`，没有 Provider 成本。M2.5 使用“用户收费 × 配置倍率”的估算口径，报告和预算告警必须标注“成本代理值”；正式 Margin-aware 运营前，new-api 需要新增不可变整数定点成本快照（金额、币种、Provider/价格版本），Pulse 仅只读消费。
+当前 new-api 日志有用户收费 `quota` 及限定路径的付费来源凭证，但没有 Provider 成本。M2.5 使用“用户收费 × 配置倍率”的估算口径，报告和预算告警必须标注“成本代理值”；正式 Margin-aware 运营前，new-api 需要新增不可变整数定点成本快照（金额、币种、Provider/价格版本），Pulse 仅只读消费。
 
 ### D2｜Period 口径（已决策）
 
@@ -390,7 +402,7 @@ type UnitOfWork interface {
 - new-api `LOG_DB` 只读账号、Pulse 独立数据库及无主库写权限；
 - 真实 LOG_DB 回放与参数定标；Provider 成本快照的正式接入仍待 new-api 变更；
 - 新社区正式域名、TLS、Answer 初始化/邮件发送、本地注册、绑定/登录、等级降级和跨实例 flow/nonce；
-- new-api 线上仅增加 SSO secret/callback 后的零停机重建与回滚验证；
+- new-api 生产 SSO secret/callback 验证，以及付费来源/Benefit 版本的排空、整体升级与回滚验证；该钱包升级不能以新旧实例混跑替代验收；
 - new-api Benefit 真实到账、重放 100 次、timeout Query、rollback 及密钥轮换演练；
 - 生产环境的 SSO/Benefit 审计、限流压测、真实域名和跨实例 Redis nonce 演练。
 - 服务器首次部署与更新脚本已纳入仓库，但仍需在真实服务器完成 Docker、网络、备份和故障恢复演练。
@@ -470,6 +482,15 @@ M7 内容奖励
 - [x] 社区绑定完成对抗性回归：Ticket/callback/flow 重放，Redis/Guard 故障，一对一并发约束，UPDATE/DELETE/绑定时间篡改，复合索引与布尔分组削弱，跨角色密钥复用，未验证 Email、本地封禁、同秒绑定内容及连续不合格游标推进。
 - [x] 论坛集成测试增加可丢弃 schema 名门禁，防误把会 DROP Answer 测试表的 DSN 指向业务库。
 
-本轮新增验证入口：`make test-forum-integration`，顺序执行 Binding Guard 与 Answer 内容映射真实 MySQL 回归；CI 与 Pulse 财务集成测试共用隔离 MySQL schema。2026 年 9 月 6 日已实际通过 `make fmt`、`make test`、全量 `go test -race`、`make vet`、`make deploy-config-test`、`make build-pulse`、`./deploy/nginx/test-config.sh`，以及一次性 MySQL 8 容器中的 Pulse/论坛集成回归。完整本地验证命令为 `make fmt test vet deploy-config-test build-pulse` 与 `./deploy/nginx/test-config.sh`。Answer 镜像构建仍需在可访问 Docker Registry 的 CI/服务器执行。
+历史验证记录（2026 年 9 月 6 日）：新增入口 `make test-forum-integration` 顺序执行 Binding Guard 与 Answer 内容映射真实 MySQL 回归；CI 与 Pulse 财务集成测试共用隔离 MySQL schema。当时已实际通过 `make fmt`、`make test`、全量 `go test -race`、`make vet`、`make deploy-config-test`、`make build-pulse`、`./deploy/nginx/test-config.sh`，以及一次性 MySQL 8 容器中的 Pulse/论坛集成回归。这些是当时版本的证据，不替代当前版本验证。完整本地验证命令为 `make fmt test vet deploy-config-test build-pulse` 与 `./deploy/nginx/test-config.sh`。Answer 镜像构建仍需在可访问 Docker Registry 的 CI/服务器执行。
 
-发布注意：先备份并应用 `00009_action_replay_indexes.sql`，排空旧 API 写请求，禁止新旧 Action 实现并行发奖。Prometheus 需要新增 Worker `:8089` 内网抓取及采集过期告警。生产身份、真实额度到账、网络和备份恢复演练仍保留在第 8 节，不能直接关闭 Shadow Mode。
+该次发布注意：先备份并应用 `00009_action_replay_indexes.sql`，排空旧 API 写请求，禁止新旧 Action 实现并行发奖。Prometheus 需要新增 Worker `:8089` 内网抓取及采集过期告警。当前自动奖励版本还需应用 `00010`、`00011` 并按 `REWARDS_ROLLOUT.md` 完成升级。生产身份、真实额度到账、网络和备份恢复演练仍保留在第 8 节，不能直接关闭 Shadow Mode。
+
+
+## 13. 社区自动到账交付
+
+- 已接通 Answer 认证社区 BFF、独立角色/密钥、同源写保护、本人权益/规则/抽奖/原action查询及正式前端。
+- 奖池创建一次固化资金策略/阈值/权重/预算；旧周期不能原地开放奖励，数据库冻结核心配置。
+- new-api 付费来源凭证正向归因，Pulse 仅记 paid 部分并对 proof 永久去重；首版支持范围见第 2.2 节，历史余额与未覆盖来源保持 unknown，不能补填为付费。
+- new-api独立事务限额、默认关闭、账号风险冻结、撤销密钥隔离与余额不足保护。
+- `PULSE_ACTIONS_ENABLED` 与 `PULSE_BENEFIT_ENABLED` 默认 false，Shadow Mode 默认 true；缺少独立社区 BFF 密钥时仅权益入口不可用。测试与发布不代表生产开放；真实配置、付款来源和小额到账按 `REWARDS_ROLLOUT.md` 验收。

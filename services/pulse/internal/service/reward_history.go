@@ -68,3 +68,31 @@ func (s *RewardHistoryService) List(ctx context.Context, userID uint64, limit in
 	}
 	return result, nil
 }
+
+// FindAction recovers a specific operation, even outside the latest history page.
+func (s *RewardHistoryService) FindAction(ctx context.Context, userID uint64, actionID string) ([]RewardHistoryItem, error) {
+	if userID == 0 || !validDBText(actionID, 191) {
+		return nil, errors.New("invalid action identity")
+	}
+	result := make([]RewardHistoryItem, 0, 1)
+	err := s.unit.Do(ctx, func(repos ports.Repositories) error {
+		if repos.Reward == nil {
+			return errors.New("reward repository unavailable")
+		}
+		grants, err := repos.Reward.ListPulseGrantsByAction(ctx, userID, actionID)
+		if err != nil {
+			return err
+		}
+		if len(grants) > 1 {
+			return ports.ErrConflict
+		}
+		for _, g := range grants {
+			if g.UserID != userID || g.ActionID != actionID {
+				return ports.ErrConflict
+			}
+			result = append(result, RewardHistoryItem{GrantID: g.GrantID, PeriodID: g.PeriodID, ActionID: g.ActionID, RewardType: g.RewardType, Amount: g.Amount, Status: g.Status, CreatedAt: g.CreatedAt})
+		}
+		return nil
+	})
+	return result, err
+}

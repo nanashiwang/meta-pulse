@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/nanashiwang/meta-pulse/internal/domain/economics"
 	"github.com/nanashiwang/meta-pulse/internal/domain/money"
 	"github.com/nanashiwang/meta-pulse/internal/domain/period"
+	"github.com/nanashiwang/meta-pulse/internal/domain/reward"
 	"github.com/nanashiwang/meta-pulse/internal/ports"
 )
 
@@ -35,25 +37,40 @@ type PeriodRuleSpec struct {
 // (see usage_ingest.go), and invariant #11 forbids repairing that in place
 // once the period is active.
 type PeriodCreateCommand struct {
-	ActorType     string
-	ActorID       string
-	Key           string
-	StartsAt      time.Time
-	Timezone      string
-	ConfigVersion string
-	RandomVersion string
-	Rules         []PeriodRuleSpec
-	Activate      bool
-	Reason        string
+	ActorType            string
+	ActorID              string
+	Key                  string
+	StartsAt             time.Time
+	Timezone             string
+	ConfigVersion        string
+	RandomVersion        string
+	Rules                []PeriodRuleSpec
+	Rewards              []PeriodRewardSpec
+	RewardBudget         int64
+	TicketThresholdMilli int64
+	Activate             bool
+	Reason               string
+}
+
+// PeriodRewardSpec accepts only integer quota rewards. Transferability and
+// funding policy are fixed by the service and cannot be selected by operators.
+type PeriodRewardSpec struct {
+	Key    string `json:"key"`
+	Amount int64  `json:"amount"`
+	Weight uint64 `json:"weight"`
 }
 
 type PeriodCreateResult struct {
-	PeriodID  uint64    `json:"period_id"`
-	Key       string    `json:"period_key"`
-	Status    string    `json:"status"`
-	StartsAt  time.Time `json:"starts_at"`
-	EndsAt    time.Time `json:"ends_at"`
-	RuleCount int       `json:"rule_count"`
+	PeriodID             uint64    `json:"period_id"`
+	Key                  string    `json:"period_key"`
+	Status               string    `json:"status"`
+	StartsAt             time.Time `json:"starts_at"`
+	EndsAt               time.Time `json:"ends_at"`
+	RuleCount            int       `json:"rule_count"`
+	RewardCount          int       `json:"reward_count"`
+	RewardBudget         int64     `json:"reward_budget"`
+	FundingPolicy        string    `json:"funding_policy"`
+	TicketThresholdMilli int64     `json:"ticket_threshold_milli"`
 }
 
 type PeriodCreateService struct {
@@ -86,6 +103,9 @@ func (s *PeriodCreateService) Create(ctx context.Context, command PeriodCreateCo
 		if repos.PeriodAdmin == nil || repos.EconomicsAdmin == nil || repos.Audit == nil {
 			return errors.New("period create repositories are not initialized")
 		}
+		if len(command.Rewards) > 0 && repos.RewardAdmin == nil {
+			return errors.New("reward setup repository is not initialized")
+		}
 		overlapping, err := repos.PeriodAdmin.ListOverlapping(ctx, command.StartsAt, endsAt)
 		if err != nil {
 			return err
@@ -93,10 +113,15 @@ func (s *PeriodCreateService) Create(ctx context.Context, command PeriodCreateCo
 		if len(overlapping) > 0 {
 			return fmt.Errorf("%w: period %s overlaps existing period %s", ports.ErrConflict, command.Key, overlapping[0].Key)
 		}
+		fundingPolicy := "legacy"
+		if len(command.Rewards) > 0 {
+			fundingPolicy = period.VerifiedPaidFunding
+		}
 		created, err := repos.PeriodAdmin.Create(ctx, period.Period{
 			Key: command.Key, Status: period.StatusDraft,
 			StartsAt: command.StartsAt, EndsAt: endsAt, Timezone: command.Timezone,
 			ConfigVersion: command.ConfigVersion, RandomVersion: command.RandomVersion,
+			FundingPolicy: fundingPolicy, TicketThresholdMilli: command.TicketThresholdMilli,
 		})
 		if err != nil {
 			return err
@@ -118,6 +143,22 @@ func (s *PeriodCreateService) Create(ctx context.Context, command PeriodCreateCo
 		if err := economics.ValidateRules(rules, created.ConfigVersion); err != nil {
 			return err
 		}
+		if len(command.Rewards) > 0 {
+			definitions := make([]reward.Definition, 0, len(command.Rewards))
+			for _, spec := range command.Rewards {
+				definition, err := repos.RewardAdmin.CreateDefinition(ctx, created.ID, reward.Definition{RewardKey: spec.Key, RewardType: "newapi_quota", Amount: spec.Amount, Weight: spec.Weight, Enabled: true, ConfigVersion: created.ConfigVersion})
+				if err != nil {
+					return err
+				}
+				definitions = append(definitions, definition)
+			}
+			if _, err := reward.SelectWeighted(definitions, [32]byte{}); err != nil {
+				return err
+			}
+			if _, err := repos.RewardAdmin.CreateBudget(ctx, ports.RewardBudget{PeriodID: created.ID, BudgetType: "loyalty", HardCap: command.RewardBudget}); err != nil {
+				return err
+			}
+		}
 		status := period.StatusDraft
 		if command.Activate {
 			if err := repos.PeriodAdmin.Transition(ctx, created.ID, period.StatusDraft, period.StatusActive, s.now()); err != nil {
@@ -126,15 +167,19 @@ func (s *PeriodCreateService) Create(ctx context.Context, command PeriodCreateCo
 			status = period.StatusActive
 		}
 		afterJSON, err := json.Marshal(struct {
-			PeriodKey     string    `json:"period_key"`
-			Status        string    `json:"status"`
-			StartsAt      time.Time `json:"starts_at"`
-			EndsAt        time.Time `json:"ends_at"`
-			Timezone      string    `json:"timezone"`
-			ConfigVersion string    `json:"config_version"`
-			RandomVersion string    `json:"random_version"`
-			RuleCount     int       `json:"rule_count"`
-		}{created.Key, string(status), created.StartsAt, created.EndsAt, created.Timezone, created.ConfigVersion, created.RandomVersion, len(rules)})
+			PeriodKey            string             `json:"period_key"`
+			Status               string             `json:"status"`
+			StartsAt             time.Time          `json:"starts_at"`
+			EndsAt               time.Time          `json:"ends_at"`
+			Timezone             string             `json:"timezone"`
+			ConfigVersion        string             `json:"config_version"`
+			RandomVersion        string             `json:"random_version"`
+			RuleCount            int                `json:"rule_count"`
+			FundingPolicy        string             `json:"funding_policy"`
+			TicketThresholdMilli int64              `json:"ticket_threshold_milli"`
+			Rewards              []PeriodRewardSpec `json:"rewards"`
+			RewardBudget         int64              `json:"reward_budget"`
+		}{created.Key, string(status), created.StartsAt, created.EndsAt, created.Timezone, created.ConfigVersion, created.RandomVersion, len(rules), created.FundingPolicy, created.TicketThresholdMilli, command.Rewards, command.RewardBudget})
 		if err != nil {
 			return err
 		}
@@ -148,6 +193,7 @@ func (s *PeriodCreateService) Create(ctx context.Context, command PeriodCreateCo
 		result = PeriodCreateResult{
 			PeriodID: created.ID, Key: created.Key, Status: string(status),
 			StartsAt: created.StartsAt, EndsAt: created.EndsAt, RuleCount: len(rules),
+			RewardCount: len(command.Rewards), RewardBudget: command.RewardBudget, FundingPolicy: created.FundingPolicy, TicketThresholdMilli: created.TicketThresholdMilli,
 		}
 		return nil
 	})
@@ -195,6 +241,9 @@ func normalizePeriodCreateCommand(command PeriodCreateCommand) (PeriodCreateComm
 	if len(command.Rules) == 0 {
 		return command, errors.New("a period must define at least one economics rule")
 	}
+	if err := validatePeriodRewards(command.Rewards, command.RewardBudget, command.TicketThresholdMilli); err != nil {
+		return command, err
+	}
 	seen := make(map[string]struct{}, len(command.Rules))
 	for i, spec := range command.Rules {
 		spec.Key = strings.TrimSpace(spec.Key)
@@ -212,4 +261,30 @@ func normalizePeriodCreateCommand(command PeriodCreateCommand) (PeriodCreateComm
 		command.Rules[i] = spec
 	}
 	return command, nil
+}
+
+var periodRewardKey = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
+
+const maxPublicRewardInteger uint64 = 1<<53 - 1
+
+func validatePeriodRewards(rewards []PeriodRewardSpec, budget, threshold int64) error {
+	if len(rewards) == 0 {
+		if budget != 0 || threshold != 0 {
+			return errors.New("reward budget and ticket threshold require a non-empty reward pool")
+		}
+		return nil
+	}
+	if len(rewards) > 50 || budget <= 0 || threshold <= 0 {
+		return errors.New("a reward pool requires 1-50 prizes, a positive budget and a positive ticket threshold")
+	}
+	seen := make(map[string]bool, len(rewards))
+	var total uint64
+	for _, spec := range rewards {
+		if !periodRewardKey.MatchString(spec.Key) || seen[spec.Key] || spec.Amount <= 0 || spec.Amount > int64(maxPublicRewardInteger) || spec.Amount > budget || spec.Weight == 0 || spec.Weight > maxPublicRewardInteger-total {
+			return errors.New("invalid or duplicate prize: key must be canonical, amount must fit budget, amounts and total weight must be safe JSON integers")
+		}
+		seen[spec.Key] = true
+		total += spec.Weight
+	}
+	return nil
 }

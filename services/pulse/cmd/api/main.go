@@ -71,7 +71,7 @@ func main() {
 		logger.Error("initialize request nonce store", "error", err)
 		os.Exit(1)
 	}
-	action, err := service.NewActionService(unit, service.ActionConfig{RandomSecret: []byte(cfg.RewardRandomSecret), ShadowMode: cfg.RewardShadowMode})
+	action, err := service.NewActionService(unit, service.ActionConfig{RandomSecret: []byte(cfg.RewardRandomSecret), ShadowMode: cfg.RewardShadowMode, DisableNewActions: !cfg.ActionsEnabled || cfg.RewardShadowMode, RequireVerifiedFunding: true})
 	if err != nil {
 		logger.Error("initialize action service", "error", err)
 		os.Exit(1)
@@ -82,8 +82,8 @@ func main() {
 	// local shadow-mode development usable without making Pulse depend on it
 	// for startup or for the read-only/admin route.
 	var rollback service.GrantRollbacker
-	if cfg.NewAPIInternalURL != "" && cfg.ServiceHMACSecret != "" {
-		benefitClient, clientErr := newapi.NewBenefitClient(cfg.NewAPIInternalURL, []byte(cfg.ServiceHMACSecret), nil)
+	if cfg.NewAPIInternalURL != "" && cfg.RollbackHMACSecret != "" {
+		benefitClient, clientErr := newapi.NewRollbackClient(cfg.NewAPIInternalURL, []byte(cfg.RollbackHMACSecret), nil)
 		if clientErr != nil {
 			logger.Error("initialize content benefit client", "error", clientErr)
 			os.Exit(1)
@@ -120,22 +120,24 @@ func main() {
 
 	profileAuth := transporthttp.SignedRequestWithSecrets(func(role string) [][]byte {
 		switch role {
+		case "community-bff":
+			return cfg.CommunityBFFHMACSecrets()
 		case "new-api":
 			return cfg.UserBFFHMACSecrets()
 		case "forum":
 			return cfg.ForumHMACSecrets()
-		case "worker", "service":
-			return cfg.ServiceHMACSecrets()
 		case "admin":
 			return cfg.AdminHMACSecrets()
 		default:
 			return nil
 		}
 	}, nonces, 5*time.Minute)
+	rules := service.NewRewardRulesService(unit, cfg.ActionsEnabled && !cfg.RewardShadowMode)
+	rules.QuotaPerUnit = cfg.QuotaPerUnit
 	metrics := observability.NewHTTPMetrics()
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           app.NewRouterWithRoutes(logger, readiness, app.APIRoutes{Profile: profile, Summary: profile, Action: action, Content: content, History: rewardHistory, Operations: operationsOverview, Auth: profileAuth}, metrics),
+		Handler:           app.NewRouterWithRoutes(logger, readiness, app.APIRoutes{Profile: profile, Summary: profile, Action: action, Content: content, History: rewardHistory, Rules: rules, Operations: operationsOverview, Auth: profileAuth}, metrics),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}

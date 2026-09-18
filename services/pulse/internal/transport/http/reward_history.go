@@ -20,7 +20,8 @@ func RewardHistoryRoute(router *gin.RouterGroup, reader RewardHistoryReader, aut
 		return
 	}
 	router.GET("/me/rewards", auth, func(c *gin.Context) {
-		principal, ok := PrincipalWithRole(c, "new-api")
+		c.Header("Cache-Control", "no-store")
+		principal, ok := ProductPrincipal(c)
 		if !ok {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
@@ -34,7 +35,20 @@ func RewardHistoryRoute(router *gin.RouterGroup, reader RewardHistoryReader, aut
 			}
 			limit = parsed
 		}
-		items, err := reader.List(c.Request.Context(), principal.UserID, limit)
+		var items []service.RewardHistoryItem
+		var err error
+		if actionID := c.Query("action_id"); actionID != "" {
+			lookup, available := reader.(interface {
+				FindAction(context.Context, uint64, string) ([]service.RewardHistoryItem, error)
+			})
+			if !available {
+				c.JSON(http.StatusServiceUnavailable, gin.H{"error": "reward lookup unavailable"})
+				return
+			}
+			items, err = lookup.FindAction(c.Request.Context(), principal.UserID, actionID)
+		} else {
+			items, err = reader.List(c.Request.Context(), principal.UserID, limit)
+		}
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "reward history unavailable"})
 			return

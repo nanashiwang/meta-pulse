@@ -49,15 +49,16 @@ for role in ('api','worker'):
         raise AssertionError(f'{role} must not publish host ports')
     app_env = {k:str(v) for k,v in configured['environment'].items() if v is not None}
     if role == 'worker':
-        assert not app_env.get('PULSE_ADMIN_HMAC_SECRET') and not app_env.get('PULSE_USER_BFF_HMAC_SECRET') and not app_env.get('PULSE_FORUM_HMAC_SECRET'), 'worker gained unnecessary API signing keys'
+        assert not app_env.get('PULSE_ADMIN_HMAC_SECRET') and not app_env.get('PULSE_USER_BFF_HMAC_SECRET') and not app_env.get('PULSE_FORUM_HMAC_SECRET') and not app_env.get('PULSE_COMMUNITY_BFF_HMAC_SECRET') and not app_env.get('PULSE_ROLLBACK_HMAC_SECRET'), 'worker gained unnecessary API signing keys'
     else:
         assert not app_env.get('NEWAPI_LOG_DSN'), 'API gained LOG_DB credentials'
+        assert not app_env.get('PULSE_SERVICE_HMAC_SECRET'), 'API gained grant signing credentials'
     command = [str(tmp/'meta-pulse-tool'),'config-check','--role',role]
     result = subprocess.run(command, env={**env, **app_env}, capture_output=True, text=True)
     if result.returncode:
         raise AssertionError(f'{role} production validation failed: {result.stderr}')
-    required = ['PULSE_SERVICE_HMAC_SECRET','PULSE_REWARD_RANDOM_SECRET']
-    required += ['PULSE_FORUM_HMAC_SECRET','PULSE_USER_BFF_HMAC_SECRET','PULSE_ADMIN_HMAC_SECRET'] if role == 'api' else ['NEWAPI_LOG_DSN','NEWAPI_INTERNAL_BASE_URL']
+    required = ['PULSE_REWARD_RANDOM_SECRET']
+    required += ['PULSE_FORUM_HMAC_SECRET','PULSE_USER_BFF_HMAC_SECRET','PULSE_ADMIN_HMAC_SECRET'] if role == 'api' else ['PULSE_SERVICE_HMAC_SECRET','NEWAPI_LOG_DSN','NEWAPI_INTERNAL_BASE_URL']
     for key in required:
         invalid = {**app_env, key:''}
         assert subprocess.run(command, env={**env, **invalid}, capture_output=True).returncode != 0, f'{role} accepted missing {key}'

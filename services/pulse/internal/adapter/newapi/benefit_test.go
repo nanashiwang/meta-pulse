@@ -98,7 +98,8 @@ func TestBenefitClientKeepsRolledBackSeparateFromApplied(t *testing.T) {
 	if err != nil || state.Applied || !state.RolledBack || state.Status != ports.BenefitStatusRolledBack {
 		t.Fatalf("query state=%+v err=%v", state, err)
 	}
-	rollback, err := client.Rollback(context.Background(), "pg_1", "fraud")
+	rollbackClient, _ := NewRollbackClient(server.URL, []byte("rollback-secret"), server.Client())
+	rollback, err := rollbackClient.Rollback(context.Background(), "pg_1", "fraud")
 	if err != nil || rollback.Applied || !rollback.RolledBack {
 		t.Fatalf("rollback state=%+v err=%v", rollback, err)
 	}

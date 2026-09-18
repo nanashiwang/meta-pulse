@@ -346,8 +346,10 @@ func (uc *UserCenter) AfterLogin(externalID, _ string) {
 	log.Debugf("pulse-bound forum user %s logged in", externalID)
 }
 
-func (uc *UserCenter) RegisterUnAuthRouter(r *gin.RouterGroup)   {}
-func (uc *UserCenter) RegisterAuthUserRouter(r *gin.RouterGroup) {}
+func (uc *UserCenter) RegisterUnAuthRouter(r *gin.RouterGroup) {}
+func (uc *UserCenter) RegisterAuthUserRouter(r *gin.RouterGroup) {
+	uc.registerCommunityRoutes(r, answerSessionUserID, plugin.SiteURL)
+}
 
 func (uc *UserCenter) RegisterAuthAdminRouter(r *gin.RouterGroup) {
 	r.GET("/pulse/health", func(ctx *gin.Context) {

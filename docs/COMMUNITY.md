@@ -95,7 +95,7 @@ new-api 或 Pulse 不覆盖 Answer 的封禁、密码、资料和治理角色。
 
 ## 5. 绑定与登录链路
 
-不修改 new-api 业务源码，复用其现有 SSO Bridge；原站 Nginx 增加固定的同源 bootstrap 页面，解决其 `SameSite=Strict` session Cookie 在 metar.uk 跨站跳转时不发送的问题：
+可选账号绑定复用 new-api 已有 SSO Bridge；该绑定流程本身不要求修改 new-api 业务源码。自动抽奖另需升级付费来源证明与 Benefit 接收端，见第 12 节。原站 Nginx 增加固定的同源 bootstrap 页面，解决其 `SameSite=Strict` session Cookie 在 metar.uk 跨站跳转时不发送的问题：
 
 ```nginx
 location = /api/forum/sso/bootstrap {
@@ -125,14 +125,14 @@ Answer Connector 入口
   → Answer 已绑定用户直接登录；未绑定用户走邮箱确认后创建/绑定本地账号
 ```
 
-生产 new-api 只需增加配置并重建其容器：
+仅开通可选账号绑定时，new-api 增加以下配置并重建其容器：
 
 ```env
 PULSE_FORUM_SSO_SECRET=<与 Answer 插件 sso_hmac_secret 一致>
 PULSE_FORUM_SSO_CALLBACK_URL=https://metar.uk/api/user-center/login/callback
 ```
 
-不需要把 new-api 部署到社区服务器，也不需要修改 new-api 数据库或代码。
+new-api 继续在原服务器独立运行。以上是 SSO 绑定的配置要求，不包含自动奖励所需的钱包核算迁移、接收端升级和额度上限。
 
 ### 5.1 Answer v1.7.1 跳转适配
 
@@ -170,14 +170,14 @@ SSO 密钥与 Pulse 只读 Profile、Settlement/Worker 服务签名密钥分离�
 
 现有 new-api Ticket 没有签名 `state`。当前浏览器 flow marker 能拒绝未从社区发起的 callback，并防止 flow/nonce 重放，但**不等价于 OAuth 的完整 signed state**。
 
-本轮为了不改 new-api，保留该限制，并依赖短有效期、固定 callback、HttpOnly flow、单次 nonce、Answer 邮箱确认和不可转移绑定共同收敛风险。若未来允许最小 new-api 变更，应将高熵 `state` 写入 Ticket 签名并在 callback 等值校验。
+当前 SSO Ticket 契约仍保留该限制；自动奖励升级没有修改此契约。短有效期、固定 callback、HttpOnly flow、单次 nonce、Answer 邮箱确认和不可转移绑定共同收敛风险。后续 SSO 专项升级仍需将高熵 `state` 写入 Ticket 签名并在 callback 等值校验。
 
 ## 6. 网关与 Cookie 边界
 
 社区使用独立产品域名：
 
 ```text
-https://metar.uk/       Apache Answer
+https://metar.uk/       METAR 静态首页；其他社区原生/API 路径由 Answer 提供
 https://metar.uk/blog/  VitePress
 https://www.metar.uk/   跳转主域名
 ```
@@ -277,3 +277,10 @@ FORUM_INTEGRATION_DSN='.../forum_integration?...' make test-forum-integration
 8. Pulse 对论坛内容库只读，论坛插件的 guard DSN 不得进入 Pulse；
 9. 不开启 Rank/UserStatus 代理，不让付费等级控制社区治理；
 10. Answer 源码不进入本仓库。
+
+
+## 12. 社区抽奖入口
+
+METAR `/#/pulse` 通过同源 `/metar/api/pulse/*` 访问 Answer 认证插件，后者从原生会话、实时账号状态和保护绑定派生 new-api 身份，使用独立 community-bff 签名。普通 forum profile 密钥仍只读等级，不获得抽奖权限。社区 BFF 代码已接通；插件未配置独立密钥时权益接口不可用，`PULSE_ACTIONS_ENABLED` 与 new-api 新发奖开关默认关闭。插件扩展采用 Answer 的认证路由，禁止绕过原生认证或查询字符串 token。缺配置和 Pulse 故障只影响权益页，不阻断社区登录/浏览。
+
+页面展示本人券、奖池权重、中奖与到账记录。浏览器只提交随机操作编号和幂等键；同源写请求防跨站，前后端均不允许自报 user_id/amount/reward。丢失响应时查询原 action_id 或用原 key 重试，不重新抽奖。首版只认升级后受支持在线支付和普通同步钱包结算凭证中的 `paid_quota`。旧余额、赠送、兑换码以及未覆盖的计费路径不自动产券；不会从历史余额反推付费资格。具体支持范围、配置、发奖与撤销隔离见 [REWARDS_ROLLOUT.md](REWARDS_ROLLOUT.md)。

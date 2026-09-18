@@ -34,6 +34,7 @@ type Event struct {
 	SourceEventID          string
 	CursorValue            string
 	PayloadHash            string
+	FundingProof           string
 	UserID                 uint64
 	PeriodID               uint64
 	EventType              EventType

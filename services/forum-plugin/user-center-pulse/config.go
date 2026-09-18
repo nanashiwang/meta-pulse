@@ -21,13 +21,14 @@ import (
 // The HMAC secret is never committed; it is entered at runtime and stored by
 // Answer's own plugin config storage.
 type Config struct {
-	NewAPIBaseURL         string `json:"newapi_base_url"`
-	PulseBaseURL          string `json:"pulse_base_url"`
-	SSOHMACSecret         string `json:"sso_hmac_secret"`
-	SSOHMACSecretPrevious string `json:"sso_hmac_secret_previous"`
-	PulseHMACSecret       string `json:"pulse_hmac_secret"`
-	NonceRedisURL         string `json:"nonce_redis_url"`
-	LevelBadgeEnabled     bool   `json:"level_badge_enabled"`
+	NewAPIBaseURL          string `json:"newapi_base_url"`
+	PulseBaseURL           string `json:"pulse_base_url"`
+	SSOHMACSecret          string `json:"sso_hmac_secret"`
+	SSOHMACSecretPrevious  string `json:"sso_hmac_secret_previous"`
+	PulseHMACSecret        string `json:"pulse_hmac_secret"`
+	CommunityBFFHMACSecret string `json:"community_bff_hmac_secret"`
+	NonceRedisURL          string `json:"nonce_redis_url"`
+	LevelBadgeEnabled      bool   `json:"level_badge_enabled"`
 }
 
 func (uc *UserCenter) ConfigFields() []plugin.ConfigField {
@@ -88,6 +89,14 @@ func (uc *UserCenter) ConfigFields() []plugin.ConfigField {
 			Value: config.PulseHMACSecret,
 		},
 		{
+			Name:        "community_bff_hmac_secret",
+			Type:        plugin.ConfigTypeInput,
+			Title:       plugin.MakeTranslator(i18n.ConfigCommunityBFFHMACSecretTitle),
+			Description: plugin.MakeTranslator(i18n.ConfigCommunityBFFHMACSecretDescription),
+			UIOptions:   plugin.ConfigFieldUIOptions{InputType: plugin.InputTypePassword},
+			Value:       config.CommunityBFFHMACSecret,
+		},
+		{
 			Name:        "nonce_redis_url",
 			Type:        plugin.ConfigTypeInput,
 			Title:       plugin.MakeTranslator(i18n.ConfigNonceRedisURLTitle),
@@ -142,11 +151,15 @@ func validateConfig(c *Config) error {
 			return errors.New("sso_hmac_secret_previous is invalid or duplicates the active secret")
 		}
 	}
+	if secret := strings.TrimSpace(c.CommunityBFFHMACSecret); secret != "" && !usableConfigSecret(secret) {
+		return errors.New("community_bff_hmac_secret must be at least 32 bytes and cannot be a placeholder")
+	}
 	secretOwners := make(map[string]string)
 	for _, item := range []struct{ name, value string }{
 		{"sso_hmac_secret", c.SSOHMACSecret},
 		{"sso_hmac_secret_previous", c.SSOHMACSecretPrevious},
 		{"pulse_hmac_secret", c.PulseHMACSecret},
+		{"community_bff_hmac_secret", c.CommunityBFFHMACSecret},
 	} {
 		value := strings.TrimSpace(item.value)
 		if value == "" {
@@ -185,6 +198,7 @@ func (uc *UserCenter) ConfigReceiver(config []byte) error {
 	c.SSOHMACSecret = strings.TrimSpace(c.SSOHMACSecret)
 	c.SSOHMACSecretPrevious = strings.TrimSpace(c.SSOHMACSecretPrevious)
 	c.PulseHMACSecret = strings.TrimSpace(c.PulseHMACSecret)
+	c.CommunityBFFHMACSecret = strings.TrimSpace(c.CommunityBFFHMACSecret)
 	c.NonceRedisURL = strings.TrimSpace(c.NonceRedisURL)
 
 	logins, err := NewRedisNonceStore(c.NonceRedisURL)

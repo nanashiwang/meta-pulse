@@ -146,7 +146,8 @@ Answer  = 社区注册、密码、会话、封禁、资料与内容事实源
 两条登录链路彼此独立：
 
 ```text
-Pulse 权益：浏览器 / YuanHeng → new-api session → Signed BFF → Pulse
+Pulse 控制台：浏览器 / YuanHeng → new-api session → Signed BFF → Pulse
+Pulse 社区权益：浏览器 → Answer 认证会话 → 保护绑定 → community-bff → Pulse
 社区浏览：浏览器 → METAR 静态壳层 → 同源 Answer API
 社区写入/登录：浏览器 → Answer 原生页面 → Answer session
 ```
@@ -155,7 +156,7 @@ Answer 用户可选通过 new-api 现有 `/api/forum/sso/start` 绑定 API 身�
 
 Answer v1.7.1 在启用 UserCenter 展示能力后会统一发布登录/注册链接，其注册跳转实现还会误读登录地址。公网网关因此归一化 `/answer/api/v1/user-center/agent` 返回的两个公开跳转字段：登录固定接入带浏览器 flow 的 Connector，注册固定留在 Answer `/users/register`；框架 redirect 路由只作为兼容兜底。不得把二者都直接指向 new-api，也不得绕过 Connector 创建 flow。
 
-Cookie 只发给各自服务。YuanHeng 可在隔离 WebView 中打开 new-api 控制台，但不得保存密码、向 Pulse 发送 Cookie，或自行声明可信 `user_id`。社区网关不得把 new-api session 或 Pulse 签名头转发给 Answer；Answer 前端自己的 Authorization 必须保留。METAR 静态壳层只读取同源 Answer API，并复用 Answer 已有 `_a_ltk_` token；不得复制 token 到自有存储、外部入口或 Pulse 请求。
+Cookie 只发给各自服务。YuanHeng 可在隔离 WebView 中打开 new-api 控制台，但不得保存密码、向 Pulse 发送 Cookie，或自行声明可信 `user_id`。社区网关不得把 new-api session 或 Pulse 签名头转发给 Answer；Answer 前端自己的 Authorization 必须保留。METAR 静态壳层读取同源 Answer API，并通过同源社区 BFF 使用本人 Pulse 权益；复用 Answer 已有 `_a_ltk_` token，不得复制 token 到自有存储、外部入口或 Pulse 原始请求。
 
 ## 6. 总体系统架构
 
@@ -201,7 +202,7 @@ Cookie 只发给各自服务。YuanHeng 可在隔离 WebView 中打开 new-api �
 
 不做分布式事务；Pulse → new-api 使用 **Transactional Outbox + 幂等 Benefit Receiver + Reconciliation** 实现最终一致。
 
-浏览器和桌面端不能直连 Pulse 原始 API。对外只暴露 new-api BFF；`meta-pulse-api` 的用户 ID、角色和请求体均来自已验签的服务调用。Pulse 停止时，new-api 的模型请求、登录、计费、充值和余额链路仍必须可用。
+浏览器和桌面端不能直连 Pulse 原始 API。对外仅暴露 new-api BFF 和受 Answer 会话保护的社区 BFF；`meta-pulse-api` 的用户 ID、角色和请求体均来自已验签的服务调用。Pulse 停止时，new-api 的模型请求、登录、计费、充值和余额链路仍必须可用。
 
 ## 7. 技术栈
 
@@ -314,7 +315,7 @@ logs.type     → consume / refund 分类
 logs.quota    → 用户侧计费额度
 ```
 
-当前 new-api 中 `LogTypeConsume = 2`、`LogTypeRefund = 6`。`quota` 是用户收费事实，不等同于 Provider 成本；在成本快照接入前，不能把它宣称为真实毛利。Pulse 使用 `(created_at, id)` 复合游标、UTC+8 的 `source_created_at` 半开周期归属，并在同一 Pulse 事务内提交事件、账本、券、统计和游标。
+当前 new-api 中 `LogTypeConsume = 2`、`LogTypeRefund = 6`。`quota` 是总计费额度，不证明资金来自付费充值。当前仅 `other.pulse_funding` 的 verified v1 凭证可证明其中 paid_quota；缺失/未知来源不产券。它仍不等同于 Provider 成本；在成本快照接入前，不能把它宣称为真实毛利。Pulse 使用 `(created_at, id)` 复合游标、UTC+8 的 `source_created_at` 半开周期归属，并在同一 Pulse 事务内提交事件、账本、券、统计和游标。
 
 游标翻页对 LOG_DB 的查询形状是硬约束，不是实现细节。new-api 的 `logs` 索引为 `(created_at, type)`，因此每一页必须满足两点：**按单个 type 分别查询后在 Pulse 侧归并**，以及**带上冗余的 `created_at >= cursor.created_at` 下界**。`type IN (2, 6)` 会让两个 created_at 序列交错，索引无法按序输出，计划退化为全表扫描加 filesort；而只写 `(created_at, id) > (?, ?)` 或等价的 OR 形式同样不可索引 —— `id` 不在该索引中，优化器只能从最早一行开始走完整个索引。两者都会把一次毫秒级翻页变成分钟级全表读取。归并后按 `(created_at, id)` 排序并截断到 batch size，结果与单语句形式一致。
 
@@ -330,7 +331,7 @@ Usage 关联契约如下：
 
 ### Provider 成本事实
 
-当前 new-api `LOG_DB` 只有用户侧 `quota`，没有可审计的 Provider 实际成本。Pulse 回测和预算在成本快照上线前只能使用“用户收费 × 已配置倍率”的估算值，报告必须明确标注为成本代理值，不得宣称真实毛利。若进入正式 Margin-aware 运营，new-api 需在消费日志写入时保存不可变的整数定点成本快照（金额、币种、Provider/价格版本），退款和差额日志只关联原消费，不重算或覆盖该快照；Pulse 只读消费这些最小字段。
+当前 new-api `LOG_DB` 有用户侧 `quota` 及限定路径的付费来源凭证，但没有可审计的 Provider 实际成本。Pulse 回测和预算在成本快照上线前只能使用“用户收费 × 已配置倍率”的估算值，报告必须明确标注为成本代理值，不得宣称真实毛利。若进入正式 Margin-aware 运营，new-api 需在消费日志写入时保存不可变的整数定点成本快照（金额、币种、Provider/价格版本），退款和差额日志只关联原消费，不重算或覆盖该快照；Pulse 只读消费这些最小字段。
 
 ## 11. Economics Engine
 
@@ -423,7 +424,7 @@ entitled_tickets = floor(net_contribution / threshold)
 用户接口：
 
 ```text
-POST /v1/me/pulses
+POST /v1/internal/me/actions
 Idempotency-Key: <required>
 ```
 
@@ -601,7 +602,7 @@ new-api 的 Benefit Receiver 必须以 `source_ref` 唯一定位，并持久化�
 同 source_ref + 不同 payload → conflict，不得吞掉 duplicate
 ```
 
-现有 `BenefitChangeRecord` / `GrantUserQuotaTx` 可作为落地基础，但只处理数据库 duplicate 不足以满足上述语义，必须补充 payload 比较、审计记录和明确错误码。同一 Reward 最多到账一次；奖励额度建议 `transferable_quota = 0`，避免把活动额度再次转移。
+Pulse 专用接收端已在 `BenefitChangeRecord` / `GrantUserQuotaTx` 基础上实现 payload 比较、审计记录、明确错误码及独立发放限额。同一 Reward 最多到账一次；新奖励强制 `transferable_quota = false`，不能把活动额度再次转移。新发放默认关闭，真实到账仍需部署验收。
 
 Benefit 状态必须显式区分：
 
@@ -700,12 +701,18 @@ bucket = SHA256(experiment_id + user_id) % 10000
 
 ## 24. 用户身份与 API
 
-浏览器不得自行声明可信 `user_id`。Pulse 用户接口链路固定为：
+浏览器不得自行声明可信 `user_id`。Pulse 用户接口有两条受控链路：
 
 ```text
 Browser / YuanHeng
   → new-api Session
   → new-api Signed BFF（服务端派生 user_id）
+  → Meta Pulse
+
+Community Browser
+  → Answer 认证会话、激活及本地状态校验
+  → 受保护的一对一绑定
+  → Answer 插件 community-bff（独立角色和密钥）
   → Meta Pulse
 ```
 
@@ -719,7 +726,7 @@ X-Pulse-Nonce
 X-Pulse-Signature
 ```
 
-签名至少覆盖规范化的 `method + path + user_id + timestamp + nonce + body_hash`；时间窗、Nonce、来源和密钥版本必须校验。用户 BFF 的 `user_id` 只能来自 new-api session；Worker 的 Benefit 用户必须来自不可变 Grant，并由 new-api 校验请求头与 body 一致。
+签名至少覆盖规范化的 `method + path + user_id + timestamp + nonce + body_hash`；时间窗、Nonce、来源和密钥版本必须校验。new-api BFF 的 `user_id` 只能来自 new-api session；社区 BFF 的 API 身份只能来自真实 Answer 会话对应的受保护绑定；Worker 的 Benefit 用户必须来自不可变 Grant，并由 new-api 校验请求头与 body 一致。
 
 社区身份独立属于 Answer。可选绑定链路为：
 
@@ -731,22 +738,20 @@ Answer browser flow
   → Answer 邮箱确认/本地账号绑定
 ```
 
-Login Ticket callback 在验签前全部不可信。Connector 不使用未证明 verified 的 new-api Email 自动匹配 Answer 账号；`EnabledOriginalUserSystem=true`，并关闭 UserStatus/Rank 代理，避免 new-api/Pulse 覆盖 Answer 密码、资料、封禁和治理角色。现有 Ticket 未签名 `state`，浏览器 flow marker 只是额外门禁，不等价完整 OAuth state；未来若允许最小 new-api 变更，应把 state 纳入 Ticket 签名。
+Login Ticket callback 在验签前全部不可信。Connector 不使用未证明 verified 的 new-api Email 自动匹配 Answer 账号；`EnabledOriginalUserSystem=true`，并关闭 UserStatus/Rank 代理，避免 new-api/Pulse 覆盖 Answer 密码、资料、封禁和治理角色。现有 Ticket 未签名 `state`，浏览器 flow marker 只是额外门禁，不等价完整 OAuth state；后续 SSO 专项升级应把 state 纳入 Ticket 签名。本次付费来源与 Benefit 升级没有改变该 Ticket 契约。
 
-以下是 Pulse 原始用户 API，只允许内网的 new-api BFF、Worker 或受控管理端访问；浏览器、Answer 和 YuanHeng 不得直接调用：
+以下是 Pulse 原始用户 API，只允许内网具有对应签名角色的 new-api BFF 或 Answer 社区 BFF 访问；浏览器和 YuanHeng 不得直接调用：
 
 ```text
-GET  /v1/period/current
-GET  /v1/me/summary
-GET  /v1/me/ledger
-GET  /v1/me/rewards
-GET  /v1/me/rewards/:grant_id
-POST /v1/me/pulses
-GET  /healthz
-GET  /readyz
+GET  /v1/internal/me/summary
+GET  /v1/internal/me/rewards
+GET  /v1/internal/me/rules
+POST /v1/internal/me/actions
 ```
 
-内部路由按角色最小授权：`new-api` 访问用户 summary/action/reward；`forum` 只使用独立 `PULSE_FORUM_HMAC_SECRET` 访问用户等级 Profile；内容奖励管理路由只接受 `admin`。Forum Profile 密钥不得与 Settlement/Worker、BFF、Admin、Reward Random 或 Forum SSO Login Ticket 密钥复用；角色缺失、未知、密钥复用或不匹配时 fail closed，且不得触发查询、记账或结算。
+周期信息包含在 summary/rules 中；原动作结果通过 `rewards?action_id=…` 精确恢复，没有单独的公开 Ledger 或 Grant 详情入口。`/healthz`、`/readyz` 是独立的私网健康检查，不属于用户 BFF 契约。
+
+内部路由按角色最小授权：`new-api` 与独立 `community-bff` 访问本人 summary/action/reward/rules；`forum` 只使用独立 `PULSE_FORUM_HMAC_SECRET` 访问用户等级 Profile；内容奖励管理路由只接受 `admin`。Forum Profile 密钥不得与 Settlement/Worker、BFF、Admin、Reward Random 或 Forum SSO Login Ticket 密钥复用；角色缺失、未知、密钥复用或不匹配时 fail closed，且不得触发查询、记账或结算。
 
 ## 25. Admin / Operator
 
@@ -830,7 +835,7 @@ Pulse 不保存：
 
 只使用 new-api `user_id` 作为 opaque principal。
 
-Pulse 对 new-api LOG_DB 使用只读账号，并且无权限直接写 new-api 用户余额表。new-api session Cookie 不得转发给 Pulse 或论坛；YuanHeng 的 Cookie 必须隔离在 new-api WebView / 客户端安全存储边界内。社区使用新的独立 HTTPS 域名：精确根路径 `/` 由无 mock 的 METAR 静态壳层提供，`/blog/` 由 VitePress 提供，其余 `/questions`、`/users/*` 和 `/answer/api/*` 仍由 Answer 提供。静态壳层只调用同源 Answer API，不实现社区写权限。社区网关仅按 allowlist 转发 Answer `visit` 或 callback flow Cookie；callback 清除 Authorization，所有代理路由清除 Pulse 签名头，普通路由保留 Answer 自己的 Authorization；网关不代理 new-api 或 Pulse。
+Pulse 对 new-api LOG_DB 使用只读账号，并且无权限直接写 new-api 用户余额表。new-api session Cookie 不得转发给 Pulse 或论坛；YuanHeng 的 Cookie 必须隔离在 new-api WebView / 客户端安全存储边界内。社区使用新的独立 HTTPS 域名：精确根路径 `/` 由无 mock 的 METAR 静态壳层提供，`/blog/` 由 VitePress 提供，其余 `/questions`、`/users/*` 和 `/answer/api/*` 仍由 Answer 提供。静态壳层只调用同源 Answer API 与认证社区 BFF，不自行实现身份或写权限判断。社区网关仅按 allowlist 转发 Answer `visit` 或 callback flow Cookie；callback 清除 Authorization，所有代理路由清除 Pulse 签名头，普通路由保留 Answer 自己的 Authorization；网关不直接代理 new-api 或 Pulse。
 
 ## 29. 对账与可观测性
 
@@ -921,12 +926,12 @@ new-api 服务器：现有域名 + new-api + LOG_DB / Benefit API
 - Pulse DB 用户：Pulse DB read/write；
 - NEWAPI_LOG_DSN 用户：new-api LOG_DB 仅授予 `logs` 表的 SELECT（及必要的 USAGE/SHOW VIEW），由 `access-check` fail closed 验收；
 - Internal Benefit API：内网/localhost + HMAC；
-- Pulse 原始用户 API：仅内网，由 new-api Signed BFF 代理；
+- Pulse 原始用户 API：仅内网，由 new-api Signed BFF 或独立 Answer 社区 BFF 代理；
 - 对外 `/api/pulse/*`：由 new-api BFF 接管并清除浏览器提交的 Pulse 服务签名头，不把浏览器请求直接转发为 Pulse 原始请求；
 - 社区使用新的独立 HTTPS 域名；精确根路径进入 METAR 静态壳层、Answer 原生/API 路径保持代理、`/blog/` 进入 VitePress，网关使用 Cookie allowlist，Login Ticket callback query 不进入边缘 access log；
-- 社区上线不要求修改 new-api 源码；生产仅配置现有 SSO Bridge 的共享密钥与固定 callback；
+- 仅开通社区账号与可选绑定可复用现有 SSO Bridge 配置；开放自动奖励还必须升级 new-api 付费来源证明和 Benefit 接收端，并按 `REWARDS_ROLLOUT.md` 验收；
 - Secret 仅存服务器 Secret / 密码管理器，不写 GitHub。
-- 生产配置按角色校验：API 需要服务/BFF/Admin/随机密钥，不持有 LOG_DB 凭据；Worker 仅需要服务/随机密钥及只读 LOG_DB/Benefit 配置，不注入 BFF/Admin 密钥；迁移和只读工具不因公共配置加载而被迫持有签名密钥，实际操作另行检查所需能力。
+- 生产配置按角色校验：API 需要 BFF/Admin/随机密钥，社区角色与受控撤销分别使用独立密钥；API 不持有 LOG_DB 凭据或发奖用的 `PULSE_SERVICE_HMAC_SECRET`，撤销密钥按需配置。Worker 仅持有结算服务/随机密钥及只读 LOG_DB/Benefit 配置，不注入 rollback/BFF/Admin 密钥；迁移和只读工具不因公共配置加载而被迫持有签名密钥，实际操作另行检查所需能力。
 - 更新流程先获得部署锁、只读校验并备份原 `.env`，再执行数据库备份、拉取、构建和迁移；只有安装可初始化凭据。更新配置缺失/占位时停止，不能自动重建密码或随机种子。Compose 使用已校验配置文件，不接受继承的应用环境变量隐式覆盖。
 - API/Worker 均通过自身 `/readyz` 检查 Pulse MySQL/Redis；Worker 诊断端口为容器内 8089，不能将其公开到宿主机或公网。
 
@@ -1002,7 +1007,7 @@ Meta Pulse                贡献值 / 券 / 等级 / Reward 事实源
 - Pulse 对论坛内容库只读；Answer 本地 ID 必须经受保护绑定映射为 new-api ID；
 - 只采集绑定后发布的公开 available/closed 问题，未绑定、绑定前、隐藏、待审核或删除内容不进入候选；
 - 内容奖励直接生成独立预算 Reward Grant，**不产生 contribution 或 ticket**；
-- 社区首页静态壳层只读访问 Answer API，不保存业务状态、不复制 Answer token、不直接调用 Pulse；社区网关不代理 new-api/Pulse，只转发 allowlist Cookie；callback 清除 Authorization，普通代理路由保留 Answer API Authorization，所有代理路由清除 Pulse 签名头；
+- 社区首页静态壳层读取 Answer API，并通过同源认证社区 BFF 使用本人权益；不保存余额或中奖事实、不复制 Answer token、不直接调用 Pulse。社区网关仅代理 Answer（包含社区 BFF），不直接代理 new-api/Pulse；只转发 allowlist Cookie，callback 清除 Authorization，普通代理路由保留 Answer API Authorization，所有代理路由清除 Pulse 签名头；
 - Pulse 故障时等级徽章降级为空，不影响 Answer 本地登录和浏览。
 
 完整定义、剩余 signed-state 限制和上线门禁见 `docs/COMMUNITY.md`。
@@ -1099,13 +1104,15 @@ Pulse 侧 M7 已具备实现和回归测试；Answer v1.7.1 表结构、绑定�
 
 ```text
 tool period-create --key … --starts-at … --multiplier-bps … [--activate]
-  → 单事务：检查窗口重叠 → 建 draft 周期 → 写死经济规则 → ValidateRules → 可选 draft→active → pulse_audit_log
+  [--rewards-file … --reward-budget … --ticket-threshold-milli …]
+  → 单事务：检查窗口重叠 → 建 draft 周期 → 写入经济规则及可选奖池/预算 → 完整校验 → 可选 draft→active → pulse_audit_log
 ```
 
 - 周期窗口固定 10 天、半开区间 `[starts_at, ends_at)`，`ends_at` 由服务端推导，不接受调用方传入。
 - 创建时必须至少写入一条经济规则，且规则与周期在**同一事务**内落库。这是不变量 #11 的直接结果：周期 Active 后规则不可原地修改，而无匹配规则的事件会被记为 `eligible=false / contribution=0` —— 那是被记录的不合格事件，不是隐式的默认奖励规则，事后无法补救。
 - 重叠检查覆盖全部状态而非仅 Active。两个周期共享任一时刻都会让事件的周期归属产生歧义，即使它们都已 closed。窗口首尾相接不算重叠，与 `period.Contains` 的半开语义一致。
 - 激活前调用 `economics.ValidateRules`，走与 ingest 热路径相同的校验，避免周期带着"每批都会失败"的规则上线。
+- 带奖池时必须同时提供严格 JSON 奖项、正整数 quota 预算和产券阈值，资金策略强制 `verified-paid-v1`；奖项、权重、loyalty 预算及审计与周期同事务落库。未提供奖池的旧调用保留 legacy 摄入用途，不能开放真实抽奖。Active 后数据库冻结奖项与预算核心配置，预占/结算计数仍可推进；格式与操作步骤见 `REWARDS_ROLLOUT.md`。
 
 游标前移是独立的、不可逆的运营动作：
 
@@ -1140,3 +1147,18 @@ admin Principal（签名派生，不信任请求体）
 - 投影不包含任何 Ledger 金额。控制台不应成为账本事实源的第二份、更弱的渲染。
 
 已有管理员入口位于 new-api `/console/pulse-ops`，通过同域 `/api/pulse/ops/overview` 访问本接口；new-api 从管理员会话派生用户及角色，并使用独立 `PULSE_ADMIN_HMAC_SECRET` 代签。该入口不在 METAR 社区静态前端，Answer 角色不自动获得 Pulse 运营权限。社区 F5 工作台仍是独立待实现范围。
+
+
+## 41. 自动到账与付费证明安全边界
+
+社区认证 BFF 已落地：Answer 原生认证与激活校验后，插件从真实会话读取本地身份，实时核验本地状态及保护绑定，使用独立 community-bff 密钥访问 `/v1/internal/me/{summary,rewards,rules,actions}`。公网 `/metar/api/pulse/*` 仅别名转发 Answer 插件，不能透传为 Pulse 原始 API。POST 固定同源 Origin、X-Metar-Request、严格JSON和Idempotency-Key；只允许 action_id，trigger_type由服务端固定pulse。summary不暴露内部身份/账本source，action不暴露随机值、配置内部字段或审计数据。查询结果no-store。
+
+新奖池周期持久化 funding_policy=verified-paid-v1 和 ticket_threshold_milli，创建时与经济规则、奖项、loyalty预算、审计同事务写入。历史周期默认legacy，不能原地升级发奖或降回draft。Active后的核心周期配置、奖项与预算上限由数据库冻结，运行计数继续允许更新。产券使用周期固化门槛。API默认不允许新Action；Shadow状态也不能从社区扣券。已成功Action的跨周期恢复先于开关与周期校验。
+
+new-api 新增本地付费资格账本与钱包结算凭证。首版只覆盖升级后的 Stripe/Creem/易支付真实支付回调入账，以及随后普通同步钱包的预扣、绝对金额结算和退款；使用稳定 request_id 与用户锁，新支付成功与资格入账同事务。历史余额来源保持未知、不回填资格；赠送、手动加额、普通/钱包兑换码、签到、邀请和 Pulse 奖励不增加付费资格。订阅、独立套餐令牌、异步任务、Realtime、强制预扣图像及其他未归因扣费路径暂不产券；不支持的扣费/转码/手工修改保守失效资格。该实现不依赖 Pulse 网络；上线须排空旧实例在途请求与旧余额 batch 后整体切换，不能混跑。
+
+LOG_DB 最小事实为 `other.pulse_funding={version:1,status:"verified",paid_quota,non_paid_quota,unknown_quota,proof_ref}`，非负整数合计必须等于日志 quota。Pulse 只以 paid_quota 形成 QuotaDelta/贡献；同一 verified 凭证中的 non_paid_quota 和 unknown_quota 不计入贡献。凭证缺失、状态 unknown 或未支持的退款进入 manual_review；同步预扣失败退款在消费日志前完成，异步初次与后续日志暂不产券。proof_ref 与 Usage/Ledger/游标同事务使用 `paid_funding:{source_system}` 幂等记录永久占用，另一 log.id 重复携带同 proof 不可再次记贡献。老 Usage 和账本不重写；新周期服务层也拒绝无证明事件。付款追回冻结 new-api 新奖励资格，已发奖励保留原 Grant 审计，不自动重复或超额追扣。
+
+Pulse使用事务预算预占；当余量不足最大单奖，暂停整个奖池以维持公开权重语义。new-api另以持久化锁和每日计数，在自己的事务中限制单笔、用户日、平台日毛发放额，固定Asia/Shanghai日界，撤销不返还当日限额。账户禁用/删除/支付风险冻结拒绝新Grant；现存同source_ref同payload先恢复，开关/限额不阻断重放。新奖励类型固定newapi_quota且不可转让。
+
+结算与撤销权限分离：pulse-settlement只能grant/query；pulse-rollback只能query/rollback，独立密钥且禁止交给Worker。查询/撤销沿用服务主体+source_ref，不从浏览器派生受益人；grant仍必须签名主体等于请求user_id。余额不足时撤销明确拒绝，不能扣成负余额；Pulse保留原记录/预算等待人工审计。暂停新发奖后Query/Reconcile继续运行。`PULSE_ACTIONS_ENABLED` 与 `PULSE_BENEFIT_ENABLED` 默认 false，Shadow Mode 默认 true；Answer 插件缺少独立社区密钥时只关闭该 BFF，不阻断本地登录。代码实现与本地测试不代表生产已开放，完整部署步骤与限定支持范围见 `REWARDS_ROLLOUT.md`。

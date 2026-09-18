@@ -147,6 +147,72 @@
     }
   }
 
+  // Only operation identifiers are kept for response-loss recovery; balances and
+  // reward outcomes always come from the authenticated server.
+  class PulseOperation {
+    constructor(userId) { this.key = `_metar_pending_pulse:${String(userId)}`; }
+    read() {
+      try {
+        const value = JSON.parse(window.sessionStorage.getItem(this.key) || 'null');
+        if (value && /^[a-f0-9-]{36}$/.test(value.actionId) && value.actionId === value.idempotencyKey) return value;
+      } catch (_) { /* Missing storage never creates an operation. */ }
+      return null;
+    }
+    begin() {
+      const previous = this.read();
+      if (previous) return previous;
+      const id = window.crypto.randomUUID();
+      const value = { actionId: id, idempotencyKey: id };
+      try { window.sessionStorage.setItem(this.key, JSON.stringify(value)); }
+      catch (_) { throw new AdapterError('无法保存本次请求，请允许站点存储后重试', { code: 'storage_unavailable' }); }
+      return value;
+    }
+    clear() { window.sessionStorage.removeItem(this.key); }
+  }
+
+  function formatPulseQuota(amount, perUnit) {
+    if (!Number.isSafeInteger(amount) || amount < 0) return '待核对';
+    if (!Number.isSafeInteger(perUnit) || perUnit <= 0) return `${amount} quota`;
+    const n = BigInt(amount), d = BigInt(perUnit), scale = 1000000n;
+    const tail = ((n % d) * scale / d).toString().padStart(6, '0').replace(/0+$/, '');
+    const approximate = (n % d) * scale % d !== 0n ? '≈' : '';
+    return `${approximate}${n / d}${tail ? `.${tail}` : ''} API 额度`;
+  }
+
+  class PulseAdapter {
+    constructor(answer) { this.answer = answer; }
+    async request(path, options = {}) {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), this.answer.timeoutMs);
+      const headers = new Headers({ Accept: 'application/json' });
+      const token = this.answer.token();
+      if (token) headers.set('Authorization', token.startsWith('Bearer ') ? token : `Bearer ${token}`);
+      if (options.operation) {
+        headers.set('Content-Type', 'application/json');
+        headers.set('X-Metar-Request', '1');
+        headers.set('Idempotency-Key', options.operation.idempotencyKey);
+      }
+      try {
+        const response = await fetch(`/metar/api/pulse/${path}`, {
+          method: options.operation ? 'POST' : 'GET', headers, credentials: 'same-origin', redirect: 'error', signal: controller.signal,
+          ...(options.operation ? { body: JSON.stringify({ action_id: options.operation.actionId }) } : {}),
+        });
+        let payload;
+        try { payload = await response.json(); } catch (_) { throw new AdapterError('暂时无法确认奖励状态，请查询原请求', { code: options.operation ? 'action_pending' : 'invalid_response' }); }
+        if (!response.ok) throw new AdapterError('权益服务暂时无法完成请求', { code: payload?.error || `http_${response.status}`, status: response.status });
+        if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new AdapterError('权益数据格式异常', { code: 'invalid_response' });
+        return payload;
+      } catch (error) {
+        if (error instanceof AdapterError) throw error;
+        throw new AdapterError('暂时无法确认奖励状态，请稍后查询原请求', { code: options.operation ? 'action_pending' : 'pulse_unavailable' });
+      } finally { window.clearTimeout(timeout); }
+    }
+    summary() { return this.request('summary'); }
+    rules() { return this.request('rules'); }
+    rewards(actionId = '') { return this.request(`rewards?${actionId ? `action_id=${encodeURIComponent(actionId)}` : 'limit=50'}`); }
+    act(operation) { return this.request('actions', { operation }); }
+  }
+
   class KnowledgeAdapter {
     constructor(config) { this.base = relativePath(config.blogBasePath, '/blog/'); }
     listArticles() {
@@ -158,5 +224,5 @@
     }
   }
 
-  window.MetarAdapters = Object.freeze({ AdapterError, AnswerAdapter, KnowledgeAdapter, loadIdentitySnapshot, relativePath, routeMatchesNavigation });
+  window.MetarAdapters = Object.freeze({ AdapterError, AnswerAdapter, PulseAdapter, PulseOperation, formatPulseQuota, KnowledgeAdapter, loadIdentitySnapshot, relativePath, routeMatchesNavigation });
 })();

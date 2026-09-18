@@ -16,8 +16,10 @@ const (
 	ConfigSSOHMACSecretPreviousTitle       = "plugin.pulse_user_center.backend.config.sso_hmac_secret_previous.title"
 	ConfigSSOHMACSecretPreviousDescription = "plugin.pulse_user_center.backend.config.sso_hmac_secret_previous.description"
 
-	ConfigPulseHMACSecretTitle       = "plugin.pulse_user_center.backend.config.pulse_hmac_secret.title"
-	ConfigPulseHMACSecretDescription = "plugin.pulse_user_center.backend.config.pulse_hmac_secret.description"
+	ConfigPulseHMACSecretTitle              = "plugin.pulse_user_center.backend.config.pulse_hmac_secret.title"
+	ConfigPulseHMACSecretDescription        = "plugin.pulse_user_center.backend.config.pulse_hmac_secret.description"
+	ConfigCommunityBFFHMACSecretTitle       = "plugin.pulse_user_center.backend.config.community_bff_hmac_secret.title"
+	ConfigCommunityBFFHMACSecretDescription = "plugin.pulse_user_center.backend.config.community_bff_hmac_secret.description"
 
 	ConfigNonceRedisURLTitle       = "plugin.pulse_user_center.backend.config.nonce_redis_url.title"
 	ConfigNonceRedisURLDescription = "plugin.pulse_user_center.backend.config.nonce_redis_url.description"

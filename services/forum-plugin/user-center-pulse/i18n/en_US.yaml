@@ -19,7 +19,7 @@ plugin:
           title:
             other: Meta Pulse Internal Base URL
           description:
-            other: Base URL of meta-pulse-api. Only the read-only profile endpoint is called.
+            other: Private base URL of meta-pulse-api for profile and authenticated community benefit requests.
         sso_hmac_secret:
           title:
             other: Forum SSO HMAC Secret
@@ -35,6 +35,11 @@ plugin:
             other: Pulse Service HMAC Secret
           description:
             other: Must match Pulse PULSE_FORUM_HMAC_SECRET, is only used for read-only profile requests, and must not reuse the Forum SSO or settlement secret.
+        community_bff_hmac_secret:
+          title:
+            other: Community Pulse BFF HMAC Secret
+          description:
+            other: Optional. Must match Pulse PULSE_COMMUNITY_BFF_HMAC_SECRET and be independent of all SSO, profile, admin and settlement keys. Empty disables community benefit routes without affecting local login.
         nonce_redis_url:
           title:
             other: Login Ticket Nonce Redis URL

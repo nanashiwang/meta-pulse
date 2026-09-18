@@ -21,7 +21,8 @@ func SummaryRoute(router *gin.RouterGroup, reader SummaryReader, auth gin.Handle
 		return
 	}
 	router.GET("/me/summary", auth, func(c *gin.Context) {
-		principal, ok := PrincipalWithRole(c, "new-api")
+		c.Header("Cache-Control", "no-store")
+		principal, ok := ProductPrincipal(c)
 		if !ok {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return

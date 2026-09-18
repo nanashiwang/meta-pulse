@@ -19,7 +19,7 @@ plugin:
           title:
             other: Meta Pulse 内部地址
           description:
-            other: meta-pulse-api 地址，仅调用只读的用户档案接口。
+            other: meta-pulse-api 私网地址，用于等级档案和已认证社区用户的权益请求。
         sso_hmac_secret:
           title:
             other: 论坛 SSO HMAC 密钥
@@ -35,6 +35,11 @@ plugin:
             other: Pulse 服务 HMAC 密钥
           description:
             other: 与 Pulse 的 PULSE_FORUM_HMAC_SECRET 相同，仅用于签名只读档案请求；不得与 Forum SSO 或结算密钥复用。
+        community_bff_hmac_secret:
+          title:
+            other: 社区 Pulse BFF HMAC 密钥
+          description:
+            other: 选填。与 Pulse 的 PULSE_COMMUNITY_BFF_HMAC_SECRET 相同，必须独立于 SSO、档案、管理和结算密钥。留空关闭社区权益接口，不影响本地登录。
         nonce_redis_url:
           title:
             other: Login Ticket Nonce Redis 地址

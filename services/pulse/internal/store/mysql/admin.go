@@ -657,6 +657,7 @@ func (r *periodAdminRepository) Create(ctx context.Context, activity period.Peri
 		PeriodKey: activity.Key, Status: string(period.StatusDraft),
 		StartsAt: activity.StartsAt, EndsAt: activity.EndsAt, Timezone: activity.Timezone,
 		ConfigVersion: activity.ConfigVersion, RandomVersion: activity.RandomVersion,
+		FundingPolicy: activity.FundingPolicy, TicketThresholdMilli: activity.TicketThresholdMilli,
 	}
 	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
 		return period.Period{}, fmt.Errorf("create period: %w", err)

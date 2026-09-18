@@ -6,6 +6,7 @@ import (
 
 	"github.com/nanashiwang/meta-pulse/internal/domain/economics"
 	"github.com/nanashiwang/meta-pulse/internal/domain/period"
+	"github.com/nanashiwang/meta-pulse/internal/domain/reward"
 )
 
 type PeriodAdminRepository interface {
@@ -24,6 +25,12 @@ type PeriodAdminRepository interface {
 // activated. Rules of an active period are immutable by invariant #11.
 type EconomicsAdminRepository interface {
 	CreateRule(ctx context.Context, periodID uint64, rule economics.Rule) (economics.Rule, error)
+}
+
+// RewardAdminRepository initializes immutable reward economics before activation.
+type RewardAdminRepository interface {
+	CreateDefinition(context.Context, uint64, reward.Definition) (reward.Definition, error)
+	CreateBudget(context.Context, RewardBudget) (RewardBudget, error)
 }
 
 type AuditLog struct {

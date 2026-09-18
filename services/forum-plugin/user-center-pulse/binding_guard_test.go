@@ -3,6 +3,7 @@ package pulse_user_center
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -147,6 +148,26 @@ CREATE TABLE user_external_login (
 		}
 	}
 	mustExec("INSERT INTO user_external_login(user_id, provider, external_id) VALUES(?, ?, ?)", 10, pluginSlug, "101")
+	// The community BFF must use live local status and the protected binding,
+	// including when Answer's session cache still reports an available user.
+	mustExec("DROP TABLE IF EXISTS `user`")
+	t.Cleanup(func() { _, _ = db.Exec("DROP TABLE IF EXISTS `user`") })
+	mustExec("CREATE TABLE `user` (id BIGINT NOT NULL PRIMARY KEY, status INT NOT NULL, mail_status INT NOT NULL)")
+	mustExec("INSERT INTO `user` VALUES (10,1,1),(11,1,1)")
+	identityReader := guard.(communityIdentityReader)
+	if id, err := identityReader.CommunityIdentity(ctx, "10"); err != nil || id != "101" {
+		t.Fatalf("community bound identity=%q err=%v", id, err)
+	}
+	if _, err := identityReader.CommunityIdentity(ctx, "11"); !errors.Is(err, errCommunityBindingRequired) {
+		t.Fatalf("unbound identity err=%v", err)
+	}
+	for _, update := range []string{"status = 9", "status = 10", "status = 1, mail_status = 2"} {
+		mustExec("UPDATE `user` SET " + update + " WHERE id=10")
+		if _, err := identityReader.CommunityIdentity(ctx, "10"); !errors.Is(err, errCommunityAccountUnavailable) {
+			t.Fatalf("unavailable community account accepted after %s: %v", update, err)
+		}
+	}
+	mustExec("UPDATE `user` SET status=1,mail_status=1 WHERE id=10")
 	mustFail("INSERT INTO user_external_login(user_id, provider, external_id) VALUES(?, ?, ?)", 11, pluginSlug, "101")
 	mustFail("INSERT INTO user_external_login(user_id, provider, external_id) VALUES(?, ?, ?)", 10, pluginSlug, "102")
 	mustFail("INSERT INTO user_external_login(user_id, provider, external_id) VALUES(?, ?, ?)", 12, pluginSlug, "001")
@@ -167,6 +188,9 @@ CREATE TABLE user_external_login (
 	mustExec("CREATE UNIQUE INDEX " + bindingGuardExternalIndex + " ON user_external_login (" + bindingGuardExternalColumn + ", user_id)")
 	if err := guard.Ready(ctx); err == nil {
 		t.Fatal("weakened composite binding index was reported ready")
+	}
+	if _, err := identityReader.CommunityIdentity(ctx, "10"); err == nil {
+		t.Fatal("community identity accepted weakened binding guard")
 	}
 	mustExec("DROP INDEX " + bindingGuardExternalIndex + " ON user_external_login")
 	mustExec("CREATE UNIQUE INDEX " + bindingGuardExternalIndex + " ON user_external_login (" + bindingGuardExternalColumn + ")")

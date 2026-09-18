@@ -22,7 +22,8 @@ func ActionRoute(router *gin.RouterGroup, executor ActionExecutor, auth gin.Hand
 		return
 	}
 	router.POST("/me/actions", auth, func(c *gin.Context) {
-		principal, ok := PrincipalWithRole(c, "new-api")
+		c.Header("Cache-Control", "no-store")
+		principal, ok := ProductPrincipal(c)
 		if !ok {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
@@ -52,14 +53,29 @@ func ActionRoute(router *gin.RouterGroup, executor ActionExecutor, auth gin.Hand
 		if err != nil {
 			status := http.StatusInternalServerError
 			switch {
+			case errors.Is(err, service.ErrActionsUnavailable):
+				status = http.StatusServiceUnavailable
 			case errors.Is(err, service.ErrMissingIdempotencyKey), errors.Is(err, service.ErrInvalidAction):
 				status = http.StatusBadRequest
 			case errors.Is(err, service.ErrInsufficientTickets), errors.Is(err, service.ErrBudgetExceeded), errors.Is(err, ledger.ErrIdempotencyConflict):
 				status = http.StatusConflict
 			}
-			c.JSON(status, gin.H{"error": "action failed"})
+			code := "action_pending"
+			switch {
+			case errors.Is(err, service.ErrInsufficientTickets):
+				code = "insufficient_tickets"
+			case errors.Is(err, service.ErrBudgetExceeded):
+				code = "budget_exceeded"
+			case errors.Is(err, ledger.ErrIdempotencyConflict):
+				code = "idempotency_conflict"
+			case errors.Is(err, service.ErrActionsUnavailable):
+				code = "actions_unavailable"
+			case status == http.StatusBadRequest:
+				code = "invalid_action"
+			}
+			c.JSON(status, gin.H{"error": code})
 			return
 		}
-		c.JSON(http.StatusCreated, result)
+		c.JSON(http.StatusCreated, gin.H{"grant_id": result.GrantID, "period_id": result.PeriodID, "action_id": result.ActionID, "reward_type": result.RewardType, "amount": result.Amount, "status": result.Status})
 	})
 }

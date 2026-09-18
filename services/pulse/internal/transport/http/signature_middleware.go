@@ -61,3 +61,9 @@ func PrincipalWithRole(c *gin.Context, role string) (security.Principal, bool) {
 	principal, ok := Principal(c)
 	return principal, ok && principal.UserID != 0 && principal.Role == role
 }
+
+// ProductPrincipal admits only the two authenticated user-facing BFF roles.
+func ProductPrincipal(c *gin.Context) (security.Principal, bool) {
+	p, ok := Principal(c)
+	return p, ok && p.UserID != 0 && (p.Role == "new-api" || p.Role == "community-bff")
+}

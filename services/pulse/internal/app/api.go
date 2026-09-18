@@ -27,6 +27,7 @@ type APIRoutes struct {
 	Action     transporthttp.ActionExecutor
 	Content    transporthttp.ContentAwardExecutor
 	History    transporthttp.RewardHistoryReader
+	Rules      transporthttp.RewardRulesReader
 	Operations transporthttp.OperationsOverviewReader
 	// Auth guards every route above. Without it none are registered: an
 	// unauthenticated internal route would expose user data.
@@ -80,6 +81,9 @@ func NewRouterWithRoutes(logger *slog.Logger, readiness ReadinessChecker, routes
 	}
 	if routes.History != nil {
 		transporthttp.RewardHistoryRoute(internal, routes.History, routes.Auth)
+	}
+	if routes.Rules != nil {
+		transporthttp.RewardRulesRoute(internal, routes.Rules, routes.Auth)
 	}
 	if routes.Operations != nil {
 		transporthttp.OperationsOverviewRoute(internal, routes.Operations, routes.Auth)

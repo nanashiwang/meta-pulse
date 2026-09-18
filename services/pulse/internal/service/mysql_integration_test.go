@@ -62,7 +62,7 @@ func TestMySQLActionConcurrencyAndCommitRecovery(t *testing.T) {
 	var periodID uint64
 	if _, err := sqlDB.ExecContext(ctx, `
 INSERT INTO pulse_period (period_key, status, starts_at, ends_at, timezone, config_version, random_version)
-VALUES (?, 'active', ?, ?, 'Asia/Shanghai', 'integration-v1', 'hmac-v1')`, periodKey, startsAt, endsAt); err != nil {
+VALUES (?, 'draft', ?, ?, 'Asia/Shanghai', 'integration-v1', 'hmac-v1')`, periodKey, startsAt, endsAt); err != nil {
 		t.Fatalf("insert period: %v", err)
 	}
 	if err := sqlDB.QueryRowContext(ctx, `SELECT id FROM pulse_period WHERE period_key = ?`, periodKey).Scan(&periodID); err != nil {
@@ -77,6 +77,9 @@ VALUES (?, 'integration-quota', 'quota', 5, 1, 0, 'integration-v1', 1)`, periodI
 INSERT INTO pulse_reward_budget (period_id, budget_type, hard_cap, reserved_amount, settled_amount, released_amount, version)
 VALUES (?, 'loyalty', 5, 0, 0, 0, 0)`, periodID); err != nil {
 		t.Fatalf("insert reward budget: %v", err)
+	}
+	if _, err := sqlDB.ExecContext(ctx, `UPDATE pulse_period SET status='active' WHERE id=?`, periodID); err != nil {
+		t.Fatalf("activate complete reward fixture: %v", err)
 	}
 	if _, err := sqlDB.ExecContext(ctx, `
 INSERT INTO pulse_account (user_id, period_id, asset_type, balance, version)
@@ -204,7 +207,7 @@ func TestMySQLPeriodCloseRollbackReentryAndRestart(t *testing.T) {
 	var periodID uint64
 	if _, err := sqlDB.ExecContext(ctx, `
 INSERT INTO pulse_period (period_key, status, starts_at, ends_at, timezone, config_version, random_version)
-VALUES (?, 'active', ?, ?, 'Asia/Shanghai', 'integration-v1', 'hmac-v1')`, periodKey, startsAt, endsAt); err != nil {
+VALUES (?, 'draft', ?, ?, 'Asia/Shanghai', 'integration-v1', 'hmac-v1')`, periodKey, startsAt, endsAt); err != nil {
 		t.Fatalf("insert period: %v", err)
 	}
 	if err := sqlDB.QueryRowContext(ctx, `SELECT id FROM pulse_period WHERE period_key = ?`, periodKey).Scan(&periodID); err != nil {
@@ -219,6 +222,9 @@ VALUES (?, 'integration-period-quota', 'quota', 7, 1, 0, 'integration-v1', 1)`, 
 INSERT INTO pulse_reward_budget (period_id, budget_type, hard_cap, reserved_amount, settled_amount, released_amount, version)
 VALUES (?, 'period_reward', 7, 0, 0, 0, 0)`, periodID); err != nil {
 		t.Fatalf("insert reward budget: %v", err)
+	}
+	if _, err := sqlDB.ExecContext(ctx, `UPDATE pulse_period SET status='active' WHERE id=?`, periodID); err != nil {
+		t.Fatalf("activate complete reward fixture: %v", err)
 	}
 	if _, err := sqlDB.ExecContext(ctx, `
 INSERT INTO pulse_worker_cursor (cursor_name, source_system, cursor_value, watermark_at, version)
@@ -586,7 +592,7 @@ func TestMySQLSettlementClaimAndQueryRecovery(t *testing.T) {
 	var periodID uint64
 	if _, err := sqlDB.ExecContext(ctx, `
 INSERT INTO pulse_period (period_key, status, starts_at, ends_at, timezone, config_version, random_version)
-VALUES (?, 'active', ?, ?, 'Asia/Shanghai', 'integration-v1', 'hmac-v1')`, periodKey, now.Add(-time.Hour), now.Add(time.Hour)); err != nil {
+VALUES (?, 'draft', ?, ?, 'Asia/Shanghai', 'integration-v1', 'hmac-v1')`, periodKey, now.Add(-time.Hour), now.Add(time.Hour)); err != nil {
 		t.Fatalf("insert period: %v", err)
 	}
 	if err := sqlDB.QueryRowContext(ctx, `SELECT id FROM pulse_period WHERE period_key = ?`, periodKey).Scan(&periodID); err != nil {
@@ -602,6 +608,9 @@ VALUES (?, 'active', ?, ?, 'Asia/Shanghai', 'integration-v1', 'hmac-v1')`, perio
 INSERT INTO pulse_reward_budget (period_id, budget_type, hard_cap, reserved_amount, settled_amount, released_amount, version)
 VALUES (?, 'loyalty', 100, 25, 0, 0, 1)`, periodID); err != nil {
 		t.Fatalf("insert reward budget: %v", err)
+	}
+	if _, err := sqlDB.ExecContext(ctx, `UPDATE pulse_period SET status='active' WHERE id=?`, periodID); err != nil {
+		t.Fatalf("activate complete reward fixture: %v", err)
 	}
 
 	grantID := fmt.Sprintf("mysql-settlement-grant-%d", time.Now().UnixNano())

@@ -19,6 +19,7 @@ type Repositories struct {
 	Settlement     SettlementRepository
 	PeriodAdmin    PeriodAdminRepository
 	EconomicsAdmin EconomicsAdminRepository
+	RewardAdmin    RewardAdminRepository
 	Audit          AuditRepository
 	Experiment     ExperimentRepository
 	Metric         MetricRepository

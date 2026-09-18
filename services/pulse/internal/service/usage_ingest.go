@@ -9,6 +9,7 @@ import (
 
 	"github.com/nanashiwang/meta-pulse/internal/domain/economics"
 	"github.com/nanashiwang/meta-pulse/internal/domain/ledger"
+	"github.com/nanashiwang/meta-pulse/internal/domain/period"
 	"github.com/nanashiwang/meta-pulse/internal/domain/usage"
 	"github.com/nanashiwang/meta-pulse/internal/ports"
 )
@@ -170,6 +171,34 @@ func (s *UsageIngestService) processOne(ctx context.Context, incoming usage.Even
 			return err
 		}
 		incoming.PeriodID = activity.ID
+		if activity.FundingPolicy == period.VerifiedPaidFunding && (incoming.FundingProof == "" || incoming.QuotaDelta < 0) {
+			incoming.NeedsReview = true
+			incoming.ReviewReason = "verified-paid period requires a consumption funding proof"
+		}
+
+		if !incoming.NeedsReview && incoming.FundingProof != "" {
+			if repos.Idempotency == nil {
+				return errors.New("funding proof repository unavailable")
+			}
+			fingerprint := incoming.PayloadHash
+			claim, err := repos.Idempotency.GetOrCreateForUpdate(ctx, "paid_funding:"+incoming.SourceSystem, incoming.FundingProof, fingerprint)
+			if err != nil {
+				return err
+			}
+			if claim.ResponseStatus != nil || claim.PayloadHash != fingerprint {
+				incoming.NeedsReview = true
+				incoming.ReviewReason = "paid funding proof already belongs to another usage event"
+			} else {
+				status := 200
+				claim.ResponseStatus = &status
+				claim.ResponseJSON = []byte(`{}`)
+				claim.ResourceType = "paid_usage"
+				claim.ResourceID = incoming.SourceEventID
+				if err := repos.Idempotency.Save(ctx, claim); err != nil {
+					return err
+				}
+			}
+		}
 
 		if incoming.NeedsReview {
 			incoming.Status = usage.StatusManualReview
@@ -254,8 +283,12 @@ func (s *UsageIngestService) processOne(ctx context.Context, incoming usage.Even
 		if incoming.Eligible && incoming.ContributionMilli != 0 {
 			newNet = contributionEntry.BalanceAfter
 		}
-		oldEntitled := entitledTickets(stat.NetContributionMilli, s.ticketThresholdMilli)
-		newEntitled := entitledTickets(newNet, s.ticketThresholdMilli)
+		threshold := s.ticketThresholdMilli
+		if activity.TicketThresholdMilli > 0 {
+			threshold = activity.TicketThresholdMilli
+		}
+		oldEntitled := entitledTickets(stat.NetContributionMilli, threshold)
+		newEntitled := entitledTickets(newNet, threshold)
 		ticketDelta := newEntitled - oldEntitled
 		if ticketDelta != 0 {
 			operation := ledger.OperationTicketMint

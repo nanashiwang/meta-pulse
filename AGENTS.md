@@ -65,7 +65,7 @@ Meta Pulse = 调用之后的增长与权益系统
 - MySQL 8.0+
 - Redis 7+
 
-前端 UI 在 new-api 现有 React 18 / Vite / Semi Design 控制台中薄接入。
+前端 UI 包含 new-api React 18 / Vite / Semi Design 控制台，以及 METAR 静态社区壳层。社区权益只能经受 Answer 会话与保护绑定校验的 community-bff 调用 Pulse；forum profile、SSO、BFF、结算、撤销密钥禁止复用。
 
 社区层：Apache Answer（论坛，不 Fork，仅维护插件）+ VitePress（博客）。
 

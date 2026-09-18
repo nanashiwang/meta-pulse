@@ -74,14 +74,16 @@ type cursorModel struct {
 func (cursorModel) TableName() string { return "pulse_worker_cursor" }
 
 type periodModel struct {
-	ID            uint64    `gorm:"column:id;primaryKey"`
-	PeriodKey     string    `gorm:"column:period_key"`
-	Status        string    `gorm:"column:status"`
-	StartsAt      time.Time `gorm:"column:starts_at"`
-	EndsAt        time.Time `gorm:"column:ends_at"`
-	Timezone      string    `gorm:"column:timezone"`
-	ConfigVersion string    `gorm:"column:config_version"`
-	RandomVersion string    `gorm:"column:random_version"`
+	ID                   uint64    `gorm:"column:id;primaryKey"`
+	PeriodKey            string    `gorm:"column:period_key"`
+	Status               string    `gorm:"column:status"`
+	StartsAt             time.Time `gorm:"column:starts_at"`
+	EndsAt               time.Time `gorm:"column:ends_at"`
+	Timezone             string    `gorm:"column:timezone"`
+	ConfigVersion        string    `gorm:"column:config_version"`
+	RandomVersion        string    `gorm:"column:random_version"`
+	FundingPolicy        string    `gorm:"column:funding_policy"`
+	TicketThresholdMilli int64     `gorm:"column:ticket_threshold_milli"`
 }
 
 func (periodModel) TableName() string { return "pulse_period" }
@@ -129,6 +131,7 @@ func newRepositories(db *gorm.DB) ports.Repositories {
 		Settlement:     &rewardRepository{db: db},
 		PeriodAdmin:    &periodAdminRepository{db: db},
 		EconomicsAdmin: &economicsAdminRepository{db: db},
+		RewardAdmin:    &rewardAdminRepository{db: db},
 		Audit:          &auditRepository{db: db},
 		Experiment:     &experimentRepository{db: db},
 		Metric:         &metricRepository{db: db},
@@ -305,7 +308,7 @@ func (m periodModel) toDomain() period.Period {
 	wall := func(value time.Time) time.Time {
 		return time.Date(value.Year(), value.Month(), value.Day(), value.Hour(), value.Minute(), value.Second(), value.Nanosecond(), location)
 	}
-	return period.Period{ID: m.ID, Key: m.PeriodKey, Status: period.Status(m.Status), StartsAt: wall(m.StartsAt), EndsAt: wall(m.EndsAt), Timezone: m.Timezone, ConfigVersion: m.ConfigVersion, RandomVersion: m.RandomVersion}
+	return period.Period{ID: m.ID, Key: m.PeriodKey, Status: period.Status(m.Status), StartsAt: wall(m.StartsAt), EndsAt: wall(m.EndsAt), Timezone: m.Timezone, ConfigVersion: m.ConfigVersion, RandomVersion: m.RandomVersion, FundingPolicy: m.FundingPolicy, TicketThresholdMilli: m.TicketThresholdMilli}
 }
 
 func (m economicsRuleModel) toDomain() economics.Rule {
