@@ -102,6 +102,19 @@ cd /opt/meta-pulse
 
 ### 一键更新
 
+已部署的服务器可以一次性安装 `metar` 管理命令（默认写入 `/usr/local/bin`，需要相应权限）：
+
+```bash
+cd /opt/meta-pulse
+git pull --ff-only
+bash deploy/install-cli.sh
+metar
+```
+
+`metar` 打开数字菜单；也可直接执行 `metar update`、`metar restart`、`metar stop`、`metar start`、`metar status`、`metar logs pulse-worker -f`。`metar uninstall` 需输入确认词，只移除容器和网络，保留数据卷、配置与源码。停止/重启/卸载覆盖整套 METAR 服务，包括社区和数据库；不操作独立的 new-api。
+
+`metar update` 复用下方更新脚本，支持 `--ref main --skip-forum`。首次安装命令只是注册快捷入口，不会部署或升级服务；注册后无需手动 `git pull`，后续直接使用 `metar update`。自定义配置与普通用户安装见 [管理命令说明](deploy/README.md#metar-快捷管理命令)。
+
 ```bash
 cd /opt/meta-pulse
 ./deploy/update.sh

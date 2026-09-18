@@ -5,7 +5,7 @@ IFS=$'\n\t'
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
-bash -n "$ROOT/deploy/lib.sh" "$ROOT/deploy/install.sh" "$ROOT/deploy/update.sh" "$ROOT/deploy/build-blog.sh" "$ROOT/deploy/build-community.sh" "$ROOT/deploy/nginx/renew.sh" "$ROOT/deploy/nginx/install-renewal-timer.sh"
+bash -n "$ROOT/deploy/lib.sh" "$ROOT/deploy/install.sh" "$ROOT/deploy/update.sh" "$ROOT/deploy/build-blog.sh" "$ROOT/deploy/build-community.sh" "$ROOT/deploy/nginx/renew.sh" "$ROOT/deploy/nginx/install-renewal-timer.sh" "$ROOT/deploy/metar.sh" "$ROOT/deploy/install-cli.sh"
 
 # 校验生产模板初始化会生成随机凭据，并保持最小文件权限。
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/meta-pulse-deploy-test.XXXXXX")"
@@ -84,5 +84,6 @@ python3 "$ROOT/metar-frontend/production/build.py" --output "$community_dist" >/
 ! grep -R -E 'SEED_POSTS|CANDIDATES|X-Pulse-Signature|New-Api-User|未发送到线上' "$community_dist" >/dev/null
 
 bash "$ROOT/deploy/update_test.sh"
+python3 "$ROOT/deploy/test_metar.py"
 
 echo '部署脚本离线测试通过'

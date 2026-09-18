@@ -4,6 +4,7 @@
 
 - `install.sh`：初始化生产配置、生成随机凭据、启动依赖、执行迁移、启动服务并检查 `/readyz`。
 - `update.sh`：加锁拉取远程分支、备份配置、构建镜像、执行前向迁移、重建服务并检查 `/readyz`。
+- `metar.sh` / `install-cli.sh`：数字菜单与 `metar` 子命令，以及一次性命令注册。
 - `meta-pulse.env.example`：生产配置模板。
 - `test.sh` / `update_test.sh`：不连接真实 Docker、不执行远程更新的脚本回归。
 - `config-test.sh`：用测试凭据渲染实际生产 Compose，验证 API/Worker/Tool 的最小权限配置；不读取真实 `.env`、不连接业务数据库。
@@ -117,6 +118,8 @@ docker compose --env-file .env -f docker-compose.yml logs -f pulse-api pulse-wor
 ```
 
 ## 一键更新
+
+已注册快捷命令时，可直接使用 `metar update`；参数与下方脚本一致。
 
 默认更新当前分支。脚本要求 tracked 工作区干净，先取得 Git lock，再只读校验已有 `.env`。配置缺失、空密钥或占位密码会直接停止，必须从备份恢复原凭据；更新绝不会自动生成新密码/随机种子。安装支持的 shell 配置注入不适用于更新，Compose 也不会使用继承的 `PULSE_*`、`NEWAPI_*`、`FORUM_*` 或 `COMPOSE_PROJECT_NAME` 覆盖已校验文件：
 
@@ -235,3 +238,57 @@ docker compose --env-file .env -f docker-compose.yml logs --since 10m pulse-work
 - 若仍出现 `context deadline exceeded`，核对单批耗时与数据库延迟，再按实测降低批量；不要关闭故障退避或通过 `cursor-seek` 跳过积压来制造“追平”。
 
 仓库测试和 `/readyz` 不能替代上述真实摄入验收。没有真实日志与水位证据时，应保留“积压是否追平待验收”。
+
+## metar 快捷管理命令
+
+已有部署只需注册一次入口。默认位置为 `/usr/local/bin/metar`：
+
+```bash
+cd /opt/meta-pulse
+git pull --ff-only
+bash deploy/install-cli.sh
+metar
+```
+
+若当前用户没有 `/usr/local/bin` 写权限，可用 `sudo bash deploy/install-cli.sh` 安装。普通用户也可选择个人目录：
+
+```bash
+bash deploy/install-cli.sh --bin-dir "$HOME/.local/bin"
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+把 PATH 设置加入自己的 shell 配置后永久生效。命令安装不授予 Docker 或仓库写权限；运行时仍使用当前用户已有权限。安装器不会覆盖同名非 METAR 命令。仓库被移动后，需要在新目录重新运行安装器。
+
+输入 `metar` 显示：
+
+```text
+1. 升级
+2. 重启全部服务
+3. 停止全部服务
+4. 启动全部服务
+5. 查看状态
+6. 查看最近日志
+7. 卸载服务（保留数据）
+0. 退出
+```
+
+也支持直接调用：
+
+| 命令 | 行为 |
+| --- | --- |
+| `metar update` | 复用升级脚本：锁、备份、Git 快进、构建、迁移、健康检查 |
+| `metar update --ref main --skip-forum` | 指定分支升级，跳过论坛重建 |
+| `metar start` | 用现有镜像启动整套服务；也可恢复保留数据的卸载 |
+| `metar restart` | 重启整套服务，随后检查各容器和 Pulse `/readyz` |
+| `metar stop` | 停止整套服务，保留容器及数据 |
+| `metar status` | 显示容器状态 |
+| `metar logs pulse-worker -f` | 跟踪 Worker 日志；不加 `-f` 只显示最近 100 行 |
+| `metar uninstall` | 输入 `UNINSTALL` 后移除容器与网络，保留数据卷、镜像、配置、源码和快捷命令 |
+| `metar uninstall --yes` | 脚本环境显式确认上述保留数据的卸载 |
+| `metar help` | 查看命令帮助 |
+
+管理范围是本仓库 Compose 及其宿主机覆盖配置中的服务，包含社区、Pulse、数据库和网关。停止/重启/卸载会造成社区和 Pulse 暂时不可用，但不会操作独立部署的 new-api。命令不提供清空数据卷选项，卸载也不清除证书、定时任务或系统 Docker。
+
+自定义环境文件可用 `metar --env-file /path/to/production.env status`；覆盖配置继续使用 `META_PULSE_COMPOSE_OVERRIDE_FILE`。命令复用 `lib.sh` 的配置隔离，不允许 shell 中的应用凭据隐式覆盖 `.env`。升级、启动、重启、停止、卸载使用同一把部署锁，不允许并发执行；状态与日志查询不占锁。
+
+启动前应已完成首次部署和数据库迁移；`metar start` 不构建镜像、不执行迁移，代码升级应使用 `metar update`。启动器指向仓库中的脚本，后续 Git 更新会自动更新命令实现，无需重复安装快捷命令。

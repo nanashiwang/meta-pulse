@@ -136,3 +136,4 @@ log "首次部署完成"
 show_runtime_status
 log "配置文件：${ENV_FILE}（权限已设为 600）"
 log "后续更新请执行：$SCRIPT_DIR/update.sh"
+log "安装 metar 快捷管理命令：bash $SCRIPT_DIR/install-cli.sh（默认写入 /usr/local/bin，需要写权限）"
