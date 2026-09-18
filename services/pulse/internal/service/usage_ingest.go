@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"time"
 
 	"github.com/nanashiwang/meta-pulse/internal/domain/economics"
 	"github.com/nanashiwang/meta-pulse/internal/domain/ledger"
@@ -23,6 +24,8 @@ type UsageIngestService struct {
 	sourceSystem         string
 	batchSize            int
 	ticketThresholdMilli int64
+	batchTimeBudget      time.Duration
+	now                  func() time.Time
 }
 
 type UsageIngestConfig struct {
@@ -30,16 +33,20 @@ type UsageIngestConfig struct {
 	SourceSystem         string
 	BatchSize            int
 	TicketThresholdMilli int64
+	// BatchTimeBudget stops a page between committed events. Zero disables
+	// cooperative yielding (for offline tools); context remains the hard limit.
+	BatchTimeBudget time.Duration
 }
 
 type IngestResult struct {
-	Fetched         int `json:"fetched"`
-	Accepted        int `json:"accepted"`
-	ManualReview    int `json:"manual_review"`
-	Replayed        int `json:"replayed"`
-	Conflicts       int `json:"conflicts"`
-	TicketsMinted   int `json:"tickets_minted"`
-	TicketsReversed int `json:"tickets_reversed"`
+	Yielded         bool `json:"yielded"`
+	Fetched         int  `json:"fetched"`
+	Accepted        int  `json:"accepted"`
+	ManualReview    int  `json:"manual_review"`
+	Replayed        int  `json:"replayed"`
+	Conflicts       int  `json:"conflicts"`
+	TicketsMinted   int  `json:"tickets_minted"`
+	TicketsReversed int  `json:"tickets_reversed"`
 }
 
 func NewUsageIngestService(unit ports.UnitOfWork, source ports.UsageSource, cfg UsageIngestConfig) (*UsageIngestService, error) {
@@ -58,13 +65,17 @@ func NewUsageIngestService(unit ports.UnitOfWork, source ports.UsageSource, cfg 
 	if cfg.TicketThresholdMilli <= 0 {
 		return nil, errors.New("ticket threshold must be positive")
 	}
-	return &UsageIngestService{unit: unit, source: source, cursorName: cfg.CursorName, sourceSystem: cfg.SourceSystem, batchSize: cfg.BatchSize, ticketThresholdMilli: cfg.TicketThresholdMilli}, nil
+	if cfg.BatchTimeBudget < 0 {
+		return nil, errors.New("usage ingest time budget must not be negative")
+	}
+	return &UsageIngestService{unit: unit, source: source, cursorName: cfg.CursorName, sourceSystem: cfg.SourceSystem, batchSize: cfg.BatchSize, ticketThresholdMilli: cfg.TicketThresholdMilli, batchTimeBudget: cfg.BatchTimeBudget, now: time.Now}, nil
 }
 
 // IngestBatch advances the durable cursor only in the same transaction as the
 // event and all accounting effects. A crash before commit therefore replays
 // safely; a crash after commit resumes after the last committed event.
 func (s *UsageIngestService) IngestBatch(ctx context.Context) (IngestResult, error) {
+	startedAt := s.now()
 	var result IngestResult
 	var cursorValue string
 	err := s.unit.Do(ctx, func(repos ports.Repositories) error {
@@ -87,8 +98,14 @@ func (s *UsageIngestService) IngestBatch(ctx context.Context) (IngestResult, err
 	}
 	result.Fetched = len(events)
 	expectedCursor := cursorValue
-	for _, event := range events {
-		if err := s.processOne(ctx, event, &result, expectedCursor); err != nil {
+	for index, event := range events {
+		if err := ctx.Err(); err != nil {
+			return result, err
+		}
+		// Never report an uncommitted event as progress. processOne updates
+		// counters inside the transaction, whose final commit can still fail.
+		committed := result
+		if err := s.processOne(ctx, event, &committed, expectedCursor); err != nil {
 			if errors.Is(err, errWorkerCursorAdvanced) {
 				// Another worker committed a later cursor while this batch was in
 				// flight. Stop this stale page and refetch from durable state.
@@ -96,7 +113,18 @@ func (s *UsageIngestService) IngestBatch(ctx context.Context) (IngestResult, err
 			}
 			return result, err
 		}
+		result = committed
 		expectedCursor = event.CursorValue
+		if err := ctx.Err(); err != nil {
+			return result, err
+		}
+		// Only yield after durable progress, never conceal a dependency error
+		// or expired context. The next run refetches the unprocessed suffix
+		// from the committed cursor; it does not skip or buffer source rows.
+		if index+1 < len(events) && s.batchTimeBudget > 0 && s.now().Sub(startedAt) >= s.batchTimeBudget {
+			result.Yielded = true
+			return result, nil
+		}
 	}
 	return result, nil
 }

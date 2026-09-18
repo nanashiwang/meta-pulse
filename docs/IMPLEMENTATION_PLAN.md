@@ -202,6 +202,7 @@ type UnitOfWork interface {
 ### M2｜Usage Ingest 与等级
 
 - [x] LOG_DB 只读 cursor、批量读取、断点续跑；
+- [x] Worker 默认批量 250；15 秒处理预算在已提交事件后让出批次，未处理尾部按 durable cursor 续跑，真实失败仍退避；
 - [x] 共用 Mapper 实现实时 Ingest 和 Backfill；
 - [x] `source_system + source_event_id` 幂等（真实 MySQL 重放 100 次与 payload conflict 已验收）；
 - [x] payload hash 不一致写 `pulse_ingest_conflict`，不静默覆盖；
@@ -284,6 +285,8 @@ type UnitOfWork interface {
 **出口：**同一 Benefit 重放 100 次只到账一次；不同 payload 进入 conflict；new-api 成功但 Pulse 超时可恢复；禁止换 source_ref 有测试保护。
 
 ### M6｜周期与运营
+
+运营只读入口已在 new-api `/console/pulse-ops` 实现，经管理员 BFF `/api/pulse/ops/overview` 访问 Pulse；社区原型的 F5 工作台不因此视为完成。部署及摄入积压验收见 [deploy/README.md](../deploy/README.md#运营入口与摄入验收)。
 
 - [x] Period Close：active → settling → closed，可重入；
 - [x] Watermark 确认、Ledger/Account 对账、周期奖励、券过期；

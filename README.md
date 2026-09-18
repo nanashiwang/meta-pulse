@@ -155,6 +155,7 @@ Apache Answer 源码不进入仓库，通过官方镜像与 Go module 引入。
 
 ## 文档
 
+- [项目总览与已实现入口](docs/OVERVIEW.md)
 - [完整项目架构](docs/ARCHITECTURE.md)
 - [社区架构（论坛 + 博客）](docs/COMMUNITY.md)
 - [实施计划（里程碑与出口标准）](docs/IMPLEMENTATION_PLAN.md)
@@ -167,6 +168,8 @@ Apache Answer 源码不进入仓库，通过官方镜像与 Go module 引入。
 **P0–M7 功能里程碑已落地；社区身份已调整为“Answer 独立账号 + 可选绑定 new-api”，并补齐数据库约束、重放防护、内容映射和网关隔离。正式上线仍需真实外部环境验收。**
 
 已落地范围包括：Usage Ingest、Ledger/Account、等级、确定性 Reward、Hard Budget、Transactional Outbox、Benefit Query/Reconciliation/Rollback、可重入 Period Close、运营审计与指标，以及论坛本地注册、一对一不可变绑定、Pulse 徽章和独立预算的内容奖励。
+
+运营只读页面已位于 **new-api `/console/pulse-ops`**，由管理员 BFF 接通 Pulse 周期、经济规则和摄入游标；它不属于 METAR 社区原型后台。部署时需核对两端独立的 Admin 密钥与私网地址，见 [运营入口与摄入验收](deploy/README.md#运营入口与摄入验收)。Usage Worker 默认批量 250，并在 15 秒处理预算后从已提交事件处续跑，避免正常积压反复触发 20 秒硬超时和长退避。
 
 仍需完成的外部验收包括真实 LOG_DB 样本与只读权限、Provider 成本快照、new-api Benefit 实际到账与密钥轮换、社区正式域名、Answer 初始化/邮件发送、跨实例 Redis flow/nonce 和生产灰度。明细见 [实施计划第 8 节](docs/IMPLEMENTATION_PLAN.md#8-当前未冒充完成的外部验收)。
 

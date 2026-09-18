@@ -11,7 +11,7 @@ func validConfig() Config {
 		HTTPAddr:                   ":8088",
 		PulseDBDSN:                 "pulse:secret@tcp(mysql:3306)/meta_pulse",
 		RedisAddr:                  "redis:6379",
-		IngestBatchSize:            500,
+		IngestBatchSize:            250,
 		SettlementBatchSize:        100,
 		PeriodCloseBatchSize:       20,
 		ContentIngestBatchSize:     100,
@@ -81,6 +81,25 @@ func TestLoadRejectsInvalidIntegerInsteadOfFallingBack(t *testing.T) {
 	t.Setenv("PULSE_INGEST_BATCH_SIZE", "invalid")
 	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "PULSE_INGEST_BATCH_SIZE") {
 		t.Fatalf("Load() error = %v, want invalid integer", err)
+	}
+}
+
+func TestLoadIngestBatchDefaultAndOverride(t *testing.T) {
+	t.Setenv("PULSE_ENV", "development")
+	t.Setenv("PULSE_DB_DSN", "pulse@tcp(mysql:3306)/meta_pulse")
+	for _, tc := range []struct {
+		value string
+		want  int
+	}{{"", 250}, {"100", 100}, {"500", 500}} {
+		t.Setenv("PULSE_INGEST_BATCH_SIZE", tc.value)
+		cfg, err := Load()
+		if err != nil || cfg.IngestBatchSize != tc.want {
+			t.Fatalf("batch=%q got=%d err=%v", tc.value, cfg.IngestBatchSize, err)
+		}
+	}
+	t.Setenv("PULSE_INGEST_BATCH_SIZE", "5001")
+	if _, err := Load(); err == nil {
+		t.Fatal("offline config check accepted an unusable batch size")
 	}
 }
 

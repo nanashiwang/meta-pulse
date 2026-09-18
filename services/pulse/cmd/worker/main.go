@@ -72,7 +72,7 @@ func main() {
 		logger.Error("initialize unit of work", "error", err)
 		os.Exit(1)
 	}
-	ingest, err := service.NewUsageIngestService(unit, source, service.UsageIngestConfig{BatchSize: cfg.IngestBatchSize, SourceSystem: "new-api-log", TicketThresholdMilli: cfg.TicketThresholdMilli})
+	ingest, err := service.NewUsageIngestService(unit, source, service.UsageIngestConfig{BatchSize: cfg.IngestBatchSize, SourceSystem: "new-api-log", TicketThresholdMilli: cfg.TicketThresholdMilli, BatchTimeBudget: 15 * time.Second})
 	if err != nil {
 		logger.Error("initialize usage ingest", "error", err)
 		os.Exit(1)
@@ -154,11 +154,12 @@ func main() {
 	}
 
 	addExternalTask("usage_ingest", func(checkCtx context.Context) error {
+		startedAt := time.Now()
 		usageResult, usageErr := ingest.IngestBatch(checkCtx)
 		if usageErr != nil {
-			logger.Warn("usage ingest failed", "error", usageErr, "fetched", usageResult.Fetched)
+			logger.Warn("usage ingest failed", "error", usageErr, "fetched", usageResult.Fetched, "accepted", usageResult.Accepted, "elapsed_ms", time.Since(startedAt).Milliseconds())
 		} else if usageResult.Fetched > 0 {
-			logger.Info("usage ingest batch completed", "fetched", usageResult.Fetched, "accepted", usageResult.Accepted, "replayed", usageResult.Replayed, "conflicts", usageResult.Conflicts, "manual_review", usageResult.ManualReview)
+			logger.Info("usage ingest batch completed", "fetched", usageResult.Fetched, "accepted", usageResult.Accepted, "replayed", usageResult.Replayed, "conflicts", usageResult.Conflicts, "manual_review", usageResult.ManualReview, "yielded", usageResult.Yielded, "elapsed_ms", time.Since(startedAt).Milliseconds())
 		}
 
 		return usageErr

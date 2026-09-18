@@ -48,7 +48,7 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	ingestBatchSize, err := getenvInt("PULSE_INGEST_BATCH_SIZE", 500, false)
+	ingestBatchSize, err := getenvInt("PULSE_INGEST_BATCH_SIZE", 250, false)
 	if err != nil {
 		return Config{}, err
 	}
@@ -148,8 +148,8 @@ func (cfg Config) Validate() error {
 	if cfg.RedisDB < 0 {
 		errs = append(errs, errors.New("PULSE_REDIS_DB must be non-negative"))
 	}
-	if cfg.IngestBatchSize <= 0 {
-		errs = append(errs, errors.New("PULSE_INGEST_BATCH_SIZE must be positive"))
+	if cfg.IngestBatchSize <= 0 || cfg.IngestBatchSize > 5000 {
+		errs = append(errs, errors.New("PULSE_INGEST_BATCH_SIZE must be between 1 and 5000"))
 	}
 	if cfg.SettlementBatchSize <= 0 {
 		errs = append(errs, errors.New("PULSE_SETTLEMENT_BATCH_SIZE must be positive"))

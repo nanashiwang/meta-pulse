@@ -206,3 +206,30 @@ make test-forum-integration    # 需要专用测试库 FORUM_INTEGRATION_DSN
 ```
 
 集成 DSN 必须指向可丢弃的独立 MySQL 8 测试库，禁止指向现有业务库。论坛集成测试会 DROP/重建 Answer 测试表，因此 schema 名必须以 `_integration`、`-integration`、`_test` 或 `-test` 结尾。MySQL 开启 binary logging 时需允许创建账本保护触发器（`log_bin_trust_function_creators=1`）；CI 自动创建隔离服务并设置该项。真实服务器的安装、更新、备份恢复和公网身份链路仍需另外验收。
+
+
+## 运营入口与摄入验收
+
+运营只读页面在 **new-api 的 `/console/pulse-ops`**，不是社区域名的 `/admin`。已有代码链路为管理员会话 → `/api/pulse/ops/overview` → Pulse `/v1/internal/admin/operations/overview`。new-api 需配置 Pulse 私网地址 `PULSE_INTERNAL_URL` 与独立 `PULSE_ADMIN_HMAC_SECRET`，后者与 Pulse API 同名配置一致；new-api 控制台中已保存的对应选项优先于环境变量。不得向浏览器或社区静态配置分发密钥。
+
+上线后先确认管理员能读取周期与游标、普通用户被拒绝、Pulse 不可用时页面明确降级。页面中的活动周期提示只说明当前时刻存在周期和规则，不能单独证明 Worker 正在运行、历史积压已有对应周期或游标已追平。
+
+### 批量与时间预算
+
+Go、Compose 与生产模板的 `PULSE_INGEST_BATCH_SIZE` 默认值均为 **250**，允许显式配置 1–5000。已有 `.env` 中的显式值不会被更新脚本改写；此前已调成 250 的配置会保留。
+
+Usage Worker 单轮保留 20 秒硬超时，并在 15 秒处理预算后从最近已提交事件处让出批次。正常让出返回 `yielded=true`，30 秒后继续，不触发错误退避；数据库错误、事务失败、取消和硬超时仍退避。该预算在事件之间检查，不保证任意慢单条事务都能在 20 秒内完成。
+
+更新并检查 `/readyz` 后，观察至少三个连续批次：
+
+```bash
+docker compose --env-file .env -f docker-compose.yml logs --since 10m pulse-worker
+```
+
+- `elapsed_ms` 是实际处理耗时，`fetched` 是读取条数，`accepted` 等结果只计成功提交；
+- `yielded=true` 表示本页未处理尾部将在下一轮重新读取，不代表丢数据或跳过记录；
+- 核对运营概览中的 `value`、`version` 和 `watermark_at` 持续前进，积压期间 `lag_seconds` 持续缩小；
+- 无新调用时水位可能不前进，不能只用水位年龄宣称摄入失败；同时看 Worker 成功日志与实际源流量；
+- 若仍出现 `context deadline exceeded`，核对单批耗时与数据库延迟，再按实测降低批量；不要关闭故障退避或通过 `cursor-seek` 跳过积压来制造“追平”。
+
+仓库测试和 `/readyz` 不能替代上述真实摄入验收。没有真实日志与水位证据时，应保留“积压是否追平待验收”。

@@ -28,6 +28,11 @@ fixture.write_text(text)
 fixture.chmod(0o600)
 rendered = subprocess.run(['docker','compose','--env-file',str(fixture),'-f',str(root/'docker-compose.yml'),'config','--format','json'], env=env, check=True, capture_output=True, text=True)
 services = json.loads(rendered.stdout)['services']
+assert str(services['pulse-worker']['environment']['PULSE_INGEST_BATCH_SIZE']) == '250', 'production ingest batch default must be 250'
+# Also test Compose's fallback when upgrading an older env without this key.
+fixture.write_text('\n'.join(line for line in text.splitlines() if not line.startswith('PULSE_INGEST_BATCH_SIZE='))+'\n')
+fallback = subprocess.run(['docker','compose','--env-file',str(fixture),'-f',str(root/'docker-compose.yml'),'config','--format','json'], env=env, check=True, capture_output=True, text=True)
+assert str(json.loads(fallback.stdout)['services']['pulse-worker']['environment']['PULSE_INGEST_BATCH_SIZE']) == '250', 'Compose ingest fallback must be 250'
 for service_name, configured in services.items():
     if configured.get('ports'):
         raise AssertionError(f'{service_name} must not publish host ports')
