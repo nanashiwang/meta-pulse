@@ -45,6 +45,14 @@ Go 无动态插件机制，因此 Answer 升级后必须重新编译并做真实
 
 头像使用 Answer 官方外观扩展：默认设为系统头像，并安装 [`avatar-head.html`](../services/forum/customization/avatar-head.html)，将默认/失败头像显示为本地生成的用户名首字符。用户仍通过 Answer「编辑资料 → 头像 → 自定义」上传更换；不会修改头像数据库字段或关闭外部媒体保护。安装、升级与回退见[头像定制说明](../services/forum/customization/README.md)。METAR 静态首页同样支持同源上传头像和首字符回退。
 
+### 3.1 中英文界面
+
+原生论坛和 METAR 静态首页右上角均提供「中文 / English」。用户显式选择后，偏好保存在同源浏览器的 `metar-language`（`zh_CN` / `en_US`），刷新、切换页面、登录或退出后保留；浏览器存储禁用时当页仍可切换。静态首页默认中文，原生论坛未显式选择前沿用 Answer 账号/站点默认语言。该偏好只控制界面，帖子正文、标题、用户名和用户资料保持原文。
+
+原生入口随现有 `pulse_user_center` 插件的 UI 模块构建，插件须启用；使用 Answer 自身的 i18next、官方中英文字典和日期库，不 Fork Answer。模块仅将用户显式选择映射到 Answer 内存中的 `user.language`，让原生界面和 API 提示一致；不写用户资料、会话或站点默认设置，不请求 new-api/Pulse。浏览器偏好优先于账号语言；用户可用右上角控件切换，其他设备不受影响。
+
+UI 资源通过 Go embed 保留到 `go mod vendor`，官方 `answer build` 负责复制私有插件、加载与打包。更新需重建 `forum` 镜像（普通 `metar update` 即可，勿用 `--skip-forum`），无需额外粘贴外观脚本。Answer 升级时需回归 `@/i18n/init`、`loggedUserInfoStore`、`#header > .w-100`、访客/登录用户、语言异步初始化竞争及手机导航布局。
+
 ## 4. 双身份与可选绑定
 
 ### 4.1 账号原则

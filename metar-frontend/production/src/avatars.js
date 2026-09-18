@@ -1,6 +1,7 @@
 /* Community avatars are presentation only; Answer owns uploaded images and profiles. */
 'use strict';
 (() => {
+  const t = (...args) => window.MetarI18n?.t(...args) ?? args[0];
   const cleanName = (value) => typeof value === 'string' ? value.trim() : '';
   const username = (user) => cleanName(user?.username) || cleanName(user?.display_name) || 'M';
   const segmenter = typeof Intl.Segmenter === 'function'
@@ -37,7 +38,7 @@
 
   function markup(user, className = '') {
     const image = source(user?.avatar);
-    return `<span class="avatar a4 prod-avatar${className ? ` ${escapeHTML(className)}` : ''}" role="img" aria-label="${escapeHTML(username(user))} 的头像"><span class="prod-avatar-initial" aria-hidden="true">${escapeHTML(initial(user))}</span>${image ? `<img class="prod-avatar-image" data-metar-avatar-image src="${escapeHTML(image)}" alt="" aria-hidden="true" decoding="async">` : ''}</span>`;
+    return `<span class="avatar a4 prod-avatar${className ? ` ${escapeHTML(className)}` : ''}" role="img" aria-label="${escapeHTML(username(user))}${t(" 的头像")}"><span class="prod-avatar-initial" aria-hidden="true">${escapeHTML(initial(user))}</span>${image ? `<img class="prod-avatar-image" data-metar-avatar-image src="${escapeHTML(image)}" alt="" aria-hidden="true" decoding="async">` : ''}</span>`;
   }
 
   function handleImageEvent(event) {

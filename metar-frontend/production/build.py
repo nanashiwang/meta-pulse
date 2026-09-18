@@ -50,6 +50,7 @@ def build(output: Path, config_path: Path) -> None:
     config = load_config(config_path)
     sources = {
         "index": (ROOT / "src/index.html").read_text(encoding="utf-8"),
+        "i18n": (ROOT / "src/i18n.js").read_text(encoding="utf-8"),
         "adapters": (ROOT / "src/adapters.js").read_text(encoding="utf-8"),
         "avatars": (ROOT / "src/avatars.js").read_text(encoding="utf-8"),
         "app": (ROOT / "src/app.js").read_text(encoding="utf-8"),
@@ -68,6 +69,7 @@ def build(output: Path, config_path: Path) -> None:
     base_css = (PROTOTYPE_ROOT / "src/styles.css").read_text(encoding="utf-8")
     production_css = (ROOT / "src/styles.css").read_text(encoding="utf-8")
     (assets / "app.css").write_text(f"{base_css}\n{production_css}\n", encoding="utf-8")
+    (assets / "i18n.js").write_text(sources["i18n"], encoding="utf-8")
     (assets / "adapters.js").write_text(sources["adapters"], encoding="utf-8")
     (assets / "avatars.js").write_text(sources["avatars"], encoding="utf-8")
     (assets / "app.js").write_text(sources["app"], encoding="utf-8")

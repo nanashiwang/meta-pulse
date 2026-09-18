@@ -1,0 +1,19 @@
+.metar-language-switcher {
+  flex: 0 0 auto;
+  width: 98px;
+  margin-left: 12px;
+  padding: 6px 5px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  color: var(--bs-navbar-color, inherit);
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.metar-language-switcher option { color: #212529; background: #fff; }
+.metar-language-switcher:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+@media (max-width: 575.98px) {
+  #header > .w-100 { flex-wrap: wrap; row-gap: 6px; }
+  .metar-language-switcher { width: 78px; margin-left: auto; padding: 5px 2px; font-size: 12px; }
+}
