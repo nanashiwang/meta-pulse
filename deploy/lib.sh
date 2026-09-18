@@ -173,6 +173,7 @@ compose() (
   if [[ -f "$COMPOSE_OVERRIDE_FILE" ]]; then
     compose_files+=(-f "$COMPOSE_OVERRIDE_FILE")
   fi
+  export META_PULSE_REVISION="$(git -C "$REPO_ROOT" rev-parse HEAD)"
   docker compose --env-file "$ENV_FILE" "${compose_files[@]}" "$@"
 )
 

@@ -11,6 +11,7 @@ NO_BUILD=0
 SKIP_FORUM=0
 SKIP_WORKER=0
 REF=""
+ACCEPT_INGEST=0
 
 usage() {
   cat <<'USAGE'
@@ -20,6 +21,7 @@ usage() {
 .env 只读校验，不会初始化或轮换凭据；缺失配置时停止。脚本使用 Git 锁避免并发更新。
 
 选项：
+  --accept-ingest   更新后执行 180 秒只读摄入验收（需 python3）
   --env-file PATH   使用指定生产配置文件（默认：.env）
   --ref BRANCH      更新指定远程分支（默认：当前分支）
   --no-build        不构建镜像，仅使用已有镜像
@@ -49,6 +51,10 @@ while (($# > 0)); do
       REF="${1#*=}"
       shift
       ;;
+    --accept-ingest)
+      ACCEPT_INGEST=1
+      shift
+      ;;
     --no-build)
       NO_BUILD=1
       shift
@@ -70,6 +76,11 @@ while (($# > 0)); do
       ;;
   esac
 done
+
+if (( ACCEPT_INGEST == 1 )); then
+  require_command python3
+  (( SKIP_WORKER == 0 )) || die "--accept-ingest 不能与 --skip-worker 同用"
+fi
 
 check_host_prerequisites
 # Lock before reading or backing up deployment configuration. Updating must
@@ -227,3 +238,7 @@ trap - ERR
 log "更新完成：$(git -C "$REPO_ROOT" rev-parse --short HEAD)"
 show_runtime_status
 log "备份目录：$BACKUP_DIR"
+
+if (( ACCEPT_INGEST == 1 )); then
+  META_PULSE_ENV_FILE="$ENV_FILE" python3 "$SCRIPT_DIR/accept-ingest.py"
+fi

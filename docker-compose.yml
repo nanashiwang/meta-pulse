@@ -37,6 +37,8 @@ services:
     build:
       context: .
       dockerfile: services/pulse/Dockerfile
+      args:
+        META_PULSE_REVISION: ${META_PULSE_REVISION:-unknown}
     restart: unless-stopped
     environment:
       PULSE_ENV: ${PULSE_ENV:-development}
@@ -79,6 +81,8 @@ services:
     build:
       context: .
       dockerfile: services/pulse/Dockerfile
+      args:
+        META_PULSE_REVISION: ${META_PULSE_REVISION:-unknown}
     restart: unless-stopped
     entrypoint: ["meta-pulse-worker"]
     environment:

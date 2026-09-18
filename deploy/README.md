@@ -292,3 +292,49 @@ export PATH="$HOME/.local/bin:$PATH"
 自定义环境文件可用 `metar --env-file /path/to/production.env status`；覆盖配置继续使用 `META_PULSE_COMPOSE_OVERRIDE_FILE`。命令复用 `lib.sh` 的配置隔离，不允许 shell 中的应用凭据隐式覆盖 `.env`。升级、启动、重启、停止、卸载使用同一把部署锁，不允许并发执行；状态与日志查询不占锁。
 
 启动前应已完成首次部署和数据库迁移；`metar start` 不构建镜像、不执行迁移，代码升级应使用 `metar update`。启动器指向仓库中的脚本，后续 Git 更新会自动更新命令实现，无需重复安装快捷命令。
+
+
+### 自动摄入验收（只读）
+
+服务器更新并验收（Python 3 标准库，无需安装 pip 包）：
+
+```bash
+./deploy/update.sh --ref main --skip-forum --accept-ingest
+```
+
+已有新版部署可单独运行：
+
+```bash
+python3 deploy/accept-ingest.py --seconds 180
+# 自定义配置沿用部署入口，不能用 shell PULSE_* 覆盖 .env：
+META_PULSE_ENV_FILE=/opt/meta-pulse/.env python3 deploy/accept-ingest.py
+```
+
+验收核对干净工作区 HEAD、运行中 Worker 镜像的 OCI revision、容器实际
+`PULSE_INGEST_BATCH_SIZE`（不是模板值），打印容器/image ID 与启动时间。
+部署 helper 自动把当前 HEAD 注入镜像构建参数；旧镜像没有 revision 时必须重建，
+`--no-build` 不会把旧镜像伪装成新 commit。手动 Compose 构建需显式设置
+`META_PULSE_REVISION=$(git rev-parse HEAD)`，且只在干净工作区构建。
+
+采集前后通过运行中 Worker 的 `meta-pulse-tool ingest-snapshot` 只读查询
+`new-api-usage/new-api-log` 游标，输出 value/version/watermark_at/lag_seconds
+及 version、lag 差值。快照复用 Worker 实际 Pulse DSN 和时区，不依赖运营指标缓存，
+不连接 new-api。观察窗口默认 180 秒，最少 90 秒；只统计首次快照之后的日志，
+至少需要连续三个成功批次，输出 fetched/accepted/replayed/conflicts/manual_review/
+yielded/elapsed_ms。窗口内任一 ingest 失败均保留为失败，不被后续成功掩盖。
+
+退出码：
+
+- `0`：至少三个成功批次且 value/version/watermark 有前进，证明观察窗口内正常续跑；
+  **不代表已追平**，本工具未独立读取源端尾部，也不证明新流量持续到达。
+- `2`：**证据不足**，包括空批次（没有新源流量或可摄入源行）、日志不足、
+  游标未动、watermark 同秒未变、观察中容器重启/替换。无流量时 lag 自然增长，
+  不能据此报摄入失败或已追平；延长窗口或等真实流量后重跑。
+- `1`：配置/版本/采集失败、窗口内 ingest 失败或游标回退。命令不打印底层错误和凭据。
+
+lag 是最后已提交源事件的年龄，不是剩余行数；忙碌源端下 lag 增长也不能单独认定故障。
+缺游标时 value 为空、version 为 0、watermark 为 null，lag 的 0 不表示追平。
+验收不会触发 backfill、cursor-seek、记账、源端流量或服务重启，也不会操作 new-api。
+`--accept-ingest` 不能与 `--skip-worker` 同用；验收退出 1/2 时更新本身可能已完成，
+不会自动回滚或修改游标。原始批次错误字段不输出，需在服务器受控环境另查日志。
+生产验收仍需实际执行，离线测试和 CI 不替代线上证据。

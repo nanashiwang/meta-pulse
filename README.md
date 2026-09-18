@@ -122,6 +122,8 @@ cd /opt/meta-pulse
 
 更新脚本会先加锁、只读校验已有配置，再备份数据库和原配置、fast-forward 拉取代码、执行迁移、重建服务并检查 API/Worker 的 `/readyz`。更新不会生成或轮换凭据；配置缺失时必须先恢复原配置。详细参数、日志、回滚和外部依赖见 [`deploy/README.md`](deploy/README.md)。
 
+更新后自动摄入验收：`./deploy/update.sh --ref main --accept-ingest`。只读观察三个以上 Worker 批次及游标前后变化；无流量时输出“证据不足”，不宣称追平。详见 [验收命令](deploy/README.md#自动摄入验收只读)。
+
 ### 本地验证
 
 ```bash

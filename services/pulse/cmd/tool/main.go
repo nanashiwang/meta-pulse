@@ -27,6 +27,11 @@ func main() {
 	}
 
 	switch os.Args[1] {
+	case "ingest-snapshot":
+		if err := runIngestSnapshot(); err != nil {
+			logger.Error("ingest snapshot unavailable")
+			os.Exit(1)
+		}
 	case "config-check":
 		if err := runConfigCheck(os.Args[2:]); err != nil {
 			logger.Error("configuration check failed", "error", err)
@@ -420,7 +425,7 @@ func runMigration(up bool) error {
 
 func usage() {
 	fmt.Println("Meta Pulse operator tool")
-	fmt.Println("commands: config-check --role <api|worker|tool> | migrate-up | migrate-status | backfill | backtest | access-check | reconcile | ledger-check | period-close | period-create | cursor-seek | reward-retry --grant-id <pg_...>")
+	fmt.Println("commands: ingest-snapshot | config-check --role <api|worker|tool> | migrate-up | migrate-status | backfill | backtest | access-check | reconcile | ledger-check | period-close | period-create | cursor-seek | reward-retry --grant-id <pg_...>")
 }
 
 // runConfigCheck never opens a database or emits credential values.

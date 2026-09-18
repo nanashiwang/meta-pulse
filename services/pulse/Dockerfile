@@ -19,6 +19,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /out/meta-pulse-api ./cmd/api && \
     CGO_ENABLED=0 GOOS=linux go build -o /out/meta-pulse-tool ./cmd/tool
 
 FROM alpine:3.20
+ARG META_PULSE_REVISION=unknown
+LABEL org.opencontainers.image.revision=$META_PULSE_REVISION
 RUN apk add --no-cache ca-certificates tzdata
 RUN addgroup -S pulse && adduser -S -G pulse pulse
 WORKDIR /app

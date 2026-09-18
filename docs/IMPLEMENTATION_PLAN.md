@@ -394,6 +394,7 @@ type UnitOfWork interface {
 - new-api Benefit 真实到账、重放 100 次、timeout Query、rollback 及密钥轮换演练；
 - 生产环境的 SSO/Benefit 审计、限流压测、真实域名和跨实例 Redis nonce 演练。
 - 服务器首次部署与更新脚本已纳入仓库，但仍需在真实服务器完成 Docker、网络、备份和故障恢复演练。
+- Usage 分批续跑提供 `deploy/update.sh --accept-ingest` 只读验收：核验 commit、实际批量、至少三个批次与游标前后快照；无流量为“证据不足”，生产续跑及追平结论仍待真实窗口证据。
 
 本轮使用隔离的 MySQL 8/Redis 容器验证了本地数据库回归与生产配置下 API/Worker 原生进程启动；这些结果不等于真实 new-api、Answer 或服务器部署验收。
 
