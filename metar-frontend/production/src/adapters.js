@@ -170,13 +170,14 @@
     clear() { window.sessionStorage.removeItem(this.key); }
   }
 
-  function formatPulseQuota(amount, perUnit) {
-    if (!Number.isSafeInteger(amount) || amount < 0) return '待核对';
+  function formatPulseQuota(amount, perUnit, language = 'zh_CN') {
+    const english = language === 'en_US' || language === 'en-US';
+    if (!Number.isSafeInteger(amount) || amount < 0) return english ? 'Awaiting verification' : '待核对';
     if (!Number.isSafeInteger(perUnit) || perUnit <= 0) return `${amount} quota`;
     const n = BigInt(amount), d = BigInt(perUnit), scale = 1000000n;
     const tail = ((n % d) * scale / d).toString().padStart(6, '0').replace(/0+$/, '');
     const approximate = (n % d) * scale % d !== 0n ? '≈' : '';
-    return `${approximate}${n / d}${tail ? `.${tail}` : ''} API 额度`;
+    return `${approximate}${n / d}${tail ? `.${tail}` : ''} ${english ? 'API credits' : 'API 额度'}`;
   }
 
   class PulseAdapter {
@@ -185,6 +186,7 @@
       const controller = new AbortController();
       const timeout = window.setTimeout(() => controller.abort(), this.answer.timeoutMs);
       const headers = new Headers({ Accept: 'application/json' });
+      headers.set('Accept-Language', window.MetarI18n?.locale() || 'zh-CN');
       const token = this.answer.token();
       if (token) headers.set('Authorization', token.startsWith('Bearer ') ? token : `Bearer ${token}`);
       if (options.operation) {

@@ -59,13 +59,14 @@ test('app、适配器、头像中的显式中文界面词条都有英文翻译',
   }
 });
 
-async function shell({ language = 'en_US', user = null, binding = 'unbound', content = false, failure = '' } = {}) {
+async function shell({ language = 'en_US', user = null, binding = 'unbound', content = false, failure = '', pulseRules = {}, pulseRewards = [], actionResult = 'settled', storageBlocked = false } = {}) {
   const { context, i18n, values } = languageContext(language);
   const node = () => ({ innerHTML: '', textContent: '', attributes: {}, setAttribute(key, value) { this.attributes[key] = value; }, focus() {} });
   const nodes = Object.fromEntries(['app', 'view', 'main', 'skip', 'description', 'theme', 'menu', 'language'].map((key) => [key, node()]));
   const documentEvents = new Map();
   const windowEvents = new Map();
   const requests = [];
+  const operations = new Map();
   const document = {
     title: '', documentElement: { dataset: {}, lang: '' },
     body: { classList: { remove() {}, toggle() { return true; } } },
@@ -75,12 +76,19 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
       '[data-action="theme"]': nodes.theme, '[data-action="menu"]': nodes.menu,
       '[data-action="language"]': nodes.language,
     })[selector] || null,
+    querySelectorAll: () => [],
     addEventListener: (event, callback) => { const list = documentEvents.get(event) || []; list.push(callback); documentEvents.set(event, list); },
   };
   const question = { id: '42', title: content ? '未读' : 'User question', description: content ? '社区规范' : 'User summary', content: content ? '我的收藏' : 'User content', user_info: user, created_at: Math.floor(Date.now() / 1000) - 3600 };
   Object.assign(context, {
     document, location: { origin: 'https://metar.uk', hash: '#/discover' },
     URL, URLSearchParams, Headers, AbortController, setTimeout, clearTimeout,
+    crypto: require('node:crypto').webcrypto,
+    sessionStorage: {
+      getItem: (key) => operations.get(key) || null,
+      setItem: (key, value) => { if (storageBlocked) throw new Error('Blocked'); operations.set(key, value); },
+      removeItem: (key) => operations.delete(key),
+    },
     console: { warn() {}, error() {} },
     matchMedia: () => ({ matches: false }), scrollTo() {},
     addEventListener: (event, callback) => windowEvents.set(event, callback),
@@ -89,6 +97,19 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
       requests.push({ url, options });
       const pathname = new URL(url, 'https://metar.uk').pathname;
       if (failure === 'all' || (failure === 'identity' && pathname.endsWith('/user/info'))) return { ok: false, status: 503, json: async () => ({ msg: '中文服务器错误', data: null }) };
+      if (pathname.startsWith('/metar/api/pulse/')) {
+        if (failure === 'pulse') return { ok: false, status: 503, json: async () => ({ error: 'pulse_unavailable' }) };
+        let payload;
+        if (pathname.endsWith('/summary')) payload = { available_tickets: 2, current_contribution_milli: 1200500, level: { name: 'Member' } };
+        else if (pathname.endsWith('/rules')) payload = { enabled: true, quota_per_unit: 500000, total_weight: 100, period: { key: 'test-period', ends_at: '2026-10-01T00:00:00Z' }, rewards: [{ name: 'Daily reward', amount: 50000, weight: 100 }], ...pulseRules };
+        else if (pathname.endsWith('/rewards')) payload = { rewards: new URL(url, 'https://metar.uk').searchParams.has('action_id') ? [] : pulseRewards };
+        else if (pathname.endsWith('/actions')) {
+          if (actionResult === 'timeout') throw new Error('Lost response');
+          if (actionResult === 'action_rejected') return { ok: false, status: 409, json: async () => ({ error: 'action_rejected' }) };
+          payload = { grant_id: 'grant-1', action_id: JSON.parse(options.body).action_id, status: actionResult };
+        }
+        return { ok: true, status: 200, json: async () => payload };
+      }
       let data = { count: 0, list: [] };
       if (pathname === '/answer/api/v1/user/info') data = user;
       else if (pathname.endsWith('/personal/user/info')) data = { ...user, bio: content ? '元衡账号绑定' : '' };
@@ -101,10 +122,14 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
   for (const name of ['adapters.js', 'avatars.js', 'app.js']) vm.runInContext(script(name), context);
   await new Promise(setImmediate);
   return {
-    i18n, values, document, nodes, requests,
+    i18n, values, document, nodes, requests, operations,
     async navigate(route) { context.location.hash = '#' + route; await windowEvents.get('hashchange')(); },
     async changeLanguage(value) {
       for (const listener of documentEvents.get('change') || []) listener({ target: { value, matches: () => true } });
+      await new Promise(setImmediate);
+    },
+    async click(action) {
+      for (const listener of documentEvents.get('click') || []) listener({ target: { closest: () => ({ dataset: { action } }) } });
       await new Promise(setImmediate);
     },
     html: () => nodes.app.innerHTML + nodes.view.innerHTML,
@@ -157,4 +182,73 @@ test('语言切换重新渲染标题、筛选、ARIA、错误和数值，用户�
   assert.equal(view.i18n.errorMessage({ code: 'network', message: 'old message' }), '暂时无法连接社区服务，请稍后重试');
   view.i18n.setLanguage('en_US');
   assert.match(view.i18n.errorMessage({ code: 'network', message: '中文错误' }), /Unable to connect/);
+});
+
+const pulseUser = { id: '7', username: 'alice', display_name: 'Alice', mail_status: 1 };
+
+test('Pulse 奖池、状态与失败提示完整翻译，奖项名称和参数保持原文并转义', async () => {
+  const view = await shell({ user: pulseUser, binding: 'bound', pulseRewards: [
+    { grant_id: 'grant-1', amount: 50000, status: 'settled', created_at: '2026-09-19T00:00:00Z' },
+    { grant_id: 'grant-2', amount: 50000, status: 'settlement_dead' },
+  ] });
+  await view.navigate('/pulse');
+  assertEnglish(view, 'real Pulse payload');
+  assert.match(view.html(), /Available Pulse tickets: 2/);
+  assert.match(view.html(), /0\.1 API credits/);
+  assert.match(view.html(), /Probability 100 \/ 100/);
+  assert.match(view.html(), /Credited/);
+  assert.match(view.html(), /Awaiting processing/);
+  await view.changeLanguage('zh_CN');
+  assert.match(view.html(), /可用脉冲券：2/);
+  assert.match(view.html(), /0\.1 API 额度/);
+
+  const original = await shell({ user: pulseUser, binding: 'bound', pulseRules: { rewards: [{ name: '未读<script>', amount: 50000, weight: '<b>5</b>' }] } });
+  await original.navigate('/pulse');
+  assert.match(original.html(), /<strong>未读&lt;script&gt;<\/strong>/);
+  assert.match(original.html(), /Probability &lt;b&gt;5&lt;\/b&gt; \/ 100/);
+  assert.doesNotMatch(original.html(), /<script>|<b>5<\/b>/);
+  for (const unavailable_reason of ['budget_exhausted', 'activity_paused', 'no_active_period', 'funding_verification_required', 'reward_pool_unavailable', 'unknown']) {
+    const paused = await shell({ user: pulseUser, binding: 'bound', pulseRules: { enabled: false, unavailable_reason, rewards: [] } });
+    await paused.navigate('/pulse');
+    assertEnglish(paused, unavailable_reason);
+    assert.match(paused.html(), /No reward pool is currently available/);
+  }
+  const unavailable = await shell({ user: pulseUser, binding: 'bound', failure: 'pulse' });
+  await unavailable.navigate('/pulse');
+  assertEnglish(unavailable, 'Pulse unavailable');
+  assert.match(unavailable.html(), /The rewards service is unavailable/);
+});
+
+test('Pulse 提交结果与原请求恢复提示随切换语言更新，超时不换操作编号', async () => {
+  for (const [actionResult, english, chinese] of [
+    ['settled', 'Your reward has been credited.', '奖励已到账。'],
+    ['pending', 'Your draw is complete', '抽奖已完成'],
+    ['action_rejected', 'No ticket was spent.', '本次未扣券'],
+    ['timeout', 'The result cannot be confirmed yet.', '暂时无法确认本次结果'],
+  ]) {
+    const view = await shell({ user: pulseUser, binding: 'bound', actionResult });
+    await view.navigate('/pulse');
+    await view.click('pulse-draw');
+    assertEnglish(view, actionResult);
+    assert.ok(view.html().includes(english), actionResult);
+    assert.equal(view.operations.size, actionResult === 'timeout' ? 1 : 0);
+    if (actionResult === 'timeout') {
+      assert.match(view.html(), /Check original draw/);
+      await view.click('pulse-resume');
+      const actions = view.requests.filter(({ url }) => url.endsWith('/actions'));
+      assert.equal(actions.length, 2);
+      assert.equal(actions[0].options.body, actions[1].options.body);
+      assert.equal(actions[0].options.headers.get('Idempotency-Key'), actions[1].options.headers.get('Idempotency-Key'));
+    }
+    await view.changeLanguage('zh_CN');
+    assert.ok(view.html().includes(chinese), actionResult + ' language switch');
+    await view.changeLanguage('en_US');
+    assertEnglish(view, actionResult + ' switched back');
+  }
+  const blocked = await shell({ user: pulseUser, binding: 'bound', storageBlocked: true });
+  await blocked.navigate('/pulse');
+  await blocked.click('pulse-draw');
+  assertEnglish(blocked, 'blocked storage');
+  assert.match(blocked.html(), /Allow site storage/);
+  assert.equal(blocked.requests.some(({ url }) => url.endsWith('/actions')), false);
 });

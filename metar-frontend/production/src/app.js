@@ -352,17 +352,17 @@
     const rewards = Array.isArray(history.rewards) ? history.rewards : [];
     const prizes = Array.isArray(rules.rewards) ? rules.rewards : [];
     const canDraw = rules.enabled === true && available > 0 && !pending && !pulseBusy;
-    const rewardRows = rewards.map((r) => `<tr><td>${esc(formatPulseQuota(r.amount, rules.quota_per_unit))}</td><td>${esc(states[r.status] || '等待核对')}</td><td>${esc(r.created_at ? new Date(r.created_at).toLocaleString('zh-CN') : '—')}</td><td><code>${esc(r.grant_id)}</code></td></tr>`).join('');
-    const prizeRows = prizes.map((r) => `<li><strong>${esc(r.name)}</strong><span>${esc(formatPulseQuota(r.amount, rules.quota_per_unit))}</span><span>概率 ${esc(r.weight)} / ${esc(rules.total_weight)}</span></li>`).join('');
-    return `${crumb([['Pulse 权益']])}${heading('开启脉冲，获得调用回馈', '经核验的付费调用积累脉冲券，奖励自动发往已绑定的元衡 API 账号。')}
-      <section class="pulse-hero"><div><div class="eyebrow">${esc(rules.period?.key || '元衡脉冲')}</div><h1>${esc(available)} 张可用脉冲券</h1><p>每次消耗 1 张券。奖励仅供 API 调用使用，不可转赠。</p>
-      ${!rules.enabled ? `<p role="status">${esc(unavailable[rules.unavailable_reason] || '活动暂不可用')}</p>` : ''}
-      <div class="actions"><button type="button" class="btn light" data-action="pulse-draw" ${canDraw ? '' : 'disabled'}>${pulseBusy ? '正在处理…' : '开启一次脉冲 · 1 券'}</button><button type="button" class="btn outline-light" data-action="retry">刷新奖励状态</button></div></div>${I('pulse')}</section>
-      ${pulseMessage ? `<div class="prod-status mt24" role="status"><p>${esc(pulseMessage)}</p></div>` : ''}
-      ${pending ? `<section class="card card-pad mt24" role="status"><h3>正在确认上一次抽奖</h3><p class="muted mt8">请先查询原请求。继续处理会沿用同一次抽奖，不会重新扣券或更换结果。</p><div class="flex wrap mt16"><button class="btn" data-action="retry">查询原抽奖</button><button class="btn primary" data-action="pulse-resume" ${pulseBusy ? 'disabled' : ''}>继续处理原请求</button></div></section>` : ''}
-      <div class="prod-pulse-stats mt24"><section class="card card-pad"><h3>当前等级</h3><p>${esc(summary.level?.name || '未定级')}</p></section><section class="card card-pad"><h3>本期贡献</h3><p>${esc(Number.isSafeInteger(summary.current_contribution_milli) ? String(summary.current_contribution_milli / 1000) : '待核对')}</p></section><section class="card card-pad"><h3>活动结束</h3><p>${esc(rules.period?.ends_at ? new Date(rules.period.ends_at).toLocaleString('zh-CN') : '—')}</p></section></div>
-      <section class="card card-pad mt24"><h2>本期奖池与规则</h2>${prizeRows ? `<ul class="prod-pulse-prizes">${prizeRows}</ul>` : '<p class="muted mt16">暂无可参与奖池。</p>'}<p class="muted mt16">奖项概率与产券规则在本期固定。预算不足不扣券；发放延迟会保留中奖结果。赠送额度和无法核验资金来源的消费不产生脉冲券。</p><p class="muted mt8">API 额度按元衡账户的额度单位展示，不代表人民币或可提现金额。</p></section>
-      <section class="card card-pad mt24"><h2>奖励记录</h2><div class="prod-pulse-table"><table><thead><tr><th>奖励</th><th>到账状态</th><th>时间</th><th>奖励编号</th></tr></thead><tbody>${rewardRows || '<tr><td colspan="4">暂无奖励记录</td></tr>'}</tbody></table></div></section>${footer()}`;
+    const rewardRows = rewards.map((r) => `<tr><td>${esc(formatPulseQuota(r.amount, rules.quota_per_unit, locale()))}</td><td>${esc(t(states[r.status] || '等待核对'))}</td><td>${esc(r.created_at ? new Date(r.created_at).toLocaleString(locale()) : '—')}</td><td><code>${esc(r.grant_id)}</code></td></tr>`).join('');
+    const prizeRows = prizes.map((r) => `<li><strong>${esc(r.name)}</strong><span>${esc(formatPulseQuota(r.amount, rules.quota_per_unit, locale()))}</span><span>${esc(t('概率 {weight} / {total}', { weight: r.weight, total: rules.total_weight }))}</span></li>`).join('');
+    return `${crumb([[t('Pulse 权益')]])}${heading(t('开启脉冲，获得调用回馈'), t('经核验的付费调用积累脉冲券，奖励自动发往已绑定的元衡 API 账号。'))}
+      <section class="pulse-hero"><div><div class="eyebrow">${esc(rules.period?.key || t('元衡脉冲'))}</div><h1>${esc(t('可用脉冲券：{count}', { count: number(available) }))}</h1><p>${t('每次消耗 1 张券。奖励仅供 API 调用使用，不可转赠。')}</p>
+      ${!rules.enabled ? `<p role="status">${esc(t(unavailable[rules.unavailable_reason] || '活动暂不可用'))}</p>` : ''}
+      <div class="actions"><button type="button" class="btn light" data-action="pulse-draw" ${canDraw ? '' : 'disabled'}>${t(pulseBusy ? '正在处理…' : '开启一次脉冲 · 1 券')}</button><button type="button" class="btn outline-light" data-action="retry">${t('刷新奖励状态')}</button></div></div>${I('pulse')}</section>
+      ${pulseMessage ? `<div class="prod-status mt24" role="status"><p>${esc(t(pulseMessage))}</p></div>` : ''}
+      ${pending ? `<section class="card card-pad mt24" role="status"><h3>${t('正在确认上一次抽奖')}</h3><p class="muted mt8">${t('请先查询原请求。继续处理会沿用同一次抽奖，不会重新扣券或更换结果。')}</p><div class="flex wrap mt16"><button class="btn" data-action="retry">${t('查询原抽奖')}</button><button class="btn primary" data-action="pulse-resume" ${pulseBusy ? 'disabled' : ''}>${t('继续处理原请求')}</button></div></section>` : ''}
+      <div class="prod-pulse-stats mt24"><section class="card card-pad"><h3>${t('当前等级')}</h3><p>${esc(summary.level?.name || t('未定级'))}</p></section><section class="card card-pad"><h3>${t('本期贡献')}</h3><p>${esc(Number.isSafeInteger(summary.current_contribution_milli) ? number(summary.current_contribution_milli / 1000) : t('待核对'))}</p></section><section class="card card-pad"><h3>${t('活动结束')}</h3><p>${esc(rules.period?.ends_at ? new Date(rules.period.ends_at).toLocaleString(locale()) : '—')}</p></section></div>
+      <section class="card card-pad mt24"><h2>${t('本期奖池与规则')}</h2>${prizeRows ? `<ul class="prod-pulse-prizes">${prizeRows}</ul>` : `<p class="muted mt16">${t('暂无可参与奖池。')}</p>`}<p class="muted mt16">${t('奖项概率与产券规则在本期固定。预算不足不扣券；发放延迟会保留中奖结果。赠送额度和无法核验资金来源的消费不产生脉冲券。')}</p><p class="muted mt8">${t('API 额度按元衡账户的额度单位展示，不代表人民币或可提现金额。')}</p></section>
+      <section class="card card-pad mt24"><h2>${t('奖励记录')}</h2><div class="prod-pulse-table"><table><thead><tr><th>${t('奖励')}</th><th>${t('到账状态')}</th><th>${t('时间')}</th><th>${t('奖励编号')}</th></tr></thead><tbody>${rewardRows || `<tr><td colspan="4">${t('暂无奖励记录')}</td></tr>`}</tbody></table></div></section>${footer()}`;
   }
 
   function authPage(kind) {
@@ -429,12 +429,12 @@
       const operation = resume ? store.read() : store.begin();
       if (!operation) return;
       const result = await pulse.act(operation);
-      if (!result.grant_id || result.action_id !== operation.actionId) throw new AdapterError('本次结果仍待确认', { code: 'action_pending' });
+      if (!result.grant_id || result.action_id !== operation.actionId) throw new AdapterError(t('本次结果仍待确认'), { code: 'action_pending' });
       store.clear();
       pulseMessage = result.status === 'settled' ? '奖励已到账。' : '抽奖已完成，奖励正在发放，请查看奖励记录。';
     } catch (error) {
       if (error.code === 'action_rejected') { store.clear(); pulseMessage = '本次未扣券，可能是可用券或活动预算不足，请刷新后查看。'; }
-      else if (error.code === 'storage_unavailable') pulseMessage = error.message;
+      else if (error.code === 'storage_unavailable') pulseMessage = '无法保存本次请求，请允许站点存储后重试';
       else pulseMessage = '暂时无法确认本次结果，请查询原抽奖或继续处理原请求。';
     } finally {
       pulseBusy = false;
