@@ -30,16 +30,18 @@ def main():
         context = ssl.create_default_context(cafile=str(cert / 'fullchain.pem'))
         try:
             run('docker', 'run', '-d', '--rm', '--name', name, '--add-host', 'forum:127.0.0.1',
-                '-p', '127.0.0.1::443',
+                '-p', '127.0.0.1::443', '-p', '127.0.0.1::80',
                 '-v', str(ROOT / 'deploy/nginx/meta-pulse.conf') + ':/etc/nginx/conf.d/default.conf:ro',
                 '-v', temp + ':/etc/letsencrypt:ro', '-v', str(DIST) + ':/var/www/blog:ro',
                 'nginx:1.27-alpine')
             port = int(run('docker', 'port', name, '443/tcp').rsplit(':', 1)[1])
+            http_port = int(run('docker', 'port', name, '80/tcp').rsplit(':', 1)[1])
 
-            def get(path, user_agent='Mozilla/5.0', host='metar.uk'):
-                conn = http.client.HTTPSConnection('localhost', port, context=context, timeout=5)
+            def get(path, user_agent='Mozilla/5.0', host='metar.uk', method='GET', https=True):
+                conn = (http.client.HTTPSConnection('localhost', port, context=context, timeout=5)
+                        if https else http.client.HTTPConnection('localhost', http_port, timeout=5))
                 try:
-                    conn.request('GET', path, headers={'Host': host, 'User-Agent': user_agent})
+                    conn.request(method, path, headers={'Host': host, 'User-Agent': user_agent})
                     res = conn.getresponse()
                     return res.status, dict(res.getheaders()), res.read().decode()
                 finally:
@@ -88,8 +90,14 @@ def main():
             assert robots[2].count('Sitemap: ') == 3
             for path in ['/blog/missing-page', '/blog/metar/index.html', '/blog/metar/seo/latest.html']:
                 assert get(path)[0] == 404, path
-            assert get('/', host='www.metar.uk')[:2][0] == 308
+            assert get('/', host='www.metar.uk')[0] == 301
+            assert get('/', host='www.metar.uk', method='HEAD')[0] == 301
+            assert get('/', host='www.metar.uk', method='POST')[0] == 308
             assert get('/', host='www.metar.uk')[1]['Location'] == 'https://metar.uk/'
+            for method, expected in [('GET', 301), ('HEAD', 301), ('POST', 308)]:
+                status, headers, _ = get('/latest?page=2', method=method, https=False)
+                assert status == expected, (method, status)
+                assert headers['Location'] == 'https://metar.uk/latest?page=2'
             print('SEO gateway: bot parity, public HTML, canonical, private noindex, sitemap URLs, 404 and www redirect passed')
         finally:
             subprocess.run(['docker', 'rm', '-f', name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
