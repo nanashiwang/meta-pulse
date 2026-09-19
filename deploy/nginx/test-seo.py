@@ -98,6 +98,12 @@ def main():
                 status, headers, _ = get('/latest?page=2', method=method, https=False)
                 assert status == expected, (method, status)
                 assert headers['Location'] == 'https://metar.uk/latest?page=2'
+            for https in (True, False):
+                status, headers, body = get('/baidu_verify_codeva-5q1djDn6Ob.html', https=https)
+                assert status == 200
+                assert body == '551f5710c78ce8db2eccdddbe4b36993'
+                assert headers.get('X-Robots-Tag') == 'noindex, nofollow'
+            assert get('/baidu_verify_unrelated.html', https=False)[0] == 301
             print('SEO gateway: bot parity, public HTML, canonical, private noindex, sitemap URLs, 404 and www redirect passed')
         finally:
             subprocess.run(['docker', 'rm', '-f', name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
