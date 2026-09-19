@@ -4,6 +4,7 @@ dist/
 coverage/
 *.out
 *.test
+__pycache__/
 
 # Runtime
 *.log

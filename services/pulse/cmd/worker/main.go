@@ -15,6 +15,7 @@ import (
 	"github.com/nanashiwang/meta-pulse/internal/adapter/forum"
 	"github.com/nanashiwang/meta-pulse/internal/adapter/newapi"
 	"github.com/nanashiwang/meta-pulse/internal/app"
+	"github.com/nanashiwang/meta-pulse/internal/buildinfo"
 	"github.com/nanashiwang/meta-pulse/internal/config"
 	"github.com/nanashiwang/meta-pulse/internal/health"
 	"github.com/nanashiwang/meta-pulse/internal/job"
@@ -26,6 +27,9 @@ import (
 )
 
 func main() {
+	if buildinfo.PrintVersion() {
+		return
+	}
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	cfg, err := config.Load()
 	if err != nil {

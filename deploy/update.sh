@@ -11,6 +11,7 @@ NO_BUILD=0
 SKIP_FORUM=0
 SKIP_WORKER=0
 REF=""
+RELEASE_TAG=""
 ACCEPT_INGEST=0
 
 usage() {
@@ -24,6 +25,7 @@ usage() {
   --accept-ingest   更新后执行 180 秒只读摄入验收（需 python3）
   --env-file PATH   使用指定生产配置文件（默认：.env）
   --ref BRANCH      更新指定远程分支（默认：当前分支）
+  --release vX.Y.Z  部署已发布版本，核对清单并完整重建所有服务
   --no-build        不构建镜像，仅使用已有镜像
   --skip-forum      不构建/重启 Apache Answer
   --skip-worker     不构建/重启 worker
@@ -55,6 +57,17 @@ while (($# > 0)); do
       ACCEPT_INGEST=1
       shift
       ;;
+    --release)
+      (($# >= 2)) || die "--release 需要版本号"
+      [[ -n "$2" ]] || die "--release 需要版本号"
+      RELEASE_TAG="$2"
+      shift 2
+      ;;
+    --release=*)
+      RELEASE_TAG="${1#*=}"
+      [[ -n "$RELEASE_TAG" ]] || die "--release 需要版本号"
+      shift
+      ;;
     --no-build)
       NO_BUILD=1
       shift
@@ -76,6 +89,13 @@ while (($# > 0)); do
       ;;
   esac
 done
+
+if [[ -n "$RELEASE_TAG" ]]; then
+  [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || die "正式版本必须为 vX.Y.Z"
+  [[ -z "$REF" ]] || die "--release 不能与 --ref 同用"
+  (( NO_BUILD == 0 && SKIP_FORUM == 0 && SKIP_WORKER == 0 )) || die "正式版本部署必须完整构建所有服务"
+  require_command python3
+fi
 
 if (( ACCEPT_INGEST == 1 )); then
   require_command python3
@@ -141,20 +161,33 @@ backup_database_if_running forum-mysql "$BACKUP_DIR/forum.sql"
 backup_runtime_keys_if_present pulse-api "$BACKUP_DIR/runtime-keys/api"
 backup_runtime_keys_if_present pulse-worker "$BACKUP_DIR/runtime-keys/worker"
 
-log "拉取远程分支：origin/$REF"
-git -C "$REPO_ROOT" fetch --prune origin "$REF"
-if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/remotes/origin/$REF"; then
-  if [[ "$CURRENT_BRANCH" != "$REF" ]]; then
-    if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/heads/$REF"; then
-      git -C "$REPO_ROOT" checkout "$REF"
-    else
-      git -C "$REPO_ROOT" checkout --track -b "$REF" "origin/$REF"
-    fi
-  fi
-  git -C "$REPO_ROOT" merge --ff-only "origin/$REF"
+if [[ -n "$RELEASE_TAG" ]]; then
+  log "核实正式版本：$RELEASE_TAG"
+  git -C "$REPO_ROOT" fetch --no-tags origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+  TARGET_COMMIT="$(git -C "$REPO_ROOT" rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+  python3 "$SCRIPT_DIR/verify-release.py" "$RELEASE_TAG" "$TARGET_COMMIT"
+  [[ "v$(git -C "$REPO_ROOT" show "$TARGET_COMMIT:VERSION")" == "$RELEASE_TAG" ]] || die "标签与 VERSION 不一致"
+  # Refuse a no-op merge when the checkout is ahead of the requested version.
+  # Production Git history is never reset by the updater.
+  git -C "$REPO_ROOT" merge-base --is-ancestor HEAD "$TARGET_COMMIT" || die "当前代码超前或分叉，不能快进到指定版本"
+  git -C "$REPO_ROOT" merge --ff-only "$TARGET_COMMIT"
+  [[ "$(git -C "$REPO_ROOT" rev-parse HEAD)" == "$TARGET_COMMIT" ]] || die "部署提交与发布版本不一致"
 else
-  printf '[meta-pulse] 找不到远程分支 origin/%s\n' "$REF" >&2
-  false
+  log "拉取远程分支：origin/$REF"
+  git -C "$REPO_ROOT" fetch --prune origin "$REF"
+  if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/remotes/origin/$REF"; then
+    if [[ "$CURRENT_BRANCH" != "$REF" ]]; then
+      if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/heads/$REF"; then
+        git -C "$REPO_ROOT" checkout "$REF"
+      else
+        git -C "$REPO_ROOT" checkout --track -b "$REF" "origin/$REF"
+      fi
+    fi
+    git -C "$REPO_ROOT" merge --ff-only "origin/$REF"
+  else
+    printf '[meta-pulse] 找不到远程分支 origin/%s\n' "$REF" >&2
+    false
+  fi
 fi
 
 validate_compose
@@ -175,6 +208,11 @@ fi
 # 使用旧的 bind mount；此时仅 reload 不足，必须重建网关容器。
 if ! git -C "$REPO_ROOT" diff --quiet "$OLD_COMMIT" HEAD -- deploy/nginx/meta-pulse.conf; then
   GATEWAY_CONFIG_CHANGED=1
+fi
+if [[ -n "$RELEASE_TAG" ]]; then
+  # Reinstalling a tag also refreshes host-local static builds.
+  BLOG_CHANGED=1
+  COMMUNITY_CHANGED=1
 fi
 if (( GATEWAY_ENABLED == 1 && (BLOG_CHANGED == 1 || COMMUNITY_CHANGED == 1) )); then
   if (( NO_BUILD == 0 )); then
@@ -234,6 +272,21 @@ if (( GATEWAY_ENABLED == 1 )); then
   wait_for_service gateway 120
   compose exec -T gateway nginx -t
   compose exec -T gateway nginx -s reload
+fi
+
+if [[ -n "$RELEASE_TAG" ]]; then
+  for service in pulse-api pulse-worker forum; do
+    container="$(compose ps -q "$service")"
+    [[ -n "$container" ]] || die "$service 容器不存在"
+    actual_revision="$(docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$container")"
+    actual_version="$(docker inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' "$container")"
+    [[ "$actual_revision" == "$TARGET_COMMIT" && "$actual_version" == "${RELEASE_TAG#v}" ]] || die "$service 实际镜像与发布版本不一致"
+  done
+  printf '%s\n%s\n' "$RELEASE_TAG" "$TARGET_COMMIT" >"$BACKUP_DIR/deployed-release.txt"
+  chmod 600 "$BACKUP_DIR/deployed-release.txt"
+  cp "$BACKUP_DIR/deployed-release.txt" "$REPO_ROOT/.data/deployed-release.txt"
+  chmod 600 "$REPO_ROOT/.data/deployed-release.txt"
+  log "运行版本已核实：$RELEASE_TAG ($TARGET_COMMIT)"
 fi
 
 trap - ERR

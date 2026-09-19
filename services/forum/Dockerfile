@@ -28,6 +28,10 @@ RUN answer build \
     --output /out/answer
 
 FROM alpine:3.20
+ARG META_PULSE_REVISION=unknown
+ARG META_PULSE_VERSION=dev
+LABEL org.opencontainers.image.revision=$META_PULSE_REVISION
+LABEL org.opencontainers.image.version=$META_PULSE_VERSION
 RUN apk add --no-cache ca-certificates tzdata
 COPY --from=answer-base /data /data
 COPY --from=builder /out/answer /usr/bin/answer

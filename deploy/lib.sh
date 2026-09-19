@@ -176,6 +176,11 @@ compose() (
     compose_files+=(-f "$COMPOSE_OVERRIDE_FILE")
   fi
   export META_PULSE_REVISION="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+  export META_PULSE_VERSION=dev
+  if [[ -f "$REPO_ROOT/VERSION" ]]; then
+    META_PULSE_VERSION="$(cat "$REPO_ROOT/VERSION")"
+    [[ "$META_PULSE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "VERSION 格式无效"
+  fi
   docker compose --env-file "$ENV_FILE" "${compose_files[@]}" "$@"
 )
 

@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags: ['v[0-9]*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
+  publish:
+    name: Build, verify and publish release assets
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          cache-dependency-path: services/pulse/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build only the tagged source
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: ./release/build.sh "$RELEASE_TAG"
+      - name: Upload draft, download and verify, then publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: ./release/publish.sh "$RELEASE_TAG"

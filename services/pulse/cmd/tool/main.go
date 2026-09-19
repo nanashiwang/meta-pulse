@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/nanashiwang/meta-pulse/internal/adapter/newapi"
+	"github.com/nanashiwang/meta-pulse/internal/buildinfo"
 	"github.com/nanashiwang/meta-pulse/internal/config"
 	"github.com/nanashiwang/meta-pulse/internal/domain/money"
 	"github.com/nanashiwang/meta-pulse/internal/runtimeconfig"
@@ -22,6 +23,9 @@ import (
 )
 
 func main() {
+	if buildinfo.PrintVersion() {
+		return
+	}
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	if len(os.Args) < 2 {
 		usage()

@@ -75,7 +75,11 @@ case " $* " in
     [[ "${MOCK_GATEWAY:-0}" == 1 ]] && printf 'gateway\n'
     ;;
   *' inspect '*)
-    if [[ "$*" == *'.Mounts'* ]]; then
+    if [[ "$*" == *'org.opencontainers.image.revision'* ]]; then
+      if [[ "${MOCK_WRONG_REVISION:-0}" == 1 ]]; then printf 'old-image\n'; else "$REAL_GIT" -C "$MOCK_REPO" rev-parse HEAD; fi
+    elif [[ "$*" == *'org.opencontainers.image.version'* ]]; then
+      cat "$MOCK_REPO/VERSION"
+    elif [[ "$*" == *'.Mounts'* ]]; then
       [[ "${MOCK_RUNTIME_KEYS:-0}" == 1 ]] && printf 'volume\n'
     elif [[ "$*" == *'.State.Health'* ]]; then printf 'running healthy\n'; else printf 'running\n'; fi
     ;;
@@ -189,4 +193,39 @@ if MOCK_RUNTIME_KEYS=1 MOCK_RUNTIME_COPY_FAIL=1 bash "$tmp/repo/deploy/update.sh
 fi
 ! grep -q '^fetch$' "$MOCK_LOG"
 
-printf '更新配置只读、锁、原配置备份和网关文件挂载回归通过\n'
+# Release upgrades require publication, pin the commit and reject stale images.
+cat >"$tmp/repo/deploy/verify-release.py" <<'VERIFY'
+import os, sys
+with open(os.environ['MOCK_LOG'], 'a') as f:
+    f.write('verify-release\n')
+if os.environ.get('MOCK_RELEASE_FAIL') == '1':
+    sys.exit(41)
+VERIFY
+printf '0.1.0\n' >"$tmp/repo/VERSION"
+"$REAL_GIT" -C "$tmp/repo" add VERSION deploy/verify-release.py
+"$REAL_GIT" -C "$tmp/repo" -c user.name=Test -c user.email=test@example.invalid -c commit.gpgsign=false commit -qm release-fixture
+"$REAL_GIT" -C "$tmp/repo" tag v0.1.0
+: >"$MOCK_LOG"
+MOCK_GATEWAY=1 MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" --release v0.1.0 >"$tmp/output" 2>&1 || { cat "$tmp/output" >&2; exit 1; }
+grep -q '^verify-release$' "$MOCK_LOG"
+grep -q '^build-blog$' "$MOCK_LOG"
+grep -q '^build-community$' "$MOCK_LOG"
+grep -q '^v0.1.0$' "$tmp/repo/.data/deployed-release.txt"
+cmp "$tmp/original.env" "$tmp/repo/.env"
+for failure in MOCK_RELEASE_FAIL MOCK_WRONG_REVISION; do
+  : >"$MOCK_LOG"
+  if env "$failure=1" MOCK_GATEWAY=1 MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" --release v0.1.0 >"$tmp/output" 2>&1; then
+    echo "release validation ignored: $failure" >&2; exit 1
+  fi
+  if [[ "$failure" == MOCK_RELEASE_FAIL ]]; then ! grep -q ' stop -t 15 pulse-api' "$MOCK_LOG"; fi
+done
+printf '0.1.1\n' >"$tmp/repo/VERSION"
+"$REAL_GIT" -C "$tmp/repo" add VERSION
+"$REAL_GIT" -C "$tmp/repo" -c user.name=Test -c user.email=test@example.invalid -c commit.gpgsign=false commit -qm next-fixture
+before="$("$REAL_GIT" -C "$tmp/repo" rev-parse HEAD)"
+if MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" --release v0.1.0 >"$tmp/output" 2>&1; then
+  echo 'release silently accepted a newer checkout' >&2; exit 1
+fi
+grep -q '当前代码超前或分叉' "$tmp/output"
+[[ "$("$REAL_GIT" -C "$tmp/repo" rev-parse HEAD)" == "$before" ]]
+printf '更新配置只读、锁、备份、网关和指定发布版本回归通过\n'

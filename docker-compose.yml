@@ -39,6 +39,7 @@ services:
       dockerfile: services/pulse/Dockerfile
       args:
         META_PULSE_REVISION: ${META_PULSE_REVISION:-unknown}
+        META_PULSE_VERSION: ${META_PULSE_VERSION:-dev}
     restart: unless-stopped
     environment:
       PULSE_ENV: ${PULSE_ENV:-development}
@@ -90,6 +91,7 @@ services:
       dockerfile: services/pulse/Dockerfile
       args:
         META_PULSE_REVISION: ${META_PULSE_REVISION:-unknown}
+        META_PULSE_VERSION: ${META_PULSE_VERSION:-dev}
     restart: unless-stopped
     entrypoint: ["meta-pulse-worker"]
     environment:
@@ -160,6 +162,9 @@ services:
     build:
       context: .
       dockerfile: services/forum/Dockerfile
+      args:
+        META_PULSE_REVISION: ${META_PULSE_REVISION:-unknown}
+        META_PULSE_VERSION: ${META_PULSE_VERSION:-dev}
     restart: unless-stopped
     environment:
       # The plugin uses Answer's own database account to install and verify
