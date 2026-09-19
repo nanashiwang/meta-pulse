@@ -78,7 +78,7 @@ Meta Pulse 负责 Usage Event、贡献值、脉冲券、经济规则、10 天周
 - Answer 原生登录、注册、找回、发帖和写操作入口；
 - VitePress 知识库入口，以及未登录、未激活、未绑定和服务不可用状态。
 
-正式首页由 Nginx 精确匹配 `/` 提供；`/questions`、`/users/*`、`/answer/api/*` 等路径仍由 Answer 原生 UI/API 负责，因此前端回退不会修改社区数据、会话或权限规则。Pulse 用户权益通过受 Answer 身份保护的社区 BFF 接通总览、奖池、抽奖及奖励记录；默认关闭新抽奖，未完成配置时明确显示不可用状态。后续阶段见 [`docs/METAR_FRONTEND_REFACTOR_PLAN.md`](docs/METAR_FRONTEND_REFACTOR_PLAN.md)。
+正式首页与 `/latest` 使用紧凑讨论列表，支持不带 `#` 的 History 路由；Nginx 按白名单提供深链接，旧 Hash 链接自动转换。`/questions`、`/users/*`、`/answer/api/*` 等路径仍由 Answer 原生 UI/API 负责，因此前端回退不会修改社区数据、会话或权限规则。Pulse 用户权益通过受 Answer 身份保护的社区 BFF 接通总览、奖池、抽奖及奖励记录；默认关闭新抽奖，未完成配置时明确显示不可用状态。后续阶段见 [`docs/METAR_FRONTEND_REFACTOR_PLAN.md`](docs/METAR_FRONTEND_REFACTOR_PLAN.md)。
 
 本地验证：
 
@@ -89,7 +89,7 @@ make build-community  # 产物写入现有博客静态卷的 metar/ 子目录
 
 ## 快速开始
 
-正式版本、下载附件及指定版本升级见 [发布与部署](docs/RELEASE.md)。发布页为 [GitHub Releases](https://github.com/nanashiwang/meta-pulse/releases)，已有服务器使用 `metar update --release v0.1.1`。
+正式版本、下载附件及指定版本升级见 [发布与部署](docs/RELEASE.md)。发布页为 [GitHub Releases](https://github.com/nanashiwang/meta-pulse/releases)，已有服务器使用 `metar update --release v0.2.0`。
 
 ### 服务器首次部署
 
@@ -185,7 +185,7 @@ Apache Answer 源码不进入仓库，通过官方镜像与 Go module 引入。
 
 ## 社区抽奖与自动到账
 
-METAR 管理员可在 `/#/admin/pulse` 配置额度换算、抽奖开关、影子模式与各用途的 HMAC 密钥。首次在 Answer 插件后台完成管理通道配对，之后无需为这些参数反复修改 `.env` 或重启；密钥按 API/Worker 分角色加密，保存有版本校验、幂等与审计。启用、备份和恢复步骤见 [METAR 管理员配置](docs/METAR_ADMIN_SETTINGS.md)。
+METAR 管理员可在 `/admin/pulse` 配置额度换算、抽奖开关、影子模式与各用途的 HMAC 密钥。首次在 Answer 插件后台完成管理通道配对，之后无需为这些参数反复修改 `.env` 或重启；密钥按 API/Worker 分角色加密，保存有版本校验、幂等与审计。启用、备份和恢复步骤见 [METAR 管理员配置](docs/METAR_ADMIN_SETTINGS.md)。
 
 代码已接通绑定本人账号的自动到账链路、Pulse 预算与 new-api 独立金额上限、付费来源证明、操作恢复和独立撤销权限。新抽奖与新到账默认关闭，旧周期不直接开放发奖；新奖池需审计创建与真实环境验收。首版只认升级后支持的在线支付与普通同步钱包结算凭证中的付费部分；历史余额、赠送和未覆盖的计费路径不自动产券，也不回填付费资格。配置和发布步骤见 [REWARDS_ROLLOUT.md](docs/REWARDS_ROLLOUT.md)。
 

@@ -31,3 +31,4 @@ Thumbs.db
 data/
 metar-frontend/production/dist/
 .playwright-cli/
+output/playwright/

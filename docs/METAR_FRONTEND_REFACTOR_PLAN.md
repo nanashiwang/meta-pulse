@@ -88,7 +88,7 @@ new-api
 
 ### F1：METAR 社区壳层 + Answer 适配 ✅（首轮）
 
-- [x] 新增正式静态前端构建，并由 Nginx 精确匹配 `/` 托管；
+- [x] 新增正式静态前端构建，并由 Nginx 根路径及 History 页面白名单托管，旧 Hash 分享链接自动转换；
 - [x] 保留 `/answer/api/*`、`/questions`、`/users/*`、Connector、callback 与 `/blog/`；
 - [x] 接通真实发现、问题列表/详情/回答、话题、搜索和知识库入口；
 - [x] 登录、注册、找回、发布和写操作继续进入 Answer 原生安全流程；

@@ -77,7 +77,7 @@ chmod 755 .data/certbot .data/certbot/.well-known .data/certbot/.well-known/acme
 
 ## 安全边界
 
-- 精确根路径 `/` 只提供无 mock 的静态壳层；其脚本只访问同源 Answer API，Pulse 尚未接 BFF 时不展示虚构权益；
+- 根路径 `/` 与白名单 History 路径（如 `/latest`、`/topics`、`/question/:id`）提供无 mock 的静态壳层；其脚本只访问同源 Answer API，Pulse 尚未接 BFF 时不展示虚构权益；
 - `/questions`、`/users/*`、`/answer/api/*` 等普通论坛请求仍由 Answer 处理，并只向 Answer 转发 `visit` Cookie；
 - Answer v1.7.1 的 `/answer/api/v1/user-center/agent` 响应在网关定点归一化：登录固定进入 `pulse_user_center` Connector，注册固定返回 `/users/register`；该代理关闭压缩与缓存，避免本地注册被 UserCenter 接管；
 - UserCenter 的 `/login/redirect`、`/sign-up/redirect` 及其旧空跳转父路径仅作兼容兜底，不承载独立认证逻辑；

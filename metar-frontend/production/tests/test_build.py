@@ -37,6 +37,8 @@ class ProductionBuildTest(unittest.TestCase):
             self.assertIn("/metar-assets/avatars.js", index)
             self.assertLess(index.index("/metar-assets/avatars.js"), index.index("/metar-assets/app.js"))
             self.assertTrue((output / "assets/avatars.js").is_file())
+            self.assertTrue((output / "assets/router.js").is_file())
+            self.assertLess(index.index("/metar-assets/router.js"), index.index("/metar-assets/app.js"))
             self.assertTrue((output / "assets/i18n.js").is_file())
             self.assertLess(index.index("/metar-assets/i18n.js"), index.index("/metar-assets/adapters.js"))
             self.assertNotIn('style="', (output / "assets/app.js").read_text(encoding="utf-8"))
@@ -46,6 +48,7 @@ class ProductionBuildTest(unittest.TestCase):
         subprocess.run(["node", "--check", str(ROOT / "src/i18n.js")], check=True)
         subprocess.run(["node", "--check", str(ROOT / "src/adapters.js")], check=True)
         subprocess.run(["node", "--check", str(ROOT / "src/avatars.js")], check=True)
+        subprocess.run(["node", "--check", str(ROOT / "src/router.js")], check=True)
         subprocess.run(["node", "--check", str(ROOT / "src/app.js")], check=True)
         subprocess.run(["node", "--check", str(ROOT / "src/admin-pulse.js")], check=True)
 

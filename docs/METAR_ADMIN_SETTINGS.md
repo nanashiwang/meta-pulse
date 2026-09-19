@@ -1,12 +1,12 @@
 # METAR 管理员配置
 
-管理员登录社区后，可从用户菜单进入 **Pulse 配置**，地址为 `https://metar.uk/#/admin/pulse`。页面管理 Pulse 对接参数和运行开关；new-api 的到账上限仍在 new-api 后台配置，奖池、概率、预算和产券门槛仍通过审计的 `period-create` 创建并在启用后冻结。
+管理员登录社区后，可从用户菜单进入 **Pulse 配置**，地址为 `https://metar.uk/admin/pulse`。页面管理 Pulse 对接参数和运行开关；new-api 的到账上限仍在 new-api 后台配置，奖池、概率、预算和产券门槛仍通过审计的 `period-create` 创建并在启用后冻结。
 
 ## 首次启用
 
 1. 使用正常 `metar update` 更新 API、Worker、论坛插件和社区前端，不使用 `--skip-worker` 或 `--skip-forum`。更新会应用 `00012_runtime_settings.sql`。
 2. 在 Answer 后台 `/admin/pulse_user_center` 的 **Pulse 管理配置 HMAC 密钥**（`admin_hmac_secret`）填入现有 Pulse `.env` 中 `PULSE_ADMIN_HMAC_SECRET` 的值并保存。这是一次性的管理通道配对；不复用 SSO、Profile、社区用户 BFF 或发奖密钥。
-3. 打开 `/#/admin/pulse`。首次没有网页覆盖值时沿用原部署配置，因此升级不会自动打开活动或更换已有业务密钥。
+3. 打开 `/admin/pulse`。首次没有网页覆盖值时沿用原部署配置，因此升级不会自动打开活动或更换已有业务密钥。
 
 只有 Answer 本地管理员可以使用。普通用户、版主、封禁账号、未激活账号、已被撤销管理员权限的旧会话均不可读写；管理员不需要绑定 new-api。配对密钥缺失时只关闭管理页，不影响社区本地登录和浏览。
 

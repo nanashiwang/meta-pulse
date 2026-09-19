@@ -37,11 +37,12 @@
     const query = new URLSearchParams(String(search || '').replace(/^\?/, ''));
     const targetQuery = new URLSearchParams(targetSearch);
 
-    if (targetPath === '/questions') {
+    if (targetPath === '/latest') {
       const targetOrder = targetQuery.get('order');
-      if (targetOrder) return path === '/questions' && query.get('order') === targetOrder;
-      return (path === '/questions' && query.get('order') !== 'unanswered') || path.startsWith('/question/');
+      if (targetOrder) return path === '/latest' && query.get('order') === targetOrder;
+      return (path === '/latest' && query.get('order') !== 'unanswered') || path.startsWith('/question/');
     }
+    if (targetPath === '/me') return path === '/me';
     if (targetPath === '/topics') return path === '/topics' || path.startsWith('/topic/');
     return path === targetPath || path.startsWith(`${targetPath}/`);
   }

@@ -839,7 +839,7 @@ Pulse 不保存：
 
 只使用 new-api `user_id` 作为 opaque principal。
 
-Pulse 对 new-api LOG_DB 使用只读账号，并且无权限直接写 new-api 用户余额表。new-api session Cookie 不得转发给 Pulse 或论坛；YuanHeng 的 Cookie 必须隔离在 new-api WebView / 客户端安全存储边界内。社区使用新的独立 HTTPS 域名：精确根路径 `/` 由无 mock 的 METAR 静态壳层提供，`/blog/` 由 VitePress 提供，其余 `/questions`、`/users/*` 和 `/answer/api/*` 仍由 Answer 提供。静态壳层只调用同源 Answer API 与认证社区 BFF，不自行实现身份或写权限判断。社区网关仅按 allowlist 转发 Answer `visit` 或 callback flow Cookie；callback 清除 Authorization，所有代理路由清除 Pulse 签名头，普通路由保留 Answer 自己的 Authorization；网关不直接代理 new-api 或 Pulse。
+Pulse 对 new-api LOG_DB 使用只读账号，并且无权限直接写 new-api 用户余额表。new-api session Cookie 不得转发给 Pulse 或论坛；YuanHeng 的 Cookie 必须隔离在 new-api WebView / 客户端安全存储边界内。社区使用新的独立 HTTPS 域名：根路径 `/` 以及白名单内的 `/latest`、`/topics`、`/question/:id`、`/topic/:slug`、`/me/*`、`/admin/pulse` 等 History 路径由无 mock 的 METAR 静态壳层提供，`/blog/` 由 VitePress 提供，其余 `/questions`、`/users/*` 和 `/answer/api/*` 仍由 Answer 提供。静态壳层只调用同源 Answer API 与认证社区 BFF，不自行实现身份或写权限判断。社区网关仅按 allowlist 转发 Answer `visit` 或 callback flow Cookie；callback 清除 Authorization，所有代理路由清除 Pulse 签名头，普通路由保留 Answer 自己的 Authorization；网关不直接代理 new-api 或 Pulse。
 
 ## 29. 对账与可观测性
 
@@ -1169,7 +1169,7 @@ Pulse使用事务预算预占；当余量不足最大单奖，暂停整个奖池
 
 ## 42. METAR 运行配置管理
 
-`/#/admin/pulse` 通过同源 `/metar/api/admin/pulse/{settings,secret}` 访问 Answer 管理员 BFF。原生管理员认证之后仍需实时读取 Answer `user` 与 `user_role_rel`，核验唯一管理员角色、可用状态和邮箱激活；不依赖 new-api 绑定，不把普通用户或版主提升为 Pulse 管理员。插件须显式配置 `admin_hmac_secret` 配对 Pulse 的运营管理角色，不能复用用户社区 BFF/SSO/Profile/发奖密钥。浏览器没有直接 Pulse 地址/签名/actor 控制能力。
+`/admin/pulse` 通过同源 `/metar/api/admin/pulse/{settings,secret}` 访问 Answer 管理员 BFF。原生管理员认证之后仍需实时读取 Answer `user` 与 `user_role_rel`，核验唯一管理员角色、可用状态和邮箱激活；不依赖 new-api 绑定，不把普通用户或版主提升为 Pulse 管理员。插件须显式配置 `admin_hmac_secret` 配对 Pulse 的运营管理角色，不能复用用户社区 BFF/SSO/Profile/发奖密钥。浏览器没有直接 Pulse 地址/签名/actor 控制能力。
 
 内部接口为 `GET/PUT /v1/internal/admin/settings` 和 `POST /v1/internal/admin/settings/secret`，只允许签名 `admin` Principal。管理 BFF 固定路径、拒绝 query token、限制请求/响应大小、严格 JSON 白名单并验证同源写请求；不转发 Answer token、浏览器指定的 Pulse 头或任意目标 URL。首次显式配对授予设置管理权限，不改变 Answer 的本地治理事实源。
 
@@ -1186,3 +1186,12 @@ API 每次请求、Worker 每轮相关任务读取一个一致配置快照；缓
 ## 43. 正式版本与部署身份
 
 `VERSION`、Git 标签、Release 清单及三个运行镜像的版本/提交共同确定部署身份。标签发布先复用完整 CI，再从指定提交构建并下载校验全部附件，最后公开 Release；发布流程不接触生产凭据。指定版本升级必须核对已发布清单、快进到完全相同的提交、备份数据库及两个私钥卷，并在健康检查后验证 API、Worker、Forum 的实际镜像身份。失败不自动回滚数据库或轮换密钥；运行配置与业务状态不随版本发布改变。流程与恢复要求见 `RELEASE.md`。
+
+
+## 44. 社区普通路径与讨论列表
+
+METAR 使用 History 路由，首页与 `/latest` 提供同一个真实讨论列表；旧 `/#/discover`、`/#/questions` 链接转换到 `/latest`，其余已登记 Hash 路径转换到对应普通路径并保留 query。转换使用 replaceState，站内导航使用 pushState，浏览器前进后退重新读取当前路径。只拦截带内部路由标记的同源普通点击，修饰键、新窗口、下载和原生 Answer 链接保留浏览器行为。
+
+Nginx 只对白名单中的壳层页面返回静态首页，不使用全站 SPA fallback。原生 `/questions`、`/questions/ask`、`/questions/:id`、`/notifications`、`/users/*`、`/answer/*`、SSO callback、博客与静态资源仍归各自处理器。壳层收藏与通知使用 `/me/bookmarks`、`/me/notifications`，避免与原生路径相互覆盖。缺少静态构建仍返回 404；认证、Cookie 过滤、HMAC 签名、CSP 和同源写保护不因路由改变而放宽。
+
+讨论行只投影 Answer 返回的标题、标签、作者、最近参与者、回答数、浏览量和活动时间。筛选与分页由 Answer API 完成，不推断未读数或伪造参与者；没有内容、错误与访客状态仍显式展示。首页移除介绍统计卡和右侧推荐卡，不更改帖子、绑定、奖励或账本。

@@ -81,7 +81,7 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
   };
   const question = { id: '42', title: content ? '未读' : 'User question', description: content ? '社区规范' : 'User summary', content: content ? '我的收藏' : 'User content', user_info: user, created_at: Math.floor(Date.now() / 1000) - 3600 };
   Object.assign(context, {
-    document, location: { origin: 'https://metar.uk', hash: '#/discover' },
+    document, location: new URL('https://metar.uk/latest'),
     URL, URLSearchParams, Headers, AbortController, setTimeout, clearTimeout,
     crypto: require('node:crypto').webcrypto,
     sessionStorage: {
@@ -123,11 +123,15 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
       return { ok: true, status: 200, json: async () => ({ data }) };
     },
   });
-  for (const name of ['adapters.js', 'avatars.js', 'admin-pulse.js', 'app.js']) vm.runInContext(script(name), context);
+  context.history = {
+    replaceState(_state, _title, url) { context.location = new URL(url, context.location.origin); },
+    pushState(_state, _title, url) { context.location = new URL(url, context.location.origin); },
+  };
+  for (const name of ['adapters.js', 'avatars.js', 'admin-pulse.js', 'router.js', 'app.js']) vm.runInContext(script(name), context);
   await new Promise(setImmediate);
   return {
     i18n, values, document, nodes, requests, operations,
-    async navigate(route) { context.location.hash = '#' + route; await windowEvents.get('hashchange')(); },
+    async navigate(route) { context.location = new URL(route, context.location.origin); await windowEvents.get('popstate')(); },
     async changeLanguage(value) {
       for (const listener of documentEvents.get('change') || []) listener({ target: { value, matches: () => true } });
       await new Promise(setImmediate);
@@ -154,7 +158,7 @@ test('所有英文页面与访客/已登录/绑定/失败状态不会遗留静�
     { failure: 'all' },
   ]) {
     const view = await shell(scenario);
-    for (const route of ['/discover', '/questions', '/question/42', '/topics', '/topic/agent', '/knowledge', '/search', '/search?q=hello', '/me', '/bookmarks', '/notifications', '/settings/binding', '/pulse', '/publish', '/login', '/register', '/forgot', '/support', '/status', '/guidelines', '/missing']) {
+    for (const route of ['/latest', '/latest', '/question/42', '/topics', '/topic/agent', '/knowledge', '/search', '/search?q=hello', '/me', '/me/bookmarks', '/me/notifications', '/settings/binding', '/pulse', '/publish', '/login', '/register', '/forgot', '/support', '/status', '/guidelines', '/missing']) {
       await view.navigate(route);
       assertEnglish(view, route);
     }
@@ -166,15 +170,15 @@ test('所有英文页面与访客/已登录/绑定/失败状态不会遗留静�
 
 test('语言切换重新渲染标题、筛选、ARIA、错误和数值，用户原文保持不变', async () => {
   const view = await shell({ language: 'zh_CN', user: { username: 'alice', display_name: 'Alice', mail_status: 1 }, content: true });
-  await view.navigate('/questions');
+  await view.navigate('/latest');
   assert.match(view.html(), /最近活跃/);
   await view.changeLanguage('en_US');
   assert.match(view.html(), /Active/);
   assert.match(view.html(), /aria-label="Interface language"/);
   assert.equal(view.values.get('metar-language'), 'en_US');
-  assert.equal(view.document.title, 'Questions · METAR');
+  assert.equal(view.document.title, 'Latest topics · METAR');
   assert.match(view.html(), /<h3>未读<\/h3>/);
-  assert.match(view.html(), /<p>社区规范<\/p>/);
+  assert.doesNotMatch(view.html(), /<p>社区规范<\/p>/); // Compact rows omit excerpts.
   assert.match(view.html(), /1 hour ago/);
   await view.navigate('/question/42');
   assert.match(view.html(), /prod-question-body">我的收藏/);
@@ -261,17 +265,17 @@ test('Pulse 提交结果与原请求恢复提示随切换语言更新，超时�
 test('Pulse 管理入口仅对 Answer 正常激活管理员显示，版主和伪造 is_admin 无权展示', async () => {
   for (const role_id of [1, 3, 0, undefined]) {
     const view = await shell({ user: { id: '8', role_id, is_admin: true, status: 'normal', mail_status: 1 } });
-    assert.doesNotMatch(view.nodes.app.innerHTML, /href="#\/admin\/pulse"/);
+    assert.doesNotMatch(view.nodes.app.innerHTML, /href="\/admin\/pulse"/);
     await view.navigate('/admin/pulse');
     assert.match(view.html(), /Administrator access required/);
     assert.equal(view.requests.some(({ url }) => url.startsWith('/metar/api/admin/')), false);
   }
   for (const user of [{ role_id: 2, status: 'suspended', mail_status: 1 }, { role_id: 2, status: 'normal', mail_status: 2 }]) {
     const view = await shell({ user });
-    assert.doesNotMatch(view.nodes.app.innerHTML, /href="#\/admin\/pulse"/);
+    assert.doesNotMatch(view.nodes.app.innerHTML, /href="\/admin\/pulse"/);
   }
   const view = await shell({ user: { id: '8', role_id: 2, status: 'normal', mail_status: 1 } });
-  assert.match(view.nodes.app.innerHTML, /href="#\/admin\/pulse"/);
+  assert.match(view.nodes.app.innerHTML, /href="\/admin\/pulse"/);
   await view.navigate('/admin/pulse');
   assert.match(view.html(), /Save Pulse settings/);
   assert.match(view.html(), /Grant key storage is ready/);

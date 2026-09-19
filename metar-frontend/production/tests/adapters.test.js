@@ -66,10 +66,10 @@ test('身份读取失败与真实访客状态严格区分', async () => {
 
 test('导航状态能区分待回答筛选与话题页', () => {
   const active = window.MetarAdapters.routeMatchesNavigation;
-  assert.equal(active('/questions', 'order=unanswered', '/questions?order=unanswered'), true);
-  assert.equal(active('/questions', 'order=unanswered', '/questions'), false);
-  assert.equal(active('/questions', 'order=active', '/questions'), true);
-  assert.equal(active('/question/42', '', '/questions'), true);
+  assert.equal(active('/latest', 'order=unanswered', '/latest?order=unanswered'), true);
+  assert.equal(active('/latest', 'order=unanswered', '/latest'), false);
+  assert.equal(active('/latest', 'order=active', '/latest'), true);
+  assert.equal(active('/question/42', '', '/latest'), true);
   assert.equal(active('/topics', '', '/topics'), true);
   assert.equal(active('/topic/agent', '', '/topics'), true);
 });

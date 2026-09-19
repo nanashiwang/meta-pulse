@@ -53,6 +53,12 @@ Go 无动态插件机制，因此 Answer 升级后必须重新编译并做真实
 
 UI 资源通过 Go embed 保留到 `go mod vendor`，官方 `answer build` 负责复制私有插件、加载与打包。更新需重建 `forum` 镜像（普通 `metar update` 即可，勿用 `--skip-forum`），无需额外粘贴外观脚本。Answer 升级时需回归 `@/i18n/init`、`loggedUserInfoStore`、`#header > .w-100`、访客/登录用户、语言异步初始化竞争及手机导航布局。
 
+### 3.2 普通路径与列表首页
+
+首页 `/` 与 `/latest` 使用紧凑讨论列表，保留活跃、最新、热门、高赞和待回答筛选。`/topics` 是标签目录，`/topic/:slug` 是标签下的讨论，`/question/:id` 是问题只读详情。手机端收拢次要指标，保留标题、标签、回复和活动时间；中英文与深色主题沿用浏览器偏好。
+
+旧 `/#/...` 分享链接由前端转换，刷新与直接访问由 Nginx 白名单处理。原生 Answer 的发帖、问题互动、账号、通知及所有 API/回调路径继续保留；收藏与通知壳层分别使用 `/me/bookmarks` 和 `/me/notifications`。完整边界见架构第 44 节。
+
 ## 4. 双身份与可选绑定
 
 ### 4.1 账号原则
@@ -281,13 +287,13 @@ FORUM_INTEGRATION_DSN='.../forum_integration?...' make test-forum-integration
 
 ## 12. 社区抽奖入口
 
-METAR `/#/pulse` 通过同源 `/metar/api/pulse/*` 访问 Answer 认证插件，后者从原生会话、实时账号状态和保护绑定派生 new-api 身份，使用独立 community-bff 签名。普通 forum profile 密钥仍只读等级，不获得抽奖权限。社区 BFF 代码已接通；插件未配置独立密钥时权益接口不可用，`PULSE_ACTIONS_ENABLED` 与 new-api 新发奖开关默认关闭。插件扩展采用 Answer 的认证路由，禁止绕过原生认证或查询字符串 token。缺配置和 Pulse 故障只影响权益页，不阻断社区登录/浏览。
+METAR `/pulse` 通过同源 `/metar/api/pulse/*` 访问 Answer 认证插件，后者从原生会话、实时账号状态和保护绑定派生 new-api 身份，使用独立 community-bff 签名。普通 forum profile 密钥仍只读等级，不获得抽奖权限。社区 BFF 代码已接通；插件未配置独立密钥时权益接口不可用，`PULSE_ACTIONS_ENABLED` 与 new-api 新发奖开关默认关闭。插件扩展采用 Answer 的认证路由，禁止绕过原生认证或查询字符串 token。缺配置和 Pulse 故障只影响权益页，不阻断社区登录/浏览。
 
 页面展示本人券、奖池权重、中奖与到账记录。浏览器只提交随机操作编号和幂等键；同源写请求防跨站，前后端均不允许自报 user_id/amount/reward。丢失响应时查询原 action_id 或用原 key 重试，不重新抽奖。首版只认升级后受支持在线支付和普通同步钱包结算凭证中的 `paid_quota`。旧余额、赠送、兑换码以及未覆盖的计费路径不自动产券；不会从历史余额反推付费资格。具体支持范围、配置、发奖与撤销隔离见 [REWARDS_ROLLOUT.md](REWARDS_ROLLOUT.md)。
 
 ## 13. 社区管理员运行配置
 
-METAR `/#/admin/pulse` 是独立于用户权益的管理员配置入口。只允许 Answer 当前真实管理员，实时复核 `user`、`user_role_rel`、激活与封禁；已有管理员 token 不能绕过降权。不要求 new-api 绑定，也不会将 Answer ID 当作发奖受益人。
+METAR `/admin/pulse` 是独立于用户权益的管理员配置入口。只允许 Answer 当前真实管理员，实时复核 `user`、`user_role_rel`、激活与封禁；已有管理员 token 不能绕过降权。不要求 new-api 绑定，也不会将 Answer ID 当作发奖受益人。
 
 首次在原生插件后台配置独立用途的 `admin_hmac_secret`，对应 Pulse 已有运营密钥。后续管理请求固定签名为 admin，公网别名仅代理 Answer 插件的两个固定 settings/secret 路径，不直接代理 Pulse。开关和密钥配置通过版本 CAS、幂等与审计保存；原有用户 BFF、Profile 与 SSO 权限不扩张。管理配置故障不影响本地登录/浏览。
 
