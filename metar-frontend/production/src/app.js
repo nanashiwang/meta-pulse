@@ -476,15 +476,11 @@
   }
 
   function setTheme(theme) {
-    document.documentElement.dataset.theme = theme === 'dark' ? 'dark' : 'light';
-    try { window.localStorage.setItem('_metar_theme', document.documentElement.dataset.theme); } catch (_) { /* UI preference only */ }
-    syncThemeControl();
+    window.MetarTheme.installTheme(window).select(theme);
   }
 
   function initializeTheme() {
-    let saved = '';
-    try { saved = window.localStorage.getItem('_metar_theme') || ''; } catch (_) { /* use system */ }
-    setTheme(saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+    window.MetarTheme.installTheme(window).subscribe(syncThemeControl);
   }
 
   async function initializeIdentity() {

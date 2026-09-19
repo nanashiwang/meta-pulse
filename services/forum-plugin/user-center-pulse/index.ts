@@ -8,8 +8,15 @@ import 'dayjs/locale/zh-cn';
 import { installLanguageSwitcher } from './language-switcher';
 import './language-switcher.css';
 import { installNavigationBridge } from './navigation-bridge';
+import { installNativeShell } from './native-shell';
+import './theme-tokens.css';
+import './native-shell.css';
 
 installNavigationBridge();
+installNativeShell({
+  getLanguage: () => i18n.language,
+  onLanguageChanged: (handler) => i18n.on('languageChanged', handler),
+});
 
 // Use the host's own translator, locale data and in-memory preference. No
 // user profile/session is written and no new-api/Pulse request is involved.

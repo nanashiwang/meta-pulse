@@ -76,6 +76,7 @@ build-community:
 
 test-community:
 	python3 metar-frontend/shared/generate-routes.py --check
+	python3 metar-frontend/shared/generate-theme.py --check
 	python3 -m unittest discover -s metar-frontend/production/tests -v
 	node --test metar-frontend/production/tests/*.test.js
 	node --test services/forum/customization/*.test.js

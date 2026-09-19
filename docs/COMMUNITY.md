@@ -61,6 +61,16 @@ UI 资源通过 Go embed 保留到 `go mod vendor`，官方 `answer build` 负�
 
 旧 `/#/...` 分享链接由前端转换，刷新与直接访问由 Nginx 白名单处理。原生 Answer 的发帖、问题互动、账号、通知及所有 API/回调路径继续保留；收藏与通知壳层分别使用 `/me/bookmarks` 和 `/me/notifications`。完整边界见架构第 44 节。
 
+### 3.3 统一视觉与主题
+
+`metar-frontend/shared/theme-tokens.css` 是社区、原生 Answer 与知识库的共用配色。`theme-core.js` 管理浏览器主题，修改后运行 `python3 metar-frontend/shared/generate-theme.py` 打包到静态前端和 Go embed 插件；测试检查产物没有漂移。
+
+三个界面共用 `_metar_theme`（`light` / `dark`），显式选择后保持到刷新、跨页面与同源其他标签；未选择时跟随系统，存储禁用时当页仍可用。VitePress 的 `auto` 值按跟随系统处理。该偏好只影响此浏览器，不写账号或站点配置；文章语言仍由内容本身决定。Answer 的异步站点/账号默认主题不能覆盖浏览器当前选择。
+
+启用 `pulse_user_center` 插件后，原生页面使用 METAR 页头、导航和样式。新增导航采用普通链接，保留浏览器及 Answer 的离开页面保护；原生 React 导航仍经过第 3.2 节的提交后切换。菜单和表单的权限、校验、验证码、上传、草稿、保存仍由 Answer 提供。插件关闭时 Answer 可以继续独立工作，但统一外观与导航桥不再加载。
+
+升级 Answer/VitePress 时需回归页头结构、原生主题异步初始化、个人页和编辑器、管理侧栏、320px/390px 窄屏、英文长标签，以及知识库首屏主题脚本。完整进度见 `METAR_UNIFICATION.md`。
+
 ## 4. 双身份与可选绑定
 
 ### 4.1 账号原则

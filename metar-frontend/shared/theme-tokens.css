@@ -1,0 +1,32 @@
+/* Canonical METAR palette shared by the shell, Answer plugin and knowledge base. */
+:root {
+  --metar-bg: #fff;
+  --metar-surface: #fff;
+  --metar-soft: #f0f3ef;
+  --metar-text: #202a26;
+  --metar-muted: #65716b;
+  --metar-border: #e5e9e3;
+  --metar-primary: #1d6549;
+  --metar-primary-rgb: 29, 101, 73;
+  --metar-primary-hover: #174f3a;
+  --metar-on-primary: #fff;
+  --metar-tint: #eaf3e5;
+  --metar-hover: #f1f5ed;
+  --metar-radius: 9px;
+  --metar-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+:root[data-theme="dark"], :root.dark {
+  --metar-bg: #141c18;
+  --metar-surface: #141c18;
+  --metar-soft: #202c25;
+  --metar-text: #e6ece4;
+  --metar-muted: #a5b4ab;
+  --metar-border: #2c3a32;
+  --metar-primary: #ace68d;
+  --metar-primary-rgb: 172, 230, 141;
+  --metar-primary-hover: #c2efa9;
+  --metar-on-primary: #173523;
+  --metar-tint: #2a3b28;
+  --metar-hover: #253429;
+  color-scheme: dark;
+}

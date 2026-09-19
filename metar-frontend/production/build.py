@@ -59,6 +59,7 @@ def build(output: Path, config_path: Path) -> None:
         "admin-pulse": (ROOT / "src/admin-pulse.js").read_text(encoding="utf-8"),
         "router": (ROOT / "src/router.js").read_text(encoding="utf-8"),
         "route-policy": (ROOT / "src/route-policy.js").read_text(encoding="utf-8"),
+        "theme": (ROOT / "src/theme.js").read_text(encoding="utf-8"),
         "app": (ROOT / "src/app.js").read_text(encoding="utf-8"),
         "favicon": (ROOT / "src/favicon.svg").read_text(encoding="utf-8"),
     }
@@ -74,7 +75,8 @@ def build(output: Path, config_path: Path) -> None:
 
     base_css = (PROTOTYPE_ROOT / "src/styles.css").read_text(encoding="utf-8")
     production_css = (ROOT / "src/styles.css").read_text(encoding="utf-8")
-    (assets / "app.css").write_text(f"{base_css}\n{production_css}\n", encoding="utf-8")
+    tokens = (PROTOTYPE_ROOT / "shared/theme-tokens.css").read_text(encoding="utf-8")
+    (assets / "app.css").write_text(f"{base_css}\n{tokens}\n{production_css}\n", encoding="utf-8")
     (assets / "seo.js").write_text(sources["seo"], encoding="utf-8")
     (assets / "i18n.js").write_text(sources["i18n"], encoding="utf-8")
     (assets / "adapters.js").write_text(sources["adapters"], encoding="utf-8")
@@ -82,6 +84,7 @@ def build(output: Path, config_path: Path) -> None:
     (assets / "admin-pulse.js").write_text(sources["admin-pulse"], encoding="utf-8")
     (assets / "router.js").write_text(sources["router"], encoding="utf-8")
     (assets / "route-policy.js").write_text(sources["route-policy"], encoding="utf-8")
+    (assets / "theme.js").write_text(sources["theme"], encoding="utf-8")
     (assets / "app.js").write_text(sources["app"], encoding="utf-8")
     (assets / "favicon.svg").write_text(sources["favicon"], encoding="utf-8")
     build_seo(output, sources["index"])

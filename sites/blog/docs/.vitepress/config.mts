@@ -4,9 +4,17 @@ import { defineConfig } from 'vitepress'
 // the forum. new-api remains on its independent domain and is linked explicitly.
 export default defineConfig({
   lang: 'zh-CN',
-  title: '元衡技术博客',
+  title: 'METAR 知识库',
   description: '模型评测、成本分析与 API 接入实践',
   base: '/blog/',
+  appearance: { storageKey: '_metar_theme' },
+  // VitePress 1.6's initial HTML bootstrap still hard-codes its default key.
+  // Keep first paint consistent with the appearance option used after hydration.
+  transformHtml(html) {
+    const bootstrap = 'localStorage.getItem("vitepress-theme-appearance")'
+    if (!html.includes(bootstrap)) throw new Error('Review VitePress theme bootstrap before upgrading')
+    return html.replace(bootstrap, 'localStorage.getItem("_metar_theme")')
+  },
 
   // Content is the funnel entrance, so indexing settings are not optional.
   sitemap: {
@@ -31,11 +39,15 @@ export default defineConfig({
   ],
 
   themeConfig: {
+    darkModeSwitchLabel: '深色主题',
+    darkModeSwitchTitle: '切换到深色主题',
+    lightModeSwitchTitle: '切换到浅色主题',
     nav: [
-      { text: '首页', link: '/' },
+      { text: '社区', link: 'https://metar.uk/latest', target: '_self' },
+      { text: '知识库', link: '/' },
+      { text: 'Pulse', link: 'https://metar.uk/pulse', target: '_self' },
       { text: '模型评测', link: '/reviews/' },
       { text: '接入教程', link: '/guides/' },
-      { text: '论坛', link: 'https://metar.uk/' },
       { text: '控制台', link: 'https://cn.meta-api.vip/console' },
     ],
 

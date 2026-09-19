@@ -1,0 +1,20 @@
+:root, :root.dark {
+  --vp-font-family-base: var(--metar-font);
+  --vp-c-brand-1: var(--metar-primary);
+  --vp-c-brand-2: var(--metar-primary-hover);
+  --vp-c-brand-3: var(--metar-primary);
+  --vp-c-brand-soft: var(--metar-tint);
+  --vp-c-bg: var(--metar-bg);
+  --vp-c-bg-alt: var(--metar-soft);
+  --vp-c-bg-soft: var(--metar-soft);
+  --vp-c-bg-elv: var(--metar-surface);
+  --vp-c-text-1: var(--metar-text);
+  --vp-c-text-2: var(--metar-muted);
+  --vp-c-divider: var(--metar-border);
+  --vp-c-gutter: var(--metar-border);
+  --vp-button-brand-text: var(--metar-on-primary);
+  --vp-button-brand-hover-text: var(--metar-on-primary);
+  --vp-button-brand-active-text: var(--metar-on-primary);
+  --vp-sidebar-width: 240px;
+}
+.VPNavBarTitle .title { font-weight: 700; letter-spacing: -.5px; }

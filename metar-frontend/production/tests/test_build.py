@@ -39,6 +39,8 @@ class ProductionBuildTest(unittest.TestCase):
             self.assertTrue((output / "assets/avatars.js").is_file())
             self.assertTrue((output / "assets/router.js").is_file())
             self.assertTrue((output / "assets/route-policy.js").is_file())
+            self.assertTrue((output / "assets/theme.js").is_file())
+            self.assertLess(index.index("/metar-assets/theme.js"), index.index("/metar-assets/app.css"))
             self.assertLess(index.index("/metar-assets/route-policy.js"), index.index("/metar-assets/router.js"))
             self.assertLess(index.index("/metar-assets/router.js"), index.index("/metar-assets/app.js"))
             self.assertTrue((output / "assets/i18n.js").is_file())
