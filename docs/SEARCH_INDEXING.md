@@ -11,7 +11,7 @@
 - 首页和固定公开入口在初始 HTML 中提供说明与普通链接；实时列表与动态正文仍由 Answer 提供。帖子原生 `/questions/:id` 已有服务端正文、canonical 和 QAPage 结构化数据，壳层 `/question/:id` 指向它作为规范地址。公开帖子标题与描述在渲染后更新，失败页标记 noindex。
 - 私人入口与 API 通过网关 `X-Robots-Tag` 标记 noindex；壳层站内跳转同步更新 robots/canonical，防止沿用上一页的索引状态。
 - 博客不存在的地址返回 404，构建目录 `/blog/metar/` 不作为第二套公开页面。
-- Google HTML 验证标签来自站长账号的 `https://metar.uk/` 属性，是需要长期公开的验证信息，不是 API 凭据；仅部署标签并不等于已验证或已收录。
+- Google 与百度 HTML 验证标签来自站长账号的 `https://metar.uk/` 属性，是需要长期公开的验证信息，不是 API 凭据；标签保存在正式首页源码，构建和升级会持续保留。仅部署标签并不等于已验证或已收录。
 
 ## 平台提交
 
