@@ -86,6 +86,23 @@ func (r *ledgerRepository) ListAccountEntries(ctx context.Context, userID, perio
 	return entries, nil
 }
 
+func (r *ledgerRepository) ListRecentAccountEntries(ctx context.Context, userID, periodID uint64, asset ledger.AssetType, limit int) ([]ledger.Entry, error) {
+	if limit <= 0 {
+		return nil, fmt.Errorf("list recent account ledger entries: invalid limit")
+	}
+	var models []ledgerEntryModel
+	if err := r.db.WithContext(ctx).
+		Where("user_id = ? AND period_id = ? AND asset_type = ?", userID, periodID, asset).
+		Order("id DESC").Limit(limit).Find(&models).Error; err != nil {
+		return nil, fmt.Errorf("list recent account ledger entries: %w", err)
+	}
+	entries := make([]ledger.Entry, len(models))
+	for i := range models {
+		entries[i] = models[i].toDomain()
+	}
+	return entries, nil
+}
+
 func (r *accountRepository) GetOrCreateForUpdate(ctx context.Context, userID, periodID uint64, asset ledger.AssetType) (ledger.Account, error) {
 	// Atomic no-op upsert avoids concurrent first-write races; the subsequent
 	// SELECT FOR UPDATE serializes every mutation of this account snapshot.

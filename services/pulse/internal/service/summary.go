@@ -22,7 +22,12 @@ type PulseSummary struct {
 	CurrentContribution  money.Milli
 	AvailableTickets     int64
 	CurrentLedgerEntries []ledger.Entry
+	LedgerHasMore        bool
 }
+
+// SummaryLedgerLimit bounds the product projection, never the financial facts
+// used for balances, reconciliation or account reconstruction.
+const SummaryLedgerLimit = 100
 
 func (s *ProfileService) GetSummary(ctx context.Context, userID uint64, at time.Time) (PulseSummary, error) {
 	if userID == 0 {
@@ -76,11 +81,11 @@ func (s *ProfileService) GetSummary(ctx context.Context, userID uint64, at time.
 				}
 			}
 		}
-		contributionEntries, err := repos.Ledger.ListAccountEntries(ctx, userID, active.ID, ledger.AssetContribution)
+		contributionEntries, err := repos.Ledger.ListRecentAccountEntries(ctx, userID, active.ID, ledger.AssetContribution, SummaryLedgerLimit+1)
 		if err != nil {
 			return err
 		}
-		ticketEntries, err := repos.Ledger.ListAccountEntries(ctx, userID, active.ID, ledger.AssetTicket)
+		ticketEntries, err := repos.Ledger.ListRecentAccountEntries(ctx, userID, active.ID, ledger.AssetTicket, SummaryLedgerLimit+1)
 		if err != nil {
 			return err
 		}
@@ -88,6 +93,10 @@ func (s *ProfileService) GetSummary(ctx context.Context, userID uint64, at time.
 		sort.SliceStable(result.CurrentLedgerEntries, func(i, j int) bool {
 			return result.CurrentLedgerEntries[i].ID < result.CurrentLedgerEntries[j].ID
 		})
+		if len(result.CurrentLedgerEntries) > SummaryLedgerLimit {
+			result.LedgerHasMore = true
+			result.CurrentLedgerEntries = result.CurrentLedgerEntries[len(result.CurrentLedgerEntries)-SummaryLedgerLimit:]
+		}
 		return nil
 	})
 	return result, err

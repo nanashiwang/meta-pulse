@@ -19,6 +19,9 @@ type LedgerRepository interface {
 	FindBySource(ctx context.Context, sourceType, sourceRef string, asset ledger.AssetType) (*ledger.Entry, error)
 	Append(ctx context.Context, entry ledger.Entry) (ledger.Entry, error)
 	ListAccountEntries(ctx context.Context, userID, periodID uint64, asset ledger.AssetType) ([]ledger.Entry, error)
+	// ListRecentAccountEntries returns at most limit entries, newest ID first.
+	// Full ledger reconstruction must continue to use ListAccountEntries.
+	ListRecentAccountEntries(ctx context.Context, userID, periodID uint64, asset ledger.AssetType, limit int) ([]ledger.Entry, error)
 }
 
 // AccountRepository stores the rebuildable account snapshot. The returned

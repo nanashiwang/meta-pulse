@@ -83,6 +83,18 @@ func (m *memoryLedgerStore) ListAccountEntries(_ context.Context, userID, period
 	return result, nil
 }
 
+func (m *memoryLedgerStore) ListRecentAccountEntries(ctx context.Context, userID, periodID uint64, asset ledger.AssetType, limit int) ([]ledger.Entry, error) {
+	entries, err := m.ListAccountEntries(ctx, userID, periodID, asset)
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].ID > entries[j].ID })
+	if len(entries) > limit {
+		entries = entries[:limit]
+	}
+	return entries, nil
+}
+
 func (m *memoryLedgerStore) GetOrCreateForUpdate(_ context.Context, userID, periodID uint64, asset ledger.AssetType) (ledger.Account, error) {
 	key := accountKey(userID, periodID, asset)
 	account, ok := m.accounts[key]

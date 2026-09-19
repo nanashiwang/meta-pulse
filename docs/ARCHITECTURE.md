@@ -751,6 +751,10 @@ POST /v1/internal/me/actions
 
 周期信息包含在 summary/rules 中；原动作结果通过 `rewards?action_id=…` 精确恢复，没有单独的公开 Ledger 或 Grant 详情入口。`/healthz`、`/readyz` 是独立的私网健康检查，不属于用户 BFF 契约。
 
+summary 的 `ledger` 仅返回当前周期最新 100 条贡献值与 Ticket 流水，按 ID 升序显示，`ledger_has_more` 标识是否还有更早记录，`ledger_limit=100` 明确投影上限。两类资产分别通过账户索引读取至多 101 条后合并，不在请求内加载全部历史。累计贡献、当期贡献、等级和可用券仍来自完整账户快照；Ledger 事实、全量重建与对账不受此展示上限影响。
+
+运营概览的账实核验通过 `(user_id, period_id, asset_type, amount)` 覆盖索引一次聚合完整 Ledger，再与全部 Account 的余额及版本（流水条数）比较。空账户按零余额、零版本核验；该只读诊断不参与任何经济动作授权。
+
 内部路由按角色最小授权：`new-api` 与独立 `community-bff` 访问本人 summary/action/reward/rules；`forum` 只使用独立 `PULSE_FORUM_HMAC_SECRET` 访问用户等级 Profile；内容奖励管理路由只接受 `admin`。Forum Profile 密钥不得与 Settlement/Worker、BFF、Admin、Reward Random 或 Forum SSO Login Ticket 密钥复用；角色缺失、未知、密钥复用或不匹配时 fail closed，且不得触发查询、记账或结算。
 
 ## 25. Admin / Operator

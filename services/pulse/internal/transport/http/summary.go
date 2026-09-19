@@ -42,6 +42,8 @@ func SummaryRoute(router *gin.RouterGroup, reader SummaryReader, auth gin.Handle
 			"current_contribution_milli": summary.CurrentContribution,
 			"available_tickets":          summary.AvailableTickets,
 			"ledger":                     ledgerResponse(summary.CurrentLedgerEntries),
+			"ledger_has_more":            summary.LedgerHasMore,
+			"ledger_limit":               service.SummaryLedgerLimit,
 		}
 		if summary.CurrentPeriod != nil {
 			response["current_period"] = gin.H{

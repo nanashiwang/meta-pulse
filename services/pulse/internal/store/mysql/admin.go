@@ -247,14 +247,13 @@ SELECT COUNT(*) FROM pulse_ingest_conflict WHERE status = 'open'`).Scan(&snapsho
 	if err := r.db.WithContext(ctx).Raw(`
 SELECT COUNT(*)
 FROM pulse_account a
-WHERE a.balance <> COALESCE((
-    SELECT SUM(l.amount) FROM pulse_ledger_entry l
-    WHERE l.user_id = a.user_id AND l.period_id = a.period_id AND l.asset_type = a.asset_type
-), 0)
-OR a.version <> COALESCE((
-    SELECT COUNT(*) FROM pulse_ledger_entry l
-    WHERE l.user_id = a.user_id AND l.period_id = a.period_id AND l.asset_type = a.asset_type
-), 0)`).Scan(&snapshot.LedgerMismatchCount).Error; err != nil {
+LEFT JOIN (
+    SELECT user_id, period_id, asset_type, SUM(amount) AS balance, COUNT(*) AS version
+    FROM pulse_ledger_entry
+    GROUP BY user_id, period_id, asset_type
+) l ON l.user_id = a.user_id AND l.period_id = a.period_id AND l.asset_type = a.asset_type
+WHERE a.balance <> COALESCE(l.balance, 0)
+OR a.version <> COALESCE(l.version, 0)`).Scan(&snapshot.LedgerMismatchCount).Error; err != nil {
 		return ports.OperationalSnapshot{}, fmt.Errorf("count ledger mismatches: %w", err)
 	}
 	var settlementRows []struct {

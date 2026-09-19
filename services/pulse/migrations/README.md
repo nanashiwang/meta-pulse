@@ -82,6 +82,10 @@ accepted UsageEvent => exactly one accounting effect
 
 执行发布前备份并排空旧 API 写请求，禁止同时运行新旧 Action 写入路径。Down 只移除辅助索引，不会撤销已经建立的稳定幂等语义；旧版本不认识新请求范围，不能以执行 Down/删幂等记录的方式直接恢复发奖。
 
+## `00013` 账本对账覆盖索引
+
+`00013_ledger_reconciliation_index.sql` 为全量余额与记录数对账增加 `(user_id, period_id, asset_type, amount)` 覆盖索引。运营概览一次聚合全部 Ledger 后与 Account 比较，避免每个账户重复扫描和逐行回表。原账户流水索引保留，继续支持摘要最近流水和全量重建。迁移仅新增索引，不改历史账目或经济规则；使用在线索引构建，回退仅删除新增索引。
+
 ## `00012` 管理员运行配置
 
 `00012_runtime_settings.sql` 新增单例配置版本、API/Worker 公钥与环境指纹登记、按角色加密的业务密钥、持久化配置请求回执。保存采用同事务版本检查、幂等回执和 `pulse_audit_log`；审计只保存修改字段和配置状态，不保存密钥或指纹。Worker 首次登记时固定 new-api 接收地址，后续环境变量改变不会切换资金事实源。

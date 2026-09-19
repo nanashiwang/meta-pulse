@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -35,6 +36,48 @@ func TestProfileSummaryIsReadOnlyAndIncludesCurrentLedger(t *testing.T) {
 	}
 	if len(summary.CurrentLedgerEntries) != 2 || summary.CurrentLedgerEntries[0].ID != 1 || len(store.entries) != before {
 		t.Fatalf("ledger=%+v entries=%d", summary.CurrentLedgerEntries, len(store.entries))
+	}
+}
+
+func TestProfileSummaryBoundsRecentLedgerWithoutChangingBalances(t *testing.T) {
+	for _, count := range []int{100, 101, 350} {
+		t.Run(fmt.Sprint(count), func(t *testing.T) {
+			store := newMemoryLedgerStore()
+			at := time.Unix(1_700_000_000, 0).UTC()
+			store.periods = []period.Period{{ID: 4, Status: period.StatusActive, StartsAt: at.Add(-time.Hour), EndsAt: at.Add(time.Hour)}}
+			store.accounts[accountKey(9, 3, ledger.AssetContribution)] = ledger.Account{UserID: 9, PeriodID: 3, AssetType: ledger.AssetContribution, Balance: 500}
+			store.accounts[accountKey(9, 4, ledger.AssetContribution)] = ledger.Account{UserID: 9, PeriodID: 4, AssetType: ledger.AssetContribution, Balance: 9000}
+			store.accounts[accountKey(9, 4, ledger.AssetTicket)] = ledger.Account{UserID: 9, PeriodID: 4, AssetType: ledger.AssetTicket, Balance: 7}
+			for i := count; i > 0; i-- {
+				asset := ledger.AssetContribution
+				if i%3 == 0 {
+					asset = ledger.AssetTicket
+				}
+				store.entries = append(store.entries, ledger.Entry{ID: uint64(i), UserID: 9, PeriodID: 4, AssetType: asset, Amount: 1})
+			}
+			store.entries = append(store.entries,
+				ledger.Entry{ID: 1000, UserID: 10, PeriodID: 4, AssetType: ledger.AssetContribution},
+				ledger.Entry{ID: 1001, UserID: 9, PeriodID: 3, AssetType: ledger.AssetTicket})
+			profile, err := NewProfileService(memoryUnit{store: store}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			summary, err := profile.GetSummary(context.Background(), 9, at)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(summary.CurrentLedgerEntries) != 100 || summary.LedgerHasMore != (count > 100) {
+				t.Fatalf("entries=%d has_more=%v", len(summary.CurrentLedgerEntries), summary.LedgerHasMore)
+			}
+			for i, entry := range summary.CurrentLedgerEntries {
+				if entry.ID != uint64(count-99+i) || entry.UserID != 9 || entry.PeriodID != 4 {
+					t.Fatalf("entry %d = %+v", i, entry)
+				}
+			}
+			if summary.Profile.LifetimeContribution != 9500 || summary.CurrentContribution != 9000 || summary.AvailableTickets != 7 || len(store.entries) != count+2 {
+				t.Fatalf("summary changed balances or facts: %+v", summary)
+			}
+		})
 	}
 }
 
