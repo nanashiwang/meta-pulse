@@ -1,6 +1,6 @@
 # Meta Pulse 服务器部署
 
-正式版本支持 `metar update --release v0.1.0`，完成发布清单验证、完整构建和实际镜像版本核对。发布与恢复步骤见 [版本流程](../docs/RELEASE.md)。
+正式版本支持 `metar update --release v0.1.1`，完成发布清单验证、完整构建和实际镜像版本核对。发布与恢复步骤见 [版本流程](../docs/RELEASE.md)。
 
 本目录提供 Linux + Docker Compose v2 的首次部署和一键更新脚本：
 

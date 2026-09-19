@@ -89,7 +89,7 @@ make build-community  # 产物写入现有博客静态卷的 metar/ 子目录
 
 ## 快速开始
 
-正式版本、下载附件及指定版本升级见 [发布与部署](docs/RELEASE.md)。发布页为 [GitHub Releases](https://github.com/nanashiwang/meta-pulse/releases)，已有服务器使用 `metar update --release v0.1.0`。
+正式版本、下载附件及指定版本升级见 [发布与部署](docs/RELEASE.md)。发布页为 [GitHub Releases](https://github.com/nanashiwang/meta-pulse/releases)，已有服务器使用 `metar update --release v0.1.1`。
 
 ### 服务器首次部署
 

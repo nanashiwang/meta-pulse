@@ -263,13 +263,19 @@ if (( GATEWAY_ENABLED == 1 )); then
   [[ -s "$REPO_ROOT/sites/blog/docs/.vitepress/dist/metar/index.html" ]] || die "社区网关已启用，但 METAR 正式前端产物不存在"
   log "校验并更新社区 HTTPS 网关"
   compose run --rm --no-deps --entrypoint nginx gateway -t
-  if (( GATEWAY_CONFIG_CHANGED == 1 )); then
-    log "检测到 Nginx 配置文件变更，重建网关以刷新文件挂载"
+  if (( GATEWAY_CONFIG_CHANGED == 1 || BLOG_CHANGED == 1 )); then
+    # build-blog replaces the dist directory inode. Reloading nginx leaves its
+    # bind mount attached to the removed directory and serves permanent 404s.
+    log "检测到网关配置或博客目录变更，重建网关以刷新文件挂载"
     compose up -d --force-recreate --no-deps gateway
   else
     compose up -d gateway
   fi
   wait_for_service gateway 120
+  compose exec -T gateway test -s /var/www/blog/index.html
+  compose exec -T gateway test -s /var/www/blog/metar/index.html
+  compose exec -T --user nginx gateway test -r /var/www/blog/metar/index.html
+  compose exec -T --user nginx gateway test -r /var/www/blog/metar/assets/app.js
   compose exec -T gateway nginx -t
   compose exec -T gateway nginx -s reload
 fi

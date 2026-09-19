@@ -6,6 +6,7 @@ command -v python3 >/dev/null 2>&1 || { echo '[meta-pulse] 错误：缺少 pytho
 BLOG_DIST="$ROOT/sites/blog/docs/.vitepress/dist"
 OUTPUT="$BLOG_DIST/metar"
 mkdir -p "$BLOG_DIST"
+chmod 755 "$BLOG_DIST"
 python3 "$ROOT/metar-frontend/production/build.py" --output "$OUTPUT"
 [[ -s "$OUTPUT/index.html" && -s "$OUTPUT/assets/app.js" && -s "$OUTPUT/assets/favicon.svg" && -s "$OUTPUT/runtime-config.js" ]] || {
   echo '[meta-pulse] 错误：METAR 正式前端构建产物不完整' >&2

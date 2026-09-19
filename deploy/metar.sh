@@ -21,7 +21,7 @@ usage() {
 
 stop/restart/uninstall 会影响社区、Pulse 及其数据库，不操作独立的 new-api。
 例：metar update --ref main --skip-forum
-正式版本：metar update --release v0.1.0
+正式版本：metar update --release v0.1.1
 HELP
 }
 

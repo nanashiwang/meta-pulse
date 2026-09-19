@@ -173,7 +173,7 @@ grep -q 'exec -T gateway nginx -s reload' "$MOCK_LOG"
 : >"$MOCK_LOG"
 MOCK_GATEWAY=1 MOCK_FETCH_SUCCEED=1 MOCK_NGINX_CHANGED=1 bash "$tmp/repo/deploy/update.sh" >"$tmp/output" 2>&1 || { cat "$tmp/output" >&2; exit 1; }
 grep -q 'up -d --force-recreate --no-deps gateway' "$MOCK_LOG"
-grep -q '检测到 Nginx 配置文件变更' "$tmp/output"
+grep -q '检测到网关配置或博客目录变更' "$tmp/output"
 
 # 正式前端复用原型视觉 CSS；该文件变化也必须触发 METAR 重建。
 : >"$MOCK_LOG"
@@ -211,6 +211,9 @@ grep -q '^verify-release$' "$MOCK_LOG"
 grep -q '^build-blog$' "$MOCK_LOG"
 grep -q '^build-community$' "$MOCK_LOG"
 grep -q '^v0.1.0$' "$tmp/repo/.data/deployed-release.txt"
+# A release rebuild replaces the blog dist directory inode. A plain reload
+# cannot refresh Docker's bind mount, even when nginx.conf did not change.
+grep -q 'up -d --force-recreate --no-deps gateway' "$MOCK_LOG"
 cmp "$tmp/original.env" "$tmp/repo/.env"
 for failure in MOCK_RELEASE_FAIL MOCK_WRONG_REVISION; do
   : >"$MOCK_LOG"

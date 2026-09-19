@@ -1,6 +1,6 @@
 # 正式版本发布与部署
 
-版本事实源为根目录 `VERSION`（例如 `0.1.0`），对应不可覆盖的 Git 标签 `v0.1.0`。中文更新说明保存在 `releases/v0.1.0.md`，总览同步 `CHANGELOG.md`。
+版本事实源为根目录 `VERSION`（例如 `0.1.1`），对应不可覆盖的 Git 标签 `v0.1.1`。中文更新说明保存在 `releases/v0.1.1.md`，总览同步 `CHANGELOG.md`。
 
 ## 发布
 
@@ -8,16 +8,16 @@
 2. 在该提交创建附注标签并推送：
 
    ```bash
-   git tag -a v0.1.0 -m '发布 Meta Pulse v0.1.0'
-   git push origin v0.1.0
+   git tag -a v0.1.1 -m '发布 Meta Pulse v0.1.1'
+   git push origin v0.1.1
    ```
 
 3. `Release` 工作流复用完整 CI（Go、MySQL、Forum/Pulse 镜像和博客）。全部通过后，按标签提交隔离构建附件：
 
-   - `meta-pulse_v0.1.0_linux_amd64.tar.gz`
-   - `meta-pulse_v0.1.0_linux_arm64.tar.gz`
-   - `meta-pulse_v0.1.0_web.tar.gz`：博客及 `metar/` 正式前端。
-   - `meta-pulse_v0.1.0_source.tar.gz`：受 Git 跟踪的源码。
+   - `meta-pulse_v0.1.1_linux_amd64.tar.gz`
+   - `meta-pulse_v0.1.1_linux_arm64.tar.gz`
+   - `meta-pulse_v0.1.1_web.tar.gz`：博客及 `metar/` 正式前端。
+   - `meta-pulse_v0.1.1_source.tar.gz`：受 Git 跟踪的源码。
    - `release-manifest.json`：版本、完整提交、附件名称、大小与 SHA-256。
    - `SHA256SUMS`：四个包与清单的校验值。
 
@@ -31,20 +31,20 @@
 
 ```bash
 cd /opt/meta-pulse
-metar update --release v0.1.0
+metar update --release v0.1.1
 ```
 
-旧部署尚未包含 `--release` 时，先确认工作区无受跟踪改动，再快进取得脚本：
+旧部署尚未包含 `--release`，或正从 v0.1.0 升级时，先确认工作区无受跟踪改动，再按已发布标签取得修复后的脚本：
 
 ```bash
-git fetch origin main
-git merge --ff-only origin/main
-./deploy/update.sh --release v0.1.0
+git fetch origin refs/tags/v0.1.1:refs/tags/v0.1.1
+git merge --ff-only v0.1.1
+./deploy/update.sh --release v0.1.1
 ```
 
 版本部署要求发布页已有清单且提交与标签一致，只允许 Git 快进；当前代码超前、分叉、标签移动或版本号不匹配时停止，不对生产仓库执行强制 reset。要继续跟随开发分支，可显式使用现有 `--ref main` 流程。
 
-部署沿用更新锁，先备份两套数据库、`.env`、Compose 配置与 API/Worker 私钥卷，再构建全套服务与静态资源、排空旧 API、前进迁移、重建容器并检查健康。正式版本不支持跳过组件或构建。结尾核对 API、Worker、Forum 镜像的版本与完整提交，成功后写入 `.data/deployed-release.txt`。不修改已有配置、绑定关系、限额、影子模式或发奖开关。
+部署沿用更新锁，先备份两套数据库、`.env`、Compose 配置与 API/Worker 私钥卷，再构建全套服务与静态资源、排空旧 API、前进迁移、重建容器并检查健康。博客目录或 Nginx 配置被替换时重建网关，避免 Docker 仍挂载旧 inode；同时在网关容器内核验博客与 METAR 首页文件。正式版本不支持跳过组件或构建。结尾核对 API、Worker、Forum 镜像的版本与完整提交，成功后写入 `.data/deployed-release.txt`。不修改已有配置、绑定关系、限额、影子模式或发奖开关。
 
 ## 验收与恢复
 

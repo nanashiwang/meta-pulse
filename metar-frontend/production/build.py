@@ -80,6 +80,13 @@ def build(output: Path, config_path: Path) -> None:
     runtime = "window.__METAR_RUNTIME_CONFIG__ = Object.freeze(" + json.dumps(config, ensure_ascii=False, separators=(",", ":")) + ");\n"
     (output / "runtime-config.js").write_text(runtime, encoding="utf-8")
     (output / "BUILD_INFO.json").write_text(json.dumps({"kind": "production", "mockData": False, "config": config_path.name}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    # These are public web assets. A private deployment umask must not make
+    # them unreadable to nginx, which runs under a different UID.
+    output.chmod(0o755)
+    assets.chmod(0o755)
+    for path in output.rglob("*"):
+        if path.is_file():
+            path.chmod(0o644)
     print(f"Built production METAR frontend: {output}")
 
 
