@@ -66,6 +66,8 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
   const documentEvents = new Map();
   const windowEvents = new Map();
   const requests = [];
+  const redirects = [];
+  const localLocation = (url) => Object.assign(new URL(url, 'https://metar.uk'), { replace: (value) => redirects.push(value) });
   const operations = new Map();
   const document = {
     title: '', documentElement: { dataset: {}, lang: '', getAttribute(key) { return this.dataset[key.replace('data-', '')]; }, setAttribute(key, value) { this.dataset[key.replace('data-', '')] = value; } },
@@ -81,7 +83,7 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
   };
   const question = { id: '42', title: content ? '未读' : 'User question', description: content ? '社区规范' : 'User summary', content: content ? '我的收藏' : 'User content', user_info: user, created_at: Math.floor(Date.now() / 1000) - 3600 };
   Object.assign(context, {
-    document, location: new URL('https://metar.uk/latest'),
+    document, location: localLocation('/latest'),
     URL, URLSearchParams, Headers, AbortController, setTimeout, clearTimeout,
     crypto: require('node:crypto').webcrypto,
     sessionStorage: {
@@ -124,14 +126,14 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
     },
   });
   context.history = {
-    replaceState(_state, _title, url) { context.location = new URL(url, context.location.origin); },
-    pushState(_state, _title, url) { context.location = new URL(url, context.location.origin); },
+    replaceState(_state, _title, url) { context.location = localLocation(url); },
+    pushState(_state, _title, url) { context.location = localLocation(url); },
   };
   for (const name of ['theme.js', 'adapters.js', 'avatars.js', 'admin-pulse.js', 'route-policy.js', 'router.js', 'app.js']) vm.runInContext(script(name), context);
   await new Promise(setImmediate);
   return {
-    i18n, values, document, nodes, requests, operations,
-    async navigate(route) { context.location = new URL(route, context.location.origin); await windowEvents.get('popstate')(); },
+    i18n, values, document, nodes, requests, operations, redirects,
+    async navigate(route) { context.location = localLocation(route); await windowEvents.get('popstate')(); },
     async changeLanguage(value) {
       for (const listener of documentEvents.get('change') || []) listener({ target: { value, matches: () => true } });
       await new Promise(setImmediate);
@@ -181,7 +183,7 @@ test('语言切换重新渲染标题、筛选、ARIA、错误和数值，用户�
   assert.doesNotMatch(view.html(), /<p>社区规范<\/p>/); // Compact rows omit excerpts.
   assert.match(view.html(), /1 hour ago/);
   await view.navigate('/question/42');
-  assert.match(view.html(), /prod-question-body">我的收藏/);
+  assert.equal(view.redirects.at(-1), '/questions/42');
   await view.navigate('/me');
   assert.match(view.html(), /元衡账号绑定/);
   await view.changeLanguage('zh_CN');
@@ -293,4 +295,17 @@ test('Pulse 管理入口仅对 Answer 正常激活管理员显示，版主和伪
     if (adminError === 503) assert.match(blocked.html(), /admin_hmac_secret/);
     else assert.doesNotMatch(blocked.html(), /admin_hmac_secret/);
   }
+});
+
+test('统一入口打开原生互动页，旧详情不再读取只读副本，身份服务故障不阻断交接', async () => {
+  const view = await shell({ user: { username: 'alice', display_name: 'Alice', mail_status: 1 }, content: true });
+  assert.match(view.html(), /href="\/questions\/42" class="discussion-title"/);
+  assert.match(view.html(), /href="\/users\/alice" class="discussion-author"/);
+  assert.match(view.html(), /href="\/users\/notifications\/inbox"/);
+  await view.navigate('/question/42?commentId=9#answer-7');
+  assert.equal(view.redirects.at(-1), '/questions/42?commentId=9#answer-7');
+  assert.ok(!view.requests.some(({ url }) => url.includes('/question/info') || url.includes('/answer/page')));
+  const outage = await shell({ failure: 'identity' });
+  await outage.navigate('/me/notifications');
+  assert.equal(outage.redirects.at(-1), '/users/notifications/inbox');
 });

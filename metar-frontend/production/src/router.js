@@ -13,13 +13,32 @@
     return (aliases[path] || path) + (index < 0 ? '' : value.slice(index));
   }
 
+  // Public content has one interactive destination. IDs come from Answer;
+  // encode each segment so a title/username cannot become another route.
+  const questionHref = (id) => `/questions/${encodeURIComponent(id)}`;
+  const profileHref = (username) => `/users/${encodeURIComponent(username)}`;
+  function searchHref(item) {
+    const object = item?.object || {};
+    return item?.object_type === 'answer' && object.question_id
+      ? `${questionHref(object.question_id)}/${encodeURIComponent(object.id)}`
+      : questionHref(object.id);
+  }
+
+  function nativeDestination(location) {
+    const path = location.pathname.replace(/\/$/, '');
+    const question = path.match(/^\/question\/([a-zA-Z0-9]+)$/);
+    const destination = question ? questionHref(question[1])
+      : path === '/me/notifications' ? '/users/notifications/inbox' : null;
+    return destination ? destination + location.search + location.hash : null;
+  }
+
   function create(browser) {
     function target(value, legacy = false) {
       if (typeof value !== 'string' || !/^\/(?!\/)/.test(value) || /[\\\u0000-\u0020]/.test(value)) return null;
       try {
         const url = new URL(legacy ? href(value) : value, browser.location.origin);
-        if (url.origin !== browser.location.origin || url.hash || !owns(url.pathname)) return null;
-        return url.pathname + url.search;
+        if (url.origin !== browser.location.origin || (!legacy && url.hash) || !policy.target(url.href, browser.location.origin)) return null;
+        return url.pathname + url.search + (legacy ? url.hash : '');
       } catch (_) { return null; }
     }
 
@@ -58,5 +77,5 @@
 
     return { migrate, route, go, follow };
   }
-  return { create, href, owns };
+  return { create, href, owns, questionHref, profileHref, searchHref, nativeDestination };
 });

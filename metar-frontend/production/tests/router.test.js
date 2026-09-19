@@ -81,3 +81,25 @@ test('Nginx 深链接范围与浏览器一致，Answer 原生路径不被静态�
     assert.equal(owns(route), false, route);
   }
 });
+
+test('旧详情和通知进入唯一原生目标，查询参数与回答评论锚点保留且不接管账号回调', () => {
+  const { nativeDestination } = require('../src/router.js');
+  for (const [old, expected] of [
+    ['/question/42?commentId=9#answer-7', '/questions/42?commentId=9#answer-7'],
+    ['/question/42/', '/questions/42'],
+    ['/me/notifications?type=mention', '/users/notifications/inbox?type=mention'],
+  ]) assert.equal(nativeDestination(new URL(old, 'https://metar.uk')), expected);
+  for (const path of ['/users/confirm-email?code=x', '/questions/42/7?commentId=9', '/api/user-center/login/callback', '/question/%2fusers', '/question/42/edit']) {
+    assert.equal(nativeDestination(new URL(path, 'https://metar.uk')), null, path);
+  }
+  const host = browser('https://metar.uk/#/question/42?commentId=9#answer-7');
+  assert.equal(create(host).migrate(), true);
+  assert.equal(nativeDestination(host.location), '/questions/42?commentId=9#answer-7');
+});
+
+test('搜索回答保留回答 ID，公开资料用户名作为单一路径段编码', () => {
+  const { searchHref, profileHref } = require('../src/router.js');
+  assert.equal(searchHref({ object_type: 'question', object: { id: '42' } }), '/questions/42');
+  assert.equal(searchHref({ object_type: 'answer', object: { id: '7', question_id: '42' } }), '/questions/42/7');
+  assert.equal(profileHref('alice?tab=admin'), '/users/alice%3Ftab%3Dadmin');
+});

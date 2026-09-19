@@ -66,7 +66,6 @@
   const LOGO = '<svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M3 25V7l8 9 5-10 5 10 8-9v18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><path d="m8 25 8-12 8 12" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>';
   const I = (name, className = '') => `<svg class="ico ${className}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ICONS.compass}</svg>`;
   const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-  const text = (value) => esc(String(value || '').replace(/\r\n/g, '\n'));
 
   function safeExternalUrl(value) {
     if (typeof value !== 'string' || !value) return '';
@@ -113,23 +112,9 @@
     return date.toLocaleDateString(locale());
   };
 
-  function questionPath(question) {
-    return `/question/${encodeURIComponent(question.id)}`;
-  }
-
-  function answerQuestionPath(question) {
-    return `/questions/${encodeURIComponent(question.id)}`;
-  }
-
-  function notificationPath(item) {
-    const object = item?.object_info || {};
-    const mapping = object.object_map || {};
-    const questionID = mapping.question || (object.object_type === 'question' ? object.object_id : '');
-    if (!questionID) return '/notifications';
-    if (object.object_type === 'answer' && object.object_id) return `/questions/${encodeURIComponent(questionID)}/${encodeURIComponent(object.object_id)}`;
-    if (object.object_type === 'comment' && mapping.answer && mapping.comment) return `/questions/${encodeURIComponent(questionID)}/${encodeURIComponent(mapping.answer)}?commentId=${encodeURIComponent(mapping.comment)}`;
-    return `/questions/${encodeURIComponent(questionID)}`;
-  }
+  const { questionHref, profileHref, searchHref, nativeDestination } = window.MetarRouter;
+  const publicAuthor = (user, label, className = '') => user?.username
+    ? external(profileHref(user.username), label, className) : `<span class="${className}">${label}</span>`;
 
   function tagName(tag) { return tag?.display_name || tag?.slug_name || t("话题"); }
 
@@ -140,10 +125,10 @@
     const stamp = question.operated_at || question.update_time || question.created_at || question.create_time;
     return `<article class="discussion-row">
       <div class="discussion-main">
-        ${link(questionPath(question), `<h3>${question.pin === 2 ? I('flag', 'sm') + `<span class="visually-hidden">${t("置顶")} </span>` : ''}${esc(question.title)}</h3>`, 'discussion-title')}
-        <div class="discussion-meta">${question.accepted_answer_id ? badge(I('check', 'sm') + t("已解决"), 'green') : ''}${tags.slice(0, 3).map((tag) => link(`/topic/${encodeURIComponent(tag.slug_name || tagName(tag))}`, esc(tagName(tag)), 'badge')).join('')}<span class="discussion-author">${esc(displayName(author))}</span></div>
+        ${external(questionHref(question.id), `<h3>${question.pin === 2 ? I('flag', 'sm') + `<span class="visually-hidden">${t("置顶")} </span>` : ''}${esc(question.title)}</h3>`, 'discussion-title')}
+        <div class="discussion-meta">${question.accepted_answer_id ? badge(I('check', 'sm') + t("已解决"), 'green') : ''}${tags.slice(0, 3).map((tag) => link(`/topic/${encodeURIComponent(tag.slug_name || tagName(tag))}`, esc(tagName(tag)), 'badge')).join('')}${publicAuthor(author, esc(displayName(author)), 'discussion-author')}</div>
       </div>
-      <div class="discussion-people" aria-label="${t('最近参与者')}">${avatar(operator)}</div>
+      <div class="discussion-people" aria-label="${t('最近参与者')}">${publicAuthor(operator, avatar(operator))}</div>
       <div class="discussion-count"><span class="visually-hidden">${t('回复')} </span>${number(question.answer_count)}</div>
       <div class="discussion-count discussion-views"><span class="visually-hidden">${t('浏览量')} </span>${number(question.view_count)}</div>
       <div class="discussion-activity"><span class="visually-hidden">${t('活动')} </span>${time(stamp)}</div>
@@ -180,7 +165,7 @@
       ${link('/latest', LOGO + `<span class="brand-word">${esc(config.siteName.toLowerCase())}</span>`, 'brand')}
       <nav class="topnav" aria-label="${t("主导航")}">${link('/latest', t("社区"), active('/latest') || active('/question') || active('/topic') || active('/topics') ? 'active' : '')}${link('/knowledge', t("知识库"), active('/knowledge') ? 'active' : '')}${link('/pulse', 'Pulse', active('/pulse') ? 'active' : '')}${outbound(config.consoleUrl, t("开发者"))}</nav>
       <form class="searchbox" data-form="search" role="search">${I('search')}<input type="search" name="q" aria-label="${t("搜索社区")}" placeholder="${t("搜索真实问题与回答…")}" value="${path === '/search' ? esc(route().query.get('q') || '') : ''}" autocomplete="off"><kbd>⌘ K</kbd></form>
-      <div class="header-actions">${languageControl()}<button type="button" class="icon-btn theme-btn" data-action="theme" aria-label="${document.documentElement.dataset.theme === 'dark' ? t("切换到浅色主题") : t("切换到深色主题")}">${I(document.documentElement.dataset.theme === 'dark' ? 'sun' : 'moon')}</button>${identityUnavailableState ? link('/me', I('server', 'sm') + t("身份服务暂不可用"), 'btn ghost') : logged ? (activeUser ? link('/me/notifications', I('bell') + `<span class="visually-hidden">${t("通知中心")}</span>`, 'icon-btn') + external(config.answerAskPath, I('plus') + `<span class="publish-label">${t("发布")}</span>`, 'btn primary') : external('/users/login?status=inactive', t("激活账号"), 'btn primary')) + link('/me', `${avatar(currentUser)}<span class="visually-hidden">${t("个人空间")}</span>`, 'icon-btn') : external(config.answerLoginPath, t("登录"), 'btn ghost') + external(config.answerRegisterPath, t("加入社区"), 'btn primary guest-register')}</div>
+      <div class="header-actions">${languageControl()}<button type="button" class="icon-btn theme-btn" data-action="theme" aria-label="${document.documentElement.dataset.theme === 'dark' ? t("切换到浅色主题") : t("切换到深色主题")}">${I(document.documentElement.dataset.theme === 'dark' ? 'sun' : 'moon')}</button>${identityUnavailableState ? link('/me', I('server', 'sm') + t("身份服务暂不可用"), 'btn ghost') : logged ? (activeUser ? external('/users/notifications/inbox', I('bell') + `<span class="visually-hidden">${t("通知中心")}</span>`, 'icon-btn') + external(config.answerAskPath, I('plus') + `<span class="publish-label">${t("发布")}</span>`, 'btn primary') : external('/users/login?status=inactive', t("激活账号"), 'btn primary')) + link('/me', `${avatar(currentUser)}<span class="visually-hidden">${t("个人空间")}</span>`, 'icon-btn') : external(config.answerLoginPath, t("登录"), 'btn ghost') + external(config.answerRegisterPath, t("加入社区"), 'btn primary guest-register')}</div>
     </header>`;
   }
 
@@ -189,7 +174,7 @@
     const item = (url, label, icon) => link(url, I(icon) + `<span>${esc(label)}</span>`, `nav-item ${routeMatchesNavigation(path, query.toString(), url) ? 'active' : ''}`);
     return `<aside class="sidebar" id="community-sidebar" aria-label="${t("社区导航")}">
       <div class="nav-group"><div class="nav-label">${t("社区")}</div>${item('/latest', t("全部讨论"), 'chat')}${item('/latest?order=unanswered', t("待回答"), 'target')}${item('/topics', t("全部标签"), 'flag')}${item('/knowledge', t("知识库"), 'book')}</div>
-      <div class="nav-group"><div class="nav-label">${t("我的空间")}</div>${item('/me', t("个人主页"), 'user')}${item('/me/bookmarks', t("我的收藏"), 'bookmark')}${item('/me/notifications', t("通知中心"), 'bell')}${item('/settings/binding', t("账号绑定"), 'link')}</div>
+      <div class="nav-group"><div class="nav-label">${t("我的空间")}</div>${item('/me', t("个人主页"), 'user')}${item('/me/bookmarks', t("我的收藏"), 'bookmark')}${external('/users/notifications/inbox', I('bell') + `<span>${t("通知中心")}</span>`, 'nav-item')}${item('/settings/binding', t("账号绑定"), 'link')}</div>
       ${currentUserState === 'ready' && isCommunityAdministrator(currentUser) ? `<div class="nav-group"><div class="nav-label">${t('管理')}</div>${item('/admin/pulse', t('Pulse 配置'), 'settings')}</div>` : ''}
       <div class="side-bottom">${item('/pulse', t("Pulse 权益"), 'pulse')}${item('/support', t("帮助中心"), 'help')}${item('/status', t("服务状态"), 'server')}<div class="side-footer">${link('/guidelines', t("社区规范"))}${external('/sitemap.xml', t("站点地图"))}</div></div>
     </aside>`;
@@ -247,14 +232,6 @@
     </section>${footer()}`;
   }
 
-  async function questionPage(id) {
-    const [question, answers] = await Promise.all([answer.getQuestion(id), answer.listAnswers(id)]);
-    const answerList = Array.isArray(answers?.list) ? answers.list : [];
-    const tags = Array.isArray(question?.tags) ? question.tags : [];
-    const owner = question?.user_info || {};
-    return `${crumb([[t("最新话题"), '/latest'], [question.title || t("问题详情")]])}<div class="content-grid"><div class="stack"><article class="card card-pad"><div class="flex wrap">${question.accepted_answer_id ? badge(t("已解决"), 'green') : ''}${tags.map((tag) => link(`/topic/${encodeURIComponent(tag.slug_name || tagName(tag))}`, esc(tagName(tag)), 'badge')).join('')}</div><h1 class="mt16">${esc(question.title)}</h1><div class="post-meta mt16">${avatar(owner)}<span>${esc(displayName(owner))}</span><span>·</span><span>${time(question.create_time)}</span><span>·</span><span>${countLabel(question.view_count, 'views')}</span></div><div class="divider"></div><div class="prod-question-body">${text(question.content || question.description || t("该问题没有可展示的正文。"))}</div><div class="divider"></div><div class="flex wrap"><span class="badge">${countLabel(question.vote_count, 'votes')}</span><span class="badge">${countLabel(question.collection_count, 'bookmarks')}</span><span class="badge">${countLabel(question.follow_count, 'followers')}</span>${external(answerQuestionPath(question), t("在 Answer 完整页面参与 ") + I('external', 'sm'), 'btn primary')}</div></article><section class="card"><div class="section-heading"><h2>${countLabel(answers?.count, 'answers')}</h2><span class="muted">${t("实时读取")}</span></div>${answerList.length ? answerList.map((item) => `<article class="prod-answer"><div class="prod-answer-head"><span class="flex">${avatar(item.user_info)}<strong>${esc(displayName(item.user_info))}</strong>${item.accepted === 1 ? badge(t("已采纳"), 'green') : ''}</span><span>${time(item.create_time)} · ${countLabel(item.vote_count, 'votes')}</span></div><div class="prod-answer-content">${text(item.content || t("该回答没有可展示的正文。"))}</div></article>`).join('') : empty(t("还没有回答"), t("如果你有相关经验，欢迎在完整问题页贡献一个具体答案。"), external(answerQuestionPath(question), t("写回答"), 'btn primary'), 'chat')}</section></div><aside class="stack"><section class="card card-pad"><h3>${t("参与讨论")}</h3><p class="muted mt8">${t("编辑、投票、回答、收藏等写操作继续由 Answer 原生页面负责，避免在未完成权限适配前复制业务逻辑。")}</p>${external(answerQuestionPath(question), t("打开完整问题页 ") + I('external', 'sm'), 'btn primary wfull mt16')}</section><section class="card card-pad"><h3>${t("内容边界")}</h3><p class="muted mt8">${t("论坛内容本身不产生贡献值或脉冲券；内容奖励需走独立资格与审核流程。")}</p></section></aside></div>${footer()}`;
-  }
-
   async function topicsPage() {
     const result = await answer.listTags({ pageSize: 48, order: 'popular' });
     const tags = Array.isArray(result?.list) ? result.list : [];
@@ -267,7 +244,7 @@
     if (!query) return `${crumb([[t("搜索")]])}${heading(t("搜索社区"), t("结果来自 Apache Answer 的真实搜索索引。"))}${form}<section class="card">${empty(t("输入一个关键词开始搜索"), t("例如：API、Agent、模型评测、错误处理。"), '', 'search')}</section>${footer()}`;
     const result = await answer.search(query);
     const list = Array.isArray(result?.list) ? result.list : [];
-    return `${crumb([[t("搜索")]])}${heading(t("“{query}” 的结果", { query }), t("找到 {count} 条社区内容。", { count: number(result?.count) }))}${form}<section class="card">${list.length ? list.map((item) => { const object = item.object || {}; const questionId = object.question_id || object.id; return `<article class="result-row">${badge(item.object_type === 'answer' ? t("回答") : t("问题"), item.object_type === 'answer' ? '' : 'green')}${link(`/question/${encodeURIComponent(questionId)}`, `<h3>${esc(object.title || t("社区内容"))}</h3>`)}<p>${esc(object.excerpt || t("该结果暂未提供摘要。"))}</p><small class="muted">${esc(displayName(object.user_info))} · ${time(object.created_at)}</small></article>`; }).join('') : empty(t("没有找到相关内容"), t("换一个更具体的关键词，或向社区发起新问题。"), external(config.answerAskPath, t("发起提问"), 'btn primary'), 'search')}</section>${footer()}`;
+    return `${crumb([[t("搜索")]])}${heading(t("“{query}” 的结果", { query }), t("找到 {count} 条社区内容。", { count: number(result?.count) }))}${form}<section class="card">${list.length ? list.map((item) => { const object = item.object || {}; return `<article class="result-row">${badge(item.object_type === 'answer' ? t("回答") : t("问题"), item.object_type === 'answer' ? '' : 'green')}${external(searchHref(item), `<h3>${esc(object.title || t("社区内容"))}</h3>`)}<p>${esc(object.excerpt || t("该结果暂未提供摘要。"))}</p><small class="muted">${publicAuthor(object.user_info, esc(displayName(object.user_info)))} · ${time(object.created_at)}</small></article>`; }).join('') : empty(t("没有找到相关内容"), t("换一个更具体的关键词，或向社区发起新问题。"), external(config.answerAskPath, t("发起提问"), 'btn primary'), 'search')}</section>${footer()}`;
   }
 
   function knowledgePage() {
@@ -298,25 +275,19 @@
     const username = currentUser.username;
     const [profile, questions] = await Promise.all([answer.getProfile(username), answer.listPersonalQuestions(username)]);
     const list = Array.isArray(questions?.list) ? questions.list : [];
-    return `${crumb([[t("个人空间")]])}<div class="content-grid"><div class="stack"><section class="card prod-user-card"><div class="between wrap">${avatar(profile, 'large')}${external(config.answerSettingsPath, I('settings', 'sm') + t("编辑 Answer 资料"), 'btn')}</div><h1 class="mt16">${esc(displayName(profile))}</h1><p class="muted mt8">@${esc(profile.username || username)}${profile.location ? ` · ${esc(profile.location)}` : ''}</p><p class="mt16">${esc(profile.bio || t("这位成员暂未填写个人简介。"))}</p><div class="profile-numbers"><div><strong>${number(questions?.count)}</strong><span>${t("发布问题")}</span></div><div><strong>${number(profile.answer_count)}</strong><span>${t("参与回答")}</span></div><div><strong>${number(profile.rank)}</strong><span>${t("社区声望")}</span></div></div>${currentUser.mail_status === 2 ? `<div class="prod-status error mt16">${I('shield')}<div><strong>${t("邮箱尚未激活")}</strong><p>${t("请进入 Answer 账号页面重新发送激活邮件；前端不会绕过激活要求。")}</p></div></div>` : ''}</section><section class="card prod-feed"><div class="section-heading"><h2>${t("最近发布")}</h2><span class="muted">${t("Answer 实时数据")}</span></div>${list.length ? list.map(questionRow).join('') : empty(t("还没有发布问题"), t("从一个具体、可复现的问题开始。"), external(config.answerAskPath, t("发起问题"), 'btn primary'), 'chat')}</section></div><aside class="stack"><section class="card card-pad"><h3>${t("账号快捷入口")}</h3><ul class="mini-list"><li>${link('/me/bookmarks', `<span>${t("我的收藏")}</span><small>Answer</small>`)}</li><li>${link('/me/notifications', `<span>${t("通知中心")}</span><small>Answer</small>`)}</li><li>${link('/settings/binding', `<span>${t("元衡账号绑定")}</span><small>${t("可选")}</small>`)}</li><li>${link('/pulse', `<span>${t("Pulse 权益")}</span><small>${t("绑定后")}</small>`)}</li></ul></section></aside></div>${footer()}`;
+    return `${crumb([[t("个人空间")]])}<div class="content-grid"><div class="stack"><section class="card prod-user-card"><div class="between wrap">${avatar(profile, 'large')}${external(config.answerSettingsPath, I('settings', 'sm') + t("编辑 Answer 资料"), 'btn')}</div><h1 class="mt16">${esc(displayName(profile))}</h1><p class="muted mt8">@${esc(profile.username || username)}${profile.location ? ` · ${esc(profile.location)}` : ''}</p><p class="mt16">${esc(profile.bio || t("这位成员暂未填写个人简介。"))}</p><div class="profile-numbers"><div><strong>${number(questions?.count)}</strong><span>${t("发布问题")}</span></div><div><strong>${number(profile.answer_count)}</strong><span>${t("参与回答")}</span></div><div><strong>${number(profile.rank)}</strong><span>${t("社区声望")}</span></div></div>${currentUser.mail_status === 2 ? `<div class="prod-status error mt16">${I('shield')}<div><strong>${t("邮箱尚未激活")}</strong><p>${t("请进入 Answer 账号页面重新发送激活邮件；前端不会绕过激活要求。")}</p></div></div>` : ''}</section><section class="card prod-feed"><div class="section-heading"><h2>${t("最近发布")}</h2><span class="muted">${t("Answer 实时数据")}</span></div>${list.length ? list.map(questionRow).join('') : empty(t("还没有发布问题"), t("从一个具体、可复现的问题开始。"), external(config.answerAskPath, t("发起问题"), 'btn primary'), 'chat')}</section></div><aside class="stack"><section class="card card-pad"><h3>${t("账号快捷入口")}</h3><ul class="mini-list"><li>${link('/me/bookmarks', `<span>${t("我的收藏")}</span><small>Answer</small>`)}</li><li>${external('/users/notifications/inbox', `<span>${t("通知中心")}</span><small>Answer</small>`)}</li><li>${link('/settings/binding', `<span>${t("元衡账号绑定")}</span><small>${t("可选")}</small>`)}</li><li>${link('/pulse', `<span>${t("Pulse 权益")}</span><small>${t("绑定后")}</small>`)}</li></ul></section></aside></div>${footer()}`;
   }
 
   async function bookmarksPage() {
     if (currentUserState === 'unavailable') return identityUnavailable(t("我的收藏"));
     if (!currentUser) return loginRequired(t("我的收藏"), t("收藏内容由 Answer 管理。"));
     if (!isActiveUser(currentUser)) return accountUnavailable(t("我的收藏"));
-    const result = await answer.listBookmarks(currentUser.username);
+    const page = Math.max(1, Number.parseInt(route().query.get('page') || '1', 10) || 1);
+    const result = await answer.listBookmarks(currentUser.username, { page, pageSize: 20 });
+    const totalPages = Math.max(1, Math.ceil((Number(result?.count) || 0) / 20));
+    const pager = totalPages > 1 ? `<div class="prod-pager">${page > 1 ? link(`/me/bookmarks?page=${page - 1}`, t("上一页"), 'btn small') : ''}<span>${t("第 {page} / {total} 页", { page: number(page), total: number(totalPages) })}</span>${page < totalPages ? link(`/me/bookmarks?page=${page + 1}`, t("下一页"), 'btn small') : ''}</div>` : '';
     const list = Array.isArray(result?.list) ? result.list : [];
-    return `${crumb([[t("我的收藏")]])}${heading(t("我的收藏"), t("实时读取当前 Answer 账号的收藏记录。"))}<section class="card prod-feed">${list.length ? list.map(questionRow).join('') : empty(t("还没有收藏内容"), t("在 Answer 完整问题页收藏后，这里会显示对应记录。"), link('/latest', t("浏览问题"), 'btn primary'), 'bookmark')}</section>${footer()}`;
-  }
-
-  async function notificationsPage() {
-    if (currentUserState === 'unavailable') return identityUnavailable(t("通知中心"));
-    if (!currentUser) return loginRequired(t("通知中心"), t("通知由 Answer 账号和权限系统管理。"));
-    if (!isActiveUser(currentUser)) return accountUnavailable(t("通知中心"));
-    const result = await answer.listNotifications();
-    const list = Array.isArray(result?.list) ? result.list : [];
-    return `${crumb([[t("通知中心")]])}${heading(t("通知中心"), t("只展示 Answer 返回的本人通知，不在浏览器伪造已读状态。"), external('/notifications', t("进入完整通知页"), 'btn'))}<section class="card">${list.length ? list.map((item) => { const object = item.object_info || {}; const title = object.title || item.notification_action || t("社区通知"); return `<article class="result-row"><div class="between">${external(notificationPath(item), `<h3>${esc(title)}</h3>`)}${item.is_read ? badge(t("已读")) : badge(t("未读"), 'green')}</div><p>${esc(item.user_info ? `${displayName(item.user_info)} ${item.notification_action || ''}`.trim() : item.notification_action || t("查看完整通知了解详情。"))}</p><small class="muted">${time(item.update_time)}</small></article>`; }).join('') : empty(t("暂时没有新通知"), t("回答、提及和系统消息会由 Answer 写入这里。"), link('/latest', t("返回社区"), 'btn'), 'bell')}</section>${footer()}`;
+    return `${crumb([[t("我的收藏")]])}${heading(t("我的收藏"), t("实时读取当前 Answer 账号的收藏记录。"))}<section class="card prod-feed">${list.length ? list.map(questionRow).join('') : empty(t("还没有收藏内容"), t("在 Answer 完整问题页收藏后，这里会显示对应记录。"), link('/latest', t("浏览问题"), 'btn primary'), 'bookmark')}</section>${pager}${footer()}`;
   }
 
   async function bindingPage() {
@@ -404,7 +375,6 @@
     if (path === '/search') return searchPage();
     if (path === '/me') return profilePage();
     if (path === '/me/bookmarks') return bookmarksPage();
-    if (path === '/me/notifications') return notificationsPage();
     if (path === '/settings/binding') return bindingPage();
     if (path === '/pulse') return pulsePage();
     if (path === '/admin/pulse') {
@@ -420,7 +390,6 @@
     if (path === '/support') return supportPage();
     if (path === '/status') return statusPage();
     if (path === '/guidelines') return guidelinesPage();
-    if (path.startsWith('/question/')) return questionPage(decodeURIComponent(path.slice('/question/'.length)));
     if (path.startsWith('/topic/')) return questionsPage(decodeURIComponent(path.slice('/topic/'.length)));
     return notFoundPage();
   }
@@ -453,6 +422,8 @@
   }
 
   async function navigate() {
+    const destination = nativeDestination(location);
+    if (destination) { location.replace(destination); return; }
     const sequence = ++navigationSequence;
     closeMobileMenu();
     if (route().path !== '/admin/pulse') pulseAdmin.dispose();
@@ -544,5 +515,6 @@
 
   installAvatars();
   initializeTheme();
-  initializeIdentity().finally(navigate);
+  if (nativeDestination(location)) navigate();
+  else initializeIdentity().finally(navigate);
 })();

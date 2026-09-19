@@ -314,3 +314,7 @@ METAR `/admin/pulse` 是独立于用户权益的管理员配置入口。只允�
 ## 14. 公开内容搜索收录
 
 公开入口提供初始 HTML 与普通链接，论坛帖子继续使用 Answer 服务端正文与动态站点地图，博客站点地图保留 `/blog/` 前缀。私人入口通过网关及前端 noindex 排除；不改变认证、发布可见性或内容事实源。网站检查、Google/百度/Bing 提交及生产验收见 [SEARCH_INDEXING.md](SEARCH_INDEXING.md)。
+
+### 统一后的内容入口
+
+METAR 列表、搜索与收藏直接打开已应用共享主题的 Answer 详情，搜索回答保留回答定位。旧 `/question/:id` 与 `/me/notifications` 页面只做兼容跳转，查询参数与锚点保留；不再展示功能不全的重复只读副本。公开资料由 `/users/:username` 承接，私人身份与绑定仍由当前 Answer 会话校验。收藏列表支持分页，通知使用原生完整中心；互动数据和权限判断仍全部归 Answer。
