@@ -38,6 +38,7 @@ class ProductionBuildTest(unittest.TestCase):
         subprocess.run(["node", "--check", str(ROOT / "src/adapters.js")], check=True)
         subprocess.run(["node", "--check", str(ROOT / "src/avatars.js")], check=True)
         subprocess.run(["node", "--check", str(ROOT / "src/app.js")], check=True)
+        subprocess.run(["node", "--check", str(ROOT / "src/admin-pulse.js")], check=True)
 
     def test_ui_state_regressions(self):
         source = (ROOT / "src/app.js").read_text(encoding="utf-8")

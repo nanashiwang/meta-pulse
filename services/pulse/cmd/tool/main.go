@@ -8,12 +8,14 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/nanashiwang/meta-pulse/internal/adapter/newapi"
 	"github.com/nanashiwang/meta-pulse/internal/config"
 	"github.com/nanashiwang/meta-pulse/internal/domain/money"
+	"github.com/nanashiwang/meta-pulse/internal/runtimeconfig"
 	"github.com/nanashiwang/meta-pulse/internal/service"
 	mysqlstore "github.com/nanashiwang/meta-pulse/internal/store/mysql"
 	"github.com/nanashiwang/meta-pulse/migrations"
@@ -97,14 +99,15 @@ func runReconcile() error {
 	if err != nil {
 		return err
 	}
-	if err := cfg.ValidateWorker(); err != nil {
-		return err
-	}
 	database, err := mysqlstore.Open(cfg.PulseDBDSN)
 	if err != nil {
 		return err
 	}
 	defer database.Close()
+	cfg, err = loadWorkerRuntime(database, cfg)
+	if err != nil {
+		return err
+	}
 	unit, err := mysqlstore.NewUnitOfWork(database)
 	if err != nil {
 		return err
@@ -150,14 +153,15 @@ func runRewardRetry(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := cfg.ValidateWorker(); err != nil {
-		return err
-	}
 	database, err := mysqlstore.Open(cfg.PulseDBDSN)
 	if err != nil {
 		return err
 	}
 	defer database.Close()
+	cfg, err = loadWorkerRuntime(database, cfg)
+	if err != nil {
+		return err
+	}
 	unit, err := mysqlstore.NewUnitOfWork(database)
 	if err != nil {
 		return err
@@ -321,6 +325,10 @@ func runPeriodClose() error {
 		return err
 	}
 	defer database.Close()
+	cfg, err = loadWorkerRuntime(database, cfg)
+	if err != nil {
+		return err
+	}
 
 	unit, err := mysqlstore.NewUnitOfWork(database)
 	if err != nil {
@@ -589,4 +597,26 @@ func runCursorSeek(args []string) error {
 	}
 	fmt.Println(string(encoded))
 	return nil
+}
+
+// Financial tools resolve the same role-specific settings as the worker. They
+// must not silently use old env credentials after a UI rotation.
+func loadWorkerRuntime(database *mysqlstore.DB, baseline config.Config) (config.Config, error) {
+	if _, err := os.Stat(filepath.Join(baseline.RuntimeKeyDir, "worker.key")); err != nil {
+		return config.Config{}, errors.New("worker runtime key unavailable; run this command inside pulse-worker")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	manager, err := runtimeconfig.New(ctx, mysqlstore.NewRuntimeConfigStore(database), runtimeconfig.RoleWorker, baseline.RuntimeKeyDir, baseline)
+	if err != nil {
+		return config.Config{}, err
+	}
+	cfg, err := manager.Current(ctx)
+	if err != nil {
+		return config.Config{}, err
+	}
+	if err := cfg.ValidateWorker(); err != nil {
+		return config.Config{}, err
+	}
+	return cfg, nil
 }

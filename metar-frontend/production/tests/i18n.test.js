@@ -51,7 +51,7 @@ test('参数文案和数量在两种语言下保持完整语序', () => {
 
 test('app、适配器、头像中的显式中文界面词条都有英文翻译', () => {
   const { i18n } = languageContext('en_US');
-  for (const name of ['app.js', 'adapters.js', 'avatars.js']) {
+  for (const name of ['app.js', 'admin-pulse.js', 'adapters.js', 'avatars.js']) {
     for (const match of script(name).matchAll(/\bt\(\s*(["'])([^"'\n]+)\1/g)) {
       const key = match[2];
       if (/[\u3400-\u9fff]/.test(key)) assert.notEqual(i18n.t(key), key, `${name}: ${key}`);
@@ -59,7 +59,7 @@ test('app、适配器、头像中的显式中文界面词条都有英文翻译',
   }
 });
 
-async function shell({ language = 'en_US', user = null, binding = 'unbound', content = false, failure = '', pulseRules = {}, pulseRewards = [], actionResult = 'settled', storageBlocked = false } = {}) {
+async function shell({ language = 'en_US', user = null, binding = 'unbound', content = false, failure = '', pulseRules = {}, pulseRewards = [], actionResult = 'settled', storageBlocked = false, adminError = 0 } = {}) {
   const { context, i18n, values } = languageContext(language);
   const node = () => ({ innerHTML: '', textContent: '', attributes: {}, setAttribute(key, value) { this.attributes[key] = value; }, focus() {} });
   const nodes = Object.fromEntries(['app', 'view', 'main', 'skip', 'description', 'theme', 'menu', 'language'].map((key) => [key, node()]));
@@ -97,6 +97,10 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
       requests.push({ url, options });
       const pathname = new URL(url, 'https://metar.uk').pathname;
       if (failure === 'all' || (failure === 'identity' && pathname.endsWith('/user/info'))) return { ok: false, status: 503, json: async () => ({ msg: '中文服务器错误', data: null }) };
+      if (pathname.startsWith('/metar/api/admin/pulse/')) {
+        if (adminError) return { ok: false, status: adminError, json: async () => ({ error: 'settings_unavailable' }) };
+        return { ok: true, status: 200, json: async () => ({ revision: 1, config: { newapi_internal_base_url: 'http://new-api:3000', quota_per_unit: '500000', actions_enabled: false, reward_shadow_mode: true }, secrets: {}, worker_ready: true }) };
+      }
       if (pathname.startsWith('/metar/api/pulse/')) {
         if (failure === 'pulse') return { ok: false, status: 503, json: async () => ({ error: 'pulse_unavailable' }) };
         let payload;
@@ -119,7 +123,7 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
       return { ok: true, status: 200, json: async () => ({ data }) };
     },
   });
-  for (const name of ['adapters.js', 'avatars.js', 'app.js']) vm.runInContext(script(name), context);
+  for (const name of ['adapters.js', 'avatars.js', 'admin-pulse.js', 'app.js']) vm.runInContext(script(name), context);
   await new Promise(setImmediate);
   return {
     i18n, values, document, nodes, requests, operations,
@@ -251,4 +255,38 @@ test('Pulse 提交结果与原请求恢复提示随切换语言更新，超时�
   assertEnglish(blocked, 'blocked storage');
   assert.match(blocked.html(), /Allow site storage/);
   assert.equal(blocked.requests.some(({ url }) => url.endsWith('/actions')), false);
+});
+
+
+test('Pulse 管理入口仅对 Answer 正常激活管理员显示，版主和伪造 is_admin 无权展示', async () => {
+  for (const role_id of [1, 3, 0, undefined]) {
+    const view = await shell({ user: { id: '8', role_id, is_admin: true, status: 'normal', mail_status: 1 } });
+    assert.doesNotMatch(view.nodes.app.innerHTML, /href="#\/admin\/pulse"/);
+    await view.navigate('/admin/pulse');
+    assert.match(view.html(), /Administrator access required/);
+    assert.equal(view.requests.some(({ url }) => url.startsWith('/metar/api/admin/')), false);
+  }
+  for (const user of [{ role_id: 2, status: 'suspended', mail_status: 1 }, { role_id: 2, status: 'normal', mail_status: 2 }]) {
+    const view = await shell({ user });
+    assert.doesNotMatch(view.nodes.app.innerHTML, /href="#\/admin\/pulse"/);
+  }
+  const view = await shell({ user: { id: '8', role_id: 2, status: 'normal', mail_status: 1 } });
+  assert.match(view.nodes.app.innerHTML, /href="#\/admin\/pulse"/);
+  await view.navigate('/admin/pulse');
+  assert.match(view.html(), /Save Pulse settings/);
+  assert.match(view.html(), /Grant key storage is ready/);
+  assertEnglish(view, 'admin settings');
+  assert.doesNotMatch(view.html(), /PULSE_REWARD_RANDOM_SECRET|database password/);
+  await view.changeLanguage('zh_CN');
+  assert.match(view.html(), /保存 Pulse 配置/);
+  await view.changeLanguage('en_US');
+  assertEnglish(view, 'admin language switch');
+  for (const adminError of [403, 503]) {
+    const blocked = await shell({ user: { role_id: 2, status: 'normal', mail_status: 1 }, adminError });
+    await blocked.navigate('/admin/pulse');
+    assertEnglish(blocked, `admin error ${adminError}`);
+    assert.doesNotMatch(blocked.html(), /data-form="admin-pulse"/);
+    if (adminError === 503) assert.match(blocked.html(), /admin_hmac_secret/);
+    else assert.doesNotMatch(blocked.html(), /admin_hmac_secret/);
+  }
 });

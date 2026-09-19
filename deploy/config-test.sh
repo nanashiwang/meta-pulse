@@ -45,6 +45,9 @@ for service_name in ('pulse-api','pulse-worker'):
     assert not services[service_name].get('environment', {}).get('FORUM_BINDING_GUARD_DSN'), f'{service_name} gained forum write credentials'
 for role in ('api','worker'):
     configured = services['pulse-'+role]
+    key_mounts = [v for v in configured.get('volumes', []) if v['target'] == '/app/runtime-keys']
+    assert len(key_mounts) == 1 and key_mounts[0]['source'] == 'pulse_'+role+'_runtime_keys', 'runtime key volumes must remain role-separated'
+    assert configured['environment']['PULSE_RUNTIME_KEY_DIR'] == '/app/runtime-keys'
     if configured.get('ports'):
         raise AssertionError(f'{role} must not publish host ports')
     app_env = {k:str(v) for k,v in configured['environment'].items() if v is not None}

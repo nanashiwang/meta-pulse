@@ -16,8 +16,8 @@ func TestEmbeddedMigrationsAreDiscoverable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("collect migrations: %v", err)
 	}
-	if len(found) != 11 {
-		t.Fatalf("found %d migrations, want 11", len(found))
+	if len(found) != 12 {
+		t.Fatalf("found %d migrations, want 12", len(found))
 	}
 	for index, migration := range found {
 		want := int64(index + 1)

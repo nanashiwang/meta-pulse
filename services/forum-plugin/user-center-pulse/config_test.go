@@ -26,6 +26,13 @@ func TestValidateConfigRejectsUnsafeURLsAndSecrets(t *testing.T) {
 		{"short secret", func(c *Config) { c.SSOHMACSecret = "short" }},
 		{"duplicate previous secret", func(c *Config) { c.SSOHMACSecretPrevious = c.SSOHMACSecret }},
 		{"SSO and Profile secrets reused", func(c *Config) { c.PulseHMACSecret = c.SSOHMACSecret }},
+		{"short admin key", func(c *Config) { c.AdminHMACSecret = "short" }},
+		{"admin and SSO keys reused", func(c *Config) { c.AdminHMACSecret = c.SSOHMACSecret }},
+		{"admin and profile keys reused", func(c *Config) { c.AdminHMACSecret = c.PulseHMACSecret }},
+		{"admin and community keys reused", func(c *Config) {
+			c.CommunityBFFHMACSecret = strings.Repeat("c", 32)
+			c.AdminHMACSecret = c.CommunityBFFHMACSecret
+		}},
 		{"short community key", func(c *Config) { c.CommunityBFFHMACSecret = "short" }},
 		{"community and SSO keys reused", func(c *Config) { c.CommunityBFFHMACSecret = c.SSOHMACSecret }},
 		{"community and profile keys reused", func(c *Config) { c.CommunityBFFHMACSecret = c.PulseHMACSecret }},

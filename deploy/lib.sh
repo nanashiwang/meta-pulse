@@ -184,6 +184,19 @@ validate_compose() {
   compose config >/dev/null
 }
 
+# Encryption keys must be backed up with the DB containing UI overrides. Docker
+# cp works for stopped containers too; absence of a mount means a pre-UI release.
+backup_runtime_keys_if_present() {
+  local service="$1" destination="$2" container mount_type
+  container="$(compose ps -a -q "$service" | head -n 1)"
+  [[ -n "$container" ]] || return 0
+  mount_type="$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/app/runtime-keys"}}{{.Type}}{{end}}{{end}}' "$container")"
+  [[ "$mount_type" == volume || "$mount_type" == bind ]] || return 0
+  mkdir -p "$destination"
+  chmod 700 "$destination"
+  docker cp "$container:/app/runtime-keys/." "$destination/" >/dev/null
+}
+
 backup_database_if_running() {
   local service="$1"
   local output_file="$2"

@@ -65,8 +65,8 @@ grep -qF 'location ~ ^/users/(?:auth-landing|confirm-email)$' "$ROOT/deploy/ngin
 grep -q 'proxy_pass http://forum/answer/api/v1/connector/redirect/pulse_user_center;' "$ROOT/deploy/nginx/meta-pulse.conf"
 grep -q 'proxy_set_header Cookie "meta_pulse_forum_flow=\$cookie_meta_pulse_forum_flow";' "$ROOT/deploy/nginx/meta-pulse.conf"
 [[ "$(grep -c 'proxy_set_header Authorization "";' "$ROOT/deploy/nginx/meta-pulse.conf")" -eq 1 ]]
-[[ "$(grep -c 'proxy_set_header X-Pulse-Signature "";' "$ROOT/deploy/nginx/meta-pulse.conf")" -eq 6 ]] || { echo '所有 6 个社区代理入口必须清除 Pulse 签名' >&2; exit 1; }
-[[ "$(grep -c 'proxy_set_header New-Api-User "";' "$ROOT/deploy/nginx/meta-pulse.conf")" -eq 6 ]] || { echo '所有 6 个社区代理入口必须清除外部用户 ID' >&2; exit 1; }
+[[ "$(grep -c 'proxy_set_header X-Pulse-Signature "";' "$ROOT/deploy/nginx/meta-pulse.conf")" -eq 8 ]] || { echo '所有 8 个社区代理入口必须清除 Pulse 签名' >&2; exit 1; }
+[[ "$(grep -c 'proxy_set_header New-Api-User "";' "$ROOT/deploy/nginx/meta-pulse.conf")" -eq 8 ]] || { echo '所有 8 个社区代理入口必须清除外部用户 ID' >&2; exit 1; }
 grep -A12 'location /blog/' "$ROOT/deploy/nginx/meta-pulse.conf" | grep -q 'Strict-Transport-Security'
 grep -q 'location = / {' "$ROOT/deploy/nginx/meta-pulse.conf"
 grep -A14 'location = / {' "$ROOT/deploy/nginx/meta-pulse.conf" | grep -q 'try_files /blog/metar/index.html =404;'

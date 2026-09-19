@@ -40,6 +40,11 @@ plugin:
             other: 社区 Pulse BFF HMAC 密钥
           description:
             other: 选填。与 Pulse 的 PULSE_COMMUNITY_BFF_HMAC_SECRET 相同，必须独立于 SSO、档案、管理和结算密钥。留空关闭社区权益接口，不影响本地登录。
+        admin_hmac_secret:
+          title:
+            other: Pulse 管理配置 HMAC 密钥
+          description:
+            other: 选填。首次配对时填写 Pulse 的 PULSE_ADMIN_HMAC_SECRET，仅供社区管理员配置页面签名；不得复用社区权益、SSO、档案或发奖密钥。留空关闭管理接口，不影响论坛登录。
         nonce_redis_url:
           title:
             other: Login Ticket Nonce Redis 地址

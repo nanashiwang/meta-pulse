@@ -27,6 +27,7 @@ type Config struct {
 	SSOHMACSecretPrevious  string `json:"sso_hmac_secret_previous"`
 	PulseHMACSecret        string `json:"pulse_hmac_secret"`
 	CommunityBFFHMACSecret string `json:"community_bff_hmac_secret"`
+	AdminHMACSecret        string `json:"admin_hmac_secret"`
 	NonceRedisURL          string `json:"nonce_redis_url"`
 	LevelBadgeEnabled      bool   `json:"level_badge_enabled"`
 }
@@ -97,6 +98,14 @@ func (uc *UserCenter) ConfigFields() []plugin.ConfigField {
 			Value:       config.CommunityBFFHMACSecret,
 		},
 		{
+			Name:        "admin_hmac_secret",
+			Type:        plugin.ConfigTypeInput,
+			Title:       plugin.MakeTranslator(i18n.ConfigAdminHMACSecretTitle),
+			Description: plugin.MakeTranslator(i18n.ConfigAdminHMACSecretDescription),
+			UIOptions:   plugin.ConfigFieldUIOptions{InputType: plugin.InputTypePassword},
+			Value:       config.AdminHMACSecret,
+		},
+		{
 			Name:        "nonce_redis_url",
 			Type:        plugin.ConfigTypeInput,
 			Title:       plugin.MakeTranslator(i18n.ConfigNonceRedisURLTitle),
@@ -154,12 +163,16 @@ func validateConfig(c *Config) error {
 	if secret := strings.TrimSpace(c.CommunityBFFHMACSecret); secret != "" && !usableConfigSecret(secret) {
 		return errors.New("community_bff_hmac_secret must be at least 32 bytes and cannot be a placeholder")
 	}
+	if secret := strings.TrimSpace(c.AdminHMACSecret); secret != "" && !usableConfigSecret(secret) {
+		return errors.New("admin_hmac_secret must be at least 32 bytes and cannot be a placeholder")
+	}
 	secretOwners := make(map[string]string)
 	for _, item := range []struct{ name, value string }{
 		{"sso_hmac_secret", c.SSOHMACSecret},
 		{"sso_hmac_secret_previous", c.SSOHMACSecretPrevious},
 		{"pulse_hmac_secret", c.PulseHMACSecret},
 		{"community_bff_hmac_secret", c.CommunityBFFHMACSecret},
+		{"admin_hmac_secret", c.AdminHMACSecret},
 	} {
 		value := strings.TrimSpace(item.value)
 		if value == "" {
@@ -199,6 +212,7 @@ func (uc *UserCenter) ConfigReceiver(config []byte) error {
 	c.SSOHMACSecretPrevious = strings.TrimSpace(c.SSOHMACSecretPrevious)
 	c.PulseHMACSecret = strings.TrimSpace(c.PulseHMACSecret)
 	c.CommunityBFFHMACSecret = strings.TrimSpace(c.CommunityBFFHMACSecret)
+	c.AdminHMACSecret = strings.TrimSpace(c.AdminHMACSecret)
 	c.NonceRedisURL = strings.TrimSpace(c.NonceRedisURL)
 
 	logins, err := NewRedisNonceStore(c.NonceRedisURL)

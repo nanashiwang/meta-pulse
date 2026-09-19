@@ -13,6 +13,7 @@ const minimumProductionSecretLength = 32
 type Config struct {
 	QuotaPerUnit                   int64
 	Environment                    string
+	RuntimeKeyDir                  string
 	HTTPAddr                       string
 	WorkerHTTPAddr                 string
 	PulseDBDSN                     string
@@ -110,6 +111,7 @@ func Load() (Config, error) {
 	cfg := Config{
 		QuotaPerUnit:                   quotaPerUnit,
 		Environment:                    strings.ToLower(getenv("PULSE_ENV", "development")),
+		RuntimeKeyDir:                  getenv("PULSE_RUNTIME_KEY_DIR", ".data/runtime-keys"),
 		HTTPAddr:                       getenv("PULSE_HTTP_ADDR", ":8088"),
 		WorkerHTTPAddr:                 getenv("PULSE_WORKER_HTTP_ADDR", ":8089"),
 		PulseDBDSN:                     os.Getenv("PULSE_DB_DSN"),

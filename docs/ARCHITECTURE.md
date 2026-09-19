@@ -1146,7 +1146,7 @@ admin Principal（签名派生，不信任请求体）
 - 错误响应不回传底层错误文本。该文本会包含内部表名和列名，控制台只需要知道投影不可用。
 - 投影不包含任何 Ledger 金额。控制台不应成为账本事实源的第二份、更弱的渲染。
 
-已有管理员入口位于 new-api `/console/pulse-ops`，通过同域 `/api/pulse/ops/overview` 访问本接口；new-api 从管理员会话派生用户及角色，并使用独立 `PULSE_ADMIN_HMAC_SECRET` 代签。该入口不在 METAR 社区静态前端，Answer 角色不自动获得 Pulse 运营权限。社区 F5 工作台仍是独立待实现范围。
+已有运营概览位于 new-api `/console/pulse-ops`，通过同域 `/api/pulse/ops/overview` 访问本接口；new-api 从管理员会话派生用户及角色，并使用独立 `PULSE_ADMIN_HMAC_SECRET` 代签。Answer 角色不自动获得 Pulse 运营权限：新增 METAR 运行配置页仅在插件显式配对管理凭据后开放第 42 节的设置接口，不能据此修改本接口的周期、经济规则或账本。
 
 
 ## 41. 自动到账与付费证明安全边界
@@ -1162,3 +1162,19 @@ LOG_DB 最小事实为 `other.pulse_funding={version:1,status:"verified",paid_qu
 Pulse使用事务预算预占；当余量不足最大单奖，暂停整个奖池以维持公开权重语义。new-api另以持久化锁和每日计数，在自己的事务中限制单笔、用户日、平台日毛发放额，固定Asia/Shanghai日界，撤销不返还当日限额。账户禁用/删除/支付风险冻结拒绝新Grant；现存同source_ref同payload先恢复，开关/限额不阻断重放。新奖励类型固定newapi_quota且不可转让。
 
 结算与撤销权限分离：pulse-settlement只能grant/query；pulse-rollback只能query/rollback，独立密钥且禁止交给Worker。查询/撤销沿用服务主体+source_ref，不从浏览器派生受益人；grant仍必须签名主体等于请求user_id。余额不足时撤销明确拒绝，不能扣成负余额；Pulse保留原记录/预算等待人工审计。暂停新发奖后Query/Reconcile继续运行。`PULSE_ACTIONS_ENABLED` 与 `PULSE_BENEFIT_ENABLED` 默认 false，Shadow Mode 默认 true；Answer 插件缺少独立社区密钥时只关闭该 BFF，不阻断本地登录。代码实现与本地测试不代表生产已开放，完整部署步骤与限定支持范围见 `REWARDS_ROLLOUT.md`。
+
+## 42. METAR 运行配置管理
+
+`/#/admin/pulse` 通过同源 `/metar/api/admin/pulse/{settings,secret}` 访问 Answer 管理员 BFF。原生管理员认证之后仍需实时读取 Answer `user` 与 `user_role_rel`，核验唯一管理员角色、可用状态和邮箱激活；不依赖 new-api 绑定，不把普通用户或版主提升为 Pulse 管理员。插件须显式配置 `admin_hmac_secret` 配对 Pulse 的运营管理角色，不能复用用户社区 BFF/SSO/Profile/发奖密钥。浏览器没有直接 Pulse 地址/签名/actor 控制能力。
+
+内部接口为 `GET/PUT /v1/internal/admin/settings` 和 `POST /v1/internal/admin/settings/secret`，只允许签名 `admin` Principal。管理 BFF 固定路径、拒绝 query token、限制请求/响应大小、严格 JSON 白名单并验证同源写请求；不转发 Answer token、浏览器指定的 Pulse 头或任意目标 URL。首次显式配对授予设置管理权限，不改变 Answer 的本地治理事实源。
+
+新增 `pulse_runtime_config`、`pulse_runtime_role`、`pulse_runtime_secret` 与 `pulse_runtime_change`。数据库保存公共参数和角色加密密文，是网页覆盖配置的事实源；没有覆盖值的字段使用已登记的部署基线。Redis 不保存配置事实。单例行锁串行化角色登记、版本 CAS、幂等、设置和审计；同 actor+Idempotency-Key+相同规范请求返回第一次安全响应，改 payload/旧版本冲突。配置值、秘密明文、密文及指纹均不进入审计，审计只记录字段名称和安全状态；GET 不回显密钥。
+
+API/Worker 分别持有独立卷中的 X25519 私钥，数据库仅登记公钥。配置密钥以临时 X25519 ECDH、HKDF-SHA256、AES-GCM 封装并绑定字段名/收件公钥；API 能封装提交的 Worker 发奖密钥，但不能解密已保存的 Worker 密钥。角色 SELECT 排除另一角色密文，运行时投影也删除另一角色的业务秘密。跨用途 current/previous 与随机种子通过内部指纹拒绝重复；随机种子不开放编辑，API/Worker 必须一致。首次生成配置加密私钥不修改任何已有业务 HMAC 或随机种子。
+
+API 每次请求、Worker 每轮相关任务读取一个一致配置快照；缓存的路由仅在有效配置改变时重建，在途操作保留原快照。数据库/解密/校验失败时 fail closed，不使用旧快照继续放行；历史奖励、随机结果、Outbox 与 source_ref 均不因配置变化改写。财务工具使用 Worker 同一配置读取路径。新 API/Worker 均须完成迁移与升级，不能以旧版 Worker 的静态环境代替新配置。
+
+网页仅管理运行开关、展示换算和对接密钥。Period 经济参数、Budget、随机种子、数据源连接与主计费仍保持原边界。Worker 首次登记把有效 new-api 目标固化到公共配置，登记后或出现任何 Grant 后，普通设置表单不可改变资金目标；更改 `.env` 也不会绕过已固化目标。不确定奖励的目标迁移必须经专门维护方案，不能用配置热更新切换资金事实源。
+
+设置迁移为 `00012`。更新备份包括数据库、原部署配置及两个私钥卷；缺失原私钥且存在密文时拒绝启动/解密，不生成新业务密钥或清空密文自愈。同角色多实例共享原私钥和环境基线；API/Worker 之间不得共享私钥。恢复时数据库和密钥必须配套，具体步骤见 `METAR_ADMIN_SETTINGS.md`。

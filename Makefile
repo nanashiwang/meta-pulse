@@ -45,12 +45,13 @@ deploy-config-test:
 test-integration:
 	@test -n "$$PULSE_INTEGRATION_DSN" || { echo "请设置专用测试库 PULSE_INTEGRATION_DSN" >&2; exit 1; }
 	go test -count=1 -race ./services/pulse/internal/service -run MySQL -timeout 5m
+	go test -count=1 -race ./services/pulse/internal/store/mysql -run MySQL -timeout 5m
 
 # Run sequentially because both packages intentionally recreate disposable
 # Answer tables in the same isolated MySQL database.
 test-forum-integration:
 	@test -n "$$FORUM_INTEGRATION_DSN" || { echo "请设置专用测试库 FORUM_INTEGRATION_DSN" >&2; exit 1; }
-	FORUM_BINDING_GUARD_INTEGRATION_DSN="$$FORUM_INTEGRATION_DSN" go test -count=1 -race ./services/forum-plugin/user-center-pulse -run TestMySQLBindingGuard -timeout 5m
+	FORUM_BINDING_GUARD_INTEGRATION_DSN="$$FORUM_INTEGRATION_DSN" go test -count=1 -race ./services/forum-plugin/user-center-pulse -run 'TestMySQL(BindingGuard|AdminIdentity)' -timeout 5m
 	FORUM_CONTENT_READER_INTEGRATION_DSN="$$FORUM_INTEGRATION_DSN" go test -count=1 -race ./services/pulse/internal/adapter/forum -run TestMySQLFetch -timeout 5m
 
 build: build-pulse build-blog build-community

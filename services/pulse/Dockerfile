@@ -23,6 +23,7 @@ ARG META_PULSE_REVISION=unknown
 LABEL org.opencontainers.image.revision=$META_PULSE_REVISION
 RUN apk add --no-cache ca-certificates tzdata
 RUN addgroup -S pulse && adduser -S -G pulse pulse
+RUN mkdir -p /app/runtime-keys && chown pulse:pulse /app/runtime-keys && chmod 700 /app/runtime-keys
 WORKDIR /app
 COPY --from=builder /out/ /usr/local/bin/
 USER pulse

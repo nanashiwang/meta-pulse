@@ -19,6 +19,7 @@ import (
 	"github.com/nanashiwang/meta-pulse/internal/health"
 	"github.com/nanashiwang/meta-pulse/internal/job"
 	"github.com/nanashiwang/meta-pulse/internal/observability"
+	"github.com/nanashiwang/meta-pulse/internal/runtimeconfig"
 	"github.com/nanashiwang/meta-pulse/internal/service"
 	mysqlstore "github.com/nanashiwang/meta-pulse/internal/store/mysql"
 	redisstore "github.com/nanashiwang/meta-pulse/internal/store/redis"
@@ -31,17 +32,26 @@ func main() {
 		logger.Error("invalid configuration", "error", err)
 		os.Exit(1)
 	}
-	if err := cfg.ValidateWorker(); err != nil {
-		logger.Error("invalid worker configuration", "error", err)
-		os.Exit(1)
-	}
-
 	database, err := mysqlstore.Open(cfg.PulseDBDSN)
 	if err != nil {
 		logger.Error("initialize pulse database", "error", err)
 		os.Exit(1)
 	}
 	defer database.Close()
+	initCtx, initCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	runtime, err := runtimeconfig.New(initCtx, mysqlstore.NewRuntimeConfigStore(database), runtimeconfig.RoleWorker, cfg.RuntimeKeyDir, cfg)
+	if err == nil {
+		cfg, err = runtime.Current(initCtx)
+	}
+	initCancel()
+	if err == nil {
+		err = cfg.ValidateWorker()
+	}
+	if err != nil {
+		logger.Error("initialize worker runtime configuration", "error", err)
+		os.Exit(1)
+	}
+
 	cache, err := redisstore.Open(cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB)
 	if err != nil {
 		logger.Error("initialize redis", "error", err)
@@ -77,26 +87,6 @@ func main() {
 		logger.Error("initialize usage ingest", "error", err)
 		os.Exit(1)
 	}
-	benefitClient, err := newapi.NewBenefitClient(cfg.NewAPIInternalURL, []byte(cfg.ServiceHMACSecret), nil)
-	if err != nil {
-		logger.Error("initialize benefit client", "error", err)
-		os.Exit(1)
-	}
-	settlement, err := service.NewSettlementService(unit, benefitClient, service.SettlementConfig{BatchSize: cfg.SettlementBatchSize})
-	if err != nil {
-		logger.Error("initialize settlement service", "error", err)
-		os.Exit(1)
-	}
-	periodCloser, err := service.NewPeriodCloseService(unit, service.PeriodCloseConfig{
-		BatchSize: cfg.PeriodCloseBatchSize, CursorName: service.DefaultUsageCursorName,
-		SourceSystem: "new-api-log", RequireWatermark: cfg.PeriodCloseRequireWatermark,
-		EnablePeriodRewards: cfg.PeriodRewardsEnabled, RandomSecret: []byte(cfg.RewardRandomSecret),
-		ShadowMode: cfg.RewardShadowMode,
-	})
-	if err != nil {
-		logger.Error("initialize period close service", "error", err)
-		os.Exit(1)
-	}
 	metricsAggregation, err := service.NewMetricsAggregationService(unit, service.MetricsAggregationConfig{
 		CursorName: service.DefaultUsageCursorName, SourceSystem: "new-api-log",
 	})
@@ -127,7 +117,17 @@ func main() {
 		defer forumReader.Close()
 	}
 
-	readiness := health.NewChecker(map[string]health.Pinger{"mysql": database, "redis": cache})
+	dependencies := health.NewChecker(map[string]health.Pinger{"mysql": database, "redis": cache})
+	readiness := app.ReadinessFunc(func(checkCtx context.Context) error {
+		if err := dependencies.Check(checkCtx); err != nil {
+			return err
+		}
+		current, err := runtime.Current(checkCtx)
+		if err != nil {
+			return err
+		}
+		return current.ValidateWorker()
+	})
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	metrics := observability.NewMetrics()
@@ -166,6 +166,10 @@ func main() {
 	})
 
 	addTask("settlement", func(checkCtx context.Context) error {
+		settlement, err := newRuntimeSettlement(checkCtx, runtime, unit)
+		if err != nil {
+			return err
+		}
 		settlementResult, settlementErr := settlement.ProcessBatch(checkCtx)
 		if settlementErr != nil {
 			logger.Warn("settlement batch failed", "error", settlementErr)
@@ -177,6 +181,10 @@ func main() {
 	})
 
 	addTask("reconciliation", func(checkCtx context.Context) error {
+		settlement, err := newRuntimeSettlement(checkCtx, runtime, unit)
+		if err != nil {
+			return err
+		}
 		reconciliation, reconciliationErr := settlement.Reconcile(checkCtx)
 		if reconciliationErr != nil {
 			logger.Warn("settlement reconciliation failed", "error", reconciliationErr)
@@ -188,6 +196,10 @@ func main() {
 	})
 
 	addTask("period_close", func(checkCtx context.Context) error {
+		periodCloser, err := newRuntimePeriodCloser(checkCtx, runtime, unit)
+		if err != nil {
+			return err
+		}
 		periodReport, periodErr := periodCloser.RunOnce(checkCtx)
 		if periodErr != nil {
 			logger.Warn("period close failed", "error", periodErr)

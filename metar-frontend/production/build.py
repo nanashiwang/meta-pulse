@@ -53,6 +53,7 @@ def build(output: Path, config_path: Path) -> None:
         "i18n": (ROOT / "src/i18n.js").read_text(encoding="utf-8"),
         "adapters": (ROOT / "src/adapters.js").read_text(encoding="utf-8"),
         "avatars": (ROOT / "src/avatars.js").read_text(encoding="utf-8"),
+        "admin-pulse": (ROOT / "src/admin-pulse.js").read_text(encoding="utf-8"),
         "app": (ROOT / "src/app.js").read_text(encoding="utf-8"),
         "favicon": (ROOT / "src/favicon.svg").read_text(encoding="utf-8"),
     }
@@ -72,6 +73,7 @@ def build(output: Path, config_path: Path) -> None:
     (assets / "i18n.js").write_text(sources["i18n"], encoding="utf-8")
     (assets / "adapters.js").write_text(sources["adapters"], encoding="utf-8")
     (assets / "avatars.js").write_text(sources["avatars"], encoding="utf-8")
+    (assets / "admin-pulse.js").write_text(sources["admin-pulse"], encoding="utf-8")
     (assets / "app.js").write_text(sources["app"], encoding="utf-8")
     (assets / "favicon.svg").write_text(sources["favicon"], encoding="utf-8")
     (output / "index.html").write_text(sources["index"], encoding="utf-8")

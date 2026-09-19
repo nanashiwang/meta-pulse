@@ -1,7 +1,7 @@
 /* METAR production community shell. All community data comes from Apache Answer. */
 'use strict';
 (() => {
-  const { AdapterError, AnswerAdapter, PulseAdapter, PulseOperation, formatPulseQuota, KnowledgeAdapter, loadIdentitySnapshot, relativePath, routeMatchesNavigation } = window.MetarAdapters;
+  const { AdapterError, AnswerAdapter, PulseAdminAdapter, isCommunityAdministrator, PulseAdapter, PulseOperation, formatPulseQuota, KnowledgeAdapter, loadIdentitySnapshot, relativePath, routeMatchesNavigation } = window.MetarAdapters;
   const { markup: avatar, install: installAvatars } = window.MetarAvatars;
   const { t, locale, getLanguage, setLanguage, syncDocument, errorMessage, countLabel } = window.MetarI18n;
   const rawConfig = window.__METAR_RUNTIME_CONFIG__ || {};
@@ -23,6 +23,7 @@
 
   const answer = new AnswerAdapter(config);
   const pulse = new PulseAdapter(answer);
+  const pulseAdmin = new window.MetarPulseAdmin.View(new PulseAdminAdapter(answer));
   let pulseBusy = false;
   let pulseMessage = "";
   const knowledge = new KnowledgeAdapter(config);
@@ -158,7 +159,7 @@
     const path = route().path;
     if (path.startsWith('/question/')) return t("问题详情");
     if (path.startsWith('/topic/')) return t("话题");
-    return ({ '/discover': t("发现"), '/questions': t("问答广场"), '/topics': t("全部话题"), '/knowledge': t("知识库"), '/search': t("搜索"), '/me': t("个人空间"), '/bookmarks': t("我的收藏"), '/notifications': t("通知中心"), '/settings/binding': t("账号绑定"), '/pulse': t("Pulse 权益"), '/publish': t("发布内容"), '/login': t("登录"), '/register': t("注册"), '/forgot': t("找回密码"), '/status': t("服务状态"), '/support': t("帮助中心"), '/guidelines': t("社区规范") })[path] || t("METAR 社区");
+    return ({ '/discover': t("发现"), '/questions': t("问答广场"), '/topics': t("全部话题"), '/knowledge': t("知识库"), '/search': t("搜索"), '/me': t("个人空间"), '/bookmarks': t("我的收藏"), '/notifications': t("通知中心"), '/settings/binding': t("账号绑定"), '/pulse': t("Pulse 权益"), '/admin/pulse': t("Pulse 配置"), '/publish': t("发布内容"), '/login': t("登录"), '/register': t("注册"), '/forgot': t("找回密码"), '/status': t("服务状态"), '/support': t("帮助中心"), '/guidelines': t("社区规范") })[path] || t("METAR 社区");
   }
 
   function languageControl() {
@@ -186,6 +187,7 @@
     return `<aside class="sidebar" id="community-sidebar" aria-label="${t("社区导航")}">
       <div class="nav-group"><div class="nav-label">${t("社区")}</div>${item('/discover', t("发现"), 'compass')}${item('/questions', t("问答广场"), 'chat')}${item('/questions?order=unanswered', t("待回答"), 'target')}${item('/topics', t("全部话题"), 'flag')}${item('/knowledge', t("知识库"), 'book')}</div>
       <div class="nav-group"><div class="nav-label">${t("我的空间")}</div>${item('/me', t("个人主页"), 'user')}${item('/bookmarks', t("我的收藏"), 'bookmark')}${item('/notifications', t("通知中心"), 'bell')}${item('/settings/binding', t("账号绑定"), 'link')}</div>
+      ${currentUserState === 'ready' && isCommunityAdministrator(currentUser) ? `<div class="nav-group"><div class="nav-label">${t('管理')}</div>${item('/admin/pulse', t('Pulse 配置'), 'settings')}</div>` : ''}
       <div class="side-bottom">${item('/pulse', t("Pulse 权益"), 'pulse')}${item('/support', t("帮助中心"), 'help')}${item('/status', t("服务状态"), 'server')}<div class="side-footer">${link('/guidelines', t("社区规范"))}${external('/sitemap.xml', t("站点地图"))}</div></div>
     </aside>`;
   }
@@ -408,6 +410,12 @@
     if (path === '/notifications') return notificationsPage();
     if (path === '/settings/binding') return bindingPage();
     if (path === '/pulse') return pulsePage();
+    if (path === '/admin/pulse') {
+      if (currentUserState === 'unavailable') return identityUnavailable(t('Pulse 配置'));
+      if (!currentUser) return loginRequired(t('Pulse 配置'), t('请使用社区管理员账号登录。'));
+      if (!isCommunityAdministrator(currentUser)) return `${crumb([[t('Pulse 配置')]])}<section class="card">${empty(t('需要管理员权限'), t('仅正常且已激活的社区管理员可管理 Pulse 配置。'), link('/discover', t('返回社区'), 'btn'), 'shield')}</section>${footer()}`;
+      return `${crumb([[t('Pulse 配置')]])}${heading(t('Pulse 配置'), t('管理 METAR 与 new-api 的连接、密钥和抽奖开关。'))}${await pulseAdmin.page()}${footer()}`;
+    }
     if (path === '/publish') return publishPage();
     if (path === '/login') return authPage('login');
     if (path === '/register') return authPage('register');
@@ -450,6 +458,7 @@
   async function navigate() {
     const sequence = ++navigationSequence;
     closeMobileMenu();
+    if (route().path !== '/admin/pulse') pulseAdmin.dispose();
     renderShell();
     try {
       const html = await resolveView();
@@ -499,6 +508,8 @@
   });
 
   document.addEventListener('submit', (event) => {
+    const adminForm = event.target.closest('form[data-form="admin-pulse"]');
+    if (adminForm) { event.preventDefault(); pulseAdmin.submit(adminForm); return; }
     const form = event.target.closest('form[data-form="search"]');
     if (!form) return;
     event.preventDefault();
@@ -507,8 +518,10 @@
   });
 
   document.addEventListener('click', (event) => {
-    const action = event.target.closest('[data-action]')?.dataset.action;
+    const target = event.target.closest('[data-action]');
+    const action = target?.dataset.action;
     if (!action) return;
+    if (action.startsWith('admin-')) { pulseAdmin.action(action, target); return; }
     if (action === 'skip') {
       event.preventDefault();
       document.getElementById('main')?.focus({ preventScroll: false });

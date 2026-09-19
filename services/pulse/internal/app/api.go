@@ -29,6 +29,7 @@ type APIRoutes struct {
 	History    transporthttp.RewardHistoryReader
 	Rules      transporthttp.RewardRulesReader
 	Operations transporthttp.OperationsOverviewReader
+	Settings   transporthttp.RuntimeSettings
 	// Auth guards every route above. Without it none are registered: an
 	// unauthenticated internal route would expose user data.
 	Auth gin.HandlerFunc
@@ -87,6 +88,9 @@ func NewRouterWithRoutes(logger *slog.Logger, readiness ReadinessChecker, routes
 	}
 	if routes.Operations != nil {
 		transporthttp.OperationsOverviewRoute(internal, routes.Operations, routes.Auth)
+	}
+	if routes.Settings != nil {
+		transporthttp.RuntimeSettingsRoutes(internal, routes.Settings, routes.Auth)
 	}
 	return router
 }

@@ -13,6 +13,8 @@
 
 ## 配置与最小权限
 
+新版 METAR 可在 `/#/admin/pulse` 配置下表中 Pulse 侧的运行开关、额度换算和签名密钥；new-api 接收端仍在 new-api 后台设置。首次管理通道配对、只写密钥和角色私钥备份见 [METAR 管理员配置](METAR_ADMIN_SETTINGS.md)。网页已保存的覆盖值优先于 `.env`；以下环境变量名称同时用于识别两端应对应的字段。
+
 | 配置 | 所在进程 | 语义 |
 |---|---|---|
 | `PULSE_ACTIONS_ENABLED` | Pulse API | 默认 false；只控制新抽奖，原请求恢复继续有效 |

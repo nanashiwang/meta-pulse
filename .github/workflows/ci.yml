@@ -48,6 +48,27 @@ jobs:
       - name: Build
         run: make build-pulse
 
+  pulse-image:
+    name: Pulse image and private key volume
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Pulse runtime image
+        run: docker build -f services/pulse/Dockerfile -t meta-pulse-runtime:ci .
+      - name: Verify non-root private volume access
+        run: |
+          docker run --rm --entrypoint sh \
+            --mount type=volume,src=pulse-ci-runtime-keys,dst=/app/runtime-keys \
+            meta-pulse-runtime:ci -ec '
+              test "$(id -u)" != 0
+              test "$(stat -c %a /app/runtime-keys)" = 700
+              umask 077
+              printf test > /app/runtime-keys/.write-check
+              test "$(stat -c %a /app/runtime-keys/.write-check)" = 600
+              rm /app/runtime-keys/.write-check
+            '
+
   forum-image:
     name: Forum image
     runs-on: ubuntu-latest

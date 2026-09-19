@@ -40,6 +40,11 @@ plugin:
             other: Community Pulse BFF HMAC Secret
           description:
             other: Optional. Must match Pulse PULSE_COMMUNITY_BFF_HMAC_SECRET and be independent of all SSO, profile, admin and settlement keys. Empty disables community benefit routes without affecting local login.
+        admin_hmac_secret:
+          title:
+            other: Pulse settings admin HMAC secret
+          description:
+            other: Optional. Pair once with Pulse PULSE_ADMIN_HMAC_SECRET for administrator settings requests. Keep separate from community, SSO, profile and settlement keys. Empty disables settings only.
         nonce_redis_url:
           title:
             other: Login Ticket Nonce Redis URL

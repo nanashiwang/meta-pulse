@@ -352,6 +352,7 @@ func (uc *UserCenter) RegisterAuthUserRouter(r *gin.RouterGroup) {
 }
 
 func (uc *UserCenter) RegisterAuthAdminRouter(r *gin.RouterGroup) {
+	uc.registerAdminSettingsRoutes(r, answerAdminSessionUserID, plugin.SiteURL)
 	r.GET("/pulse/health", func(ctx *gin.Context) {
 		config := uc.configSnapshot()
 		ctx.JSON(http.StatusOK, gin.H{"pulse_base_url": config.PulseBaseURL})

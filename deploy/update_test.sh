@@ -75,8 +75,16 @@ case " $* " in
     [[ "${MOCK_GATEWAY:-0}" == 1 ]] && printf 'gateway\n'
     ;;
   *' inspect '*)
-    if [[ "$*" == *'.State.Health'* ]]; then printf 'running healthy\n'; else printf 'running\n'; fi
+    if [[ "$*" == *'.Mounts'* ]]; then
+      [[ "${MOCK_RUNTIME_KEYS:-0}" == 1 ]] && printf 'volume\n'
+    elif [[ "$*" == *'.State.Health'* ]]; then printf 'running healthy\n'; else printf 'running\n'; fi
     ;;
+  *' cp '*)
+    [[ "${MOCK_RUNTIME_COPY_FAIL:-0}" == 0 ]] || exit 45
+    printf 'public-test-private-key-fixture' >"${@: -1}/role.key"
+    chmod 600 "${@: -1}/role.key"
+    ;;
+  *' ps -a -q '*) printf 'fixture-container\n' ;;
   *' ps -q '*) printf 'fixture-container\n' ;;
   *' config '*)
     [[ -z "${NEWAPI_LOG_DSN+x}" && -z "${PULSE_DB_PASSWORD+x}" ]] || exit 43
@@ -168,5 +176,17 @@ grep -q '检测到 Nginx 配置文件变更' "$tmp/output"
 MOCK_GATEWAY=1 MOCK_FETCH_SUCCEED=1 MOCK_COMMUNITY_CHANGED=1 bash "$tmp/repo/deploy/update.sh" >"$tmp/output" 2>&1 || { cat "$tmp/output" >&2; exit 1; }
 grep -q '^build-community$' "$MOCK_LOG"
 ! grep -q '^build-blog$' "$MOCK_LOG"
+
+# Back up private role key mounts even for stopped containers, and never
+# continue an upgrade when an existing key volume cannot be copied.
+: >"$MOCK_LOG"
+MOCK_RUNTIME_KEYS=1 MOCK_GATEWAY=1 MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" >"$tmp/output" 2>&1 || { cat "$tmp/output" >&2; exit 1; }
+grep -q 'runtime-keys/api/' "$MOCK_LOG"
+grep -q 'runtime-keys/worker/' "$MOCK_LOG"
+: >"$MOCK_LOG"
+if MOCK_RUNTIME_KEYS=1 MOCK_RUNTIME_COPY_FAIL=1 bash "$tmp/repo/deploy/update.sh" >"$tmp/output" 2>&1; then
+  echo 'runtime key backup failure ignored' >&2; exit 1
+fi
+! grep -q '^fetch$' "$MOCK_LOG"
 
 printf '更新配置只读、锁、原配置备份和网关文件挂载回归通过\n'

@@ -81,3 +81,11 @@ accepted UsageEvent => exactly one accounting effect
 仅添加 `pulse_idempotency(idempotency_key, scope)` 与 `pulse_reward_grant(user_id, action_id, trigger_type)` 非唯一辅助索引，不重写 Ledger、Grant 或旧请求响应。新 API 在同一业务事务内建立不依赖周期的 action/request 双映射，旧记录按原指纹核验后恢复；存在歧义时冲突退出。
 
 执行发布前备份并排空旧 API 写请求，禁止同时运行新旧 Action 写入路径。Down 只移除辅助索引，不会撤销已经建立的稳定幂等语义；旧版本不认识新请求范围，不能以执行 Down/删幂等记录的方式直接恢复发奖。
+
+## `00012` 管理员运行配置
+
+`00012_runtime_settings.sql` 新增单例配置版本、API/Worker 公钥与环境指纹登记、按角色加密的业务密钥、持久化配置请求回执。保存采用同事务版本检查、幂等回执和 `pulse_audit_log`；审计只保存修改字段和配置状态，不保存密钥或指纹。Worker 首次登记时固定 new-api 接收地址，后续环境变量改变不会切换资金事实源。
+
+升级前备份数据库；启用后还必须分别备份 API、Worker 专用密钥卷中的 `api.key`、`worker.key`。业务密钥从数据库读取时只有本角色私钥可以解密，私钥丢失必须恢复原卷，不能重新生成替代。首次登记缺必需密钥或提供无效密钥会失败并回滚登记，修复环境后可以重试；成功登记后的环境签名密钥基线应保持一致，日常修改通过管理员页面完成。
+
+Down 保留配置、密文和幂等回执，重新 Up 不会覆盖现有值。回退旧二进制前先关闭奖励写入并制定配置回迁方案；旧版本只读环境变量，不能把保留数据库表误认为旧版本仍会使用新配置。

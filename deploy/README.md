@@ -75,6 +75,8 @@ services:
 
 ## Answer 初始化与账号绑定
 
+升级后的 Pulse 参数和签名密钥可通过 METAR 管理员 `/#/admin/pulse` 配置，首次需在插件设置填入 `admin_hmac_secret` 与 Pulse 运营密钥配对。新迁移 `00012` 与 API/Worker 私钥持久卷必须一起保留，部署更新会备份已有私钥卷；详见 [管理员配置与恢复](../docs/METAR_ADMIN_SETTINGS.md)。原 `.env` 作为部署基线保留，网页覆盖优先，既有部署的业务密钥不自动轮换。
+
 首次启动后，先通过新社区域名完成 Answer 初始化，并在后台确认：
 
 1. 开启本地注册和密码登录，配置站点 URL、发信服务与管理员；

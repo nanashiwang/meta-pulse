@@ -215,6 +215,82 @@
     act(operation) { return this.request('actions', { operation }); }
   }
 
+
+  const PULSE_ADMIN_SECRET_KEYS = Object.freeze([
+    'PULSE_USER_BFF_HMAC_SECRET', 'PULSE_ADMIN_HMAC_SECRET', 'PULSE_FORUM_HMAC_SECRET',
+    'PULSE_COMMUNITY_BFF_HMAC_SECRET', 'PULSE_SERVICE_HMAC_SECRET', 'PULSE_ROLLBACK_HMAC_SECRET',
+  ].flatMap((key) => [key, `${key}_PREVIOUS`]));
+
+  function isCommunityAdministrator(user) {
+    return user?.role_id === 2 && user.mail_status === 1 && user.status === 'normal';
+  }
+
+  class PulseAdminAdapter {
+    constructor(answer) { this.answer = answer; }
+    async request(path, { method = 'GET', body, idempotencyKey } = {}) {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), this.answer.timeoutMs);
+      const headers = new Headers({ Accept: 'application/json', 'Accept-Language': window.MetarI18n?.locale() || 'zh-CN', 'X-Metar-Request': '1' });
+      const token = this.answer.token();
+      if (token) headers.set('Authorization', token.startsWith('Bearer ') ? token : `Bearer ${token}`);
+      if (method !== 'GET') {
+        headers.set('Content-Type', 'application/json');
+        headers.set('X-Metar-Request', '1');
+      }
+      if (idempotencyKey) headers.set('Idempotency-Key', idempotencyKey);
+      try {
+        const response = await fetch(`/metar/api/admin/pulse/${path}`, {
+          method, headers, credentials: 'same-origin', redirect: 'error', cache: 'no-store', signal: controller.signal,
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        });
+        let payload;
+        try { payload = await response.json(); } catch (_) {
+          throw new AdapterError('配置响应无法确认', { code: method === 'PUT' ? 'settings_pending' : 'invalid_response' });
+        }
+        if (!response.ok) {
+          const code = response.status === 401 ? 'authentication_required' : response.status === 403 ? 'admin_required' : response.status === 409 ? 'settings_conflict' : response.status >= 500 && method === 'PUT' ? 'settings_pending' : payload?.error || `http_${response.status}`;
+          throw new AdapterError('配置请求未完成', { status: response.status, code });
+        }
+        if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new AdapterError('配置响应无法确认', { code: method === 'PUT' ? 'settings_pending' : 'invalid_response' });
+        return payload;
+      } catch (error) {
+        if (error instanceof AdapterError) throw error;
+        // Never retain server messages or fetch errors: they may contain submitted secrets.
+        throw new AdapterError('配置请求未完成', { code: method === 'PUT' ? 'settings_pending' : 'settings_unavailable' });
+      } finally { window.clearTimeout(timeout); }
+    }
+    async settings() { return this.validateSettings(await this.request('settings')); }
+    validateSettings(value) {
+      if (!Number.isSafeInteger(value?.revision) || value.revision < 0 || typeof value.config?.newapi_internal_base_url !== 'string' || !/^(0|[1-9][0-9]*)$/.test(value.config?.quota_per_unit) || typeof value.config?.actions_enabled !== 'boolean' || typeof value.config?.reward_shadow_mode !== 'boolean' || !value.secrets || typeof value.secrets !== 'object') {
+        throw new AdapterError('配置响应无法确认', { code: 'invalid_response' });
+      }
+      // An accidental server extension must never make existing secrets readable by the UI.
+      return {
+        revision: value.revision, worker_ready: value.worker_ready === true, newapi_target_locked: value.newapi_target_locked === true,
+        config: {
+          newapi_internal_base_url: value.config.newapi_internal_base_url,
+          quota_per_unit: String(value.config.quota_per_unit),
+          actions_enabled: value.config.actions_enabled, reward_shadow_mode: value.config.reward_shadow_mode,
+        },
+        secrets: Object.fromEntries(PULSE_ADMIN_SECRET_KEYS.map((key) => [key, {
+          configured: value.secrets[key]?.configured === true,
+          source: ['environment', 'database', 'unset'].includes(value.secrets[key]?.source) ? value.secrets[key].source : 'unset',
+        }])),
+      };
+    }
+    async save(body, idempotencyKey) {
+      if (!idempotencyKey) throw new AdapterError('缺少保存请求编号', { code: 'invalid_request' });
+      const result = await this.request('settings', { method: 'PUT', body, idempotencyKey });
+      try { return this.validateSettings(result); }
+      catch (_) { throw new AdapterError('配置响应无法确认', { code: 'settings_pending' }); }
+    }
+    async generateSecret() {
+      const result = await this.request('secret', { method: 'POST', body: {} });
+      if (typeof result.secret !== 'string' || !/^[a-f0-9]{64}$/.test(result.secret)) throw new AdapterError('配置响应无法确认', { code: 'invalid_response' });
+      return result.secret;
+    }
+  }
+
   class KnowledgeAdapter {
     constructor(config) { this.base = relativePath(config.blogBasePath, '/blog/'); }
     listArticles() {
@@ -226,5 +302,5 @@
     }
   }
 
-  window.MetarAdapters = Object.freeze({ AdapterError, AnswerAdapter, PulseAdapter, PulseOperation, formatPulseQuota, KnowledgeAdapter, loadIdentitySnapshot, relativePath, routeMatchesNavigation });
+  window.MetarAdapters = Object.freeze({ AdapterError, AnswerAdapter, PulseAdminAdapter, PULSE_ADMIN_SECRET_KEYS, isCommunityAdministrator, PulseAdapter, PulseOperation, formatPulseQuota, KnowledgeAdapter, loadIdentitySnapshot, relativePath, routeMatchesNavigation });
 })();

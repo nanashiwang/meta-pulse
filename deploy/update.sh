@@ -138,6 +138,8 @@ trap on_error ERR
 
 backup_database_if_running mysql "$BACKUP_DIR/pulse.sql"
 backup_database_if_running forum-mysql "$BACKUP_DIR/forum.sql"
+backup_runtime_keys_if_present pulse-api "$BACKUP_DIR/runtime-keys/api"
+backup_runtime_keys_if_present pulse-worker "$BACKUP_DIR/runtime-keys/worker"
 
 log "拉取远程分支：origin/$REF"
 git -C "$REPO_ROOT" fetch --prune origin "$REF"
