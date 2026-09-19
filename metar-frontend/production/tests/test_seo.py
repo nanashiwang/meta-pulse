@@ -1,4 +1,5 @@
 import sys
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -36,3 +37,29 @@ class SearchAssetsTest(unittest.TestCase):
                 self.assertIn('Sitemap: https://metar.uk' + sitemap, robots)
             self.assertNotIn('Disallow: /metar-assets', robots)
             self.assertNotIn('Disallow: /questions', robots)
+
+    def test_render_resources_are_crawlable_but_private_apis_are_not(self):
+        rules = []
+        for line in (ROOT / 'src/robots.txt').read_text().splitlines():
+            directive, _, value = line.partition(':')
+            if directive in ('Allow', 'Disallow'):
+                rules.append((directive, value.strip()))
+
+        def allowed(path):
+            matches = []
+            for directive, value in rules:
+                end = value.endswith('$')
+                pattern = re.escape(value[:-1] if end else value).replace(r'\*', '.*')
+                if re.match('^' + pattern + ('$' if end else ''), path):
+                    matches.append((len(value), directive == 'Allow'))
+            return max(matches, default=(0, True))[1]
+
+        for endpoint in ('question/page', 'question/info', 'answer/page', 'tags/page'):
+            path = '/answer/api/v1/' + endpoint
+            self.assertTrue(allowed(path), path)
+            self.assertTrue(allowed(path + '?page=1&page_size=20&order=active'), path)
+            self.assertFalse(allowed(path + '/private'), path)
+        for path in ('/answer/api/v1/user/info', '/answer/api/v1/notification/page',
+                     '/answer/api/v1/question', '/answer/admin', '/metar/api/pulse/summary',
+                     '/metar/api/admin/pulse/settings'):
+            self.assertFalse(allowed(path), path)

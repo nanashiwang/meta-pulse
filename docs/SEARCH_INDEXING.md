@@ -5,6 +5,7 @@
 ## 网站端
 
 - `/robots.txt` 向所有爬虫公布三个站点地图，不根据 User-Agent 返回不同内容。
+- 公开问题列表、问题详情、回答列表和标签列表的只读查询允许爬虫获取，以便渲染页面；接口本身继续返回 noindex。其余账户、通知、管理与权益 API 保留抓取限制及原认证规则。禁止将整个 `/answer/api` 全部拦截而不保留这些精确例外，否则 Google 渲染首页时会因公开数据请求被阻止而得到错误页 noindex。
 - `/sitemap.xml` 与 `/sitemap/*` 保留 Answer 原生动态实现，只包含 Answer 允许公开的问题；新问题由 Answer 自动纳入，缓存刷新由上游管理。不要把该 URL 替换成包含嵌套 sitemap index 的静态索引。
 - `/sitemap-site.xml` 由正式前端构建生成，覆盖公开入口。
 - `/blog/sitemap.xml` 由 VitePress 构建生成，所有文章 URL 保留 `/blog/` 前缀；新文章发布需重新构建。

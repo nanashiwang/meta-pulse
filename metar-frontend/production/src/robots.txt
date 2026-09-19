@@ -3,6 +3,16 @@ Allow: /
 Disallow: /admin
 Disallow: /install
 Disallow: /review
+# Public content XHR must be fetchable when crawlers render the community.
+# JSON responses still carry noindex; account and mutation endpoints stay blocked.
+Allow: /answer/api/v1/question/page$
+Allow: /answer/api/v1/question/page?
+Allow: /answer/api/v1/question/info$
+Allow: /answer/api/v1/question/info?
+Allow: /answer/api/v1/answer/page$
+Allow: /answer/api/v1/answer/page?
+Allow: /answer/api/v1/tags/page$
+Allow: /answer/api/v1/tags/page?
 Disallow: /answer/api
 Disallow: /answer/admin
 Disallow: /metar/api
