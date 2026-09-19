@@ -318,3 +318,9 @@ METAR `/admin/pulse` 是独立于用户权益的管理员配置入口。只允�
 ### 统一后的内容入口
 
 METAR 列表、搜索与收藏直接打开已应用共享主题的 Answer 详情，搜索回答保留回答定位。旧 `/question/:id` 与 `/me/notifications` 页面只做兼容跳转，查询参数与锚点保留；不再展示功能不全的重复只读副本。公开资料由 `/users/:username` 承接，私人身份与绑定仍由当前 Answer 会话校验。收藏列表支持分页，通知使用原生完整中心；互动数据和权限判断仍全部归 Answer。
+
+### 本地注册兼容
+
+Answer 1.7.1 的 `/user-center/agent` 固定输出插件注册跳转接口，前端 `getSignUpUrl` 即使启用本地用户系统仍选择它，注册守卫会离开本地表单。`local-registration.js` 仅修正 Meta Pulse 自己启用且保留本地账号时的前端注册路径，并同步后续插件信息刷新。原生注册开关、验证码、邮箱验证和服务端注册接口不变；其他 UserCenter 插件和禁用本地账号的模式不受影响。升级 Answer 时必须重新核验这条适配。
+
+中英文插件 YAML 必须随 `i18n` Go 子包嵌入，才能由 `answer build` 的 vendoring/合并步骤保留。已有数据卷中的语言文件不会由 `answer init` 覆盖；升级时按 Answer 原生升级流程，在备份后运行 `answer upgrade -C <实际数据根目录>` 刷新语言并执行原生迁移，再重启 forum。不能把镜像构建成功等同于既有卷内语言资源已更新，数据根目录需以现有部署配置为准。

@@ -1,5 +1,13 @@
 package i18n
 
+import "embed"
+
+// Answer merges plugin translations from the vendored package during its build.
+// Explicit embedding keeps YAML resources when Go vendors this subpackage.
+//
+//go:embed en_US.yaml zh_CN.yaml
+var resources embed.FS
+
 const (
 	InfoName        = "plugin.pulse_user_center.backend.info.name"
 	InfoDescription = "plugin.pulse_user_center.backend.info.description"

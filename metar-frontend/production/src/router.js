@@ -24,12 +24,32 @@
       : questionHref(object.id);
   }
 
-  function nativeDestination(location) {
+  function nativeDestination(location, config = {}) {
     const path = location.pathname.replace(/\/$/, '');
     const question = path.match(/^\/question\/([a-zA-Z0-9]+)$/);
-    const destination = question ? questionHref(question[1])
-      : path === '/me/notifications' ? '/users/notifications/inbox' : null;
-    return destination ? destination + location.search + location.hash : null;
+    const entries = {
+      '/login': [config.answerLoginPath, '/users/login'],
+      '/register': [config.answerRegisterPath, '/users/register'],
+      '/forgot': [config.answerPasswordResetPath, '/users/account-recovery'],
+      '/publish': [config.answerAskPath, '/questions/ask'],
+      '/me/notifications': [null, '/users/notifications/inbox'],
+    };
+    const entry = entries[path];
+    if (!question && !entry) return null;
+    const fallback = question ? questionHref(question[1]) : entry[1];
+    const configured = entry?.[0];
+    let destination = fallback;
+    if (typeof configured === 'string' && /^\/(?!\/)/.test(configured) && !/[\\\u0000-\u0020]/.test(configured)) {
+      try {
+        const url = new URL(configured, location.origin);
+        // Configuration may customize a native path, never redirect off-site,
+        // back into the shell or through an API endpoint.
+        if (url.origin === location.origin && !owns(url.pathname) && /^\/(?:users|questions)\//.test(url.pathname) && !/%(?:2f|5c)/i.test(url.pathname)) {
+          destination = url.pathname + url.search;
+        }
+      } catch (_) { /* keep the known native default */ }
+    }
+    return destination + (location.search ? (destination.includes('?') ? '&' + location.search.slice(1) : location.search) : '') + location.hash;
   }
 
   function create(browser) {

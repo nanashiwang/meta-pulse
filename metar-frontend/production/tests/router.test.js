@@ -103,3 +103,14 @@ test('搜索回答保留回答 ID，公开资料用户名作为单一路径段�
   assert.equal(searchHref({ object_type: 'answer', object: { id: '7', question_id: '42' } }), '/questions/42/7');
   assert.equal(profileHref('alice?tab=admin'), '/users/alice%3Ftab%3Dadmin');
 });
+
+test('登录注册找回与发布旧入口直接交接且拒绝外部或循环配置', () => {
+  const { nativeDestination } = require('../src/router.js');
+  for (const [entry, target] of [['/login', '/users/login'], ['/register', '/users/register'], ['/forgot', '/users/account-recovery'], ['/publish', '/questions/ask']]) {
+    assert.equal(nativeDestination(new URL('https://metar.uk' + entry + '?status=inactive#form')), target + '?status=inactive#form');
+  }
+  for (const bad of ['https://evil.test/login', '//evil.test/login', '/\\evil.test/login', '/login', '/latest', '/metar/api/pulse/actions', '/users/%2f%2fevil.test', '/users/../publish']) {
+    assert.equal(nativeDestination(new URL('https://metar.uk/login'), { answerLoginPath: bad }), '/users/login', bad);
+  }
+  assert.equal(nativeDestination(new URL('https://metar.uk/login?status=inactive'), { answerLoginPath: '/users/login?lang=zh' }), '/users/login?lang=zh&status=inactive');
+});

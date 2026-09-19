@@ -59,7 +59,7 @@ test('app、适配器、头像中的显式中文界面词条都有英文翻译',
   }
 });
 
-async function shell({ language = 'en_US', user = null, binding = 'unbound', content = false, failure = '', pulseRules = {}, pulseRewards = [], actionResult = 'settled', storageBlocked = false, adminError = 0 } = {}) {
+async function shell({ language = 'en_US', user = null, binding = 'unbound', content = false, failure = '', pulseRules = {}, pulseRewards = [], actionResult = 'settled', storageBlocked = false, adminError = 0, bookmarkCount = 0 } = {}) {
   const { context, i18n, values } = languageContext(language);
   const node = () => ({ innerHTML: '', textContent: '', attributes: {}, setAttribute(key, value) { this.attributes[key] = value; }, focus() {} });
   const nodes = Object.fromEntries(['app', 'view', 'main', 'skip', 'description', 'theme', 'menu', 'language'].map((key) => [key, node()]));
@@ -120,7 +120,9 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
       if (pathname === '/answer/api/v1/user/info') data = user;
       else if (pathname.endsWith('/personal/user/info')) data = { ...user, bio: content ? '元衡账号绑定' : '' };
       else if (pathname.endsWith('/question/info')) data = question;
+      else if (pathname.endsWith('/personal/collection/page')) data = { count: bookmarkCount, list: bookmarkCount ? [question] : [] };
       else if (pathname.endsWith('/connector/user/info')) data = binding === 'unavailable' ? [] : [{ link: '/answer/api/v1/connector/login/pulse_user_center', binding: binding === 'bound' }];
+      else if (pathname.endsWith('/personal/question/page')) data = { count: 1, list: [{ question_id: question.id, title: question.title }] };
       else if (content && pathname.endsWith('/question/page')) data = { count: 1, list: [question] };
       return { ok: true, status: 200, json: async () => ({ data }) };
     },
@@ -188,7 +190,7 @@ test('语言切换重新渲染标题、筛选、ARIA、错误和数值，用户�
   assert.match(view.html(), /元衡账号绑定/);
   await view.changeLanguage('zh_CN');
   assert.equal(view.document.documentElement.lang, 'zh-CN');
-  assert.match(view.html(), /编辑 Answer 资料/);
+  assert.match(view.html(), /编辑资料/);
   assert.equal(view.i18n.errorMessage({ code: 'network', message: 'old message' }), '暂时无法连接社区服务，请稍后重试');
   view.i18n.setLanguage('en_US');
   assert.match(view.i18n.errorMessage({ code: 'network', message: '中文错误' }), /Unable to connect/);
@@ -267,17 +269,19 @@ test('Pulse 提交结果与原请求恢复提示随切换语言更新，超时�
 test('Pulse 管理入口仅对 Answer 正常激活管理员显示，版主和伪造 is_admin 无权展示', async () => {
   for (const role_id of [1, 3, 0, undefined]) {
     const view = await shell({ user: { id: '8', role_id, is_admin: true, status: 'normal', mail_status: 1 } });
-    assert.doesNotMatch(view.nodes.app.innerHTML, /href="\/admin\/pulse"/);
+    assert.doesNotMatch(view.nodes.app.innerHTML, /href="\/admin\/(?:pulse|dashboard|pulse_user_center)"/);
     await view.navigate('/admin/pulse');
     assert.match(view.html(), /Administrator access required/);
     assert.equal(view.requests.some(({ url }) => url.startsWith('/metar/api/admin/')), false);
   }
   for (const user of [{ role_id: 2, status: 'suspended', mail_status: 1 }, { role_id: 2, status: 'normal', mail_status: 2 }]) {
     const view = await shell({ user });
-    assert.doesNotMatch(view.nodes.app.innerHTML, /href="\/admin\/pulse"/);
+    assert.doesNotMatch(view.nodes.app.innerHTML, /href="\/admin\/(?:pulse|dashboard|pulse_user_center)"/);
   }
   const view = await shell({ user: { id: '8', role_id: 2, status: 'normal', mail_status: 1 } });
   assert.match(view.nodes.app.innerHTML, /href="\/admin\/pulse"/);
+  assert.match(view.nodes.app.innerHTML, /href="\/admin\/dashboard"/);
+  assert.match(view.nodes.app.innerHTML, /href="\/admin\/pulse_user_center"/);
   await view.navigate('/admin/pulse');
   assert.match(view.html(), /Save Pulse settings/);
   assert.match(view.html(), /Grant key storage is ready/);
@@ -308,4 +312,32 @@ test('统一入口打开原生互动页，旧详情不再读取只读副本，�
   const outage = await shell({ failure: 'identity' });
   await outage.navigate('/me/notifications');
   assert.equal(outage.redirects.at(-1), '/users/notifications/inbox');
+});
+
+test('账号页保留公开和私人入口，故障时旧登录发布路由仍交给原生处理', async () => {
+  const view = await shell({ user: { username: 'alice', display_name: 'Alice', mail_status: 1 } });
+  await view.navigate('/me');
+  assert.match(view.html(), /href="\/users\/alice"[^>]*>Public profile/);
+  assert.match(view.html(), /href="\/users\/settings\/profile"/);
+  assert.doesNotMatch(view.html(), /Answer question list|Edit Answer profile|questions\/undefined/);
+  assert.match(view.html(), /href="\/questions\/42" class="discussion-title"/);
+  const outage = await shell({ failure: 'identity' });
+  for (const [entry, target] of [['/login', '/users/login'], ['/register', '/users/register'], ['/forgot', '/users/account-recovery'], ['/publish', '/questions/ask']]) {
+    await outage.navigate(entry);
+    assert.equal(outage.redirects.at(-1), target);
+  }
+});
+
+
+test('收藏分页使用当前会话用户名和真实页数，后续页仍可访问完整详情', async () => {
+  const view = await shell({ user: { username: 'alice', mail_status: 1 }, bookmarkCount: 42 });
+  await view.navigate('/me/bookmarks?page=2');
+  assert.match(view.html(), /Page 2 of 3/);
+  assert.match(view.html(), /href="\/me\/bookmarks\?page=1"/);
+  assert.match(view.html(), /href="\/me\/bookmarks\?page=3"/);
+  assert.match(view.html(), /href="\/questions\/42"/);
+  const request = view.requests.find(({ url }) => url.includes('/personal/collection/page'));
+  const url = new URL(request.url, 'https://metar.uk');
+  assert.equal(url.searchParams.get('username'), 'alice');
+  assert.equal(url.searchParams.get('page'), '2');
 });

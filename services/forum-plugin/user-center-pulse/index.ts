@@ -1,5 +1,5 @@
 import i18n from '@/i18n/init';
-import { loggedUserInfoStore } from '@/stores';
+import { loggedUserInfoStore, userCenterStore } from '@/stores';
 import zhCN from '@i18n/zh_CN.yaml';
 import enUS from '@i18n/en_US.yaml';
 import dayjs from 'dayjs';
@@ -9,9 +9,11 @@ import { installLanguageSwitcher } from './language-switcher';
 import './language-switcher.css';
 import { installNavigationBridge } from './navigation-bridge';
 import { installNativeShell } from './native-shell';
+import { installLocalRegistration } from './local-registration';
 import './theme-tokens.css';
 import './native-shell.css';
 
+installLocalRegistration(userCenterStore);
 installNavigationBridge();
 installNativeShell({
   getLanguage: () => i18n.language,
