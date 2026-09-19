@@ -1,0 +1,18 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /install
+Disallow: /review
+Disallow: /answer/api
+Disallow: /answer/admin
+Disallow: /metar/api
+Disallow: /api/
+Disallow: /swagger/
+Disallow: /blog/metar/
+
+# Account, notification, binding and reward pages also emit noindex headers.
+# They remain crawlable so crawlers can observe noindex; authentication still
+# protects their data. robots.txt is not an access-control mechanism.
+Sitemap: https://metar.uk/sitemap.xml
+Sitemap: https://metar.uk/sitemap-site.xml
+Sitemap: https://metar.uk/blog/sitemap.xml

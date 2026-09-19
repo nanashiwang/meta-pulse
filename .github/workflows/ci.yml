@@ -146,3 +146,9 @@ jobs:
       - name: Build
         working-directory: sites/blog
         run: pnpm build
+
+      - name: Search discovery and gateway regression
+        run: |
+          make build-community
+          ./deploy/nginx/test-config.sh
+          python3 deploy/nginx/test-seo.py

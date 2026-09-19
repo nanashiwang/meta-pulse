@@ -205,12 +205,14 @@
     app.innerHTML = `${topbar()}${sidebar()}<main class="page" id="main" tabindex="-1"><div class="page-inner" id="view">${loading()}</div></main>${mobileBottom()}`;
     app.setAttribute('aria-busy', 'true');
     document.title = `${currentTitle()} · ${config.siteName}`;
+    window.MetarSEO?.update();
   }
 
   function renderView(html) {
     const view = document.getElementById('view');
     if (view) view.innerHTML = html;
     app.setAttribute('aria-busy', 'false');
+    window.MetarSEO?.update();
     document.getElementById('main')?.focus({ preventScroll: true });
   }
 
@@ -218,6 +220,7 @@
     const inactive = error instanceof AdapterError && error.code === 'inactive';
     const message = inactive ? t("当前社区账号尚未激活，请先完成 Answer 邮箱验证。") : errorMessage(error) || t("页面暂时无法加载。");
     renderView(`${crumb([[t("加载失败")]])}<section class="card prod-error">${I(inactive ? 'shield' : 'server')}<h2>${inactive ? t("账号尚未激活") : t("暂时没有读到社区数据")}</h2><p>${esc(message)}${t(" 社区数据不会由前端猜测或使用缓存数字替代。")}</p><div class="flex wrap prod-center-actions"><button type="button" class="btn primary" data-action="retry">${I('refresh')}${t("重新加载")}</button>${inactive ? external('/users/login?status=inactive', t("重新发送激活邮件"), 'btn') : external('/questions', t("打开 Answer 原始页面"), 'btn')}</div></section>${footer()}`);
+    window.MetarSEO?.update(true);
   }
 
   const questionOrders = () => ({ active: t("最近活跃"), newest: t("最新发布"), hot: t("热门"), score: t("高赞"), unanswered: t("待回答") });

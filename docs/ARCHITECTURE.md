@@ -1197,3 +1197,7 @@ Nginx 只对白名单中的壳层页面返回静态首页，不使用全站 SPA 
 讨论行只投影 Answer 返回的标题、标签、作者、最近参与者、回答数、浏览量和活动时间。筛选与分页由 Answer API 完成，不推断未读数或伪造参与者；没有内容、错误与访客状态仍显式展示。首页移除介绍统计卡和右侧推荐卡，不更改帖子、绑定、奖励或账本。
 
 路由归属唯一配置为 `metar-frontend/shared/routes.json`，生成 METAR/Answer 两端路由策略与 Nginx 白名单；`make test-community` 拒绝未同步产物。Answer 插件在原生 History 导航提交后识别 METAR 页面，并用完整页面加载接入其处理器（根路径规范到 `/latest`）。同样覆盖登录回跳、前进后退与 bfcache 恢复；不拦截提交前的点击，不绕过编辑器未保存提醒，不修改原生 history state，不接管 API、callback、发帖及尚未迁移的账号页面。query/fragment 随跳转保留，重载使用 replace 避免添加无用历史项。
+
+## 45. 搜索抓取与公开内容投影
+
+公开静态入口构建基础 HTML；Answer 仍是问答可见性与正文事实源，原生详情 SSR、canonical 和动态 sitemap 不被静态快照替代。壳层详情通过 canonical 指向原生帖子，网页错误标记 noindex。站点入口与博客 sitemap 分开生成并由 robots 声明，博客未知地址返回 404。网关按原始请求地址给个人、通知、绑定、管理、奖励和 API 路由加 noindex，不能在 try_files 改写 URI 后误判。认证、Cookie/HMAC 边界和私有数据权限保持不变；不向爬虫绕过权限，不依赖 User-Agent 区分内容。

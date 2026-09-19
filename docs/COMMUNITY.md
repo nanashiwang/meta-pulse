@@ -300,3 +300,7 @@ METAR `/admin/pulse` 是独立于用户权益的管理员配置入口。只允�
 首次在原生插件后台配置独立用途的 `admin_hmac_secret`，对应 Pulse 已有运营密钥。后续管理请求固定签名为 admin，公网别名仅代理 Answer 插件的两个固定 settings/secret 路径，不直接代理 Pulse。开关和密钥配置通过版本 CAS、幂等与审计保存；原有用户 BFF、Profile 与 SSO 权限不扩张。管理配置故障不影响本地登录/浏览。
 
 新设置页不回显既有秘密，不在浏览器存储秘密或草稿。SSO、邮件、站点网址仍在 Answer 原生管理页配置；资金接收上限仍在 new-api。首次配对、角色私钥备份及生效规则见 [METAR 管理员配置](METAR_ADMIN_SETTINGS.md)。
+
+## 14. 公开内容搜索收录
+
+公开入口提供初始 HTML 与普通链接，论坛帖子继续使用 Answer 服务端正文与动态站点地图，博客站点地图保留 `/blog/` 前缀。私人入口通过网关及前端 noindex 排除；不改变认证、发布可见性或内容事实源。网站检查、Google/百度/Bing 提交及生产验收见 [SEARCH_INDEXING.md](SEARCH_INDEXING.md)。

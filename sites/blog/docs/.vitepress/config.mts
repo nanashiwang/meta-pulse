@@ -10,7 +10,17 @@ export default defineConfig({
 
   // Content is the funnel entrance, so indexing settings are not optional.
   sitemap: {
-    hostname: 'https://metar.uk',
+    hostname: 'https://metar.uk/blog/',
+  },
+  transformPageData(pageData) {
+    if (pageData.isNotFound || pageData.relativePath === "404.md") return;
+    const path = pageData.relativePath.replace(/(^|\/)index\.md$/, '$1').replace(/\.md$/, '');
+    const canonical = 'https://metar.uk/blog/' + path;
+    const existing = pageData.frontmatter.head || [];
+    pageData.frontmatter.head = [...existing,
+      ['link', { rel: 'canonical', href: canonical }],
+      ['meta', { property: 'og:url', content: canonical }],
+    ];
   },
   lastUpdated: true,
   cleanUrls: true,

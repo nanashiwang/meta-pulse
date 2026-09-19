@@ -1,0 +1,32 @@
+{
+  "/": {
+    "title": "METAR 元衡社区｜AI 模型交流与 API 接入实践",
+    "description": "METAR 元衡社区提供 AI 模型交流、API 接入问答、使用经验和技术知识库。社区账号可独立注册，可选绑定元衡 API 账号。",
+    "body": "<h1>METAR 元衡社区</h1><p>交流 AI 模型使用经验，讨论 API 接入问题，分享可复现的解决方法。</p><p>社区账号可以独立注册，也可以按需绑定元衡 API 账号。</p><nav aria-label=\"公开内容\"><a href=\"/questions\">浏览公开问题与回答</a> · <a href=\"/tags\">浏览话题标签</a> · <a href=\"/blog/\">元衡技术知识库</a> · <a href=\"/blog/guides/\">API 接入教程</a> · <a href=\"/blog/reviews/\">模型评测</a></nav>"
+  },
+  "/latest": {
+    "title": "最新讨论｜METAR 元衡社区",
+    "description": "浏览 METAR 社区公开问题、回答和 AI 模型接入讨论。",
+    "body": "<h1>最新讨论</h1><p>浏览公开问题与回答，交流 AI 模型和 API 使用经验。</p><a href=\"/questions\">查看实时问题列表</a>"
+  },
+  "/topics": {
+    "title": "话题标签｜METAR 元衡社区",
+    "description": "按话题浏览 METAR 社区的公开讨论。",
+    "body": "<h1>话题标签</h1><p>从社区标签中找到正在探索的方向。</p><a href=\"/tags\">浏览全部公开标签与问题</a>"
+  },
+  "/knowledge": {
+    "title": "技术知识库｜METAR 元衡社区",
+    "description": "元衡 API 接入教程、模型评测与成本分析知识库。",
+    "body": "<h1>技术知识库</h1><p>阅读 API 接入教程、模型评测和成本分析。</p><ul><li><a href=\"/blog/\">元衡技术博客</a></li><li><a href=\"/blog/guides/\">API 接入教程</a></li><li><a href=\"/blog/reviews/\">模型评测</a></li></ul>"
+  },
+  "/support": {
+    "title": "帮助中心｜METAR 元衡社区",
+    "description": "METAR 社区账号、公开问答与知识库帮助入口。",
+    "body": "<h1>帮助中心</h1><p>社区账号可以独立注册；API 账号绑定是可选项。</p><p><a href=\"/questions\">在社区查找答案</a> · <a href=\"/blog/guides/\">阅读接入教程</a> · <a href=\"/users/account-recovery\">找回社区密码</a></p>"
+  },
+  "/guidelines": {
+    "title": "社区规范｜METAR 元衡社区",
+    "description": "描述可复现的问题，保护个人隐私，尊重社区账号与 API 账号的独立边界。",
+    "body": "<h1>社区规范</h1><h2>描述可复现的问题</h2><p>说明目标、环境、已尝试方法和实际结果，不公开密钥、Cookie、支付信息或个人隐私。</p><h2>内容与权益</h2><p>发帖、回答和点赞不自动产生贡献值或脉冲券。内容奖励使用独立资格、预算与人工审核。</p><h2>尊重身份边界</h2><p>社区账号与 API 账号独立，绑定可选且一对一。</p><h2>对不确定结果先查询</h2><p>奖励发放中或超时时查询原请求，不重复开启。</p>"
+  }
+}

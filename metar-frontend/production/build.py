@@ -7,6 +7,8 @@ import json
 import shutil
 from pathlib import Path
 
+from seo import build_seo
+
 ROOT = Path(__file__).resolve().parent
 PROTOTYPE_ROOT = ROOT.parent
 BANNED_PRODUCTION_MARKERS = (
@@ -50,6 +52,7 @@ def build(output: Path, config_path: Path) -> None:
     config = load_config(config_path)
     sources = {
         "index": (ROOT / "src/index.html").read_text(encoding="utf-8"),
+        "seo": (ROOT / "src/seo.js").read_text(encoding="utf-8"),
         "i18n": (ROOT / "src/i18n.js").read_text(encoding="utf-8"),
         "adapters": (ROOT / "src/adapters.js").read_text(encoding="utf-8"),
         "avatars": (ROOT / "src/avatars.js").read_text(encoding="utf-8"),
@@ -72,6 +75,7 @@ def build(output: Path, config_path: Path) -> None:
     base_css = (PROTOTYPE_ROOT / "src/styles.css").read_text(encoding="utf-8")
     production_css = (ROOT / "src/styles.css").read_text(encoding="utf-8")
     (assets / "app.css").write_text(f"{base_css}\n{production_css}\n", encoding="utf-8")
+    (assets / "seo.js").write_text(sources["seo"], encoding="utf-8")
     (assets / "i18n.js").write_text(sources["i18n"], encoding="utf-8")
     (assets / "adapters.js").write_text(sources["adapters"], encoding="utf-8")
     (assets / "avatars.js").write_text(sources["avatars"], encoding="utf-8")
@@ -80,7 +84,7 @@ def build(output: Path, config_path: Path) -> None:
     (assets / "route-policy.js").write_text(sources["route-policy"], encoding="utf-8")
     (assets / "app.js").write_text(sources["app"], encoding="utf-8")
     (assets / "favicon.svg").write_text(sources["favicon"], encoding="utf-8")
-    (output / "index.html").write_text(sources["index"], encoding="utf-8")
+    build_seo(output, sources["index"])
     runtime = "window.__METAR_RUNTIME_CONFIG__ = Object.freeze(" + json.dumps(config, ensure_ascii=False, separators=(",", ":")) + ");\n"
     (output / "runtime-config.js").write_text(runtime, encoding="utf-8")
     (output / "BUILD_INFO.json").write_text(json.dumps({"kind": "production", "mockData": False, "config": config_path.name}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -89,8 +93,7 @@ def build(output: Path, config_path: Path) -> None:
     output.chmod(0o755)
     assets.chmod(0o755)
     for path in output.rglob("*"):
-        if path.is_file():
-            path.chmod(0o644)
+        path.chmod(0o755 if path.is_dir() else 0o644)
     print(f"Built production METAR frontend: {output}")
 
 
