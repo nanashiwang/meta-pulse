@@ -1,0 +1,5 @@
+{
+  "pages": ["latest", "discover", "topics", "knowledge", "search", "me", "me/bookmarks", "me/notifications", "settings/binding", "pulse", "admin/pulse", "publish", "login", "register", "forgot", "support", "status", "guidelines"],
+  "detailPrefixes": ["question", "topic"],
+  "legacyAliases": {"/discover": "/latest", "/questions": "/latest", "/bookmarks": "/me/bookmarks", "/notifications": "/me/notifications"}
+}

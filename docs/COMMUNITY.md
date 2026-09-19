@@ -55,6 +55,8 @@ UI 资源通过 Go embed 保留到 `go mod vendor`，官方 `answer build` 负�
 
 ### 3.2 普通路径与列表首页
 
+新旧页面共享 `metar-frontend/shared/routes.json` 的路由归属。Answer 插件会在导航到 METAR 页面后完整切换页面，避免点站名或登录回跳后仍停留在旧首页；编辑器阻止的导航不会触发切换。增加页面时运行 `python3 metar-frontend/shared/generate-routes.py` 同步两端策略和网关，再运行 `make test-community`。
+
 首页 `/` 与 `/latest` 使用紧凑讨论列表，保留活跃、最新、热门、高赞和待回答筛选。`/topics` 是标签目录，`/topic/:slug` 是标签下的讨论，`/question/:id` 是问题只读详情。手机端收拢次要指标，保留标题、标签、回复和活动时间；中英文与深色主题沿用浏览器偏好。
 
 旧 `/#/...` 分享链接由前端转换，刷新与直接访问由 Nginx 白名单处理。原生 Answer 的发帖、问题互动、账号、通知及所有 API/回调路径继续保留；收藏与通知壳层分别使用 `/me/bookmarks` 和 `/me/notifications`。完整边界见架构第 44 节。

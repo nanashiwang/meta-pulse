@@ -127,7 +127,7 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
     replaceState(_state, _title, url) { context.location = new URL(url, context.location.origin); },
     pushState(_state, _title, url) { context.location = new URL(url, context.location.origin); },
   };
-  for (const name of ['adapters.js', 'avatars.js', 'admin-pulse.js', 'router.js', 'app.js']) vm.runInContext(script(name), context);
+  for (const name of ['adapters.js', 'avatars.js', 'admin-pulse.js', 'route-policy.js', 'router.js', 'app.js']) vm.runInContext(script(name), context);
   await new Promise(setImmediate);
   return {
     i18n, values, document, nodes, requests, operations,

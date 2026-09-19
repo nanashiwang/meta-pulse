@@ -1195,3 +1195,5 @@ METAR 使用 History 路由，首页与 `/latest` 提供同一个真实讨论列
 Nginx 只对白名单中的壳层页面返回静态首页，不使用全站 SPA fallback。原生 `/questions`、`/questions/ask`、`/questions/:id`、`/notifications`、`/users/*`、`/answer/*`、SSO callback、博客与静态资源仍归各自处理器。壳层收藏与通知使用 `/me/bookmarks`、`/me/notifications`，避免与原生路径相互覆盖。缺少静态构建仍返回 404；认证、Cookie 过滤、HMAC 签名、CSP 和同源写保护不因路由改变而放宽。
 
 讨论行只投影 Answer 返回的标题、标签、作者、最近参与者、回答数、浏览量和活动时间。筛选与分页由 Answer API 完成，不推断未读数或伪造参与者；没有内容、错误与访客状态仍显式展示。首页移除介绍统计卡和右侧推荐卡，不更改帖子、绑定、奖励或账本。
+
+路由归属唯一配置为 `metar-frontend/shared/routes.json`，生成 METAR/Answer 两端路由策略与 Nginx 白名单；`make test-community` 拒绝未同步产物。Answer 插件在原生 History 导航提交后识别 METAR 页面，并用完整页面加载接入其处理器（根路径规范到 `/latest`）。同样覆盖登录回跳、前进后退与 bfcache 恢复；不拦截提交前的点击，不绕过编辑器未保存提醒，不修改原生 history state，不接管 API、callback、发帖及尚未迁移的账号页面。query/fragment 随跳转保留，重载使用 replace 避免添加无用历史项。

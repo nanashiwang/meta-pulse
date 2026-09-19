@@ -1,21 +1,16 @@
 /* Only METAR-owned routes use History. Answer write/auth routes stay native. */
 (function (root, factory) {
-  const api = factory();
+  const api = factory(typeof module === 'object' && module.exports ? require('./route-policy.js') : root.MetarRoutes);
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.MetarRouter = api;
-})(typeof window === 'undefined' ? globalThis : window, function () {
+})(typeof window === 'undefined' ? globalThis : window, function (policy) {
   'use strict';
-  const aliases = { '/discover': '/latest', '/questions': '/latest', '/bookmarks': '/me/bookmarks', '/notifications': '/me/notifications' };
-  const pages = new Set(['/latest', '/topics', '/knowledge', '/search', '/me', '/me/bookmarks', '/me/notifications', '/settings/binding', '/pulse', '/admin/pulse', '/publish', '/login', '/register', '/forgot', '/support', '/status', '/guidelines']);
+  const { aliases, owns } = policy;
 
   function href(value) {
     const index = value.indexOf('?');
     const path = index < 0 ? value : value.slice(0, index);
     return (aliases[path] || path) + (index < 0 ? '' : value.slice(index));
-  }
-
-  function owns(path) {
-    return path === '/' || pages.has(path) || /^\/(question|topic)\/[^/]+$/.test(path);
   }
 
   function create(browser) {

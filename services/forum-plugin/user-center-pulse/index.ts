@@ -7,6 +7,9 @@ import 'dayjs/locale/zh-cn';
 
 import { installLanguageSwitcher } from './language-switcher';
 import './language-switcher.css';
+import { installNavigationBridge } from './navigation-bridge';
+
+installNavigationBridge();
 
 // Use the host's own translator, locale data and in-memory preference. No
 // user profile/session is written and no new-api/Pulse request is involved.
