@@ -28,6 +28,8 @@
 
 ## 验收
 
+当百度验证节点与业务源站直连异常时，可使用自有前置反代；保持 DNS-only、HTTPS 回源与业务权限边界。配置、两端证书续期和回滚见 [前置反代说明](../deploy/nginx/RELAY.md)。入口线路改变后必须重新执行平台验证，不能只凭其他网络 curl 成功判断百度可达。
+
 ```bash
 make test-community build-blog build-community
 ./deploy/nginx/test-config.sh

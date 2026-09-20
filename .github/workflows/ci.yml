@@ -152,3 +152,4 @@ jobs:
           make build-community
           ./deploy/nginx/test-config.sh
           python3 deploy/nginx/test-seo.py
+          python3 deploy/nginx/test-relay.py
