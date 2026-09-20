@@ -71,7 +71,7 @@ func (s *RewardRulesService) Get(ctx context.Context) (RewardRules, error) {
 			if !d.Enabled {
 				continue
 			}
-			if d.RewardType != "newapi_quota" || d.Weight > (1<<53)-1 || d.Amount > (1<<53)-1 || math.MaxUint64-result.TotalWeight < d.Weight {
+			if (d.RewardType != "newapi_quota" && d.RewardType != ExperienceRewardType) || d.Weight > (1<<53)-1 || d.Amount > (1<<53)-1 || math.MaxUint64-result.TotalWeight < d.Weight {
 				return errors.New("unsupported public reward")
 			}
 			result.TotalWeight += d.Weight
@@ -84,20 +84,31 @@ func (s *RewardRulesService) Get(ctx context.Context) (RewardRules, error) {
 			result.UnavailableReason = "reward_pool_unavailable"
 			return nil
 		}
-		budget, err := repos.Reward.GetBudgetForUpdate(ctx, p.ID, ActionBudgetType)
-		if errors.Is(err, ports.ErrNotFound) {
-			result.UnavailableReason = "reward_pool_unavailable"
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		for _, d := range result.Rewards {
-			if budget.HardCap < budget.SettledAmount || budget.ReservedAmount > budget.HardCap-budget.SettledAmount || budget.HardCap-budget.SettledAmount-budget.ReservedAmount < d.Amount {
+
+		for _, kind := range []string{ActionBudgetType, ExperienceRewardType} {
+			var largest int64
+			for _, d := range result.Rewards {
+				if rewardBudget(d.RewardType) == kind && d.Amount > largest {
+					largest = d.Amount
+				}
+			}
+			if largest == 0 {
+				continue
+			}
+			budget, err := repos.Reward.GetBudgetForUpdate(ctx, p.ID, kind)
+			if errors.Is(err, ports.ErrNotFound) {
+				result.UnavailableReason = "reward_pool_unavailable"
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			if budget.SettledAmount < 0 || budget.ReservedAmount < 0 || budget.HardCap < budget.SettledAmount || budget.ReservedAmount > budget.HardCap-budget.SettledAmount || budget.HardCap-budget.SettledAmount-budget.ReservedAmount < largest {
 				result.UnavailableReason = "budget_exhausted"
 				return nil
 			}
 		}
+
 		if s.enabled {
 			result.Enabled = true
 			result.UnavailableReason = ""

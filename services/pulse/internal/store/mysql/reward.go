@@ -255,15 +255,18 @@ func (r *rewardRepository) TransitionGrantStatus(ctx context.Context, grantID ui
 	switch {
 	case fromStatus == "pending" && toStatus == "settled":
 		updates["settled_at"] = at
-	case fromStatus == "settled" && toStatus == "reversed":
+	case (fromStatus == "settled" || fromStatus == "pending") && toStatus == "reversed":
 		// Keep settled_at as immutable history; reversal only appends its own
 		// timestamp and moves the lifecycle state forward.
 		updates["reversed_at"] = at
 	default:
 		return errors.New("invalid reward grant status transition")
 	}
-	result := r.db.WithContext(ctx).Model(&rewardGrantModel{}).
-		Where("id = ? AND status = ?", grantID, fromStatus).Updates(updates)
+	query := r.db.WithContext(ctx).Model(&rewardGrantModel{}).Where("id = ? AND status = ?", grantID, fromStatus)
+	if fromStatus == "pending" && toStatus == "reversed" {
+		query = query.Where("reward_type = ?", "community_exp")
+	}
+	result := query.Updates(updates)
 	if result.Error != nil {
 		return fmt.Errorf("transition reward grant status: %w", result.Error)
 	}
@@ -294,6 +297,13 @@ func (r *rewardRepository) CreateGrant(ctx context.Context, grant ports.RewardGr
 func (r *rewardRepository) CreateOutbox(ctx context.Context, outbox ports.SettlementOutbox) (ports.SettlementOutbox, error) {
 	if err := validateSettlementOutboxCreate(outbox); err != nil {
 		return ports.SettlementOutbox{}, err
+	}
+	var grant rewardGrantModel
+	if err := r.db.WithContext(ctx).Where("id = ?", outbox.RewardGrantID).Take(&grant).Error; err != nil {
+		return ports.SettlementOutbox{}, err
+	}
+	if (grant.RewardType == "community_exp" && outbox.Status != "community_pending" && outbox.Status != "shadow") || (grant.RewardType != "community_exp" && outbox.Status == "community_pending") {
+		return ports.SettlementOutbox{}, ports.ErrConflict
 	}
 	model := settlementOutboxModel{ID: outbox.ID, RewardGrantID: outbox.RewardGrantID, Operation: outbox.Operation, PayloadHash: outbox.PayloadHash, PayloadJSON: outbox.PayloadJSON, Status: outbox.Status, Attempts: outbox.Attempts, NextAttemptAt: outbox.NextAttemptAt, LeasedUntil: outbox.LeasedUntil, LastError: outbox.LastError, CompletedAt: outbox.CompletedAt, CreatedAt: outbox.CreatedAt}
 	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
@@ -555,7 +565,7 @@ func validateRewardGrantCreate(grant ports.RewardGrant) error {
 	}
 	switch grant.TriggerType {
 	case "pulse":
-		if grant.RewardDefinitionID == 0 || grant.BudgetType != "loyalty" {
+		if grant.RewardDefinitionID == 0 || (grant.RewardType == "community_exp" && grant.BudgetType != "community_exp") || (grant.RewardType != "community_exp" && grant.BudgetType != "loyalty") {
 			return fmt.Errorf("%w: invalid pulse reward grant binding", ports.ErrConflict)
 		}
 	case "period_reward":
@@ -578,7 +588,7 @@ func validMySQLText(value string, maxRunes int) bool {
 
 func validateSettlementOutboxCreate(outbox ports.SettlementOutbox) error {
 	if outbox.ID != 0 || outbox.RewardGrantID == 0 || outbox.Operation != "grant" ||
-		(outbox.Status != "pending" && outbox.Status != "shadow") || outbox.Attempts != 0 ||
+		(outbox.Status != "pending" && outbox.Status != "shadow" && outbox.Status != "community_pending") || outbox.Attempts != 0 ||
 		outbox.NextAttemptAt.IsZero() || outbox.CreatedAt.IsZero() || outbox.LeasedUntil != nil ||
 		strings.TrimSpace(outbox.LastError) != "" || outbox.CompletedAt != nil {
 		return fmt.Errorf("%w: invalid settlement outbox create state", ports.ErrConflict)

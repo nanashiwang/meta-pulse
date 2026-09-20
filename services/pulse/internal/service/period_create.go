@@ -49,18 +49,20 @@ type PeriodCreateCommand struct {
 	RandomVersion        string
 	Rules                []PeriodRuleSpec
 	Rewards              []PeriodRewardSpec
+	ExperienceBudget     int64 `json:",omitempty"`
 	RewardBudget         int64
 	TicketThresholdMilli int64
 	Activate             bool
 	Reason               string
 }
 
-// PeriodRewardSpec accepts only integer quota rewards. Transferability and
+// PeriodRewardSpec accepts integer quota or community experience rewards. Transferability and
 // funding policy are fixed by the service and cannot be selected by operators.
 type PeriodRewardSpec struct {
-	Key    string `json:"key"`
-	Amount int64  `json:"amount"`
-	Weight uint64 `json:"weight"`
+	RewardType string `json:"reward_type,omitempty"`
+	Key        string `json:"key"`
+	Amount     int64  `json:"amount"`
+	Weight     uint64 `json:"weight"`
 }
 
 type PeriodCreateResult struct {
@@ -72,6 +74,7 @@ type PeriodCreateResult struct {
 	RuleCount            int       `json:"rule_count"`
 	RewardCount          int       `json:"reward_count"`
 	RewardBudget         int64     `json:"reward_budget"`
+	ExperienceBudget     int64     `json:"experience_budget,omitempty"`
 	FundingPolicy        string    `json:"funding_policy"`
 	TicketThresholdMilli int64     `json:"ticket_threshold_milli"`
 }
@@ -179,7 +182,7 @@ func (s *PeriodCreateService) Create(ctx context.Context, command PeriodCreateCo
 		if len(command.Rewards) > 0 {
 			definitions := make([]reward.Definition, 0, len(command.Rewards))
 			for _, spec := range command.Rewards {
-				definition, err := repos.RewardAdmin.CreateDefinition(ctx, created.ID, reward.Definition{RewardKey: spec.Key, RewardType: "newapi_quota", Amount: spec.Amount, Weight: spec.Weight, Enabled: true, ConfigVersion: created.ConfigVersion})
+				definition, err := repos.RewardAdmin.CreateDefinition(ctx, created.ID, reward.Definition{RewardKey: spec.Key, RewardType: rewardType(spec.RewardType), Amount: spec.Amount, Weight: spec.Weight, Enabled: true, ConfigVersion: created.ConfigVersion})
 				if err != nil {
 					return err
 				}
@@ -188,8 +191,12 @@ func (s *PeriodCreateService) Create(ctx context.Context, command PeriodCreateCo
 			if _, err := reward.SelectWeighted(definitions, [32]byte{}); err != nil {
 				return err
 			}
-			if _, err := repos.RewardAdmin.CreateBudget(ctx, ports.RewardBudget{PeriodID: created.ID, BudgetType: "loyalty", HardCap: command.RewardBudget}); err != nil {
-				return err
+			for _, budget := range []ports.RewardBudget{{PeriodID: created.ID, BudgetType: ActionBudgetType, HardCap: command.RewardBudget}, {PeriodID: created.ID, BudgetType: ExperienceRewardType, HardCap: command.ExperienceBudget}} {
+				if budget.HardCap > 0 {
+					if _, err := repos.RewardAdmin.CreateBudget(ctx, budget); err != nil {
+						return err
+					}
+				}
 			}
 		}
 		status := period.StatusDraft
@@ -213,7 +220,8 @@ func (s *PeriodCreateService) Create(ctx context.Context, command PeriodCreateCo
 			TicketThresholdMilli int64              `json:"ticket_threshold_milli"`
 			Rewards              []PeriodRewardSpec `json:"rewards"`
 			RewardBudget         int64              `json:"reward_budget"`
-		}{created.Key, string(status), created.StartsAt, created.EndsAt, created.Timezone, created.ConfigVersion, created.RandomVersion, len(rules), command.Rules, created.FundingPolicy, created.TicketThresholdMilli, command.Rewards, command.RewardBudget})
+			ExperienceBudget     int64              `json:"experience_budget"`
+		}{created.Key, string(status), created.StartsAt, created.EndsAt, created.Timezone, created.ConfigVersion, created.RandomVersion, len(rules), command.Rules, created.FundingPolicy, created.TicketThresholdMilli, command.Rewards, command.RewardBudget, command.ExperienceBudget})
 		if err != nil {
 			return err
 		}
@@ -227,7 +235,7 @@ func (s *PeriodCreateService) Create(ctx context.Context, command PeriodCreateCo
 		result = PeriodCreateResult{
 			PeriodID: created.ID, Key: created.Key, Status: string(status),
 			StartsAt: created.StartsAt, EndsAt: created.EndsAt, RuleCount: len(rules),
-			RewardCount: len(command.Rewards), RewardBudget: command.RewardBudget, FundingPolicy: created.FundingPolicy, TicketThresholdMilli: created.TicketThresholdMilli,
+			RewardCount: len(command.Rewards), RewardBudget: command.RewardBudget, ExperienceBudget: command.ExperienceBudget, FundingPolicy: created.FundingPolicy, TicketThresholdMilli: created.TicketThresholdMilli,
 		}
 		if command.RequestID != "" {
 			response, err := json.Marshal(result)
@@ -285,7 +293,7 @@ func normalizePeriodCreateCommand(command PeriodCreateCommand) (PeriodCreateComm
 	if len(command.Rules) == 0 {
 		return command, errors.New("a period must define at least one economics rule")
 	}
-	if err := validatePeriodRewards(command.Rewards, command.RewardBudget, command.TicketThresholdMilli); err != nil {
+	if err := validatePeriodRewards(command.Rewards, command.RewardBudget, command.TicketThresholdMilli, command.ExperienceBudget); err != nil {
 		return command, err
 	}
 	seen := make(map[string]struct{}, len(command.Rules))
@@ -311,24 +319,63 @@ var periodRewardKey = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
 
 const maxPublicRewardInteger uint64 = 1<<53 - 1
 
-func validatePeriodRewards(rewards []PeriodRewardSpec, budget, threshold int64) error {
+const ExperienceRewardType = "community_exp"
+
+func rewardType(value string) string {
+	if value == "" {
+		return "newapi_quota"
+	}
+	return value
+}
+func rewardBudget(value string) string {
+	if value == ExperienceRewardType {
+		return ExperienceRewardType
+	}
+	return ActionBudgetType
+}
+func validatePeriodRewards(rewards []PeriodRewardSpec, budget, threshold int64, expBudgets ...int64) error {
+	var expBudget int64
+	if len(expBudgets) > 0 {
+		expBudget = expBudgets[0]
+	}
+	if budget < 0 || expBudget < 0 || budget > int64(maxPublicRewardInteger) || expBudget > int64(maxPublicRewardInteger) {
+		return errors.New("invalid reward budgets")
+	}
+
 	if len(rewards) == 0 {
-		if budget != 0 || threshold != 0 {
+		if budget != 0 || expBudget != 0 || threshold != 0 {
 			return errors.New("reward budget and ticket threshold require a non-empty reward pool")
 		}
 		return nil
 	}
-	if len(rewards) > 50 || budget <= 0 || threshold <= 0 {
+	if len(rewards) > 50 || (budget == 0 && expBudget == 0) || threshold <= 0 {
 		return errors.New("a reward pool requires 1-50 prizes, a positive budget and a positive ticket threshold")
 	}
 	seen := make(map[string]bool, len(rewards))
 	var total uint64
+	usedQuota, usedEXP := false, false
 	for _, spec := range rewards {
-		if !periodRewardKey.MatchString(spec.Key) || seen[spec.Key] || spec.Amount <= 0 || spec.Amount > int64(maxPublicRewardInteger) || spec.Amount > budget || spec.Weight == 0 || spec.Weight > maxPublicRewardInteger-total {
+		limit := budget
+		switch rewardType(spec.RewardType) {
+		case "newapi_quota":
+			usedQuota = true
+		case ExperienceRewardType:
+			limit = expBudget
+			usedEXP = true
+			if spec.Amount > 1000000 {
+				return errors.New("experience prize exceeds limit")
+			}
+		default:
+			return errors.New("unsupported reward type")
+		}
+		if !periodRewardKey.MatchString(spec.Key) || seen[spec.Key] || spec.Amount <= 0 || spec.Amount > int64(maxPublicRewardInteger) || spec.Amount > limit || spec.Weight == 0 || spec.Weight > maxPublicRewardInteger-total {
 			return errors.New("invalid or duplicate prize: key must be canonical, amount must fit budget, amounts and total weight must be safe JSON integers")
 		}
 		seen[spec.Key] = true
 		total += spec.Weight
+	}
+	if usedQuota != (budget > 0) || usedEXP != (expBudget > 0) {
+		return errors.New("each reward budget requires matching prizes")
 	}
 	return nil
 }

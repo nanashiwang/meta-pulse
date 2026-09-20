@@ -379,3 +379,43 @@ func TestActionServiceRejectsNonLoyaltyBudget(t *testing.T) {
 		t.Fatal("non-loyalty action budget was accepted")
 	}
 }
+
+func TestExperienceUsesIndependentBudgetAndShadowDelivery(t *testing.T) {
+	for _, shadow := range []bool{false, true} {
+		store, rewards, idem := setupActionStore()
+		rewards.definitions[0].RewardType = ExperienceRewardType
+		rewards.budgets[budgetKey(4, ExperienceRewardType)] = ports.RewardBudget{ID: 4, PeriodID: 4, BudgetType: ExperienceRewardType, HardCap: 10}
+		action := newActionService(t, store, rewards, idem)
+		action.cfg.ShadowMode = shadow
+		if _, err := action.Execute(context.Background(), ActionCommand{UserID: 9, ActionID: "exp", TriggerType: "pulse", IdempotencyKey: "exp"}); err != nil {
+			t.Fatal(err)
+		}
+		if rewards.budgets[budgetKey(4, ActionBudgetType)].ReservedAmount != 0 || rewards.budgets[budgetKey(4, ExperienceRewardType)].ReservedAmount != 10 {
+			t.Fatal("budget units mixed")
+		}
+		want := "community_pending"
+		if shadow {
+			want = "shadow"
+		}
+		if rewards.outboxes[0].Status != want {
+			t.Fatal("wrong delivery queue")
+		}
+	}
+}
+func TestMixedPoolStopsBeforeSpendingIfEitherBudgetIsInsufficient(t *testing.T) {
+	for _, exhausted := range []string{ActionBudgetType, ExperienceRewardType} {
+		store, rewards, idem := setupActionStore()
+		rewards.definitions = append(rewards.definitions, reward.Definition{ID: 3, RewardKey: "exp", RewardType: ExperienceRewardType, Amount: 500, Weight: 1, Enabled: true, ConfigVersion: "v1"})
+		rewards.budgets[budgetKey(4, ExperienceRewardType)] = ports.RewardBudget{ID: 4, PeriodID: 4, BudgetType: ExperienceRewardType, HardCap: 500}
+		b := rewards.budgets[budgetKey(4, exhausted)]
+		b.HardCap = 0
+		rewards.budgets[budgetKey(4, exhausted)] = b
+		action := newActionService(t, store, rewards, idem)
+		if _, err := action.Execute(context.Background(), ActionCommand{UserID: 9, ActionID: "mixed", TriggerType: "pulse", IdempotencyKey: "mixed"}); !errors.Is(err, ErrBudgetExceeded) {
+			t.Fatal(err)
+		}
+		if len(store.entries) != 0 || len(rewards.grants) != 0 {
+			t.Fatal("exhausted pool spent a ticket")
+		}
+	}
+}

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -253,5 +254,26 @@ func TestCreateRejectsInvalidTimezone(t *testing.T) {
 	_, err := svc.Create(context.Background(), command)
 	if err == nil || !strings.Contains(err.Error(), "timezone") {
 		t.Fatalf("error = %v, want a timezone error", err)
+	}
+}
+
+// v0.2.13 requests can be retried after this upgrade. A zero new budget must
+// not alter the frozen request fingerprint or inject a new reward type.
+func TestPeriodCreateLegacyRequestEncoding(t *testing.T) {
+	c := validCreateCommand()
+	c.Rewards = []PeriodRewardSpec{{Key: "quota", Amount: 10, Weight: 1}}
+	c.RewardBudget = 100
+	c.TicketThresholdMilli = 1000
+	c, err := normalizePeriodCreateCommand(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const legacy = `{"RequestID":"","ActorType":"operator","ActorID":"ops-1","Key":"2026-P001","StartsAt":"2026-09-16T00:00:00+08:00","Timezone":"Asia/Shanghai","ConfigVersion":"v1","RandomVersion":"v1","Rules":[{"Key":"default","Priority":0,"ModelPattern":"","ChannelID":null,"Eligible":true,"MultiplierBps":10000}],"Rewards":[{"key":"quota","amount":10,"weight":1}],"RewardBudget":100,"TicketThresholdMilli":1000,"Activate":false,"Reason":"首个生产周期"}`
+	if string(data) != legacy {
+		t.Fatalf("legacy fingerprint changed: %s", data)
 	}
 }

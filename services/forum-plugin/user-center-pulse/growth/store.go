@@ -55,6 +55,7 @@ type Notice struct {
 	CreatedAt int64  `json:"created_at"`
 }
 type Summary struct {
+	PulseSyncPending bool `json:"pulse_sync_pending"`
 	Account
 	Level         Level    `json:"level"`
 	Levels        []Level  `json:"levels"`

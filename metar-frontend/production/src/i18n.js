@@ -2,6 +2,15 @@
 'use strict';
 (() => {
   const EN = Object.freeze({
+ "每次消耗 1 张券。额度用于 API 调用，经验用于社区升级，均不可转赠。": "Each draw costs 1 ticket. Quota is for API usage, experience is for community levels, and neither is transferable.",
+ "经核验的付费调用积累脉冲券，额度奖励发往元衡 API，经验奖励计入社区等级。": "Verified paid usage earns Pulse tickets. Quota prizes go to Meta API; experience prizes count toward your community level.",
+ "经验奖池预算（整数 EXP）": "Experience prize budget (integer EXP)",
+ "额度奖池预算（整数 quota）": "Quota prize budget (integer quota)",
+ "额度预算与经验预算分别设置；没有该类型奖项时填 0。奖项概率在新周期固定，保存不会开启抽奖或自动发奖。": "Set separate quota and experience budgets; enter 0 for a type without prizes. A new period freezes probabilities. Saving does not enable draws or settlement.",
+ "奖励数量（整数）": "Reward amount (integer)",
+ "社区经验 EXP": "Community EXP",
+ "API 调用额度": "API quota",
+ "奖励类型": "Reward type",
     "社区成长": "Community growth",
     "成长管理": "Growth settings",
     "通用": "General",

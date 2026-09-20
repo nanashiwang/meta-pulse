@@ -8,8 +8,13 @@ import (
 )
 
 func validAdminPeriodBody(fields map[string]json.RawMessage) bool {
-	if len(fields) != 7 {
+	if len(fields) != 7 && len(fields) != 8 {
 		return false
+	}
+	for _, name := range []string{"key", "starts_at", "reason", "multiplier_bps", "ticket_threshold_milli", "reward_budget", "rewards"} {
+		if _, ok := fields[name]; !ok {
+			return false
+		}
 	}
 	for name, raw := range fields {
 		switch name {
@@ -18,9 +23,9 @@ func validAdminPeriodBody(fields map[string]json.RawMessage) bool {
 			if json.Unmarshal(raw, &value) != nil || value == "" {
 				return false
 			}
-		case "multiplier_bps", "ticket_threshold_milli", "reward_budget":
+		case "multiplier_bps", "ticket_threshold_milli", "reward_budget", "experience_budget":
 			var value int64
-			if json.Unmarshal(raw, &value) != nil || value <= 0 || value > 1<<53-1 {
+			if json.Unmarshal(raw, &value) != nil || value < 0 || ((name == "multiplier_bps" || name == "ticket_threshold_milli") && value == 0) || value > 1<<53-1 {
 				return false
 			}
 		case "rewards":
@@ -30,8 +35,20 @@ func validAdminPeriodBody(fields map[string]json.RawMessage) bool {
 			}
 			for _, reward := range rewards {
 				fields, ok := adminJSONObject(reward)
-				if !ok || len(fields) != 3 {
+				if !ok || (len(fields) != 3 && len(fields) != 4) {
 					return false
+				}
+
+				for name := range fields {
+					if name != "key" && name != "amount" && name != "weight" && name != "reward_type" {
+						return false
+					}
+				}
+				if raw, ok := fields["reward_type"]; ok {
+					var kind string
+					if json.Unmarshal(raw, &kind) != nil || (kind != "newapi_quota" && kind != "community_exp") {
+						return false
+					}
 				}
 				var key string
 				var amount, weight int64

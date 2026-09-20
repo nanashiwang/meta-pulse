@@ -324,10 +324,11 @@
     const rewards = Array.isArray(history.rewards) ? history.rewards : [];
     const prizes = Array.isArray(rules.rewards) ? rules.rewards : [];
     const canDraw = rules.enabled === true && available > 0 && !pending && !pulseBusy;
-    const rewardRows = rewards.map((r) => `<tr><td>${esc(formatPulseQuota(r.amount, rules.quota_per_unit, locale()))}</td><td>${esc(t(states[r.status] || '等待核对'))}</td><td>${esc(r.created_at ? new Date(r.created_at).toLocaleString(locale()) : '—')}</td><td><code>${esc(r.grant_id)}</code></td></tr>`).join('');
-    const prizeRows = prizes.map((r) => `<li><strong>${esc(r.name)}</strong><span>${esc(formatPulseQuota(r.amount, rules.quota_per_unit, locale()))}</span><span>${esc(t('概率 {weight} / {total}', { weight: r.weight, total: rules.total_weight }))}</span></li>`).join('');
-    return `${crumb([[t('Pulse 权益')]])}${heading(t('开启脉冲，获得调用回馈'), t('经核验的付费调用积累脉冲券，奖励自动发往已绑定的元衡 API 账号。'))}
-      <section class="pulse-hero"><div><div class="eyebrow">${esc(rules.period?.key || t('元衡脉冲'))}</div><h1>${esc(t('可用脉冲券：{count}', { count: number(available) }))}</h1><p>${t('每次消耗 1 张券。奖励仅供 API 调用使用，不可转赠。')}</p>
+    const rewardAmount = r => r.reward_type === 'community_exp' ? number(r.amount)+' EXP' : formatPulseQuota(r.amount,rules.quota_per_unit,locale());
+    const rewardRows = rewards.map((r) => `<tr><td>${esc(rewardAmount(r))}</td><td>${esc(t(states[r.status] || '等待核对'))}</td><td>${esc(r.created_at ? new Date(r.created_at).toLocaleString(locale()) : '—')}</td><td><code>${esc(r.grant_id)}</code></td></tr>`).join('');
+    const prizeRows = prizes.map((r) => `<li><strong>${esc(r.name)}</strong><span>${esc(rewardAmount(r))}</span><span>${esc(t('概率 {weight} / {total}', { weight: r.weight, total: rules.total_weight }))}</span></li>`).join('');
+    return `${crumb([[t('Pulse 权益')]])}${heading(t('开启脉冲，获得调用回馈'), t('经核验的付费调用积累脉冲券，额度奖励发往元衡 API，经验奖励计入社区等级。'))}
+      <section class="pulse-hero"><div><div class="eyebrow">${esc(rules.period?.key || t('元衡脉冲'))}</div><h1>${esc(t('可用脉冲券：{count}', { count: number(available) }))}</h1><p>${t('每次消耗 1 张券。额度用于 API 调用，经验用于社区升级，均不可转赠。')}</p>
       ${!rules.enabled ? `<p role="status">${esc(t(unavailable[rules.unavailable_reason] || '活动暂不可用'))}</p>` : ''}
       <div class="actions"><button type="button" class="btn light" data-action="pulse-draw" ${canDraw ? '' : 'disabled'}>${t(pulseBusy ? '正在处理…' : '开启一次脉冲 · 1 券')}</button><button type="button" class="btn outline-light" data-action="retry">${t('刷新奖励状态')}</button></div></div>${I('pulse')}</section>
       ${pulseMessage ? `<div class="prod-status mt24" role="status"><p>${esc(t(pulseMessage))}</p></div>` : ''}

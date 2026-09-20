@@ -28,7 +28,7 @@ func (r *rewardAdminRepository) lockDraft(ctx context.Context, periodID uint64) 
 }
 
 func (r *rewardAdminRepository) CreateDefinition(ctx context.Context, periodID uint64, definition reward.Definition) (reward.Definition, error) {
-	if definition.ID != 0 || definition.RewardType != "newapi_quota" || definition.Amount <= 0 || definition.Weight == 0 || definition.TransferableQuota || !definition.Enabled || !validMySQLText(definition.RewardKey, 128) {
+	if definition.ID != 0 || (definition.RewardType != "newapi_quota" && definition.RewardType != "community_exp") || definition.Amount <= 0 || definition.Weight == 0 || definition.TransferableQuota || !definition.Enabled || !validMySQLText(definition.RewardKey, 128) {
 		return reward.Definition{}, fmt.Errorf("%w: invalid initial reward definition", ports.ErrConflict)
 	}
 	activity, err := r.lockDraft(ctx, periodID)
@@ -47,7 +47,7 @@ func (r *rewardAdminRepository) CreateDefinition(ctx context.Context, periodID u
 }
 
 func (r *rewardAdminRepository) CreateBudget(ctx context.Context, budget ports.RewardBudget) (ports.RewardBudget, error) {
-	if budget.ID != 0 || budget.BudgetType != "loyalty" || budget.HardCap <= 0 || budget.ReservedAmount != 0 || budget.SettledAmount != 0 || budget.ReleasedAmount != 0 || budget.Version != 0 {
+	if budget.ID != 0 || (budget.BudgetType != "loyalty" && budget.BudgetType != "community_exp") || budget.HardCap <= 0 || budget.ReservedAmount != 0 || budget.SettledAmount != 0 || budget.ReleasedAmount != 0 || budget.Version != 0 {
 		return ports.RewardBudget{}, fmt.Errorf("%w: invalid initial reward budget", ports.ErrConflict)
 	}
 	if _, err := r.lockDraft(ctx, budget.PeriodID); err != nil {

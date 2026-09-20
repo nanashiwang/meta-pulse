@@ -57,3 +57,12 @@ test('older backend disables the new editor while returning a clear unavailable 
  const h=harness();h.context.fetch=async()=>({ok:false,status:404,json:async()=>({error:'not_found'})});
  const html=await h.view.page();assert.match(html,/周期配置暂不可用/);assert.doesNotMatch(html,/data-form="admin-period"/);
 });
+test('experience pool uses EXP budget independently and rejects accidental quota conversion',()=>{
+ const h=harness();h.form.inputs.reward_budget='0';h.form.inputs.experience_budget='1000';
+ h.form.querySelectorAll=()=>[{querySelector:s=>({value:s.includes('prize_key')?'exp-500':s.includes('prize_amount')?'500':s.includes('prize_type')?'community_exp':'1'})}];
+ const p=h.view.payload(h.form);
+ assert.equal(p.experience_budget,1000);assert.equal(p.reward_budget,0);
+ assert.equal(p.rewards[0].amount,500);assert.equal(p.rewards[0].reward_type,'community_exp');
+ h.form.inputs.experience_budget='499';assert.throws(()=>h.view.payload(h.form));
+ h.form.inputs.experience_budget='1000';h.form.inputs.reward_budget='100';assert.throws(()=>h.view.payload(h.form));
+});

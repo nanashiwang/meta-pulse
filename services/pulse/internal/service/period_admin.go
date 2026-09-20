@@ -22,6 +22,7 @@ type PeriodAdminRequest struct {
 	StartsAt             time.Time          `json:"starts_at"`
 	MultiplierBps        int32              `json:"multiplier_bps"`
 	TicketThresholdMilli int64              `json:"ticket_threshold_milli"`
+	ExperienceBudget     int64              `json:"experience_budget,omitempty"`
 	RewardBudget         int64              `json:"reward_budget"`
 	Rewards              []PeriodRewardSpec `json:"rewards"`
 	Reason               string             `json:"reason"`
@@ -32,7 +33,7 @@ func (s *PeriodCreateService) CreateFromAdmin(ctx context.Context, request Perio
 		request.StartsAt.IsZero() || request.StartsAt.Year() < 2000 || request.StartsAt.Year() > 9998 ||
 		request.MultiplierBps <= 0 || money.Bps(request.MultiplierBps) > money.MaxBps ||
 		request.TicketThresholdMilli <= 0 || request.TicketThresholdMilli > int64(maxPublicRewardInteger) ||
-		request.RewardBudget <= 0 || request.RewardBudget > int64(maxPublicRewardInteger) || len(request.Rewards) == 0 ||
+		request.RewardBudget < 0 || request.ExperienceBudget < 0 || request.RewardBudget > int64(maxPublicRewardInteger) || len(request.Rewards) == 0 ||
 		utf8.RuneCountInString(strings.TrimSpace(request.Reason)) < 3 || utf8.RuneCountInString(request.Reason) > 500 {
 		return PeriodCreateResult{}, ErrInvalidPeriod
 	}
@@ -41,7 +42,7 @@ func (s *PeriodCreateService) CreateFromAdmin(ctx context.Context, request Perio
 		Key: request.Key, StartsAt: request.StartsAt.UTC(), Timezone: "Asia/Shanghai",
 		ConfigVersion: request.Key, RandomVersion: request.Key,
 		Rules:                []PeriodRuleSpec{{Key: "default", Eligible: true, MultiplierBps: request.MultiplierBps}},
-		TicketThresholdMilli: request.TicketThresholdMilli, RewardBudget: request.RewardBudget,
+		TicketThresholdMilli: request.TicketThresholdMilli, RewardBudget: request.RewardBudget, ExperienceBudget: request.ExperienceBudget,
 		Rewards: request.Rewards, Activate: true, Reason: request.Reason,
 	})
 }

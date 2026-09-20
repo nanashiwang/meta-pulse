@@ -195,6 +195,12 @@ func (uc *UserCenter) communityHandler(operation string, session func(*gin.Conte
 			communityError(c, http.StatusServiceUnavailable, code)
 			return
 		}
+
+		// The original result remains authoritative even if optional EXP
+		// delivery is delayed. Refresh drains the durable community outbox.
+		if operation == "actions" || operation == "rewards" {
+			_ = uc.consumePulseExperience(ctx, forumID, externalID)
+		}
 		c.JSON(status, projection)
 	}
 }

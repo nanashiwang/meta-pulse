@@ -67,7 +67,7 @@ func (uc *UserCenter) registerExperience(r *gin.RouterGroup, session func(*gin.C
 	}
 	operations := map[string]string{"summary": "GET", "history": "GET", "pending": "GET", "checkin": "POST", "appearance": "POST", "notices/read": "POST"}
 	if admin {
-		operations = map[string]string{"settings": "GET", "rules": "PUT", "adjustment": "POST", "featured": "POST"}
+		operations = map[string]string{"settings": "GET", "rules": "PUT", "adjustment": "POST", "featured": "POST", "pulse/reverse": "POST"}
 	}
 	for operation, method := range operations {
 		r.Handle(method, "/metar/experience/"+operation, uc.experienceHandler(operation, session, admin, siteURL))
@@ -127,7 +127,11 @@ func (uc *UserCenter) experienceHandler(operation string, session func(*gin.Cont
 		var result any = gin.H{"ok": true}
 		switch operation {
 		case "summary":
-			result, err = store.Summary(ctx, user)
+			pending := uc.trySyncPulseExperience(ctx, user)
+			var summary growth.Summary
+			summary, err = store.Summary(ctx, user)
+			summary.PulseSyncPending = pending
+			result = summary
 		case "history":
 			var before uint64
 			if q.Get("before") != "" {
@@ -173,6 +177,16 @@ func (uc *UserCenter) experienceHandler(operation string, session func(*gin.Cont
 				break
 			}
 			switch operation {
+			case "pulse/reverse":
+				var body struct {
+					GrantID string `json:"grant_id"`
+					Reason  string `json:"reason"`
+				}
+				if !experienceJSON(c, &body) {
+					err = growth.ErrInvalid
+					break
+				}
+				err = uc.reversePulseExperience(ctx, user, key, body.GrantID, body.Reason)
 			case "rules":
 				var body struct {
 					Version int64        `json:"version"`

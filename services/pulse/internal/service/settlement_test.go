@@ -452,3 +452,21 @@ func TestRewardRetryTurnsMismatchedQueryIntoConflict(t *testing.T) {
 		t.Fatalf("outbox=%+v grant=%+v", outboxes.outboxes[0], rewards.grants[0])
 	}
 }
+
+func TestExperienceNeverCallsMonetaryReceiverEvenWithCorruptQueueState(t *testing.T) {
+	client := &fakeBenefitClient{}
+	svc, _, outboxes, grant := settlementFixture(t, client)
+	grant.RewardType = ExperienceRewardType
+	grant.BudgetType = ExperienceRewardType
+	payload, _ := json.Marshal(settlementPayload{GrantID: grant.GrantID, UserID: grant.UserID, Amount: grant.Amount, SourceRef: grant.SourceRef, RewardType: grant.RewardType})
+	outboxes.outboxes[0].PayloadJSON = payload
+	outboxes.outboxes[0].PayloadHash = sha256Hex(payload)
+	report, err := svc.ProcessBatch(context.Background())
+	if err != nil || report.Dead != 1 || len(client.callOrder) != 0 {
+		t.Fatalf("EXP reached monetary receiver: %+v %v %+v", report, err, client)
+	}
+	grant.Status = GrantStatusSettled
+	if err = svc.Rollback(context.Background(), grant.ID, "wrong receiver"); err == nil || len(client.callOrder) != 0 {
+		t.Fatal("EXP rollback reached monetary receiver")
+	}
+}

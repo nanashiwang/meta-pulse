@@ -306,7 +306,7 @@ func (s *SettlementService) loadSettlement(ctx context.Context, outbox ports.Set
 	if err := decodeStrictJSON(outbox.PayloadJSON, &payload); err != nil {
 		return ports.RewardGrant{}, ports.BenefitGrantRequest{}, fmt.Errorf("%w: %v", ErrInvalidSettlementPayload, err)
 	}
-	if payload.GrantID != grant.GrantID || payload.GrantID != payload.SourceRef || payload.UserID != grant.UserID || payload.Amount != grant.Amount || payload.SourceRef != grant.SourceRef || payload.TransferableQuota || payload.RewardType != grant.RewardType {
+	if grant.RewardType == ExperienceRewardType || payload.GrantID != grant.GrantID || payload.GrantID != payload.SourceRef || payload.UserID != grant.UserID || payload.Amount != grant.Amount || payload.SourceRef != grant.SourceRef || payload.TransferableQuota || payload.RewardType != grant.RewardType {
 		return ports.RewardGrant{}, ports.BenefitGrantRequest{}, ErrInvalidSettlementPayload
 	}
 	return grant, ports.BenefitGrantRequest{GrantID: payload.GrantID, UserID: payload.UserID, Amount: payload.Amount, TransferableQuota: false, SourceRef: payload.SourceRef, RewardType: payload.RewardType, PayloadHash: outbox.PayloadHash}, nil
@@ -543,6 +543,9 @@ func (s *SettlementService) Rollback(ctx context.Context, grantID uint64, reason
 	}
 	if alreadyReversed {
 		return nil
+	}
+	if grant.RewardType == ExperienceRewardType {
+		return errors.New("use community experience reversal service")
 	}
 	state, err := s.client.Rollback(ctx, grant.SourceRef, reason)
 	if err != nil || !state.RolledBack || state.Applied || !sameSourceRef(state.SourceRef, grant.SourceRef) {

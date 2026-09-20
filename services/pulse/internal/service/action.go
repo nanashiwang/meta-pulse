@@ -225,21 +225,31 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 		if ticketAccount.Balance < 1 {
 			return ErrInsufficientTickets
 		}
-		budget, err := repos.Reward.GetBudgetForUpdate(ctx, activity.ID, s.cfg.BudgetType)
-		if err != nil {
-			return err
-		}
-		// Stop the pool before any remaining budget can change advertised odds.
-		var maxPrize int64
-		for _, d := range definitions {
-			if d.Enabled && d.Amount > maxPrize {
-				maxPrize = d.Amount
+
+		// Lock units in a fixed order and stop the whole pool if either budget
+		// cannot cover its largest prize; never change the advertised odds.
+		budgets := map[string]ports.RewardBudget{}
+		for _, kind := range []string{ActionBudgetType, ExperienceRewardType} {
+			var maxPrize int64
+			for _, d := range definitions {
+				if d.Enabled && rewardBudget(d.RewardType) == kind && d.Amount > maxPrize {
+					maxPrize = d.Amount
+				}
 			}
+			if maxPrize == 0 {
+				continue
+			}
+			b, err := repos.Reward.GetBudgetForUpdate(ctx, activity.ID, kind)
+			if err != nil {
+				return err
+			}
+			if b.SettledAmount < 0 || b.ReservedAmount < 0 || b.HardCap < b.SettledAmount || b.ReservedAmount > b.HardCap-b.SettledAmount || b.HardCap-b.SettledAmount-b.ReservedAmount < maxPrize {
+				return ErrBudgetExceeded
+			}
+			budgets[kind] = b
 		}
-		available := budget.HardCap - budget.SettledAmount - budget.ReservedAmount
-		if budget.SettledAmount < 0 || budget.ReservedAmount < 0 || budget.HardCap < budget.SettledAmount || budget.ReservedAmount > budget.HardCap-budget.SettledAmount || available < maxPrize {
-			return ErrBudgetExceeded
-		}
+		budget := budgets[rewardBudget(definition.RewardType)]
+
 		if err := reserveBudget(&budget, definition.Amount); err != nil {
 			return err
 		}
@@ -271,7 +281,7 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 		grant := ports.RewardGrant{
 			GrantID: grantID, PeriodID: activity.ID, UserID: command.UserID, ActionID: command.ActionID,
 			TriggerType: command.TriggerType, RewardDefinitionID: definition.ID, RewardType: definition.RewardType,
-			Amount: definition.Amount, TransferableQuota: false, BudgetType: s.cfg.BudgetType, RandomValue: reward.RandomHex(randomBytes),
+			Amount: definition.Amount, TransferableQuota: false, BudgetType: rewardBudget(definition.RewardType), RandomValue: reward.RandomHex(randomBytes),
 			ConfigVersion: activity.ConfigVersion, Status: RewardStatusPending, SourceRef: grantID,
 			Reason: "pulse action", CreatedAt: s.cfg.Now(),
 		}
@@ -288,6 +298,9 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 			return err
 		}
 		outboxStatus := OutboxStatusPending
+		if definition.RewardType == ExperienceRewardType {
+			outboxStatus = "community_pending"
+		}
 		if s.cfg.ShadowMode {
 			outboxStatus = OutboxStatusShadow
 		}
@@ -339,7 +352,7 @@ func validateRewardDefinitions(definitions []reward.Definition, configVersion st
 		}
 		// A malformed enabled row must fail the whole immutable probability
 		// table. Silently skipping it would renormalize every other weight.
-		if !definition.Valid() || definition.Amount <= 0 {
+		if !definition.Valid() || definition.Amount <= 0 || (definition.RewardType == ExperienceRewardType && definition.Amount > 1000000) {
 			return fmt.Errorf("invalid enabled reward definition %d", definition.ID)
 		}
 		if definition.ConfigVersion != configVersion {

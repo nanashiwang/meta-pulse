@@ -31,6 +31,7 @@ type APIRoutes struct {
 	Operations transporthttp.OperationsOverviewReader
 	Settings   transporthttp.RuntimeSettings
 	Periods    transporthttp.PeriodAdministrator
+	Experience transporthttp.ExperienceDeliverer
 	// Auth guards every route above. Without it none are registered: an
 	// unauthenticated internal route would expose user data.
 	Auth gin.HandlerFunc
@@ -80,6 +81,9 @@ func NewRouterWithRoutes(logger *slog.Logger, readiness ReadinessChecker, routes
 	}
 	if routes.Content != nil {
 		transporthttp.ContentAwardRoute(internal, routes.Content, routes.Auth)
+	}
+	if routes.Experience != nil {
+		transporthttp.ExperienceRoutes(internal, routes.Experience, routes.Auth)
 	}
 	if routes.History != nil {
 		transporthttp.RewardHistoryRoute(internal, routes.History, routes.Auth)

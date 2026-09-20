@@ -341,3 +341,12 @@ test('收藏分页使用当前会话用户名和真实页数，后续页仍可�
   assert.equal(url.searchParams.get('username'), 'alice');
   assert.equal(url.searchParams.get('page'), '2');
 });
+
+test('社区经验奖项与到账记录保留 EXP 单位，不按 quota 汇率转换', async()=>{
+ const view=await shell({user:pulseUser,binding:'bound',pulseRules:{rewards:[{name:'EXP prize',reward_type:'community_exp',amount:500,weight:100}]},pulseRewards:[{grant_id:'exp1',reward_type:'community_exp',amount:500,status:'settled'}]});
+ await view.navigate('/pulse');
+ assert.equal((view.html().match(/500 EXP/g)||[]).length,2);
+ assert.doesNotMatch(view.html(),/0\.001 API/);
+ await view.changeLanguage('zh_CN');
+ assert.equal((view.html().match(/500 EXP/g)||[]).length,2);
+});

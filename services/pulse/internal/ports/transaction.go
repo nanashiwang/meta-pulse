@@ -15,6 +15,7 @@ type Repositories struct {
 	UserPeriod     UserPeriodStatRepository
 	Reward         RewardRepository
 	RewardHistory  RewardHistoryRepository
+	Experience     ExperienceDelivery
 	Idempotency    IdempotencyRepository
 	Settlement     SettlementRepository
 	PeriodAdmin    PeriodAdminRepository

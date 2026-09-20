@@ -21,7 +21,6 @@ func TestRewardGrantTransitionRejectsInvalidStateChanges(t *testing.T) {
 	}{
 		{0, "pending", "settled", now},
 		{1, "pending", "settled", time.Time{}},
-		{1, "pending", "reversed", now},
 		{1, "settled", "pending", now},
 		{1, "reversed", "settled", now},
 	}

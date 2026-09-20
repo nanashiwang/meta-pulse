@@ -278,7 +278,7 @@ GROUP BY status`).Scan(&settlementRows).Error; err != nil {
 	var reservedRaw, hardCapRaw string
 	if err := r.db.WithContext(ctx).Raw(`
 SELECT COALESCE(SUM(reserved_amount), 0), COALESCE(SUM(hard_cap), 0)
-FROM pulse_reward_budget`).Row().Scan(&reservedRaw, &hardCapRaw); err != nil {
+FROM pulse_reward_budget WHERE budget_type <> 'community_exp'`).Row().Scan(&reservedRaw, &hardCapRaw); err != nil {
 		return ports.OperationalSnapshot{}, fmt.Errorf("read budget usage: %w", err)
 	}
 	var err error

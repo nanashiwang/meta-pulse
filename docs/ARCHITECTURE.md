@@ -1228,3 +1228,15 @@ Answer 库中的 `metar_exp_ledger` 是 EXP 事实源、`metar_exp_account` 是�
 幂等身份：签到 `user+Asia/Shanghai日期`，问题/回答/采纳 `kind+object`，点赞 `object+actor`，精选 `object`，脉冲经验 `grant_id`；管理员请求 `actor+request_key`，同 key 不同 payload 冲突。撤销墓碑禁止迟到成功响应恢复奖励。来源记录在首次采集时冻结规则，后续版本变更不能增加该来源奖励。
 
 经验路由使用 Answer 官方认证组，从服务器会话读取本人身份，禁止 query token、客户端指定领取身份或金额；写请求校验同源。成长管理额外实时读取本地角色和账号状态。公开投影仅含等级与装扮，不暴露本人账本。经验池独立初始化和降级，Pulse 或 EXP 故障不得阻断论坛本地功能。
+
+### Pulse → Answer 经验奖励交付
+
+新增非货币奖项与独立预算类型 `community_exp`，不改动 contribution/ticket 的产生条件。额度奖项继续使用 loyalty 预算和 new-api Benefit 结算；经验预算不参与金额合计。抽奖按固定顺序锁定 loyalty、community_exp 预算，任一启用奖项所属预算不足以覆盖其最大单次金额时拒绝抽奖，不改变冻结的随机分布。
+
+复用每个 grant 唯一的 settlement outbox，但经验使用 `community_pending → community_delivered` 状态，额度 Worker 不领取；Shadow Mode 仍为 shadow，不交付经验。GET `/v1/internal/me/experience` 和 POST `/v1/internal/me/experience/ack` 仅允许独立 community-bff 角色，身份来自验签 principal。查询返回至多 20 条未确认交付，不用自增 ID 游标，以免跳过晚提交的事务。
+
+Answer 验证受保护的一对一绑定后，先提交 EXP 账本，再 ACK。ACK 在 Pulse 同一事务内锁 grant、outbox、预算，把 pending grant 置 settled、预留转已发、outbox 置 delivered；所有状态读取为锁定当前读，重复确认不重复结算。丢响应和进程退出由下次本人访问重试相同 grant 恢复，经验事实仍在 Answer。单次请求最多三批，成长页限时两秒；Pulse 不可用不阻断本地经验。
+
+独立 admin 角色 POST `/v1/internal/admin/experience/reverse`，幂等范围 `experience_reverse:actor`，同 key 同 payload 返回原结果，不同 payload 冲突。只对 community_exp 允许 pending/settled → reversed；同事务释放对应 EXP 预算、重置待交付、追加审计。Answer 下次同步追加 reversal 或墓碑，再确认 reversed，迟到的 pending ACK 冲突。该流程不返券、不调用 new-api 撤销接口，不保证离线账号即时扣回。
+
+无需新增 Pulse 表；仅扩展既有奖项/预算类型和 outbox 状态。升级需同时更新 Pulse API/Worker、Answer 插件与静态资源；启用经验奖池后不可把 API/Worker 回退到不认识经验类型的旧版，需先暂停新抽奖并清理待交付，再执行经过验证的整体回退。

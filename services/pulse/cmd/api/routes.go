@@ -77,6 +77,6 @@ func buildAPIRouter(cfg config.Config, logger *slog.Logger, readiness app.Readin
 	rules.QuotaPerUnit = cfg.QuotaPerUnit
 	return app.NewRouterWithRoutes(logger, readiness, app.APIRoutes{
 		Profile: profile, Summary: profile, Action: action, Content: content,
-		History: history, Rules: rules, Operations: operations, Settings: settings, Periods: periods, Auth: auth,
+		Experience: service.NewExperienceService(unit), History: history, Rules: rules, Operations: operations, Settings: settings, Periods: periods, Auth: auth,
 	}, metrics), nil
 }
