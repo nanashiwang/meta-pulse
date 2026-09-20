@@ -454,6 +454,8 @@
   });
 
   document.addEventListener('submit', (event) => {
+    const periodForm = event.target.closest('form[data-form="admin-period"]');
+    if (periodForm) { event.preventDefault(); pulseAdmin.periods?.submit(periodForm); return; }
     const adminForm = event.target.closest('form[data-form="admin-pulse"]');
     if (adminForm) { event.preventDefault(); pulseAdmin.submit(adminForm); return; }
     const form = event.target.closest('form[data-form="search"]');

@@ -32,6 +32,8 @@ func (uc *UserCenter) registerAdminSettingsRoutes(r *gin.RouterGroup, session fu
 	if r == nil {
 		return
 	}
+	r.GET("/metar/pulse/periods", uc.adminSettingsHandler("periods", session, siteURL))
+	r.PUT("/metar/pulse/periods", uc.adminSettingsHandler("periods", session, siteURL))
 	r.GET("/metar/pulse/settings", uc.adminSettingsHandler("settings", session, siteURL))
 	r.PUT("/metar/pulse/settings", uc.adminSettingsHandler("settings", session, siteURL))
 	r.POST("/metar/pulse/secret", uc.adminSettingsHandler("secret", session, siteURL))
@@ -102,7 +104,12 @@ func (uc *UserCenter) adminSettingsHandler(operation string, session func(*gin.C
 			adminSettingsUpstreamError(c, status, data)
 			return
 		}
-		result, err := adminSettingsProjection(operation, data)
+		var result any
+		if operation == "periods" {
+			result, err = adminPeriodsProjection(c.Request.Method, data)
+		} else {
+			result, err = adminSettingsProjection(operation, data)
+		}
 		if err != nil {
 			communityError(c, http.StatusServiceUnavailable, "settings_unavailable")
 			return
@@ -127,7 +134,7 @@ func adminSettingsUpstreamError(c *gin.Context, status int, data []byte) {
 		Error string `json:"error"`
 	}
 	if decodeCommunityResponse(data, &failure) == nil {
-		allowed := map[string]int{"invalid_settings": 400, "settings_conflict": 409, "forbidden": 403, "invalid_idempotency_key": 400, "invalid_request": 400}
+		allowed := map[string]int{"invalid_period": 400, "period_conflict": 409, "invalid_settings": 400, "settings_conflict": 409, "forbidden": 403, "invalid_idempotency_key": 400, "invalid_request": 400}
 		if allowed[failure.Error] == status {
 			communityError(c, status, failure.Error)
 			return
@@ -172,6 +179,9 @@ func validAdminSettingsBody(operation string, body []byte) bool {
 	fields, ok := adminJSONObject(body)
 	if !ok {
 		return false
+	}
+	if operation == "periods" {
+		return validAdminPeriodBody(fields)
 	}
 	if operation == "secret" {
 		return len(fields) == 0

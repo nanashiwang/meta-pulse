@@ -1211,3 +1211,10 @@ Nginx 只对白名单中的壳层页面返回静态首页，不使用全站 SPA 
 ## 46. 统一入口与本地注册适配
 
 内容互动、登录注册、密码找回、资料设置和社区管理继续复用 Answer 原生页面，静态壳层的旧入口只做同源导航交接。公开资料与当前会话的私人入口分开，不接受 URL 中的 user_id 作为可信身份。插件对 Answer 1.7.1 UserCenter 注册 URL 的前端适配仅在 Meta Pulse 启用且本地账号模式开启时生效；不改后端注册开关、验证、身份、角色或会话。此兼容层不得推广为绕过原生权限守卫的通用重定向机制。
+
+
+### 管理员网页创建经济周期
+
+METAR `/admin/pulse` 提供贡献倍率、每张券贡献度与完整奖池的创建表单。浏览器仅访问固定同源 `/metar/api/admin/pulse/periods`（GET / PUT），经 Answer admin session、正常/激活/管理员身份实时复核和同源校验，再由独立 admin 签名调用 Pulse `/v1/internal/admin/periods`；actor 来自签名身份，禁止浏览器声明。新周期固定 10 天、Asia/Shanghai、verified-paid-v1，创建即冻结；不提供编辑已启用周期的接口，也不变更运行/发奖开关。
+
+网页创建复用 `PeriodCreateService`，`period_create:{actor_type}:{actor_id}` + Idempotency-Key 对规范化完整命令做 SHA-256：同 key 同内容返回首次结果，不同内容冲突。Period、Economics、Reward Definition、Budget、Audit 和幂等响应在同一事务提交。CLI 与网页创建均先锁定 `pulse_idempotency` 的永久 `period_create_lock/global` 行后检查周期重叠，防止不同 key 并发创建相交时间段；此行仅作为数据库事务互斥，不作为账本事实。创建审计包含规则倍率、门槛、奖池、预算、操作者、原因与请求编号。失败回滚，响应丢失复用原 key 恢复；无历史账本重写。

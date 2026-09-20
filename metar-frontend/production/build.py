@@ -56,6 +56,7 @@ def build(output: Path, config_path: Path) -> None:
         "i18n": (ROOT / "src/i18n.js").read_text(encoding="utf-8"),
         "adapters": (ROOT / "src/adapters.js").read_text(encoding="utf-8"),
         "avatars": (ROOT / "src/avatars.js").read_text(encoding="utf-8"),
+        "admin-periods": (ROOT / "src/admin-periods.js").read_text(encoding="utf-8"),
         "admin-pulse": (ROOT / "src/admin-pulse.js").read_text(encoding="utf-8"),
         "router": (ROOT / "src/router.js").read_text(encoding="utf-8"),
         "route-policy": (ROOT / "src/route-policy.js").read_text(encoding="utf-8"),
@@ -81,6 +82,7 @@ def build(output: Path, config_path: Path) -> None:
     (assets / "i18n.js").write_text(sources["i18n"], encoding="utf-8")
     (assets / "adapters.js").write_text(sources["adapters"], encoding="utf-8")
     (assets / "avatars.js").write_text(sources["avatars"], encoding="utf-8")
+    (assets / "admin-periods.js").write_text(sources["admin-periods"], encoding="utf-8")
     (assets / "admin-pulse.js").write_text(sources["admin-pulse"], encoding="utf-8")
     (assets / "router.js").write_text(sources["router"], encoding="utf-8")
     (assets / "route-policy.js").write_text(sources["route-policy"], encoding="utf-8")

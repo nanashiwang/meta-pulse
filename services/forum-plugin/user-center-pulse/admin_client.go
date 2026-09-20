@@ -21,7 +21,9 @@ func (c *PulseClient) adminSettingsRequest(ctx context.Context, method, operatio
 		return nil, 0, errors.New("admin settings unavailable")
 	}
 	path := "/v1/internal/admin/settings"
-	if operation == "secret" && method == http.MethodPost {
+	if operation == "periods" && (method == http.MethodGet || method == http.MethodPut) {
+		path = "/v1/internal/admin/periods"
+	} else if operation == "secret" && method == http.MethodPost {
 		path += "/secret"
 	} else if operation != "settings" || (method != http.MethodGet && method != http.MethodPut) {
 		return nil, 0, errors.New("unsupported admin settings operation")

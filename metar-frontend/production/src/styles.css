@@ -84,3 +84,12 @@
   --text:var(--metar-text);--muted:var(--metar-muted);--border:var(--metar-border);
   --green:var(--metar-primary);--tint:var(--metar-tint);--hover:var(--metar-hover);
 }
+
+.prod-period-list .prod-status { align-items: flex-start; }
+.prod-period-list p { overflow-wrap: anywhere; }
+.prod-period-prize { padding: 16px; border: 1px solid var(--border); border-radius: 12px; }
+.prod-period-prize .btn { align-self: end; justify-self: start; }
+.prod-admin-form label > input:not([type="checkbox"]), .prod-admin-form label > textarea { display: block; width: 100%; margin-top: 8px; }
+.prod-admin-form label > .prod-field-help { display: block; }
+
+#admin-period-editor label.prod-admin-field { display: block; }

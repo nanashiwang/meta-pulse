@@ -249,7 +249,7 @@
           throw new AdapterError('配置响应无法确认', { code: method === 'PUT' ? 'settings_pending' : 'invalid_response' });
         }
         if (!response.ok) {
-          const code = response.status === 401 ? 'authentication_required' : response.status === 403 ? 'admin_required' : response.status === 409 ? 'settings_conflict' : response.status >= 500 && method === 'PUT' ? 'settings_pending' : payload?.error || `http_${response.status}`;
+          const code = response.status === 401 ? 'authentication_required' : response.status === 403 ? 'admin_required' : response.status === 409 ? (path === 'periods' ? 'period_conflict' : 'settings_conflict') : response.status >= 500 && method === 'PUT' ? 'settings_pending' : payload?.error || `http_${response.status}`;
           throw new AdapterError('配置请求未完成', { status: response.status, code });
         }
         if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new AdapterError('配置响应无法确认', { code: method === 'PUT' ? 'settings_pending' : 'invalid_response' });
@@ -259,6 +259,16 @@
         // Never retain server messages or fetch errors: they may contain submitted secrets.
         throw new AdapterError('配置请求未完成', { code: method === 'PUT' ? 'settings_pending' : 'settings_unavailable' });
       } finally { window.clearTimeout(timeout); }
+    }
+    async periods() {
+      const value = await this.request('periods');
+      if (!Array.isArray(value.periods) || value.periods.some((p) => typeof p.key !== 'string' || !Array.isArray(p.rules) || !Number.isSafeInteger(p.ticket_threshold_milli))) throw new AdapterError('invalid periods', {code:'invalid_response'});
+      return value;
+    }
+    async createPeriod(body, idempotencyKey) {
+      const value = await this.request('periods', {method:'PUT',body,idempotencyKey});
+      if (!Number.isSafeInteger(value.period_id) || value.period_id <= 0 || value.period_key !== body.key || value.status !== 'active') throw new AdapterError('invalid period result', {code:'settings_pending'});
+      return value;
     }
     async settings() { return this.validateSettings(await this.request('settings')); }
     validateSettings(value) {

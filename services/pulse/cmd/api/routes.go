@@ -55,6 +55,10 @@ func buildAPIRouter(cfg config.Config, logger *slog.Logger, readiness app.Readin
 	if err != nil {
 		return nil, err
 	}
+	periods, err := service.NewPeriodCreateService(unit, time.Now)
+	if err != nil {
+		return nil, err
+	}
 	auth := transporthttp.SignedRequestWithSecrets(func(role string) [][]byte {
 		switch role {
 		case "community-bff":
@@ -73,6 +77,6 @@ func buildAPIRouter(cfg config.Config, logger *slog.Logger, readiness app.Readin
 	rules.QuotaPerUnit = cfg.QuotaPerUnit
 	return app.NewRouterWithRoutes(logger, readiness, app.APIRoutes{
 		Profile: profile, Summary: profile, Action: action, Content: content,
-		History: history, Rules: rules, Operations: operations, Settings: settings, Auth: auth,
+		History: history, Rules: rules, Operations: operations, Settings: settings, Periods: periods, Auth: auth,
 	}, metrics), nil
 }

@@ -41,8 +41,8 @@ grep -q 'access_log off;' "$config" || die 'callback query logging is not disabl
 grep -q 'add_header Referrer-Policy "no-referrer" always;' "$config" || die 'callback referrer protection is missing'
 grep -q 'proxy_set_header Cookie \$forum_cookie;' "$config" || die 'forum Cookie allowlist is missing'
 [ "$(grep -c 'proxy_set_header Authorization "";' "$config")" -eq 1 ] || die 'only the callback may strip Authorization; Answer API auth must remain usable'
-[ "$(grep -c 'proxy_set_header X-Pulse-Signature "";' "$config")" -eq 8 ] || die 'all forum routes must strip browser Pulse signatures'
-[ "$(grep -c 'proxy_set_header New-Api-User "";' "$config")" -eq 8 ] || die 'all forum routes must strip new-api identity headers'
+[ "$(grep -c 'proxy_set_header X-Pulse-Signature "";' "$config")" -eq 9 ] || die 'all forum routes must strip browser Pulse signatures'
+[ "$(grep -c 'proxy_set_header New-Api-User "";' "$config")" -eq 9 ] || die 'all forum routes must strip new-api identity headers'
 grep -A12 'location /blog/' "$config" | grep -q 'Strict-Transport-Security' || die 'blog location lost inherited security headers'
 grep -q 'location = / {' "$config" || die 'METAR exact homepage route is missing'
 grep -A14 'location = / {' "$config" | grep -q 'try_files /blog/metar/index.html =404;' || die 'METAR homepage does not fail closed on missing production build'
@@ -51,7 +51,7 @@ grep -A14 'location = / {' "$config" | grep -q "style-src 'self';" || die 'METAR
 if grep -A14 'location = / {' "$config" | grep -q 'unsafe-inline'; then
   die 'METAR homepage CSP must not allow inline scripts or styles'
 fi
-for operation in settings secret; do
+for operation in settings secret periods; do
   grep -A3 "location = /metar/api/admin/pulse/$operation {" "$config" | grep -q "proxy_pass http://forum/answer/admin/api/metar/pulse/$operation;" || die 'admin settings alias must use the authenticated Answer admin router'
   grep -A25 "location = /metar/api/admin/pulse/$operation {" "$config" | grep -q 'client_max_body_size 64k;' || die 'admin settings body limit is missing'
   grep -A25 "location = /metar/api/admin/pulse/$operation {" "$config" | grep -q 'Cache-Control "no-store"' || die 'admin settings must not be cached'

@@ -44,11 +44,12 @@ func (m *auditMemory) Append(_ context.Context, log ports.AuditLog) error {
 }
 
 type periodCreateUnit struct {
-	admin     *periodAdminMemory
-	economics *economicsAdminMemory
-	audit     *auditMemory
-	reward    *rewardAdminMemory
-	cursor    ports.CursorRepository
+	admin       *periodAdminMemory
+	economics   *economicsAdminMemory
+	audit       *auditMemory
+	reward      *rewardAdminMemory
+	cursor      ports.CursorRepository
+	idempotency *memoryIdempotencyStore
 	// rollback mirrors the real transaction: a failed callback discards every
 	// write the callback made.
 	rollback bool
@@ -61,7 +62,7 @@ func (u *periodCreateUnit) Do(ctx context.Context, fn func(ports.Repositories) e
 	rewardSnapshot := append([]reward.Definition(nil), u.reward.definitions...)
 	budgetSnapshot := append([]ports.RewardBudget(nil), u.reward.budgets...)
 	err := fn(ports.Repositories{
-		PeriodAdmin: u.admin, EconomicsAdmin: u.economics, RewardAdmin: u.reward, Audit: u.audit, Cursor: u.cursor,
+		Idempotency: u.idempotency, PeriodAdmin: u.admin, EconomicsAdmin: u.economics, RewardAdmin: u.reward, Audit: u.audit, Cursor: u.cursor,
 	})
 	if err != nil && u.rollback {
 		u.admin.periods = adminSnapshot
@@ -75,7 +76,7 @@ func (u *periodCreateUnit) Do(ctx context.Context, fn func(ports.Repositories) e
 
 func newPeriodCreateUnit() *periodCreateUnit {
 	return &periodCreateUnit{
-		admin: &periodAdminMemory{}, economics: &economicsAdminMemory{},
+		idempotency: &memoryIdempotencyStore{records: make(map[string]ports.IdempotencyRecord)}, admin: &periodAdminMemory{}, economics: &economicsAdminMemory{},
 		audit: &auditMemory{}, reward: &rewardAdminMemory{}, rollback: true,
 	}
 }

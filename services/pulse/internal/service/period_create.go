@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -37,6 +39,7 @@ type PeriodRuleSpec struct {
 // (see usage_ingest.go), and invariant #11 forbids repairing that in place
 // once the period is active.
 type PeriodCreateCommand struct {
+	RequestID            string
 	ActorType            string
 	ActorID              string
 	Key                  string
@@ -94,10 +97,13 @@ func NewPeriodCreateService(unit ports.UnitOfWork, now func() time.Time) (*Perio
 func (s *PeriodCreateService) Create(ctx context.Context, command PeriodCreateCommand) (PeriodCreateResult, error) {
 	command, err := normalizePeriodCreateCommand(command)
 	if err != nil {
-		return PeriodCreateResult{}, err
+		return PeriodCreateResult{}, fmt.Errorf("%w: %v", ErrInvalidPeriod, err)
 	}
 	endsAt := command.StartsAt.Add(PeriodLength)
 
+	payload, _ := json.Marshal(command)
+	digest := sha256.Sum256(payload)
+	payloadHash := hex.EncodeToString(digest[:])
 	var result PeriodCreateResult
 	err = s.unit.Do(ctx, func(repos ports.Repositories) error {
 		if repos.PeriodAdmin == nil || repos.EconomicsAdmin == nil || repos.Audit == nil {
@@ -105,6 +111,33 @@ func (s *PeriodCreateService) Create(ctx context.Context, command PeriodCreateCo
 		}
 		if len(command.Rewards) > 0 && repos.RewardAdmin == nil {
 			return errors.New("reward setup repository is not initialized")
+		}
+		if repos.Idempotency == nil {
+			return errors.New("period idempotency repository is not initialized")
+		}
+		// Serialize all CLI and web creations before checking intervals. The
+		// permanent row is only a transaction mutex, never an accounting fact.
+		if _, err := repos.Idempotency.GetOrCreateForUpdate(ctx, "period_create_lock", "global", "447cc9dbdc73a33ea5be9cef405e81ef56c4e23b9202238aee120a0078c2fb2a"); err != nil {
+			return err
+		}
+		var replay ports.IdempotencyRecord
+		if command.RequestID != "" {
+			var err error
+			replay, err = repos.Idempotency.GetOrCreateForUpdate(ctx, "period_create:"+command.ActorType+":"+command.ActorID, command.RequestID, payloadHash)
+			if err != nil {
+				return err
+			}
+			if replay.PayloadHash != payloadHash {
+				return ports.ErrConflict
+			}
+			if len(replay.ResponseJSON) > 0 {
+				return json.Unmarshal(replay.ResponseJSON, &result)
+			}
+		}
+		if _, err := repos.PeriodAdmin.FindByKeyForUpdate(ctx, command.Key); err == nil {
+			return fmt.Errorf("%w: period key already exists", ports.ErrConflict)
+		} else if !errors.Is(err, ports.ErrNotFound) {
+			return err
 		}
 		overlapping, err := repos.PeriodAdmin.ListOverlapping(ctx, command.StartsAt, endsAt)
 		if err != nil {
@@ -175,18 +208,19 @@ func (s *PeriodCreateService) Create(ctx context.Context, command PeriodCreateCo
 			ConfigVersion        string             `json:"config_version"`
 			RandomVersion        string             `json:"random_version"`
 			RuleCount            int                `json:"rule_count"`
+			Rules                []PeriodRuleSpec   `json:"rules"`
 			FundingPolicy        string             `json:"funding_policy"`
 			TicketThresholdMilli int64              `json:"ticket_threshold_milli"`
 			Rewards              []PeriodRewardSpec `json:"rewards"`
 			RewardBudget         int64              `json:"reward_budget"`
-		}{created.Key, string(status), created.StartsAt, created.EndsAt, created.Timezone, created.ConfigVersion, created.RandomVersion, len(rules), created.FundingPolicy, created.TicketThresholdMilli, command.Rewards, command.RewardBudget})
+		}{created.Key, string(status), created.StartsAt, created.EndsAt, created.Timezone, created.ConfigVersion, created.RandomVersion, len(rules), command.Rules, created.FundingPolicy, created.TicketThresholdMilli, command.Rewards, command.RewardBudget})
 		if err != nil {
 			return err
 		}
 		if err := repos.Audit.Append(ctx, ports.AuditLog{
 			ActorType: command.ActorType, ActorID: command.ActorID, Action: "period_create",
 			ResourceType: "period", ResourceID: created.Key, Reason: command.Reason,
-			AfterJSON: afterJSON, CreatedAt: s.now(),
+			AfterJSON: afterJSON, RequestID: command.RequestID, CreatedAt: s.now(),
 		}); err != nil {
 			return err
 		}
@@ -194,6 +228,16 @@ func (s *PeriodCreateService) Create(ctx context.Context, command PeriodCreateCo
 			PeriodID: created.ID, Key: created.Key, Status: string(status),
 			StartsAt: created.StartsAt, EndsAt: created.EndsAt, RuleCount: len(rules),
 			RewardCount: len(command.Rewards), RewardBudget: command.RewardBudget, FundingPolicy: created.FundingPolicy, TicketThresholdMilli: created.TicketThresholdMilli,
+		}
+		if command.RequestID != "" {
+			response, err := json.Marshal(result)
+			if err != nil {
+				return err
+			}
+			status := 200
+			replay.ResponseStatus, replay.ResponseJSON = &status, response
+			replay.ResourceType, replay.ResourceID = "period", created.Key
+			return repos.Idempotency.Save(ctx, replay)
 		}
 		return nil
 	})
