@@ -134,3 +134,16 @@ html.metar-native[data-theme="dark"] { --bs-body-color-rgb: 230, 236, 228; color
   .metar-native #header .nav-item { margin-right: 4px !important; }
 }
 @media (max-width: 359.98px) { .metar-native #header .navbar-brand::after { display: none; } }
+
+/* Keep the full notification UI inside the same community navigation. */
+.metar-notifications #sideNav { display: none !important; }
+.metar-community-navigation { padding-block: 12px; font-size: 14px; }
+.metar-community-navigation .metar-nav-group { margin-bottom: 24px; }
+.metar-community-navigation .metar-nav-label { padding: 0 12px 10px; color: var(--metar-muted); font-size: 12px; }
+.metar-community-navigation .metar-nav-item { display: flex; gap: 12px; align-items: center; padding: 9px 12px; margin-bottom: 3px; border-radius: 6px; text-decoration: none; color: var(--metar-muted); }
+.metar-community-navigation .metar-nav-item:hover { background: var(--metar-hover); color: var(--metar-primary); }
+.metar-community-navigation .metar-nav-item[aria-current] { background: var(--metar-tint); color: var(--metar-primary); font-weight: 600; }
+.metar-community-navigation .bi { width: 18px; flex-shrink: 0; font-size: 16px; }
+.metar-notifications .page-right-side { display: none; }
+.metar-notifications .page-main { min-width: 0; }
+.metar-notifications #pcSideNav { overflow-y: auto; }
