@@ -24,6 +24,12 @@ func fixture(t *testing.T) (*Store, *time.Time) {
 		t.Fatal("requires disposable _test database")
 	}
 	cfg.ParseTime = true
+	// Fixture timestamps are generated in UTC. Keep the MySQL session in UTC
+	// too; the server may default to Asia/Shanghai in CI or production.
+	if cfg.Params == nil {
+		cfg.Params = map[string]string{}
+	}
+	cfg.Params["time_zone"] = "'+00:00'"
 	db, err := sql.Open("mysql", cfg.FormatDSN())
 	if err != nil {
 		t.Fatal(err)
