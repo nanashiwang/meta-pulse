@@ -54,6 +54,11 @@ test-forum-integration:
 	FORUM_BINDING_GUARD_INTEGRATION_DSN="$$FORUM_INTEGRATION_DSN" go test -count=1 -race ./services/forum-plugin/user-center-pulse -run 'TestMySQL(BindingGuard|AdminIdentity)' -timeout 5m
 	FORUM_CONTENT_READER_INTEGRATION_DSN="$$FORUM_INTEGRATION_DSN" go test -count=1 -race ./services/pulse/internal/adapter/forum -run TestMySQLFetch -timeout 5m
 
+# Dedicated disposable schema avoids touching Answer fixture tables in other suites.
+test-growth-integration:
+	@test -n "$$GROWTH_INTEGRATION_DSN" || { echo "请设置以 _test 结尾的专用经验测试库" >&2; exit 1; }
+	go test -count=1 -race ./services/forum-plugin/user-center-pulse/growth -run TestMySQL -timeout 5m
+
 build: build-pulse build-blog build-community
 
 build-pulse:

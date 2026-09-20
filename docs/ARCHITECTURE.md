@@ -1218,3 +1218,13 @@ Nginx 只对白名单中的壳层页面返回静态首页，不使用全站 SPA 
 METAR `/admin/pulse` 提供贡献倍率、每张券贡献度与完整奖池的创建表单。浏览器仅访问固定同源 `/metar/api/admin/pulse/periods`（GET / PUT），经 Answer admin session、正常/激活/管理员身份实时复核和同源校验，再由独立 admin 签名调用 Pulse `/v1/internal/admin/periods`；actor 来自签名身份，禁止浏览器声明。新周期固定 10 天、Asia/Shanghai、verified-paid-v1，创建即冻结；不提供编辑已启用周期的接口，也不变更运行/发奖开关。
 
 网页创建复用 `PeriodCreateService`，`period_create:{actor_type}:{actor_id}` + Idempotency-Key 对规范化完整命令做 SHA-256：同 key 同内容返回首次结果，不同内容冲突。Period、Economics、Reward Definition、Budget、Audit 和幂等响应在同一事务提交。CLI 与网页创建均先锁定 `pulse_idempotency` 的永久 `period_create_lock/global` 行后检查周期重叠，防止不同 key 并发创建相交时间段；此行仅作为数据库事务互斥，不作为账本事实。创建审计包含规则倍率、门槛、奖池、预算、操作者、原因与请求编号。失败回滚，响应丢失复用原 key 恢复；无历史账本重写。
+
+## 社区经验（EXP）事实边界
+
+社区成长由 Answer 插件独立维护，详见 [COMMUNITY_EXPERIENCE.md](COMMUNITY_EXPERIENCE.md)。Answer 本地账号是唯一社区身份；EXP 不产生 Pulse contribution/ticket/new-api 余额，不替代 Answer reputation 或治理角色。等级阈值为 0/150/600/1750/4500/10000/22500/45000/90000。
+
+Answer 库中的 `metar_exp_ledger` 是 EXP 事实源、`metar_exp_account` 是快照；事件、规则版本、通知、采集游标和审计存于插件自有表。每次加减与事件状态、账户快照、升级通知在一个 MySQL 事务内提交，账户行锁串行化并发额度检查。历史仅追加，撤销采用负流水；每日限额按正向原始流水累计，不被撤销返还。
+
+幂等身份：签到 `user+Asia/Shanghai日期`，问题/回答/采纳 `kind+object`，点赞 `object+actor`，精选 `object`，脉冲经验 `grant_id`；管理员请求 `actor+request_key`，同 key 不同 payload 冲突。撤销墓碑禁止迟到成功响应恢复奖励。来源记录在首次采集时冻结规则，后续版本变更不能增加该来源奖励。
+
+经验路由使用 Answer 官方认证组，从服务器会话读取本人身份，禁止 query token、客户端指定领取身份或金额；写请求校验同源。成长管理额外实时读取本地角色和账号状态。公开投影仅含等级与装扮，不暴露本人账本。经验池独立初始化和降级，Pulse 或 EXP 故障不得阻断论坛本地功能。

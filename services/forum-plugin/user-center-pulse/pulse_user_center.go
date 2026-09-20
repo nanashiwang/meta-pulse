@@ -16,6 +16,7 @@ import (
 	"github.com/apache/answer-plugins/util"
 	"github.com/apache/answer/plugin"
 	"github.com/gin-gonic/gin"
+	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/growth"
 	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/i18n"
 	"github.com/segmentfault/pacman/log"
 )
@@ -42,11 +43,13 @@ var Info embed.FS
 // the Connector only binds one immutable new-api identity, while UserCenter
 // contributes optional Pulse branding for bound accounts.
 type UserCenter struct {
-	runtimeMu sync.RWMutex
-	Config    *Config
-	Client    *PulseClient
-	Logins    LoginFlowStore
-	Guard     BindingGuard
+	runtimeMu   sync.RWMutex
+	growthMu    sync.Mutex
+	growthStore *growth.Store
+	Config      *Config
+	Client      *PulseClient
+	Logins      LoginFlowStore
+	Guard       BindingGuard
 
 	newBindingGuard func(string) (BindingGuard, error)
 }
@@ -346,13 +349,15 @@ func (uc *UserCenter) AfterLogin(externalID, _ string) {
 	log.Debugf("pulse-bound forum user %s logged in", externalID)
 }
 
-func (uc *UserCenter) RegisterUnAuthRouter(r *gin.RouterGroup) {}
+func (uc *UserCenter) RegisterUnAuthRouter(r *gin.RouterGroup) { uc.registerPublicExperience(r) }
 func (uc *UserCenter) RegisterAuthUserRouter(r *gin.RouterGroup) {
 	uc.registerCommunityRoutes(r, answerSessionUserID, plugin.SiteURL)
+	uc.registerExperience(r, answerSessionUserID, false, plugin.SiteURL)
 }
 
 func (uc *UserCenter) RegisterAuthAdminRouter(r *gin.RouterGroup) {
 	uc.registerAdminSettingsRoutes(r, answerAdminSessionUserID, plugin.SiteURL)
+	uc.registerExperience(r, answerAdminSessionUserID, true, plugin.SiteURL)
 	r.GET("/pulse/health", func(ctx *gin.Context) {
 		config := uc.configSnapshot()
 		ctx.JSON(http.StatusOK, gin.H{"pulse_base_url": config.PulseBaseURL})

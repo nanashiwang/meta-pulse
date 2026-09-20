@@ -1,3 +1,4 @@
+import './growth-presentation.js';
 import i18n from '@/i18n/init';
 import { loggedUserInfoStore, userCenterStore } from '@/stores';
 import zhCN from '@i18n/zh_CN.yaml';

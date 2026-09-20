@@ -11,6 +11,7 @@ export function notificationGroups(nativeNav, english = false) {
     ] },
     { label: english ? 'My space' : '我的空间', items: [
       item('/me', '个人空间', 'My space', 'person'),
+      item('/me/growth', '社区成长', 'Community growth', 'stars'),
       item('/me/bookmarks', '我的收藏', 'Bookmarks', 'bookmark'),
       item('/users/notifications/inbox', '通知中心', 'Notifications', 'bell'),
       item('/settings/binding', '账号绑定', 'Account binding', 'link-45deg'),
@@ -19,6 +20,7 @@ export function notificationGroups(nativeNav, english = false) {
   ];
   const management = [];
   if (nativeNav.querySelector('a[href="/admin"]')) {
+    management.push(item('/admin/growth', '成长管理', 'Growth settings', 'stars'));
     management.push(item('/admin/pulse', 'Pulse 配置', 'Pulse settings', 'sliders'));
     management.push(item('/admin/dashboard', '社区管理', 'Community admin', 'gear'));
     management.push(item('/admin/pulse_user_center', '社区连接配置', 'Community connections', 'link-45deg'));

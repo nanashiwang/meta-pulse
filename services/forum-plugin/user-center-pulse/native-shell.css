@@ -147,3 +147,9 @@ html.metar-native[data-theme="dark"] { --bs-body-color-rgb: 230, 236, 228; color
 .metar-notifications .page-right-side { display: none; }
 .metar-notifications .page-main { min-width: 0; }
 .metar-notifications #pcSideNav { overflow-y: auto; }
+
+.metar-exp-badge{display:inline-block;font-size:11px;font-weight:600;line-height:1.5;padding:1px 5px;margin-inline-start:5px;border-radius:5px;background:var(--metar-tint);color:var(--metar-primary);white-space:nowrap;vertical-align:middle}
+img[data-metar-appearance="frame"],img[data-metar-appearance="builder"],img[data-metar-appearance="veteran"],img[data-metar-appearance="companion"]{outline:2px solid var(--metar-primary);outline-offset:2px}
+img[data-metar-appearance="veteran"],img[data-metar-appearance="companion"]{box-shadow:0 0 0 5px var(--metar-tint)}
+
+.metar-native .flex-md-row[data-metar-appearance="sage"]{background:var(--metar-tint);border-radius:var(--metar-radius);padding:20px}

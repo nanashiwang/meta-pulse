@@ -121,6 +121,13 @@ jobs:
         run: make test-integration
       - name: Forum binding and Answer schema regressions
         run: make test-forum-integration
+      - name: Community experience concurrency and reversal regressions
+        env:
+          MYSQL_CONTAINER: ${{ job.services.mysql.id }}
+          GROWTH_INTEGRATION_DSN: root:pulse_ci_test_only@tcp(127.0.0.1:3306)/community_growth_test?parseTime=true
+        run: |
+          docker exec "$MYSQL_CONTAINER" sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot -e "CREATE DATABASE community_growth_test;"'
+          make test-growth-integration
 
   blog:
     name: Blog

@@ -2,6 +2,8 @@
 'use strict';
 (() => {
   const EN = Object.freeze({
+    "社区成长": "Community growth",
+    "成长管理": "Growth settings",
     "通用": "General",
     "已结束": "Closed",
     "结算中": "Settling",

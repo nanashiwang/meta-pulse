@@ -23,6 +23,7 @@
 
   const answer = new AnswerAdapter(config);
   const pulse = new PulseAdapter(answer);
+  const growth = new window.MetarGrowth.View(answer, new AnswerAdapter({answerApiBase: "/answer/admin/api"}));
   const pulseAdmin = new window.MetarPulseAdmin.View(new PulseAdminAdapter(answer));
   let pulseBusy = false;
   let pulseMessage = "";
@@ -147,7 +148,7 @@
     const path = route().path;
     if (path.startsWith('/question/')) return t("问题详情");
     if (path.startsWith('/topic/')) return t("话题");
-    return ({ '/latest': t("最新话题"), '/topics': t("全部标签"), '/knowledge': t("知识库"), '/search': t("搜索"), '/me': t("个人空间"), '/me/bookmarks': t("我的收藏"), '/me/notifications': t("通知中心"), '/settings/binding': t("账号绑定"), '/pulse': t("Pulse 权益"), '/admin/pulse': t("Pulse 配置"), '/publish': t("发布内容"), '/login': t("登录"), '/register': t("注册"), '/forgot': t("找回密码"), '/status': t("服务状态"), '/support': t("帮助中心"), '/guidelines': t("社区规范") })[path] || t("METAR 社区");
+    return ({ '/latest': t("最新话题"), '/topics': t("全部标签"), '/knowledge': t("知识库"), '/search': t("搜索"), '/me': t("个人空间"), '/me/bookmarks': t("我的收藏"), '/me/growth': t('社区成长'), '/admin/growth': t('成长管理'), '/me/notifications': t("通知中心"), '/settings/binding': t("账号绑定"), '/pulse': t("Pulse 权益"), '/admin/pulse': t("Pulse 配置"), '/publish': t("发布内容"), '/login': t("登录"), '/register': t("注册"), '/forgot': t("找回密码"), '/status': t("服务状态"), '/support': t("帮助中心"), '/guidelines': t("社区规范") })[path] || t("METAR 社区");
   }
 
   function languageControl() {
@@ -174,8 +175,8 @@
     const item = (url, label, icon) => link(url, I(icon) + `<span>${esc(label)}</span>`, `nav-item ${routeMatchesNavigation(path, query.toString(), url) ? 'active' : ''}`);
     return `<aside class="sidebar" id="community-sidebar" aria-label="${t("社区导航")}">
       <div class="nav-group"><div class="nav-label">${t("社区")}</div>${item('/latest', t("全部讨论"), 'chat')}${item('/latest?order=unanswered', t("待回答"), 'target')}${item('/topics', t("全部标签"), 'flag')}${item('/knowledge', t("知识库"), 'book')}</div>
-      <div class="nav-group"><div class="nav-label">${t("我的空间")}</div>${item('/me', t("个人空间"), 'user')}${item('/me/bookmarks', t("我的收藏"), 'bookmark')}${external('/users/notifications/inbox', I('bell') + `<span>${t("通知中心")}</span>`, 'nav-item')}${item('/settings/binding', t("账号绑定"), 'link')}${external(config.answerSettingsPath, I('settings') + `<span>${t("账号设置")}</span>`, 'nav-item')}</div>
-      ${currentUserState === 'ready' && isCommunityAdministrator(currentUser) ? `<div class="nav-group"><div class="nav-label">${t('管理')}</div>${item('/admin/pulse', t('Pulse 配置'), 'settings')}${external('/admin/dashboard', I('shield') + `<span>${t('社区管理')}</span>`, 'nav-item')}${external('/admin/pulse_user_center', I('link') + `<span>${t('社区连接配置')}</span>`, 'nav-item')}</div>` : ''}
+      <div class="nav-group"><div class="nav-label">${t("我的空间")}</div>${item('/me', t("个人空间"), 'user')}${item('/me/growth', t('社区成长'), 'target')}${item('/me/bookmarks', t("我的收藏"), 'bookmark')}${external('/users/notifications/inbox', I('bell') + `<span>${t("通知中心")}</span>`, 'nav-item')}${item('/settings/binding', t("账号绑定"), 'link')}${external(config.answerSettingsPath, I('settings') + `<span>${t("账号设置")}</span>`, 'nav-item')}</div>
+      ${currentUserState === 'ready' && isCommunityAdministrator(currentUser) ? `<div class="nav-group"><div class="nav-label">${t('管理')}</div>${item('/admin/pulse', t('Pulse 配置'), 'settings')}${item('/admin/growth', t('成长管理'), 'target')}${external('/admin/dashboard', I('shield') + `<span>${t('社区管理')}</span>`, 'nav-item')}${external('/admin/pulse_user_center', I('link') + `<span>${t('社区连接配置')}</span>`, 'nav-item')}</div>` : ''}
       <div class="side-bottom">${item('/pulse', t("Pulse 权益"), 'pulse')}${item('/support', t("帮助中心"), 'help')}${item('/status', t("服务状态"), 'server')}<div class="side-footer">${link('/guidelines', t("社区规范"))}${external('/sitemap.xml', t("站点地图"))}</div></div>
     </aside>`;
   }
@@ -273,9 +274,9 @@
     if (currentUserState === 'unavailable') return identityUnavailable(t("个人空间"));
     if (!currentUser) return loginRequired(t("个人空间"), t("登录后查看个人资料与发布记录。"));
     const username = currentUser.username;
-    const [profile, questions] = await Promise.all([answer.getProfile(username), answer.listPersonalQuestions(username)]);
+    const [profile, questions, experience] = await Promise.all([answer.getProfile(username), answer.listPersonalQuestions(username), isActiveUser(currentUser) ? growth.compact() : Promise.resolve('')]);
     const list = Array.isArray(questions?.list) ? questions.list : [];
-    return `${crumb([[t("个人空间")]])}<div class="content-grid"><div class="stack"><section class="card prod-user-card"><div class="between wrap">${avatar(profile, 'large')}<div class="flex wrap">${external(profileHref(username), t("公开主页"), 'btn')}${external(config.answerSettingsPath, I('settings', 'sm') + t("编辑资料"), 'btn')}</div></div><h1 class="mt16">${esc(displayName(profile))}</h1><p class="muted mt8">@${esc(profile.username || username)}${profile.location ? ` · ${esc(profile.location)}` : ''}</p><p class="mt16">${esc(profile.bio || t("这位成员暂未填写个人简介。"))}</p><div class="profile-numbers"><div><strong>${number(questions?.count)}</strong><span>${t("发布问题")}</span></div><div><strong>${number(profile.answer_count)}</strong><span>${t("参与回答")}</span></div><div><strong>${number(profile.rank)}</strong><span>${t("社区声望")}</span></div></div>${currentUser.mail_status === 2 ? `<div class="prod-status error mt16">${I('shield')}<div><strong>${t("邮箱尚未激活")}</strong><p>${t("请先验证邮箱，或在登录页面重新发送激活邮件。")}</p></div></div>` : ''}</section><section class="card prod-feed"><div class="section-heading"><h2>${t("最近发布")}</h2><span class="muted">${t("发布记录")}</span></div>${list.length ? list.map((item) => questionRow({ ...item, user_info: profile })).join('') : empty(t("还没有发布问题"), t("从一个具体、可复现的问题开始。"), external(config.answerAskPath, t("发起问题"), 'btn primary'), 'chat')}</section></div><aside class="stack"><section class="card card-pad"><h3>${t("账号快捷入口")}</h3><ul class="mini-list"><li>${link('/me/bookmarks', `<span>${t("我的收藏")}</span>`)}</li><li>${external('/users/notifications/inbox', `<span>${t("通知中心")}</span>`)}</li><li>${link('/settings/binding', `<span>${t("元衡账号绑定")}</span><small>${t("可选")}</small>`)}</li><li>${link('/pulse', `<span>${t("Pulse 权益")}</span><small>${t("绑定后")}</small>`)}</li><li>${external('/users/logout', `<span>${t("退出登录")}</span>`)}</li></ul></section></aside></div>${footer()}`;
+    return `${crumb([[t("个人空间")]])}<div class="content-grid"><div class="stack"><section class="card prod-user-card"><div class="between wrap">${avatar(profile, 'large')}<div class="flex wrap">${external(profileHref(username), t("公开主页"), 'btn')}${external(config.answerSettingsPath, I('settings', 'sm') + t("编辑资料"), 'btn')}</div></div><h1 class="mt16">${esc(displayName(profile))}</h1><p class="muted mt8">@${esc(profile.username || username)}${profile.location ? ` · ${esc(profile.location)}` : ''}</p><p class="mt16">${esc(profile.bio || t("这位成员暂未填写个人简介。"))}</p><div class="profile-numbers"><div><strong>${number(questions?.count)}</strong><span>${t("发布问题")}</span></div><div><strong>${number(profile.answer_count)}</strong><span>${t("参与回答")}</span></div><div><strong>${number(profile.rank)}</strong><span>${t("社区声望")}</span></div></div>${currentUser.mail_status === 2 ? `<div class="prod-status error mt16">${I('shield')}<div><strong>${t("邮箱尚未激活")}</strong><p>${t("请先验证邮箱，或在登录页面重新发送激活邮件。")}</p></div></div>` : ''}</section>${experience}<section class="card prod-feed"><div class="section-heading"><h2>${t("最近发布")}</h2><span class="muted">${t("发布记录")}</span></div>${list.length ? list.map((item) => questionRow({ ...item, user_info: profile })).join('') : empty(t("还没有发布问题"), t("从一个具体、可复现的问题开始。"), external(config.answerAskPath, t("发起问题"), 'btn primary'), 'chat')}</section></div><aside class="stack"><section class="card card-pad"><h3>${t("账号快捷入口")}</h3><ul class="mini-list"><li>${link('/me/bookmarks', `<span>${t("我的收藏")}</span>`)}</li><li>${external('/users/notifications/inbox', `<span>${t("通知中心")}</span>`)}</li><li>${link('/settings/binding', `<span>${t("元衡账号绑定")}</span><small>${t("可选")}</small>`)}</li><li>${link('/pulse', `<span>${t("Pulse 权益")}</span><small>${t("绑定后")}</small>`)}</li><li>${external('/users/logout', `<span>${t("退出登录")}</span>`)}</li></ul></section></aside></div>${footer()}`;
   }
 
   async function bookmarksPage() {
@@ -360,6 +361,14 @@
     if (path === '/knowledge') return knowledgePage();
     if (path === '/search') return searchPage();
     if (path === '/me') return profilePage();
+    if (path === '/me/growth' || path === '/admin/growth') {
+      const title = t(path === '/admin/growth' ? '成长管理' : '社区成长');
+      if (currentUserState === 'unavailable') return identityUnavailable(title);
+      if (!currentUser) return loginRequired(title, t('登录后查看个人资料与发布记录。'));
+      if (!isActiveUser(currentUser)) return accountUnavailable(title);
+      if (path === '/admin/growth' && !isCommunityAdministrator(currentUser)) return `${heading(title)}<section class="card">${empty(t('需要管理员权限'), '', link('/latest', t('返回社区'), 'btn'), 'shield')}</section>${footer()}`;
+      return `${crumb([[title]])}${heading(title)}${await (path === '/admin/growth' ? growth.adminPage() : growth.page())}${footer()}`;
+    }
     if (path === '/me/bookmarks') return bookmarksPage();
     if (path === '/settings/binding') return bindingPage();
     if (path === '/pulse') return pulsePage();
@@ -454,6 +463,8 @@
   });
 
   document.addEventListener('submit', (event) => {
+    const growthForm = event.target.closest('form[data-growth-form]');
+    if (growthForm) { event.preventDefault(); growth.submit(growthForm, navigate); return; }
     const periodForm = event.target.closest('form[data-form="admin-period"]');
     if (periodForm) { event.preventDefault(); pulseAdmin.periods?.submit(periodForm); return; }
     const adminForm = event.target.closest('form[data-form="admin-pulse"]');
@@ -467,6 +478,8 @@
 
   document.addEventListener('click', (event) => {
     if (router.follow(event)) { navigate(); return; }
+    const growthButton = event.target.closest('[data-growth]');
+    if (growthButton?.dataset.growth) { event.preventDefault(); growth.click(growthButton, navigate); return; }
     const target = event.target.closest('[data-action]');
     const action = target?.dataset.action;
     if (!action) return;
