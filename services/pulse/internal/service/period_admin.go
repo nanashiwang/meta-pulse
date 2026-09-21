@@ -18,6 +18,10 @@ var webPeriodKey = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
 // The web form always creates a complete, frozen paid-funding period. It
 // cannot edit active economics or switch on settlement.
 type PeriodAdminRequest struct {
+	Continuous        bool   `json:"continuous"`
+	QuotaValidityDays int    `json:"quota_validity_days"`
+	ExpectedPeriodID  uint64 `json:"expected_period_id"`
+
 	Key                  string             `json:"key"`
 	StartsAt             time.Time          `json:"starts_at"`
 	MultiplierBps        int32              `json:"multiplier_bps"`
@@ -30,7 +34,7 @@ type PeriodAdminRequest struct {
 
 func (s *PeriodCreateService) CreateFromAdmin(ctx context.Context, request PeriodAdminRequest, actor, key string) (PeriodCreateResult, error) {
 	if !webPeriodKey.MatchString(request.Key) || !webPeriodKey.MatchString(key) || actor == "" ||
-		request.StartsAt.IsZero() || request.StartsAt.Year() < 2000 || request.StartsAt.Year() > 9998 ||
+		(!request.Continuous && (request.StartsAt.IsZero() || request.StartsAt.Year() < 2000 || request.StartsAt.Year() > 9998)) ||
 		request.MultiplierBps <= 0 || money.Bps(request.MultiplierBps) > money.MaxBps ||
 		request.TicketThresholdMilli <= 0 || request.TicketThresholdMilli > int64(maxPublicRewardInteger) ||
 		request.RewardBudget < 0 || request.ExperienceBudget < 0 || request.RewardBudget > int64(maxPublicRewardInteger) || len(request.Rewards) == 0 ||
@@ -38,6 +42,7 @@ func (s *PeriodCreateService) CreateFromAdmin(ctx context.Context, request Perio
 		return PeriodCreateResult{}, ErrInvalidPeriod
 	}
 	return s.Create(ctx, PeriodCreateCommand{
+		Continuous: request.Continuous, QuotaValidityDays: request.QuotaValidityDays, ExpectedPeriodID: request.ExpectedPeriodID,
 		RequestID: key, ActorType: "community_admin", ActorID: actor,
 		Key: request.Key, StartsAt: request.StartsAt.UTC(), Timezone: "Asia/Shanghai",
 		ConfigVersion: request.Key, RandomVersion: request.Key,
@@ -48,6 +53,13 @@ func (s *PeriodCreateService) CreateFromAdmin(ctx context.Context, request Perio
 }
 
 type AdminPeriodView struct {
+	Rewards          []PeriodRewardSpec `json:"rewards"`
+	RewardBudget     int64              `json:"reward_budget"`
+	ExperienceBudget int64              `json:"experience_budget"`
+
+	Continuous        bool `json:"continuous"`
+	QuotaValidityDays int  `json:"quota_validity_days"`
+
 	ID                   uint64            `json:"id"`
 	Key                  string            `json:"key"`
 	Status               string            `json:"status"`
@@ -80,9 +92,31 @@ func (s *PeriodCreateService) ListForAdmin(ctx context.Context) ([]AdminPeriodVi
 			if err != nil {
 				return err
 			}
-			view := AdminPeriodView{ID: row.ID, Key: row.Key, Status: row.Status, StartsAt: row.StartsAt, EndsAt: row.EndsAt, TicketThresholdMilli: activity.TicketThresholdMilli, Rules: make([]AdminPeriodRule, 0)}
+			view := AdminPeriodView{Continuous: activity.Continuous, QuotaValidityDays: activity.QuotaValidityDays, ID: row.ID, Key: row.Key, Status: row.Status, StartsAt: row.StartsAt, EndsAt: row.EndsAt, TicketThresholdMilli: activity.TicketThresholdMilli, Rules: make([]AdminPeriodRule, 0)}
 			for _, rule := range rules {
 				view.Rules = append(view.Rules, AdminPeriodRule{Key: rule.RuleKey, MultiplierBps: rule.MultiplierBps})
+			}
+			if repos.Reward != nil {
+				defs, err := repos.Reward.ListDefinitions(ctx, row.ID)
+				if err != nil {
+					return err
+				}
+				for _, d := range defs {
+					if d.Enabled {
+						view.Rewards = append(view.Rewards, PeriodRewardSpec{Key: d.RewardKey, RewardType: d.RewardType, Amount: d.Amount, Weight: d.Weight})
+					}
+				}
+				for _, kind := range []string{ActionBudgetType, ExperienceRewardType} {
+					b, err := repos.Reward.GetBudgetForUpdate(ctx, row.ID, kind)
+					if err != nil && !errors.Is(err, ports.ErrNotFound) {
+						return err
+					}
+					if kind == ActionBudgetType {
+						view.RewardBudget = b.HardCap
+					} else {
+						view.ExperienceBudget = b.HardCap
+					}
+				}
 			}
 			result = append(result, view)
 		}

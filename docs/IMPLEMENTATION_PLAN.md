@@ -8,6 +8,8 @@
 
 ## 1. 当前状态
 
+v0.2.17 新网页取消手动经济周期，改为持续规则快照与按券龄判断额度资格。迁移 00014 新增发行批次和消费分配，保持旧券规则、剩余贡献累计、账本幂等和预算约束；上线仍须完成服务器升级，发布不会启用真实发奖。
+
 ```text
 ✅ 架构文档       ARCHITECTURE.md / COMMUNITY.md / AGENTS.md
 ✅ Monorepo 骨架  services/{pulse,forum,forum-plugin} + sites/blog + deploy

@@ -18,6 +18,9 @@ const (
 var ErrNoActivePeriod = errors.New("no active period for event time")
 
 type Period struct {
+	Continuous        bool
+	QuotaValidityDays int
+
 	ID                   uint64
 	Key                  string
 	Status               Status
@@ -37,6 +40,16 @@ func (p Period) Contains(at time.Time) bool {
 }
 
 func ResolveActive(periods []Period, at time.Time) (Period, error) {
+	// Continuous snapshots supersede earlier snapshots for new usage only.
+	var latest Period
+	for _, p := range periods {
+		if p.Continuous && p.Contains(at) && (latest.ID == 0 || p.StartsAt.After(latest.StartsAt) || p.StartsAt.Equal(latest.StartsAt) && p.ID > latest.ID) {
+			latest = p
+		}
+	}
+	if latest.ID != 0 {
+		return latest, nil
+	}
 	var match Period
 	for _, candidate := range periods {
 		if !candidate.Contains(at) {

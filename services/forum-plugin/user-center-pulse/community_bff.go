@@ -20,6 +20,8 @@ import (
 var communityRequestID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,96}$`)
 
 type communityPeriod struct {
+	Continuous bool `json:"continuous"`
+
 	ID            uint64    `json:"id"`
 	Key           string    `json:"key"`
 	Status        string    `json:"status,omitempty"`
@@ -52,6 +54,10 @@ type communityRewardHistoryItem struct {
 }
 
 type communityRules struct {
+	QuotaValidityDays int        `json:"quota_validity_days"`
+	QuotaExpiresAt    *time.Time `json:"quota_expires_at,omitempty"`
+	ExperienceOnly    bool       `json:"experience_only"`
+
 	Enabled           bool             `json:"enabled"`
 	UnavailableReason string           `json:"unavailable_reason"`
 	Period            *communityPeriod `json:"period"`

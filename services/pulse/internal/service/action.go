@@ -195,11 +195,19 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 		if s.cfg.DisableNewActions {
 			return ErrActionsUnavailable
 		}
-		activity, err := repos.Period.FindActiveAt(ctx, s.cfg.Now())
+		now := s.cfg.Now()
+		activity, err := repos.Period.FindActiveAt(ctx, now)
 		if err != nil {
 			return err
 		}
 
+		var lot *ports.TicketLot
+		if activity.Continuous {
+			activity, lot, err = ticketActionPeriod(ctx, repos, activity, command.UserID, now)
+			if err != nil {
+				return err
+			}
+		}
 		if s.cfg.RequireVerifiedFunding && (activity.FundingPolicy != period.VerifiedPaidFunding || activity.TicketThresholdMilli <= 0) {
 			return ErrActionsUnavailable
 		}
@@ -209,6 +217,9 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 		}
 		if err := validateRewardDefinitions(definitions, activity.ConfigVersion); err != nil {
 			return err
+		}
+		if lot != nil && !now.Before(lot.QuotaExpiresAt) {
+			definitions = experienceOnly(definitions)
 		}
 		randomBytes, err := reward.Derive(s.secret, activity.ID, command.UserID, command.ActionID, activity.ConfigVersion)
 		if err != nil {
@@ -255,16 +266,26 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 		}
 
 		grantID := reward.GrantID(activity.ID, command.UserID, command.ActionID)
-		if _, err := appendEntry(ctx, repos, ledger.Entry{
+		var ticketMetadata []byte
+		if lot != nil {
+			ticketMetadata, _ = json.Marshal(map[string]uint64{"ticket_lot_version": 1, "mint_entry_id": lot.MintEntryID})
+		}
+		spentEntry, err := appendEntry(ctx, repos, ledger.Entry{
 			UserID: command.UserID, PeriodID: activity.ID, AssetType: ledger.AssetTicket,
 			Operation: ledger.OperationTicketSpend, Amount: -1, SourceType: "pulse_action",
 			SourceRef: command.ActionID, IdempotencyKey: "ticket-spend:" + grantID,
-			PayloadHash: payloadHash, Reason: "pulse action",
-		}); err != nil {
+			PayloadHash: payloadHash, Reason: "pulse action", MetadataJSON: ticketMetadata,
+		})
+		if err != nil {
 			if errors.Is(err, ledger.ErrInvalidEntry) {
 				return err
 			}
 			return err
+		}
+		if lot != nil {
+			if err := repos.Tickets.Spend(ctx, *lot, spentEntry.ID); err != nil {
+				return err
+			}
 		}
 		stat, err := repos.UserPeriod.GetOrCreateForUpdate(ctx, command.UserID, activity.ID)
 		if err != nil {
@@ -396,4 +417,15 @@ func saveActionIdempotency(ctx context.Context, repo ports.IdempotencyRepository
 
 func actionResultFromGrant(grant ports.RewardGrant) ActionResult {
 	return ActionResult{GrantID: grant.GrantID, PeriodID: grant.PeriodID, UserID: grant.UserID, ActionID: grant.ActionID, RewardType: grant.RewardType, Amount: grant.Amount, RandomValue: grant.RandomValue, ConfigVersion: grant.ConfigVersion, Status: grant.Status, TransferableQuota: false}
+}
+
+// Expired tickets use the experience sub-pool recorded when they were minted.
+func experienceOnly(definitions []reward.Definition) []reward.Definition {
+	result := make([]reward.Definition, 0, len(definitions))
+	for _, d := range definitions {
+		if d.RewardType == ExperienceRewardType {
+			result = append(result, d)
+		}
+	}
+	return result
 }

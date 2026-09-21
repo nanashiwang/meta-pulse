@@ -8,16 +8,40 @@ import (
 )
 
 func validAdminPeriodBody(fields map[string]json.RawMessage) bool {
-	if len(fields) != 7 && len(fields) != 8 {
+	var continuous bool
+	if raw, ok := fields["continuous"]; ok {
+		if json.Unmarshal(raw, &continuous) != nil || !continuous {
+			return false
+		}
+	}
+	if !continuous && len(fields) != 7 && len(fields) != 8 {
 		return false
 	}
-	for _, name := range []string{"key", "starts_at", "reason", "multiplier_bps", "ticket_threshold_milli", "reward_budget", "rewards"} {
+	required := []string{"key", "reason", "multiplier_bps", "ticket_threshold_milli", "reward_budget", "rewards"}
+	if continuous {
+		required = append(required, "quota_validity_days", "expected_period_id")
+		if _, ok := fields["starts_at"]; ok {
+			return false
+		}
+	} else {
+		required = append(required, "starts_at")
+	}
+	for _, name := range required {
 		if _, ok := fields[name]; !ok {
 			return false
 		}
 	}
 	for name, raw := range fields {
 		switch name {
+		case "continuous":
+			if !continuous {
+				return false
+			}
+		case "quota_validity_days", "expected_period_id":
+			var value int64
+			if !continuous || json.Unmarshal(raw, &value) != nil || value < 0 || value > 1<<53-1 || (name == "quota_validity_days" && (value < 1 || value > 3650)) {
+				return false
+			}
 		case "key", "starts_at", "reason":
 			var value string
 			if json.Unmarshal(raw, &value) != nil || value == "" {
@@ -64,6 +88,9 @@ func validAdminPeriodBody(fields map[string]json.RawMessage) bool {
 }
 
 type adminPeriodResult struct {
+	Continuous        bool `json:"continuous"`
+	QuotaValidityDays int  `json:"quota_validity_days"`
+
 	PeriodID             uint64    `json:"period_id"`
 	Key                  string    `json:"period_key"`
 	Status               string    `json:"status"`
@@ -72,6 +99,18 @@ type adminPeriodResult struct {
 	TicketThresholdMilli int64     `json:"ticket_threshold_milli"`
 }
 type adminPeriod struct {
+	Rewards []struct {
+		Key        string `json:"key"`
+		RewardType string `json:"reward_type"`
+		Amount     int64  `json:"amount"`
+		Weight     uint64 `json:"weight"`
+	} `json:"rewards"`
+	RewardBudget     int64 `json:"reward_budget"`
+	ExperienceBudget int64 `json:"experience_budget"`
+
+	Continuous        bool `json:"continuous"`
+	QuotaValidityDays int  `json:"quota_validity_days"`
+
 	ID                   uint64    `json:"id"`
 	Key                  string    `json:"key"`
 	Status               string    `json:"status"`
@@ -94,7 +133,8 @@ func adminPeriodsProjection(method string, data []byte) (any, error) {
 		return result, nil
 	}
 	var result struct {
-		Periods []adminPeriod `json:"periods"`
+		ContinuousSupported bool          `json:"continuous_supported"`
+		Periods             []adminPeriod `json:"periods"`
 	}
 	if decodeCommunityResponse(data, &result) != nil || result.Periods == nil || len(result.Periods) > 20 {
 		return nil, invalid

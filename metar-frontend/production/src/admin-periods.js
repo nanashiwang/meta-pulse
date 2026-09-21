@@ -18,7 +18,7 @@
     new window.MetarAdapters.AdapterError("invalid period", {
       code: "invalid_period",
     });
-  const storageKey = "metar-period-create-pending-v1";
+  const storageKey = "metar-continuous-rules-pending-v1";
   function fixed(value, digits, max = 9007199254740991n) {
     const text = String(value ?? "").trim();
     if (!new RegExp(`^(0|[1-9][0-9]*)(\\.[0-9]{1,${digits}})?$`).test(text))
@@ -68,23 +68,23 @@
   const errorText = (error) => {
     if (error.code === "period_conflict" || error.status === 409)
       return t(
-        "周期编号或时间与已有周期冲突，或重复请求的内容发生变化。请刷新周期列表后核对。",
+        "配置已被更新，或重复请求内容发生冲突。请刷新规则列表后核对。",
       );
     if (error.code === "settings_pending")
-      return t("暂时无法确认创建结果。请重试原请求，不要另建周期。");
+      return t("暂时无法确认保存结果，请重试原请求。");
     if (error.code === "invalid_period" || error.status === 400)
       return t(
-        "请检查周期编号、开始时间、正数倍率、每张券贡献度、预算和奖项。单个奖项不能超过总预算。",
+        "请检查有效天数、倍率、每券贡献度、预算与奖项，并至少配置一个经验奖项。",
       );
     if (error.status === 401 || error.status === 403)
       return t("仅正常且已激活的社区管理员可管理 Pulse 配置。");
-    return t("周期配置暂不可用，请确认服务已升级并完成管理通道配对。");
+    return t("奖励配置暂不可用，请确认服务已升级并完成管理通道配对。");
   };
-  function rewardRow() {
+  function rewardRow(prize = {}) {
     return `<div class="prod-admin-grid prod-period-prize mt16">
-      <label>${t("奖项编号")}<input name="prize_key" required pattern="[a-z0-9](?:[a-z0-9_]|-){0,63}" placeholder="reward-1"></label>
-      <label>${t("奖励类型")}<select name="prize_type"><option value="newapi_quota">${t("API 调用额度")}</option><option value="community_exp">${t("社区经验 EXP")}</option></select></label><label>${t("奖励数量（整数）")}<input name="prize_amount" required inputmode="numeric" pattern="[1-9][0-9]*"></label>
-      <label>${t("抽取权重")}<input name="prize_weight" required inputmode="numeric" pattern="[1-9][0-9]*"></label>
+      <label>${t("奖项编号")}<input name="prize_key" required pattern="[a-z0-9](?:[a-z0-9_]|-){0,63}" placeholder="reward-1" value="${esc(prize.key || '')}"></label>
+      <label>${t("奖励类型")}<select name="prize_type"><option value="newapi_quota">${t("API 调用额度")}</option><option value="community_exp" ${prize.reward_type === 'community_exp' ? 'selected' : ''}>${t("社区经验 EXP")}</option></select></label><label>${t("奖励数量（整数）")}<input name="prize_amount" required inputmode="numeric" pattern="[1-9][0-9]*" value="${esc(prize.amount || '')}"></label>
+      <label>${t("概率权重")}<input name="prize_weight" required inputmode="numeric" pattern="[1-9][0-9]*" value="${esc(prize.weight || '')}"></label>
       <button type="button" class="btn small" data-action="admin-period-remove">${t("移除奖项")}</button></div>`;
   }
   class View {
@@ -113,7 +113,7 @@
     restore() {
       try {
         const saved = JSON.parse(sessionStorage.getItem(storageKey) || "null");
-        if (saved?.key && saved?.body?.key && saved.body.starts_at)
+        if (saved?.key && saved?.body?.key && saved.body.continuous === true)
           this.pending = saved;
       } catch (_) {
         /* Invalid storage does not authorize a request. */
@@ -130,38 +130,36 @@
         return `<section class="card card-pad mt24"><h2>${t("贡献度与脉冲券")}</h2><p class="muted mt16">${esc(errorText(e))}</p><button class="btn mt16" data-action="retry">${t("重新加载")}</button></section>`;
       }
       if (epoch !== this.epoch) return "";
+      if (list.continuous_supported !== true) return `<section class="card card-pad mt24"><h2>${t("贡献度与脉冲券")}</h2><p class="muted mt16">${t("奖励配置暂不可用，请确认服务已升级并完成管理通道配对。")}</p></section>`;
+      const now = Date.now();
+      this.current = list.periods.filter(p => p.status === 'active' && Date.parse(p.starts_at) <= now && Date.parse(p.ends_at) > now).sort((a,b) => Number(Boolean(b.continuous))-Number(Boolean(a.continuous)) || Date.parse(b.starts_at)-Date.parse(a.starts_at) || b.id-a.id)[0];
       return `<section class="card card-pad mt24"><div class="between wrap"><h2>${t("贡献度与脉冲券")}</h2><button type="button" class="btn primary" data-action="admin-period-toggle" aria-expanded="${Boolean(this.pending)}" aria-controls="admin-period-editor">${t("设置兑换比例")}</button></div>
-        <p class="muted mt16">${t("已启用周期的比例保持不变。新比例与奖池一起保存，在新周期开始后生效；每期持续 10 天。")}</p>
-        <div class="mt16 prod-period-list">${list.periods.length ? list.periods.map((p) => `<div class="prod-status mt8"><div><strong>${esc(p.key)} · ${esc(statusText(p.status))}</strong><p>${esc(dateText(p.starts_at))} → ${esc(dateText(p.ends_at))} (UTC+8)</p><p>${t("贡献倍率")}：${p.rules.map((r) => `${esc(r.key === "default" ? t("通用") : r.key)} ${esc(format(r.multiplier_bps, 4))}×`).join("、")} · ${t("每张券所需贡献度")}：${p.ticket_threshold_milli ? esc(format(p.ticket_threshold_milli, 3)) : t("沿用服务器默认门槛")}</p></div><span class="badge">${t("只读")}</span></div>`).join("") : `<p class="muted">${t("尚无周期，请创建首个周期。")}</p>`}</div>
+        <p class="muted mt16">${t("保存后用于后续调用和新券，无需设置周期。已有券保留领取时的有效天数与概率；未成券的贡献度继续累计。")}</p>
+        <div class="mt16 prod-period-list">${list.periods.length ? list.periods.map((p) => `<div class="prod-status mt8"><div><strong>${esc(p.key)} · ${esc(statusText(p.status))}</strong><p>${p.continuous ? `${esc(dateText(p.starts_at))} · ${t("长期有效")} · ${esc(p.quota_validity_days)} ${t("天内可抽额度")}` : `${esc(dateText(p.starts_at))} → ${esc(dateText(p.ends_at))} (UTC+8)`}</p><p>${t("贡献倍率")}：${p.rules.map((r) => `${esc(r.key === "default" ? t("通用") : r.key)} ${esc(format(r.multiplier_bps, 4))}×`).join("、")} · ${t("每张券所需贡献度")}：${p.ticket_threshold_milli ? esc(format(p.ticket_threshold_milli, 3)) : t("沿用服务器默认门槛")}</p></div><span class="badge">${t("只读")}</span></div>`).join("") : `<p class="muted">${t("尚无规则，请设置贡献比例与奖项。")}</p>`}</div>
         <form id="admin-period-editor" data-form="admin-period" class="prod-admin-form mt24" ${this.pending ? "" : "hidden"}>
         <fieldset ${this.pending ? "disabled" : ""}><div class="prod-admin-grid">
-          <label>${t("新周期编号")}<input name="key" required maxlength="64" pattern="[a-zA-Z0-9](?:[a-zA-Z0-9_]|-){0,63}" placeholder="rewards-2026-02"></label>
-          <label>${t("开始时间（北京时间）")}<input name="starts_at" type="datetime-local" required></label>
-          <label>${t("API 贡献倍率")}<input name="multiplier" type="number" min="0.0001" max="100" step="0.0001" value="1" required><span class="prod-field-help">${t("1 表示原始贡献的 1 倍；最多支持 4 位小数。")}</span></label>
-          <label>${t("每张脉冲券所需贡献度")}<input name="threshold" type="number" min="0.001" step="0.001" required placeholder="1000"><span class="prod-field-help">${t("按本期累计净贡献计算，最多支持 3 位小数。")}</span></label>
+          <label>${t("额度奖励有效天数")}<input name="quota_validity_days" type="number" min="1" max="3650" step="1" value="${this.current?.quota_validity_days || 30}" required><span class="prod-field-help">${t("从每张券获得时起计算，默认 30 天；到期后仅抽取经验。")}</span></label>
+          <label>${t("API 贡献倍率")}<input name="multiplier" type="number" min="0.0001" max="100" step="0.0001" value="${this.current?.rules?.[0] ? esc(format(this.current.rules[0].multiplier_bps,4)) : 1}" required><span class="prod-field-help">${t("1 表示原始贡献的 1 倍；最多支持 4 位小数。")}</span></label>
+          <label>${t("每张脉冲券所需贡献度")}<input name="threshold" type="number" min="0.001" step="0.001" required value="${this.current?.ticket_threshold_milli ? esc(format(this.current.ticket_threshold_milli,3)) : ""}" placeholder="1000"><span class="prod-field-help">${t("未成券贡献度持续累计，按产券时门槛转换；最多支持 3 位小数。")}</span></label>
         </div>
-        <h3 class="mt24">${t("新周期奖池")}</h3><p class="prod-field-help">${t("额度预算与经验预算分别设置；没有该类型奖项时填 0。奖项概率在新周期固定，保存不会开启抽奖或自动发奖。")}</p>
+        <h3 class="mt24">${t("新券奖励规则")}</h3><p class="prod-field-help">${t("每次独立抽取，中奖不减少奖项权重。至少设置一个经验奖项。每次保存为新规则分配独立预算，旧规则预算继续保留；保存不会开启抽奖。")}</p>
         <label class="prod-admin-field mt16">${t("额度奖池预算（整数 quota）")}<input name="reward_budget" required inputmode="numeric" pattern="0|[1-9][0-9]*"></label><label class="prod-admin-field mt16">${t("经验奖池预算（整数 EXP）")}<input name="experience_budget" required value="0" inputmode="numeric" pattern="0|[1-9][0-9]*"></label>
-        <div data-period-prizes>${rewardRow()}</div><button class="btn mt16" type="button" data-action="admin-period-add">${t("添加奖项")}</button>
+        <div data-period-prizes>${this.current?.rewards?.length ? this.current.rewards.map(rewardRow).join('') : rewardRow({reward_type:'community_exp'})}</div><button class="btn mt16" type="button" data-action="admin-period-add">${t("添加奖项")}</button>
+        <p class="prod-field-help mt16">${t("奖项概率 = 该奖项权重 ÷ 所有奖项权重之和。到期券仅在经验奖项之间按权重抽取。")}</p>
         <label class="prod-admin-field mt24">${t("修改原因")}<textarea name="reason" required minlength="3" maxlength="500" rows="2"></textarea></label>
-        <label class="prod-check mt16"><input name="confirm" type="checkbox" required> ${t("我已核对比例、时间与奖池；保存后本周期规则将冻结。")}</label>
-        <button type="submit" class="btn primary mt24">${t("保存并创建新周期")}</button></fieldset>
-        <p class="prod-field-help mt16" data-period-message role="status" aria-live="polite">${this.pending ? esc(t("存在待确认的周期创建请求：{key}。请重试原请求。", { key: this.pending.body.key })) : ""}</p>
+        <label class="prod-check mt16"><input name="confirm" type="checkbox" required> ${t("我已核对有效天数、概率和新增预算；已有券继续使用原规则。")}</label>
+        <button type="submit" class="btn primary mt24">${t("保存新券规则")}</button></fieldset>
+        <p class="prod-field-help mt16" data-period-message role="status" aria-live="polite">${this.pending ? esc(t("存在待确认的规则保存请求：{key}。请重试原请求。", { key: this.pending.body.key })) : ""}</p>
         <button class="btn primary mt16" type="button" data-action="admin-period-retry" ${this.pending ? "" : "hidden"}>${t("重试原请求")}</button>
-        <button class="btn mt16" type="button" data-action="retry">${t("刷新周期列表")}</button>
+        <button class="btn mt16" type="button" data-action="retry">${t("刷新规则列表")}</button>
         </form></section>`;
     }
     payload(form) {
       const f = new FormData(form);
-      const key = String(f.get("key") || "").trim();
-      if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(key) || !f.has("confirm"))
-        throw invalid();
-      const starts = String(f.get("starts_at") || "");
-      if (
-        !/^\d{4}-\d\d-\d\dT\d\d:\d\d$/.test(starts) ||
-        !Number.isFinite(Date.parse(`${starts}:00+08:00`))
-      )
-        throw invalid();
+      if (!f.has("confirm")) throw invalid();
+      const key = 'rules-' + window.crypto.randomUUID();
+      const quota_validity_days = integer(f.get("quota_validity_days"));
+      if (quota_validity_days > 3650) throw invalid();
       const reward_budget =
         String(f.get("reward_budget")) === "0"
           ? 0
@@ -207,10 +205,13 @@
         rewards.some((r) => !r.reward_type) !== reward_budget > 0
       )
         throw invalid();
+      if (!rewards.some(r => r.reward_type === "community_exp")) throw invalid();
       return {
         ...(experience_budget ? { experience_budget } : {}),
         key,
-        starts_at: `${starts}:00+08:00`,
+        continuous: true,
+        quota_validity_days,
+        expected_period_id: this.current?.id || 0,
         multiplier_bps: fixed(f.get("multiplier"), 4, 1000000n),
         ticket_threshold_milli: fixed(f.get("threshold"), 3),
         reward_budget,
@@ -235,7 +236,7 @@
         form.querySelector("fieldset").disabled = true;
         form.querySelector('[data-action="admin-period-retry"]').disabled =
           true;
-        message.textContent = t("正在创建周期…");
+        message.textContent = t("正在保存规则…");
         const result = await this.api.createPeriod(
           this.pending.body,
           this.pending.key,
@@ -244,7 +245,7 @@
         this.persist();
         if (epoch !== this.epoch) return;
         message.textContent = t(
-          "周期 {key} 已创建，比例已保存。请刷新周期列表查看。",
+          "规则 {key} 已保存，对后续调用生效。请刷新规则列表查看。",
           { key: result.period_key },
         );
         form.reset();

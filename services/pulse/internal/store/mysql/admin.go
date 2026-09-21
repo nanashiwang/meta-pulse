@@ -72,7 +72,7 @@ func (r *periodAdminRepository) ListDueForClose(ctx context.Context, now time.Ti
 		return nil, errors.New("period close batch size must be between 1 and 5000")
 	}
 	var models []periodModel
-	if err := r.db.WithContext(ctx).Where("status IN ? AND ends_at <= ?", []string{string(period.StatusActive), string(period.StatusSettling)}, now).Order("ends_at ASC, id ASC").Limit(limit).Find(&models).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("continuous = 0 AND status IN ? AND ends_at <= ?", []string{string(period.StatusActive), string(period.StatusSettling)}, now).Order("ends_at ASC, id ASC").Limit(limit).Find(&models).Error; err != nil {
 		return nil, fmt.Errorf("list periods due for close: %w", err)
 	}
 	result := make([]period.Period, len(models))
@@ -652,9 +652,14 @@ func (r *periodAdminRepository) Create(ctx context.Context, activity period.Peri
 	if err := validatePeriodCreate(activity); err != nil {
 		return period.Period{}, err
 	}
+	location, err := time.LoadLocation(activity.Timezone)
+	if err != nil {
+		return period.Period{}, err
+	}
 	model := periodModel{
+		Continuous: activity.Continuous, QuotaValidityDays: activity.QuotaValidityDays,
 		PeriodKey: activity.Key, Status: string(period.StatusDraft),
-		StartsAt: activity.StartsAt, EndsAt: activity.EndsAt, Timezone: activity.Timezone,
+		StartsAt: activity.StartsAt.In(location), EndsAt: activity.EndsAt.In(location), Timezone: activity.Timezone,
 		ConfigVersion: activity.ConfigVersion, RandomVersion: activity.RandomVersion,
 		FundingPolicy: activity.FundingPolicy, TicketThresholdMilli: activity.TicketThresholdMilli,
 	}

@@ -16,6 +16,8 @@ type PublicReward struct {
 	Weight     uint64 `json:"weight"`
 }
 type PublicPeriod struct {
+	Continuous bool `json:"continuous"`
+
 	ID            uint64    `json:"id"`
 	Key           string    `json:"key"`
 	StartsAt      time.Time `json:"starts_at"`
@@ -23,6 +25,10 @@ type PublicPeriod struct {
 	ConfigVersion string    `json:"config_version"`
 }
 type RewardRules struct {
+	QuotaValidityDays int        `json:"quota_validity_days"`
+	QuotaExpiresAt    *time.Time `json:"quota_expires_at,omitempty"`
+	ExperienceOnly    bool       `json:"experience_only"`
+
 	QuotaPerUnit      int64          `json:"quota_per_unit"`
 	Enabled           bool           `json:"enabled"`
 	UnavailableReason string         `json:"unavailable_reason"`
@@ -42,12 +48,19 @@ func NewRewardRulesService(unit ports.UnitOfWork, enabled bool) *RewardRulesServ
 	return &RewardRulesService{unit: unit, enabled: enabled, now: time.Now}
 }
 func (s *RewardRulesService) Get(ctx context.Context) (RewardRules, error) {
+	return s.get(ctx, 0)
+}
+func (s *RewardRulesService) GetForUser(ctx context.Context, userID uint64) (RewardRules, error) {
+	return s.get(ctx, userID)
+}
+func (s *RewardRulesService) get(ctx context.Context, userID uint64) (RewardRules, error) {
 	result := RewardRules{QuotaPerUnit: s.QuotaPerUnit, TicketCost: 1, Rewards: []PublicReward{}, UnavailableReason: "activity_paused"}
+	now := s.now()
 	err := s.unit.Do(ctx, func(repos ports.Repositories) error {
 		if repos.Period == nil || repos.Reward == nil {
 			return errors.New("reward repositories unavailable")
 		}
-		p, err := repos.Period.FindActiveAt(ctx, s.now())
+		p, err := repos.Period.FindActiveAt(ctx, now)
 		if errors.Is(err, period.ErrNoActivePeriod) {
 			result.UnavailableReason = "no_active_period"
 			return nil
@@ -55,7 +68,19 @@ func (s *RewardRulesService) Get(ctx context.Context) (RewardRules, error) {
 		if err != nil {
 			return err
 		}
-		result.Period = &PublicPeriod{ID: p.ID, Key: p.Key, StartsAt: p.StartsAt, EndsAt: p.EndsAt, ConfigVersion: p.ConfigVersion}
+		var lot *ports.TicketLot
+		if p.Continuous && userID != 0 {
+			p, lot, err = ticketActionPeriod(ctx, repos, p, userID, now)
+			if err != nil && !errors.Is(err, ErrInsufficientTickets) {
+				return err
+			}
+		}
+		result.QuotaValidityDays = p.QuotaValidityDays
+		if lot != nil {
+			result.QuotaExpiresAt = &lot.QuotaExpiresAt
+			result.ExperienceOnly = !now.Before(lot.QuotaExpiresAt)
+		}
+		result.Period = &PublicPeriod{Continuous: p.Continuous, ID: p.ID, Key: p.Key, StartsAt: p.StartsAt, EndsAt: p.EndsAt, ConfigVersion: p.ConfigVersion}
 		if p.FundingPolicy != period.VerifiedPaidFunding || p.TicketThresholdMilli <= 0 {
 			result.UnavailableReason = "funding_verification_required"
 			return nil
@@ -66,6 +91,9 @@ func (s *RewardRulesService) Get(ctx context.Context) (RewardRules, error) {
 		}
 		if err := validateRewardDefinitions(defs, p.ConfigVersion); err != nil {
 			return err
+		}
+		if result.ExperienceOnly {
+			defs = experienceOnly(defs)
 		}
 		for _, d := range defs {
 			if !d.Enabled {

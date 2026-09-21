@@ -25,7 +25,16 @@ func RewardRulesRoute(router *gin.RouterGroup, reader RewardRulesReader, auth gi
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid query"})
 			return
 		}
-		result, err := reader.Get(c.Request.Context())
+		var result service.RewardRules
+		var err error
+		if personal, ok := reader.(interface {
+			GetForUser(context.Context, uint64) (service.RewardRules, error)
+		}); ok {
+			principal, _ := ProductPrincipal(c)
+			result, err = personal.GetForUser(c.Request.Context(), principal.UserID)
+		} else {
+			result, err = reader.Get(c.Request.Context())
+		}
 		if err != nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "rules unavailable"})
 			return

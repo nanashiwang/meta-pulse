@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -171,6 +172,14 @@ func (s *UsageIngestService) processOne(ctx context.Context, incoming usage.Even
 			return err
 		}
 		incoming.PeriodID = activity.ID
+		if activity.Continuous {
+			if repos.Tickets == nil {
+				return errors.New("ticket repository unavailable")
+			}
+			if err := repos.Tickets.LockUser(ctx, incoming.UserID); err != nil {
+				return err
+			}
+		}
 		if activity.FundingPolicy == period.VerifiedPaidFunding && (incoming.FundingProof == "" || incoming.QuotaDelta < 0) {
 			incoming.NeedsReview = true
 			incoming.ReviewReason = "verified-paid period requires a consumption funding proof"
@@ -290,6 +299,23 @@ func (s *UsageIngestService) processOne(ctx context.Context, incoming usage.Even
 		oldEntitled := entitledTickets(stat.NetContributionMilli, threshold)
 		newEntitled := entitledTickets(newNet, threshold)
 		ticketDelta := newEntitled - oldEntitled
+		if activity.Continuous {
+			ticketDelta = 0
+			if incoming.Eligible && incoming.ContributionMilli > 0 {
+				pending, err := repos.Tickets.PendingContribution(ctx, incoming.UserID)
+				if err != nil {
+					return err
+				}
+				if pending < 0 {
+					return errors.New("negative continuous contribution remainder")
+				}
+				ticketDelta = pending / threshold
+			}
+			if stat.EntitledTickets > math.MaxInt64-ticketDelta {
+				return errors.New("ticket entitlement overflow")
+			}
+			newEntitled = stat.EntitledTickets + ticketDelta
+		}
 		if ticketDelta != 0 {
 			operation := ledger.OperationTicketMint
 			var reversalOf *uint64
@@ -300,8 +326,18 @@ func (s *UsageIngestService) processOne(ctx context.Context, incoming usage.Even
 				reversalOf = &contributionEntry.ID
 			}
 			ticketEntry := ledger.Entry{UserID: incoming.UserID, PeriodID: incoming.PeriodID, AssetType: ledger.AssetTicket, Operation: operation, Amount: ticketDelta, SourceType: "usage", SourceRef: usageSourceRef(incoming), IdempotencyKey: "ticket:" + incoming.SourceSystem + ":" + incoming.SourceEventID, PayloadHash: incoming.PayloadHash, ReversalOfEntryID: reversalOf, Reason: "usage entitlement delta"}
-			if _, err := appendEntry(ctx, repos, ticketEntry); err != nil {
+			earned := s.now().UTC().Truncate(time.Second)
+			if activity.Continuous {
+				ticketEntry.MetadataJSON, _ = json.Marshal(map[string]int64{"ticket_lot_version": 1, "earned_at": earned.Unix(), "quota_expires_at": earned.Add(time.Duration(activity.QuotaValidityDays) * 24 * time.Hour).Unix()})
+			}
+			minted, err := appendEntry(ctx, repos, ticketEntry)
+			if err != nil {
 				return err
+			}
+			if activity.Continuous {
+				if err := repos.Tickets.Mint(ctx, ports.TicketLot{UserID: incoming.UserID, PeriodID: activity.ID, MintEntryID: minted.ID, Issued: ticketDelta, Remaining: ticketDelta, EarnedAt: earned, QuotaExpiresAt: earned.Add(time.Duration(activity.QuotaValidityDays) * 24 * time.Hour)}); err != nil {
+					return err
+				}
 			}
 			if ticketDelta > 0 {
 				result.TicketsMinted += int(ticketDelta)

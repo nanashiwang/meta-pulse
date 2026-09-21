@@ -47,6 +47,7 @@ func SummaryRoute(router *gin.RouterGroup, reader SummaryReader, auth gin.Handle
 		}
 		if summary.CurrentPeriod != nil {
 			response["current_period"] = gin.H{
+				"continuous":     summary.CurrentPeriod.Continuous,
 				"id":             summary.CurrentPeriod.ID,
 				"key":            summary.CurrentPeriod.Key,
 				"status":         summary.CurrentPeriod.Status,

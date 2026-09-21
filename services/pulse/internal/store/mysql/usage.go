@@ -74,6 +74,8 @@ type cursorModel struct {
 func (cursorModel) TableName() string { return "pulse_worker_cursor" }
 
 type periodModel struct {
+	Continuous           bool      `gorm:"column:continuous"`
+	QuotaValidityDays    int       `gorm:"column:quota_validity_days"`
 	ID                   uint64    `gorm:"column:id;primaryKey"`
 	PeriodKey            string    `gorm:"column:period_key"`
 	Status               string    `gorm:"column:status"`
@@ -117,6 +119,7 @@ func (userPeriodStatModel) TableName() string { return "pulse_user_period_stat" 
 
 func newRepositories(db *gorm.DB) ports.Repositories {
 	return ports.Repositories{
+		Tickets:        &ticketRepository{db: db},
 		Ledger:         &ledgerRepository{db: db},
 		Account:        &accountRepository{db: db},
 		Usage:          &usageRepository{db: db},
@@ -309,7 +312,7 @@ func (m periodModel) toDomain() period.Period {
 	wall := func(value time.Time) time.Time {
 		return time.Date(value.Year(), value.Month(), value.Day(), value.Hour(), value.Minute(), value.Second(), value.Nanosecond(), location)
 	}
-	return period.Period{ID: m.ID, Key: m.PeriodKey, Status: period.Status(m.Status), StartsAt: wall(m.StartsAt), EndsAt: wall(m.EndsAt), Timezone: m.Timezone, ConfigVersion: m.ConfigVersion, RandomVersion: m.RandomVersion, FundingPolicy: m.FundingPolicy, TicketThresholdMilli: m.TicketThresholdMilli}
+	return period.Period{Continuous: m.Continuous, QuotaValidityDays: m.QuotaValidityDays, ID: m.ID, Key: m.PeriodKey, Status: period.Status(m.Status), StartsAt: wall(m.StartsAt), EndsAt: wall(m.EndsAt), Timezone: m.Timezone, ConfigVersion: m.ConfigVersion, RandomVersion: m.RandomVersion, FundingPolicy: m.FundingPolicy, TicketThresholdMilli: m.TicketThresholdMilli}
 }
 
 func (m economicsRuleModel) toDomain() economics.Rule {

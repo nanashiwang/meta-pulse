@@ -39,6 +39,10 @@ type PeriodRuleSpec struct {
 // (see usage_ingest.go), and invariant #11 forbids repairing that in place
 // once the period is active.
 type PeriodCreateCommand struct {
+	Continuous        bool   `json:",omitempty"`
+	QuotaValidityDays int    `json:",omitempty"`
+	ExpectedPeriodID  uint64 `json:",omitempty"`
+
 	RequestID            string
 	ActorType            string
 	ActorID              string
@@ -66,6 +70,9 @@ type PeriodRewardSpec struct {
 }
 
 type PeriodCreateResult struct {
+	Continuous        bool `json:"continuous"`
+	QuotaValidityDays int  `json:"quota_validity_days"`
+
 	PeriodID             uint64    `json:"period_id"`
 	Key                  string    `json:"period_key"`
 	Status               string    `json:"status"`
@@ -103,6 +110,9 @@ func (s *PeriodCreateService) Create(ctx context.Context, command PeriodCreateCo
 		return PeriodCreateResult{}, fmt.Errorf("%w: %v", ErrInvalidPeriod, err)
 	}
 	endsAt := command.StartsAt.Add(PeriodLength)
+	if command.Continuous {
+		endsAt = time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC)
+	}
 
 	payload, _ := json.Marshal(command)
 	digest := sha256.Sum256(payload)
@@ -137,6 +147,19 @@ func (s *PeriodCreateService) Create(ctx context.Context, command PeriodCreateCo
 				return json.Unmarshal(replay.ResponseJSON, &result)
 			}
 		}
+		if command.Continuous {
+			if repos.Period == nil {
+				return errors.New("period repository is not initialized")
+			}
+			command.StartsAt = s.now().UTC().Truncate(time.Second)
+			current, err := repos.Period.FindActiveAt(ctx, command.StartsAt)
+			if err != nil && !errors.Is(err, period.ErrNoActivePeriod) {
+				return err
+			}
+			if current.ID != command.ExpectedPeriodID {
+				return ports.ErrConflict
+			}
+		}
 		if _, err := repos.PeriodAdmin.FindByKeyForUpdate(ctx, command.Key); err == nil {
 			return fmt.Errorf("%w: period key already exists", ports.ErrConflict)
 		} else if !errors.Is(err, ports.ErrNotFound) {
@@ -146,7 +169,7 @@ func (s *PeriodCreateService) Create(ctx context.Context, command PeriodCreateCo
 		if err != nil {
 			return err
 		}
-		if len(overlapping) > 0 {
+		if len(overlapping) > 0 && !command.Continuous {
 			return fmt.Errorf("%w: period %s overlaps existing period %s", ports.ErrConflict, command.Key, overlapping[0].Key)
 		}
 		fundingPolicy := "legacy"
@@ -154,6 +177,7 @@ func (s *PeriodCreateService) Create(ctx context.Context, command PeriodCreateCo
 			fundingPolicy = period.VerifiedPaidFunding
 		}
 		created, err := repos.PeriodAdmin.Create(ctx, period.Period{
+			Continuous: command.Continuous, QuotaValidityDays: command.QuotaValidityDays,
 			Key: command.Key, Status: period.StatusDraft,
 			StartsAt: command.StartsAt, EndsAt: endsAt, Timezone: command.Timezone,
 			ConfigVersion: command.ConfigVersion, RandomVersion: command.RandomVersion,
@@ -207,6 +231,8 @@ func (s *PeriodCreateService) Create(ctx context.Context, command PeriodCreateCo
 			status = period.StatusActive
 		}
 		afterJSON, err := json.Marshal(struct {
+			Continuous           bool               `json:"continuous"`
+			QuotaValidityDays    int                `json:"quota_validity_days"`
 			PeriodKey            string             `json:"period_key"`
 			Status               string             `json:"status"`
 			StartsAt             time.Time          `json:"starts_at"`
@@ -221,7 +247,7 @@ func (s *PeriodCreateService) Create(ctx context.Context, command PeriodCreateCo
 			Rewards              []PeriodRewardSpec `json:"rewards"`
 			RewardBudget         int64              `json:"reward_budget"`
 			ExperienceBudget     int64              `json:"experience_budget"`
-		}{created.Key, string(status), created.StartsAt, created.EndsAt, created.Timezone, created.ConfigVersion, created.RandomVersion, len(rules), command.Rules, created.FundingPolicy, created.TicketThresholdMilli, command.Rewards, command.RewardBudget, command.ExperienceBudget})
+		}{created.Continuous, created.QuotaValidityDays, created.Key, string(status), created.StartsAt, created.EndsAt, created.Timezone, created.ConfigVersion, created.RandomVersion, len(rules), command.Rules, created.FundingPolicy, created.TicketThresholdMilli, command.Rewards, command.RewardBudget, command.ExperienceBudget})
 		if err != nil {
 			return err
 		}
@@ -233,6 +259,7 @@ func (s *PeriodCreateService) Create(ctx context.Context, command PeriodCreateCo
 			return err
 		}
 		result = PeriodCreateResult{
+			Continuous: created.Continuous, QuotaValidityDays: created.QuotaValidityDays,
 			PeriodID: created.ID, Key: created.Key, Status: string(status),
 			StartsAt: created.StartsAt, EndsAt: created.EndsAt, RuleCount: len(rules),
 			RewardCount: len(command.Rewards), RewardBudget: command.RewardBudget, ExperienceBudget: command.ExperienceBudget, FundingPolicy: created.FundingPolicy, TicketThresholdMilli: created.TicketThresholdMilli,
@@ -287,8 +314,25 @@ func normalizePeriodCreateCommand(command PeriodCreateCommand) (PeriodCreateComm
 	if _, err := time.LoadLocation(command.Timezone); err != nil {
 		return command, fmt.Errorf("invalid period timezone %q: %w", command.Timezone, err)
 	}
-	if command.StartsAt.IsZero() {
+	if command.StartsAt.IsZero() && !command.Continuous {
 		return command, errors.New("period start time is required")
+	}
+	if !command.Continuous && (command.QuotaValidityDays != 0 || command.ExpectedPeriodID != 0) {
+		return command, errors.New("continuous fields require continuous rules")
+	}
+	if command.Continuous {
+		if !command.StartsAt.IsZero() || command.QuotaValidityDays < 1 || command.QuotaValidityDays > 3650 || command.RequestID == "" || !command.Activate {
+			return command, errors.New("invalid continuous rule")
+		}
+		hasExperience := false
+		for _, r := range command.Rewards {
+			if r.RewardType == ExperienceRewardType {
+				hasExperience = true
+			}
+		}
+		if !hasExperience {
+			return command, errors.New("continuous tickets require experience prizes")
+		}
 	}
 	if len(command.Rules) == 0 {
 		return command, errors.New("a period must define at least one economics rule")

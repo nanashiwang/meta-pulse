@@ -67,17 +67,33 @@ func (s *ProfileService) GetSummary(ctx context.Context, userID uint64, at time.
 		result.CurrentPeriod = &active
 		for _, account := range accounts {
 			if account.PeriodID != active.ID {
-				continue
+				if !active.Continuous || repos.Tickets == nil {
+					continue
+				}
+				p, err := repos.Tickets.Period(ctx, account.PeriodID)
+				if err != nil {
+					return err
+				}
+				if !p.Continuous && !p.Contains(at) {
+					continue
+				}
 			}
 			switch account.AssetType {
 			case ledger.AssetContribution:
-				result.CurrentContribution = money.Milli(account.Balance)
+				result.CurrentContribution, err = result.CurrentContribution.Add(money.Milli(account.Balance))
+				if err != nil {
+					return err
+				}
 			case ledger.AssetTicket:
 				// Ticket debt is retained in the ledger so refunds cannot be
 				// abused, but the product-facing available count must never
 				// expose that debt as spendable tickets.
 				if account.Balance > 0 {
-					result.AvailableTickets = account.Balance
+					sum, err := money.Milli(result.AvailableTickets).Add(money.Milli(account.Balance))
+					if err != nil {
+						return err
+					}
+					result.AvailableTickets = int64(sum)
 				}
 			}
 		}

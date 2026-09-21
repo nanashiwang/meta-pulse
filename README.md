@@ -19,7 +19,7 @@
         ↓
 获得即时回馈
         ↓
-参与 10 天周期奖励
+使用脉冲券参与奖励（新券按获得时间计算额度资格）
         ↓
 形成持续使用动力
 ```
@@ -49,7 +49,9 @@ Meta Pulse = 调用之后的增长与权益系统
 
 `new-api` 继续负责用户、API Key、模型请求、Provider/Channel、计费、充值、余额、订阅和消费/退款日志。
 
-Meta Pulse 负责 Usage Event、贡献值、脉冲券、经济规则、10 天周期、Reward、Budget、Experiment、增长分析和奖励结算状态。
+Meta Pulse 负责 Usage Event、贡献值、脉冲券、经济规则快照、历史周期、Reward、Budget、Experiment、增长分析和奖励结算状态。
+
+管理员在 **Pulse 配置 → 设置兑换比例** 配置贡献倍率、产券门槛、额度资格天数（默认 30 天）、奖项权重和预算，不再手动创建周期。新券满设定天数后仅抽经验；抽奖页面公开当前券的规则。已有券保留原规则，剩余贡献持续累计。详见 [管理配置说明](docs/METAR_ADMIN_SETTINGS.md)。
 
 论坛与博客构成社区层，负责注册登录、搜索引流、内容沉淀和等级展示。Answer 是社区身份事实源；new-api 是 API/资金身份事实源；二者通过一对一、不可静默转移的可选绑定关联，详见 [docs/COMMUNITY.md](docs/COMMUNITY.md)。
 

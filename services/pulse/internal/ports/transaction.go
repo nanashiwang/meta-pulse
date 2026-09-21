@@ -5,6 +5,7 @@ package ports
 import "context"
 
 type Repositories struct {
+	Tickets        TicketRepository
 	Ledger         LedgerRepository
 	Account        AccountRepository
 	Usage          UsageRepository
