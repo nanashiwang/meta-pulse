@@ -13,6 +13,13 @@ import { installNativeShell } from './native-shell';
 import { installLocalRegistration } from './local-registration';
 import './theme-tokens.css';
 import './native-shell.css';
+import { installPasswordVisibility } from './password-visibility';
+import './password-visibility.css';
+
+installPasswordVisibility({
+  getLanguage: () => i18n.language,
+  onLanguageChanged: (handler) => i18n.on('languageChanged', handler),
+});
 
 installLocalRegistration(userCenterStore);
 installNavigationBridge();
