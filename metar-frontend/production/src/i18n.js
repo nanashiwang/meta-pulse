@@ -2,6 +2,16 @@
 'use strict';
 (() => {
   const EN = Object.freeze({
+ "额度上限": "Quota cap",
+ "不限总量": "Unlimited total",
+ "不限制额度奖励总量": "No total quota reward cap",
+ "通过奖项和权重控制平均成本；实际支出会波动，不保证固定总额。经验预算仍单独生效。": "Prizes and weights control average cost; actual spending varies and has no fixed total limit. The EXP budget still applies separately.",
+ "不限制总量时忽略此项；取消勾选后填写额度上限。": "Ignored when uncapped. Uncheck to enter a quota cap.",
+ "每次独立抽取，中奖不减少奖项权重。至少设置一个经验奖项。新规则可取消额度总上限；旧规则保持不变，保存不会开启抽奖。": "Draws are independent and do not reduce prize weights. Include at least one EXP prize. New rules may have no quota cap; existing rules stay unchanged. Saving does not enable draws.",
+ "我已核对有效天数、概率、额度上限模式和经验预算；已有券继续使用原规则。": "I have checked the validity, odds, quota cap mode and EXP budget. Existing tickets keep their original rules.",
+ "计算期望额度": "Calculate expected quota",
+ "有效期内单次期望额度：{value} quota；这是平均值，并非单次或累计支出上限。": "Expected quota per eligible draw: {value} quota. This is an average, not a per-draw or total spending cap.",
+ "请先填写所有奖项的有效数量和权重。": "Enter valid amounts and weights for all prizes first.",
  "奖项概率 = 该奖项权重 ÷ 所有奖项权重之和。到期券仅在经验奖项之间按权重抽取。": "Prize probability = its weight divided by the total weight. Tickets past quota eligibility draw only among weighted experience prizes.",
  "保存后用于后续调用和新券，无需设置周期。已有券保留领取时的有效天数与概率；未成券的贡献度继续累计。": "Saved rules apply to subsequent usage and new tickets, with no manual periods. Existing tickets keep their original validity and odds; unconverted contribution carries forward.",
  "额度奖励有效天数": "Quota eligibility (days)",

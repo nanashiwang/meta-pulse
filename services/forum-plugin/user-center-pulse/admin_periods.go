@@ -33,6 +33,11 @@ func validAdminPeriodBody(fields map[string]json.RawMessage) bool {
 	}
 	for name, raw := range fields {
 		switch name {
+		case "quota_budget_unlimited":
+			var value bool
+			if !continuous || json.Unmarshal(raw, &value) != nil {
+				return false
+			}
 		case "continuous":
 			if !continuous {
 				return false
@@ -88,8 +93,9 @@ func validAdminPeriodBody(fields map[string]json.RawMessage) bool {
 }
 
 type adminPeriodResult struct {
-	Continuous        bool `json:"continuous"`
-	QuotaValidityDays int  `json:"quota_validity_days"`
+	QuotaBudgetUnlimited bool `json:"quota_budget_unlimited"`
+	Continuous           bool `json:"continuous"`
+	QuotaValidityDays    int  `json:"quota_validity_days"`
 
 	PeriodID             uint64    `json:"period_id"`
 	Key                  string    `json:"period_key"`
@@ -99,7 +105,8 @@ type adminPeriodResult struct {
 	TicketThresholdMilli int64     `json:"ticket_threshold_milli"`
 }
 type adminPeriod struct {
-	Rewards []struct {
+	QuotaBudgetUnlimited bool `json:"quota_budget_unlimited"`
+	Rewards              []struct {
 		Key        string `json:"key"`
 		RewardType string `json:"reward_type"`
 		Amount     int64  `json:"amount"`
@@ -133,8 +140,9 @@ func adminPeriodsProjection(method string, data []byte) (any, error) {
 		return result, nil
 	}
 	var result struct {
-		ContinuousSupported bool          `json:"continuous_supported"`
-		Periods             []adminPeriod `json:"periods"`
+		UnlimitedQuotaSupported bool          `json:"unlimited_quota_supported"`
+		ContinuousSupported     bool          `json:"continuous_supported"`
+		Periods                 []adminPeriod `json:"periods"`
 	}
 	if decodeCommunityResponse(data, &result) != nil || result.Periods == nil || len(result.Periods) > 20 {
 		return nil, invalid

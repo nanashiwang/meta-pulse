@@ -131,7 +131,7 @@ func (s *RewardRulesService) get(ctx context.Context, userID uint64) (RewardRule
 			if err != nil {
 				return err
 			}
-			if budget.SettledAmount < 0 || budget.ReservedAmount < 0 || budget.HardCap < budget.SettledAmount || budget.ReservedAmount > budget.HardCap-budget.SettledAmount || budget.HardCap-budget.SettledAmount-budget.ReservedAmount < largest {
+			if !budget.CanReserve(largest) {
 				result.UnavailableReason = "budget_exhausted"
 				return nil
 			}

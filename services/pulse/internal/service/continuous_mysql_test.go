@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/nanashiwang/meta-pulse/internal/domain/ledger"
+	"github.com/nanashiwang/meta-pulse/internal/domain/reward"
 	"github.com/nanashiwang/meta-pulse/internal/domain/usage"
 	"github.com/nanashiwang/meta-pulse/internal/ports"
 	mysqlstore "github.com/nanashiwang/meta-pulse/internal/store/mysql"
@@ -169,6 +170,89 @@ func TestMySQLContinuousTicketsAgeReplayAndRuleChanges(t *testing.T) {
 		return nil
 	})
 	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMySQLUnlimitedQuotaBudget(t *testing.T) {
+	database, db := openMySQLIntegration(t)
+	unit, _ := mysqlstore.NewUnitOfWork(database)
+	ctx := context.Background()
+	now := time.Date(2092, 1, 1, 0, 0, 0, 0, time.UTC)
+	key := fmt.Sprintf("unlimited-%d", time.Now().UnixNano())
+	svc, _ := NewPeriodCreateService(unit, func() time.Time { return now })
+	p, err := svc.CreateFromAdmin(ctx, PeriodAdminRequest{Key: key, Continuous: true, QuotaValidityDays: 30, QuotaBudgetUnlimited: true, MultiplierBps: 10000, TicketThresholdMilli: 1000, ExperienceBudget: 10000, Rewards: []PeriodRewardSpec{{Key: "quota", Amount: 100, Weight: 1}, {Key: "exp", RewardType: ExperienceRewardType, Amount: 10, Weight: 1}}, Reason: "unlimited quota test"}, "test", key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Exec("DELETE FROM pulse_period WHERE id=?", p.PeriodID) })
+	user := uint64(time.Now().UnixNano()%1000000000 + 2000000000)
+	event := usage.Event{SourceSystem: "new-api-log", SourceEventID: key, PayloadHash: fmt.Sprintf("%064x", 1), UserID: user, EventType: usage.EventConsume, SourceCreatedAt: now, QuotaDelta: 1000, FundingProof: key, CursorValue: fmt.Sprintf("%d:1", now.Unix())}
+	ingest, _ := NewUsageIngestService(unit, staticUsageSource{events: []usage.Event{event}}, UsageIngestConfig{CursorName: key, BatchSize: 1, TicketThresholdMilli: 1000})
+	ingest.now = func() time.Time { return now }
+	if _, err = ingest.IngestBatch(ctx); err != nil {
+		t.Fatal(err)
+	}
+	rules := NewRewardRulesService(unit, true)
+	rules.now = func() time.Time { return now }
+	if view, e := rules.GetForUser(ctx, user); e != nil || !view.Enabled {
+		t.Fatalf("unlimited rules unavailable: %+v %v", view, e)
+	}
+	secret := []byte("test-only-unlimited")
+	var defs []reward.Definition
+	if err = unit.Do(ctx, func(r ports.Repositories) error {
+		var e error
+		defs, e = r.Reward.ListDefinitions(ctx, p.PeriodID)
+		return e
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Select a deterministic quota action, avoiding a probabilistic test assertion.
+	var actionID string
+	for i := 0; i < 1000; i++ {
+		candidate := fmt.Sprintf("%s-%d", key, i)
+		random, e := reward.Derive(secret, p.PeriodID, user, candidate, key)
+		if e != nil {
+			t.Fatal(e)
+		}
+		prize, e := reward.SelectWeighted(defs, random)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if prize.RewardType == "newapi_quota" {
+			actionID = candidate
+			break
+		}
+	}
+	if actionID == "" {
+		t.Fatal("no quota test vector")
+	}
+	action, _ := NewActionService(unit, ActionConfig{RandomSecret: secret, RequireVerifiedFunding: true, Now: func() time.Time { return now }})
+	cmd := ActionCommand{UserID: user, ActionID: actionID, IdempotencyKey: actionID, TriggerType: ActionTriggerType}
+	for i := 0; i < 100; i++ {
+		r, e := action.Execute(ctx, cmd)
+		if e != nil || r.Amount != 100 || r.RewardType != "newapi_quota" {
+			t.Fatalf("draw: %+v %v", r, e)
+		}
+	}
+	var cap, reserved int64
+	var unlimited bool
+	if e := db.QueryRow("SELECT hard_cap,reserved_amount,unlimited FROM pulse_reward_budget WHERE period_id=? AND budget_type='loyalty'", p.PeriodID).Scan(&cap, &reserved, &unlimited); e != nil || cap != 0 || reserved != 100 || !unlimited {
+		t.Fatalf("reservation %d %d %v %v", cap, reserved, unlimited, e)
+	}
+	if _, e := db.Exec("UPDATE pulse_reward_budget SET unlimited=FALSE WHERE period_id=? AND budget_type='loyalty'", p.PeriodID); e == nil {
+		t.Fatal("active cap policy mutated")
+	}
+	if err = unit.Do(ctx, func(r ports.Repositories) error {
+		b, e := r.Reward.GetBudgetForUpdate(ctx, p.PeriodID, ActionBudgetType)
+		if e != nil {
+			return e
+		}
+		b.ReservedAmount = 0
+		b.SettledAmount = 100
+		b.Version++
+		return r.Reward.SaveBudget(ctx, b)
+	}); err != nil {
 		t.Fatal(err)
 	}
 }

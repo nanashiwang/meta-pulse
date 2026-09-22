@@ -254,7 +254,7 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 			if err != nil {
 				return err
 			}
-			if b.SettledAmount < 0 || b.ReservedAmount < 0 || b.HardCap < b.SettledAmount || b.ReservedAmount > b.HardCap-b.SettledAmount || b.HardCap-b.SettledAmount-b.ReservedAmount < maxPrize {
+			if !b.CanReserve(maxPrize) {
 				return ErrBudgetExceeded
 			}
 			budgets[kind] = b
@@ -387,14 +387,7 @@ func validateRewardDefinitions(definitions []reward.Definition, configVersion st
 }
 
 func reserveBudget(budget *ports.RewardBudget, amount int64) error {
-	if budget == nil || budget.ID == 0 || budget.Version == math.MaxUint64 || budget.HardCap < 0 || budget.ReservedAmount < 0 || budget.SettledAmount < 0 || amount < 0 {
-		return ErrBudgetExceeded
-	}
-	if budget.ReservedAmount > budget.HardCap-budget.SettledAmount {
-		return ErrBudgetExceeded
-	}
-	available := budget.HardCap - budget.SettledAmount - budget.ReservedAmount
-	if amount > available {
+	if budget == nil || budget.ID == 0 || budget.Version == math.MaxUint64 || !budget.CanReserve(amount) {
 		return ErrBudgetExceeded
 	}
 	budget.ReservedAmount += amount

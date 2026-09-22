@@ -39,6 +39,7 @@ type rewardDefinitionModel struct {
 func (rewardDefinitionModel) TableName() string { return "pulse_reward_definition" }
 
 type rewardBudgetModel struct {
+	Unlimited      bool   `gorm:"column:unlimited"`
 	ID             uint64 `gorm:"column:id;primaryKey"`
 	PeriodID       uint64 `gorm:"column:period_id"`
 	BudgetType     string `gorm:"column:budget_type"`
@@ -376,7 +377,7 @@ func (r *idempotencyRepository) Save(ctx context.Context, record ports.Idempoten
 }
 
 func rewardBudgetFromModel(model rewardBudgetModel) ports.RewardBudget {
-	return ports.RewardBudget{ID: model.ID, PeriodID: model.PeriodID, BudgetType: model.BudgetType, HardCap: model.HardCap, ReservedAmount: model.ReservedAmount, SettledAmount: model.SettledAmount, ReleasedAmount: model.ReleasedAmount, Version: model.Version}
+	return ports.RewardBudget{Unlimited: model.Unlimited, ID: model.ID, PeriodID: model.PeriodID, BudgetType: model.BudgetType, HardCap: model.HardCap, ReservedAmount: model.ReservedAmount, SettledAmount: model.SettledAmount, ReleasedAmount: model.ReleasedAmount, Version: model.Version}
 }
 
 func rewardGrantFromModel(model rewardGrantModel) ports.RewardGrant {
@@ -545,8 +546,7 @@ func validateIdempotencySave(record ports.IdempotencyRecord) error {
 
 func validateRewardBudgetSave(budget ports.RewardBudget) error {
 	if budget.ID == 0 || budget.PeriodID == 0 || budget.Version == 0 || !validMySQLText(budget.BudgetType, 64) ||
-		budget.HardCap < 0 || budget.ReservedAmount < 0 || budget.SettledAmount < 0 || budget.ReleasedAmount < 0 ||
-		budget.SettledAmount > budget.HardCap || budget.ReservedAmount > budget.HardCap-budget.SettledAmount {
+		!budget.CanReserve(0) {
 		return fmt.Errorf("%w: invalid reward budget", ports.ErrConflict)
 	}
 	return nil

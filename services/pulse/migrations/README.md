@@ -2,6 +2,8 @@
 
 Meta Pulse 使用独立 MySQL 8.0+ 逻辑库。SQL 文件采用 Goose 注释格式，并按数字顺序执行。
 
+`00015_unlimited_quota_budget.sql` 为额度预算增加显式 unlimited 模式，旧记录默认 false。不限总量仍完整记录预留与结算，且受整数表示边界保护。经验预算不能使用此模式。存在不限总量记录时 Down 会拒绝，需配套版本与备份恢复。
+
 `00014_continuous_tickets.sql` 增加持续规则标记、额度资格天数、券发行批次、追加式消费分配和用户事务锁。既有周期默认非持续，原券不迁移、不改变期限。升级须同时更新 API、Worker、Answer 插件和前端；备份后向前迁移。产生新券后不能直接降级旧服务或执行 Down，否则会丢失券龄与消费分配；恢复需使用配套数据库备份。
 
 首个 migration `00001_initial_schema.sql` 创建 16 张核心表；`00002_ledger_payload_hash.sql` 补充账本 payload 指纹和 append-only 数据库保护；`00003_usage_correlation.sql` 补充最小退款关联字段与冲突唯一键；`00004`—`00006` 依次补充预算类型、内容奖励表和内容限额并发 guard；`00007` 持久化 Usage 命中的 economics config version 快照；`00008` 将终态 Settlement 完整性冲突从可对账的 `dead` 状态中分离；`00009` 为跨周期请求/Action 的旧记录恢复添加 key-first 与 user/action 查询索引：

@@ -63,7 +63,7 @@ test('legacy list endpoint without continuous capability cannot enable the edito
  const html=await h.view.page();assert.match(html,/奖励配置暂不可用/);assert.doesNotMatch(html,/data-form="admin-period"/);
 });
 test('new backend displays continuous form with a thirty-day default',async()=>{
- const h=harness();h.context.fetch=async()=>({ok:true,status:200,json:async()=>({periods:[],continuous_supported:true})});
+ const h=harness();h.context.fetch=async()=>({ok:true,status:200,json:async()=>({periods:[],continuous_supported:true,unlimited_quota_supported:true})});
  const html=await h.view.page();assert.match(html,/name="quota_validity_days"[^>]*value="30"/);assert.doesNotMatch(html,/name="starts_at"/);
 });
 test('experience pool uses EXP budget independently and rejects accidental quota conversion',()=>{
@@ -74,4 +74,16 @@ test('experience pool uses EXP budget independently and rejects accidental quota
  assert.equal(p.rewards[0].amount,500);assert.equal(p.rewards[0].reward_type,'community_exp');
  h.form.inputs.experience_budget='499';assert.throws(()=>h.view.payload(h.form));
  h.form.inputs.experience_budget='1000';h.form.inputs.reward_budget='100';assert.throws(()=>h.view.payload(h.form));
+});
+
+test('unlimited quota sends zero cap and accepts prizes beyond finite input',()=>{
+ const h=harness();h.form.inputs.unlimited_quota='on';
+ h.form.querySelectorAll=()=>['community_exp','newapi_quota'].map(type=>({querySelector:s=>({value:s.includes('prize_type')?type:s.includes('prize_key')?type:s.includes('prize_amount')?'10':'1'})}));
+ const p=h.view.payload(h.form);assert.equal(p.quota_budget_unlimited,true);assert.equal(p.reward_budget,0);
+ delete h.form.inputs.unlimited_quota;assert.throws(()=>h.view.payload(h.form));
+});
+test('quota expectation includes experience weight and avoids unsafe products',()=>{
+ const {context}=harness();
+ assert.equal(context.MetarPeriodAdmin.quotaExpectation([{type:'newapi_quota',amount:100,weight:1},{type:'community_exp',amount:10,weight:9}]),'100/10 ≈ 10.0000');
+ assert.match(context.MetarPeriodAdmin.quotaExpectation([{type:'newapi_quota',amount:Number.MAX_SAFE_INTEGER,weight:Number.MAX_SAFE_INTEGER}]),/9007199254740991\.0000$/);
 });

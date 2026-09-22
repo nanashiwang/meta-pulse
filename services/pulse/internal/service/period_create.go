@@ -39,9 +39,10 @@ type PeriodRuleSpec struct {
 // (see usage_ingest.go), and invariant #11 forbids repairing that in place
 // once the period is active.
 type PeriodCreateCommand struct {
-	Continuous        bool   `json:",omitempty"`
-	QuotaValidityDays int    `json:",omitempty"`
-	ExpectedPeriodID  uint64 `json:",omitempty"`
+	QuotaBudgetUnlimited bool   `json:",omitempty"`
+	Continuous           bool   `json:",omitempty"`
+	QuotaValidityDays    int    `json:",omitempty"`
+	ExpectedPeriodID     uint64 `json:",omitempty"`
 
 	RequestID            string
 	ActorType            string
@@ -70,8 +71,9 @@ type PeriodRewardSpec struct {
 }
 
 type PeriodCreateResult struct {
-	Continuous        bool `json:"continuous"`
-	QuotaValidityDays int  `json:"quota_validity_days"`
+	QuotaBudgetUnlimited bool `json:"quota_budget_unlimited"`
+	Continuous           bool `json:"continuous"`
+	QuotaValidityDays    int  `json:"quota_validity_days"`
 
 	PeriodID             uint64    `json:"period_id"`
 	Key                  string    `json:"period_key"`
@@ -215,8 +217,8 @@ func (s *PeriodCreateService) Create(ctx context.Context, command PeriodCreateCo
 			if _, err := reward.SelectWeighted(definitions, [32]byte{}); err != nil {
 				return err
 			}
-			for _, budget := range []ports.RewardBudget{{PeriodID: created.ID, BudgetType: ActionBudgetType, HardCap: command.RewardBudget}, {PeriodID: created.ID, BudgetType: ExperienceRewardType, HardCap: command.ExperienceBudget}} {
-				if budget.HardCap > 0 {
+			for _, budget := range []ports.RewardBudget{{Unlimited: command.QuotaBudgetUnlimited, PeriodID: created.ID, BudgetType: ActionBudgetType, HardCap: command.RewardBudget}, {PeriodID: created.ID, BudgetType: ExperienceRewardType, HardCap: command.ExperienceBudget}} {
+				if budget.Unlimited || budget.HardCap > 0 {
 					if _, err := repos.RewardAdmin.CreateBudget(ctx, budget); err != nil {
 						return err
 					}
@@ -231,6 +233,7 @@ func (s *PeriodCreateService) Create(ctx context.Context, command PeriodCreateCo
 			status = period.StatusActive
 		}
 		afterJSON, err := json.Marshal(struct {
+			QuotaBudgetUnlimited bool               `json:"quota_budget_unlimited"`
 			Continuous           bool               `json:"continuous"`
 			QuotaValidityDays    int                `json:"quota_validity_days"`
 			PeriodKey            string             `json:"period_key"`
@@ -247,7 +250,7 @@ func (s *PeriodCreateService) Create(ctx context.Context, command PeriodCreateCo
 			Rewards              []PeriodRewardSpec `json:"rewards"`
 			RewardBudget         int64              `json:"reward_budget"`
 			ExperienceBudget     int64              `json:"experience_budget"`
-		}{created.Continuous, created.QuotaValidityDays, created.Key, string(status), created.StartsAt, created.EndsAt, created.Timezone, created.ConfigVersion, created.RandomVersion, len(rules), command.Rules, created.FundingPolicy, created.TicketThresholdMilli, command.Rewards, command.RewardBudget, command.ExperienceBudget})
+		}{command.QuotaBudgetUnlimited, created.Continuous, created.QuotaValidityDays, created.Key, string(status), created.StartsAt, created.EndsAt, created.Timezone, created.ConfigVersion, created.RandomVersion, len(rules), command.Rules, created.FundingPolicy, created.TicketThresholdMilli, command.Rewards, command.RewardBudget, command.ExperienceBudget})
 		if err != nil {
 			return err
 		}
@@ -262,7 +265,7 @@ func (s *PeriodCreateService) Create(ctx context.Context, command PeriodCreateCo
 			Continuous: created.Continuous, QuotaValidityDays: created.QuotaValidityDays,
 			PeriodID: created.ID, Key: created.Key, Status: string(status),
 			StartsAt: created.StartsAt, EndsAt: created.EndsAt, RuleCount: len(rules),
-			RewardCount: len(command.Rewards), RewardBudget: command.RewardBudget, ExperienceBudget: command.ExperienceBudget, FundingPolicy: created.FundingPolicy, TicketThresholdMilli: created.TicketThresholdMilli,
+			QuotaBudgetUnlimited: command.QuotaBudgetUnlimited, RewardCount: len(command.Rewards), RewardBudget: command.RewardBudget, ExperienceBudget: command.ExperienceBudget, FundingPolicy: created.FundingPolicy, TicketThresholdMilli: created.TicketThresholdMilli,
 		}
 		if command.RequestID != "" {
 			response, err := json.Marshal(result)
@@ -337,7 +340,14 @@ func normalizePeriodCreateCommand(command PeriodCreateCommand) (PeriodCreateComm
 	if len(command.Rules) == 0 {
 		return command, errors.New("a period must define at least one economics rule")
 	}
-	if err := validatePeriodRewards(command.Rewards, command.RewardBudget, command.TicketThresholdMilli, command.ExperienceBudget); err != nil {
+	validationBudget := command.RewardBudget
+	if command.QuotaBudgetUnlimited {
+		if !command.Continuous || command.RewardBudget != 0 {
+			return command, errors.New("unlimited quota requires continuous rules and zero cap")
+		}
+		validationBudget = int64(maxPublicRewardInteger)
+	}
+	if err := validatePeriodRewards(command.Rewards, validationBudget, command.TicketThresholdMilli, command.ExperienceBudget); err != nil {
 		return command, err
 	}
 	seen := make(map[string]struct{}, len(command.Rules))

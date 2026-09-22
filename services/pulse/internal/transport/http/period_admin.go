@@ -38,7 +38,7 @@ func PeriodAdminRoutes(router *gin.RouterGroup, svc PeriodAdministrator, auth gi
 			periodAdminError(c, err)
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"periods": periods, "continuous_supported": true})
+		c.JSON(http.StatusOK, gin.H{"periods": periods, "continuous_supported": true, "unlimited_quota_supported": true})
 	})
 	router.PUT("/admin/periods", auth, guard, func(c *gin.Context) {
 		key := c.GetHeader("Idempotency-Key")

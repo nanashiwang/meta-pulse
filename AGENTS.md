@@ -39,7 +39,7 @@ Meta Pulse = 调用之后的增长与权益系统
 7. 一张 Ticket 最多真正消费一次。
 8. 一个 Reward Grant 在 new-api 最多真正到账一次。
 9. Benefit 状态不确定时先 Query/Reconcile，不允许更换 source_ref 重新发。
-10. Reward 不得突破 Hard Budget。
+10. 有上限的 Reward 不得突破 Hard Budget；按用户授权，新持续规则可显式配置额度奖池为不限总量，经验奖池仍受硬预算约束。不限制额度总量也必须保留实际预留、结算、撤销和整数溢出校验。
 11. Period Active 后核心经济规则、阈值、概率、Budget、Holdout 不允许原地修改。
 12. Period Close 必须可重入、可重复执行。
 13. 浏览器不能自行声明可信 user_id。

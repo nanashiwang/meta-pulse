@@ -2,12 +2,14 @@ package ports
 
 import (
 	"context"
+	"math"
 	"time"
 
 	"github.com/nanashiwang/meta-pulse/internal/domain/reward"
 )
 
 type RewardBudget struct {
+	Unlimited      bool
 	ID             uint64
 	PeriodID       uint64
 	BudgetType     string
@@ -16,6 +18,19 @@ type RewardBudget struct {
 	SettledAmount  int64
 	ReleasedAmount int64
 	Version        uint64
+}
+
+// CanReserve enforces the configured cap, or only integer accounting bounds
+// for explicitly unlimited quota pools. EXP and legacy budgets remain capped.
+func (b RewardBudget) CanReserve(amount int64) bool {
+	limit := b.HardCap
+	if b.Unlimited {
+		if b.BudgetType != "loyalty" || b.HardCap != 0 {
+			return false
+		}
+		limit = math.MaxInt64
+	}
+	return limit >= 0 && amount >= 0 && b.ReservedAmount >= 0 && b.SettledAmount >= 0 && b.ReleasedAmount >= 0 && b.SettledAmount <= limit && b.ReservedAmount <= limit-b.SettledAmount && amount <= limit-b.SettledAmount-b.ReservedAmount
 }
 
 type RewardGrant struct {
