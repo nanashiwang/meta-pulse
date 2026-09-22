@@ -12,6 +12,8 @@
  "计算期望额度": "Calculate expected quota",
  "有效期内单次期望额度：{value} quota；这是平均值，并非单次或累计支出上限。": "Expected quota per eligible draw: {value} quota. This is an average, not a per-draw or total spending cap.",
  "请先填写所有奖项的有效数量和权重。": "Enter valid amounts and weights for all prizes first.",
+ "账号菜单": "Account menu",
+ "通知中心（有未读消息）": "Notifications (unread messages)",
  "奖项概率 = 该奖项权重 ÷ 所有奖项权重之和。到期券仅在经验奖项之间按权重抽取。": "Prize probability = its weight divided by the total weight. Tickets past quota eligibility draw only among weighted experience prizes.",
  "保存后用于后续调用和新券，无需设置周期。已有券保留领取时的有效天数与概率；未成券的贡献度继续累计。": "Saved rules apply to subsequent usage and new tickets, with no manual periods. Existing tickets keep their original validity and odds; unconverted contribution carries forward.",
  "额度奖励有效天数": "Quota eligibility (days)",

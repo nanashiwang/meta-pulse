@@ -13,6 +13,14 @@ import { installNativeShell } from './native-shell';
 import { installLocalRegistration } from './local-registration';
 import './theme-tokens.css';
 import './native-shell.css';
+import { installAccountMenu } from './account-menu';
+
+installAccountMenu({
+  getUser: () => loggedUserInfoStore.getState().user,
+  getLanguage: () => i18n.language,
+  onLanguageChanged: (handler) => i18n.on('languageChanged', handler),
+  subscribeUser: (handler) => loggedUserInfoStore.subscribe(handler),
+});
 import { installPasswordVisibility } from './password-visibility';
 import './password-visibility.css';
 

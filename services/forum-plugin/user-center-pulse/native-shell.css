@@ -153,3 +153,9 @@ img[data-metar-appearance="frame"],img[data-metar-appearance="builder"],img[data
 img[data-metar-appearance="veteran"],img[data-metar-appearance="companion"]{box-shadow:0 0 0 5px var(--metar-tint)}
 
 .metar-native .flex-md-row[data-metar-appearance="sage"]{background:var(--metar-tint);border-radius:var(--metar-radius);padding:20px}
+
+/* Extend the existing avatar dropdown, preserving Answer's logout handler. */
+.metar-account-menu{width:276px;max-width:calc(100vw - 24px);max-height:calc(100dvh - 100px);overflow:auto;overscroll-behavior:contain;padding:8px;border-radius:12px;box-shadow:0 12px 36px #0002}
+.metar-account-menu>.dropdown-item:not([href="/users/logout"]),.metar-account-menu>.dropdown-divider{display:none}
+.metar-account-profile{display:flex;align-items:center;gap:12px;padding:12px 10px 16px}.metar-account-profile img{width:36px;height:36px;border-radius:50%;object-fit:cover}.metar-account-profile>div{min-width:0}.metar-account-profile strong{display:block;overflow-wrap:anywhere}.metar-account-profile small{display:block;color:var(--metar-muted);margin-top:3px}
+.metar-account-group+.metar-account-group,.metar-account-menu>a[href="/users/logout"]{border-top:1px solid var(--metar-border);margin-top:6px;padding-top:10px}.metar-account-label{padding:6px 10px;color:var(--metar-muted);font-size:11px}.metar-account-menu .dropdown-item{padding:9px 10px;border-radius:6px;font-size:14px;display:flex;align-items:center;gap:10px;color:var(--metar-text)}.metar-account-menu .dropdown-item:hover,.metar-account-menu .dropdown-item:focus{background:var(--metar-hover);color:var(--metar-primary)}.metar-account-menu .bi{font-size:18px;color:var(--metar-muted)}

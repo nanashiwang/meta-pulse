@@ -9,24 +9,7 @@ export function notificationGroups(nativeNav, english = false) {
       item('/topics', '全部标签', 'All tags', 'tags'),
       item('/knowledge', '知识库', 'Knowledge', 'book'),
     ] },
-    { label: english ? 'My space' : '我的空间', items: [
-      item('/me', '个人空间', 'My space', 'person'),
-      item('/me/growth', '社区成长', 'Community growth', 'stars'),
-      item('/me/bookmarks', '我的收藏', 'Bookmarks', 'bookmark'),
-      item('/users/notifications/inbox', '通知中心', 'Notifications', 'bell'),
-      item('/settings/binding', '账号绑定', 'Account binding', 'link-45deg'),
-      item('/users/settings/profile', '账号设置', 'Account settings', 'gear'),
-    ] },
   ];
-  const management = [];
-  if (nativeNav.querySelector('a[href="/admin"]')) {
-    management.push(item('/admin/growth', '成长管理', 'Growth settings', 'stars'));
-    management.push(item('/admin/pulse', 'Pulse 配置', 'Pulse settings', 'sliders'));
-    management.push(item('/admin/dashboard', '社区管理', 'Community admin', 'gear'));
-    management.push(item('/admin/pulse_user_center', '社区连接配置', 'Community connections', 'link-45deg'));
-  }
-  if (nativeNav.querySelector('a[href="/review"]')) management.push(item('/review', '审查', 'Review', 'shield-check'));
-  if (management.length) groups.push({ label: english ? 'Management' : '管理', items: management });
   groups.push({ label: '', items: [
     item('/pulse', 'Pulse 权益', 'Pulse benefits', 'activity'),
     item('/support', '帮助中心', 'Help center', 'question-circle'),
