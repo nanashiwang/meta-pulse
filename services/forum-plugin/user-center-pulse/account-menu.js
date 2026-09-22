@@ -28,13 +28,15 @@ export function installAccountMenu(state, host = window) {
     const user = state.getUser();
     const trigger = doc.querySelector('#header #dropdown-basic');
     const menu = trigger?.parentElement.querySelector('.dropdown-menu');
-    if (!user?.username || !menu) return;
+    if (!user?.username || !trigger) return;
     const english = state.getLanguage() === 'en_US';
+    trigger.tabIndex = 0;
     trigger.setAttribute('aria-label', english ? 'Account menu' : '账号菜单');
+    if (!menu) return;
     const canReview = Boolean(doc.querySelector('#sideNav a[href="/review"]'));
     const groups = accountLinks(user, english, canReview);
     const signature = JSON.stringify([user.username, user.display_name, groups]);
-    menu.classList.add('metar-account-menu');
+    if (!menu.classList.contains('metar-account-menu')) menu.classList.add('metar-account-menu');
     let content = menu.querySelector(':scope > .metar-account-content');
     if (content?.dataset.signature === signature) return;
     content?.remove();
@@ -88,13 +90,41 @@ export function installAccountMenu(state, host = window) {
         if (level.isConnected && Number.isInteger(number) && number >= 0 && number <= 8) level.textContent = `Lv.${number}`;
       }).catch(() => {});
   }
+  // Answer's anchor toggle lacks a native button's keyboard activation. Keep
+  // its click/close behavior, and navigate only visible items (not hidden originals).
+  doc.addEventListener('keydown', (event) => {
+    const trigger = doc.querySelector('#header #dropdown-basic');
+    const menu = trigger?.parentElement.querySelector('.metar-account-menu');
+    const onTrigger = event.target === trigger;
+    if (!trigger || (!onTrigger && !menu?.contains(event.target))) return;
+    const open = trigger.getAttribute('aria-expanded') === 'true';
+    if (onTrigger && ['Enter', ' '].includes(event.key)) {
+      event.preventDefault(); event.stopPropagation(); trigger.click(); return;
+    }
+    if (event.key === 'Escape' && open) {
+      event.preventDefault(); event.stopPropagation(); trigger.click(); trigger.focus(); return;
+    }
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault(); event.stopPropagation();
+    if (!open) trigger.click();
+    host.requestAnimationFrame(() => {
+      mount();
+      const panel = trigger.parentElement.querySelector('.metar-account-menu');
+      const links = [...(panel?.querySelectorAll('a[href]') || [])].filter((link) => link.getClientRects().length);
+      if (!links.length) return;
+      const index = links.indexOf(doc.activeElement);
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? links.length - 1
+        : event.key === 'ArrowDown' ? (index + 1) % links.length : (index < 0 ? links.length - 1 : (index - 1 + links.length) % links.length);
+      links[next].focus();
+    });
+  }, true);
   let pending = false;
   function schedule() {
     if (pending) return;
     pending = true;
     host.requestAnimationFrame(() => { pending = false; mount(); });
   }
-  new host.MutationObserver(schedule).observe(doc.documentElement, { childList: true, subtree: true });
+  new host.MutationObserver(schedule).observe(doc.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
   state.onLanguageChanged(schedule);
   state.subscribeUser(schedule);
   mount();
