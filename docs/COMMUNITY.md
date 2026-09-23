@@ -2,7 +2,7 @@
 
 本文档定义社区层边界。`docs/ARCHITECTURE.md` 仍是系统基线。
 
-v0.2.17 起，Pulse 管理页直接配置新券额度资格天数、贡献比例、奖项权重和预算，无需手动设置周期。社区抽奖页公开下一张券的截止时间和适用概率，到期券仅抽经验。管理身份仍来自 Answer 实时复核，普通用户身份仍来自受保护绑定；额度与 EXP 的事实源和交付边界不变。详见 [管理设置](METAR_ADMIN_SETTINGS.md)。
+Pulse 管理页直接配置长期生效的新券额度资格天数、贡献比例、奖项权重和预算，不再向运营或用户暴露周期切换。社区账号必须处于活跃状态，且用户需要有真实付费贡献才能获得脉冲券；社区抽奖页公开下一张券的额度资格截止时间和适用概率，到期券仅抽经验。管理身份仍来自 Answer 实时复核，普通用户身份仍来自受保护绑定；额度与 EXP 的事实源和交付边界不变。详见 [管理设置](METAR_ADMIN_SETTINGS.md)。
 
 ## 1. 产品定位
 
@@ -21,7 +21,7 @@ v0.2.17 起，Pulse 管理页直接配置新券额度资格天数、贡献比例
 Answer   = 社区身份、密码、会话、封禁、资料、内容事实源
 new-api  = API 身份、模型调用、计费与资金事实源
 绑定关系 = Answer user_external_login 中 provider=pulse_user_center 的记录
-Pulse    = Contribution / Ticket / Reward / Budget / Period 事实源
+Pulse    = Contribution / Ticket / Reward / Budget / Rule Snapshot 事实源
 ```
 
 | 数据库 | 归属 | Pulse 权限 |

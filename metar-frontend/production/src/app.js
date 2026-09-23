@@ -329,7 +329,7 @@
       }
     }
     const states = { pending: '发放中', settling: '发放中', settled: '已到账', reversed: '已撤销', failed: '等待处理', settlement_dead: '等待处理' };
-    const unavailable = { budget_exhausted: '本期可用奖励预算已用完', activity_paused: '活动暂未开放', no_active_period: '当前没有进行中的活动', funding_verification_required: '本期权益正在核验', reward_pool_unavailable: '奖池准备中' };
+    const unavailable = { budget_exhausted: '当前可用奖励预算已用完', activity_paused: '活动暂未开放', no_active_period: '当前规则尚未准备好', funding_verification_required: '当前权益正在核验', reward_pool_unavailable: '奖池准备中' };
     const available = Number.isSafeInteger(summary.available_tickets) ? summary.available_tickets : 0;
     const rewards = Array.isArray(history.rewards) ? history.rewards : [];
     const prizes = Array.isArray(rules.rewards) ? rules.rewards : [];
@@ -344,7 +344,7 @@
       ${pulseMessage ? `<div class="prod-status mt24" role="status"><p>${esc(t(pulseMessage))}</p></div>` : ''}
       ${pending ? `<section class="card card-pad mt24" role="status"><h3>${t('正在确认上一次抽奖')}</h3><p class="muted mt8">${t('请先查询原请求。继续处理会沿用同一次抽奖，不会重新扣券或更换结果。')}</p><div class="flex wrap mt16"><button class="btn" data-action="retry">${t('查询原抽奖')}</button><button class="btn primary" data-action="pulse-resume" ${pulseBusy ? 'disabled' : ''}>${t('继续处理原请求')}</button></div></section>` : ''}
       <div class="prod-pulse-stats mt24"><section class="card card-pad"><h3>${t('当前等级')}</h3><p>${esc(summary.level?.name || t('未定级'))}</p></section><section class="card card-pad"><h3>${t('累计贡献')}</h3><p>${esc(Number.isSafeInteger(summary.lifetime_contribution_milli) ? number(summary.lifetime_contribution_milli / 1000) : t('待核对'))}</p></section><section class="card card-pad"><h3>${t('额度奖励资格')}</h3><p>${esc(rules.period?.continuous ? (rules.experience_only ? t('仅经验') : rules.quota_expires_at ? new Date(rules.quota_expires_at).toLocaleString(locale()) : t('从获得券时计算')) : rules.period?.ends_at ? new Date(rules.period.ends_at).toLocaleString(locale()) : '—')}</p></section></div>
-      <section class="card card-pad mt24"><h2>${t('下一张券的奖池与规则')}</h2>${prizeRows ? `<ul class="prod-pulse-prizes">${prizeRows}</ul>` : `<p class="muted mt16">${t('暂无可参与奖池。')}</p>`}<p class="muted mt16">${t('每次独立抽取，中奖后概率不变。已有券保留领取时的规则；到期券在原经验奖项中按权重抽取。预算不足不扣券，发放延迟会保留中奖结果。赠送额度和无法核验资金来源的消费不产生脉冲券。')}</p><p class="muted mt8">${t('API 额度按元衡账户的额度单位展示，不代表人民币或可提现金额。')}</p></section>
+      <section class="card card-pad mt24"><h2>${t('当前奖池与规则')}</h2>${prizeRows ? `<ul class="prod-pulse-prizes">${prizeRows}</ul>` : `<p class="muted mt16">${t('暂无可参与奖池。')}</p>`}<p class="muted mt16">${t('每次独立抽取，中奖后概率不变。已有券保留领取时的规则；到期券仅按经验奖项权重抽取。预算不足不扣券，发放延迟会保留中奖结果。赠送额度和无法核验资金来源的消费不产生脉冲券。')}</p><p class="muted mt8">${t('API 额度按元衡账户的额度单位展示，不代表人民币或可提现金额。')}</p></section>
       <section class="card card-pad mt24"><h2>${t('奖励记录')}</h2><div class="prod-pulse-table"><table><thead><tr><th>${t('奖励')}</th><th>${t('到账状态')}</th><th>${t('时间')}</th><th>${t('奖励编号')}</th></tr></thead><tbody>${rewardRows || `<tr><td colspan="4">${t('暂无奖励记录')}</td></tr>`}</tbody></table></div></section>${footer()}`;
   }
 

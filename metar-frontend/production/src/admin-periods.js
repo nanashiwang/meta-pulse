@@ -1,4 +1,4 @@
-/* Period economics are immutable once created; this form creates the next pool. */
+/* Long-lived economics are immutable once saved; this form creates the next rule snapshot. */
 "use strict";
 (() => {
   const t = (...args) => window.MetarI18n.t(...args);
@@ -153,9 +153,9 @@
       this.current = list.periods.filter(p => p.status === 'active' && Date.parse(p.starts_at) <= now && Date.parse(p.ends_at) > now).sort((a,b) => Number(Boolean(b.continuous))-Number(Boolean(a.continuous)) || Date.parse(b.starts_at)-Date.parse(a.starts_at) || b.id-a.id)[0];
       const preset = recommendedRewards(this.quotaPerUnit);
       const initialRewards = this.current?.rewards?.length ? this.current.rewards : (preset || recommendedExpRewards);
-      return `<section class="card card-pad mt24"><div class="between wrap"><h2>${t("贡献度与脉冲券")}</h2><button type="button" class="btn primary" data-action="admin-period-toggle" aria-expanded="${Boolean(this.pending)}" aria-controls="admin-period-editor">${t("设置兑换比例")}</button></div>
-        <p class="muted mt16">${t("保存后用于后续调用和新券，无需设置周期。已有券保留领取时的有效天数与概率；未成券的贡献度继续累计。")}</p>
-        <div class="mt16 prod-period-list">${list.periods.length ? list.periods.map((p) => `<div class="prod-status mt8"><div><strong>${esc(p.key)} · ${esc(statusText(p.status))}</strong><p>${p.continuous ? `${esc(dateText(p.starts_at))} · ${t("长期有效")} · ${esc(p.quota_validity_days)} ${t("天内可抽额度")}` : `${esc(dateText(p.starts_at))} → ${esc(dateText(p.ends_at))} (UTC+8)`}</p><p>${t("贡献倍率")}：${p.rules.map((r) => `${esc(r.key === "default" ? t("通用") : r.key)} ${esc(format(r.multiplier_bps, 4))}×`).join("、")} · ${t("每张券所需贡献度")}：${p.ticket_threshold_milli ? esc(format(p.ticket_threshold_milli, 3)) : t("沿用服务器默认门槛")}</p><p>${t("额度上限")}：${p.quota_budget_unlimited ? t("不限总量") : esc(p.reward_budget ?? 0)}</p></div><span class="badge">${t("只读")}</span></div>`).join("") : `<p class="muted">${t("尚无规则，请设置贡献比例与奖项。")}</p>`}</div>
+      return `<section class="card card-pad mt24"><div class="between wrap"><h2>${t("贡献度与脉冲券规则")}</h2><button type="button" class="btn primary" data-action="admin-period-toggle" aria-expanded="${Boolean(this.pending)}" aria-controls="admin-period-editor">${t("设置兑换比例")}</button></div>
+        <p class="muted mt16">${t("规则长期生效，不再按周期切换。账户是否可参与取决于社区账号活跃状态与真实付费贡献；已有券保留获得时的有效天数和概率，未成券的贡献度继续累计。")}</p>
+        <div class="mt16 prod-status"><div><strong>${this.current ? t("当前长期规则已启用") : t("尚无长期规则")}</strong><p>${this.current ? `${esc(this.current.quota_validity_days)} ${t("天额度资格")} · ${t("每张券")} ${this.current.ticket_threshold_milli ? esc(format(this.current.ticket_threshold_milli, 3)) : t("沿用默认门槛")} ${t("贡献度")}` : t("请设置贡献比例与奖项。")}</p></div><span class="badge">${t("持续生效")}</span></div>
         <form id="admin-period-editor" data-form="admin-period" class="prod-admin-form mt24" ${this.pending ? "" : "hidden"}>
         <fieldset ${this.pending ? "disabled" : ""}><div class="prod-admin-grid">
           <label>${t("额度奖励有效天数")}<input name="quota_validity_days" type="number" min="1" max="3650" step="1" value="${this.current?.quota_validity_days || 30}" required><span class="prod-field-help">${t("从每张券获得时起计算，默认 30 天；到期后仅抽取经验。")}</span></label>
