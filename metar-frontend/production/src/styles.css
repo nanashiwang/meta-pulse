@@ -87,7 +87,14 @@
 
 .prod-period-list .prod-status { align-items: flex-start; }
 .prod-period-list p { overflow-wrap: anywhere; }
-.prod-period-prize { padding: 16px; border: 1px solid var(--border); border-radius: 12px; }
+.prod-admin-form { font-size: 13px; }
+.prod-admin-form h3 { font-size: 16px; }
+.prod-admin-form label { font-size: 13px; }
+.prod-admin-form input:not([type="checkbox"]), .prod-admin-form select, .prod-admin-form textarea { font-size: 14px; line-height: 1.4; }
+.prod-admin-form .btn { font-size: 12px; padding: 8px 12px; }
+.prod-admin-form .prod-admin-grid { gap: 18px 20px; }
+.prod-period-prize { padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
+.prod-period-prize .prod-admin-grid { gap: 14px 18px; }
 .prod-period-prize .btn { align-self: end; justify-self: start; }
 .prod-admin-form label > input:not([type="checkbox"]), .prod-admin-form label > textarea { display: block; width: 100%; margin-top: 8px; }
 .prod-admin-form label > .prod-field-help { display: block; }
