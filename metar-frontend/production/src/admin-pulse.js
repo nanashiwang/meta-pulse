@@ -33,6 +33,7 @@
         if (epoch !== this.epoch) return '';
         return `<section class="card card-pad prod-admin-error"><h2>${t('暂时无法读取 Pulse 配置')}</h2><p class="muted mt16">${esc(errorText(error))}</p>${error.status !== 403 && error.status !== 401 ? `<p class="muted mt16">${t('首次使用请在社区插件中将 admin_hmac_secret 与现有 Pulse 运营侧密钥配对。')}</p><a class="btn mt16" href="/admin/pulse_user_center">${t('打开社区插件设置')}</a>` : ''}<button class="btn mt16" data-action="retry">${t('重新加载')}</button></section>`;
       }
+      if (this.periods) this.periods.quotaPerUnit = Number(this.snapshot.config.quota_per_unit);
       const periodsHTML = this.periods ? await this.periods.page() : '';
       if (epoch !== this.epoch) return '';
       const data = this.snapshot;

@@ -87,3 +87,17 @@ test('quota expectation includes experience weight and avoids unsafe products',(
  assert.equal(context.MetarPeriodAdmin.quotaExpectation([{type:'newapi_quota',amount:100,weight:1},{type:'community_exp',amount:10,weight:9}]),'100/10 ≈ 10.0000');
  assert.match(context.MetarPeriodAdmin.quotaExpectation([{type:'newapi_quota',amount:Number.MAX_SAFE_INTEGER,weight:Number.MAX_SAFE_INTEGER}]),/9007199254740991\.0000$/);
 });
+
+test('recommended 1% pool has 10.6% API odds and 0.05 API-unit expectation',()=>{
+ const {context}=harness();
+ const rows=context.MetarPeriodAdmin.recommendedRewards(500000);
+ assert.equal(rows.length,7);
+ const api=rows.filter(r=>!r.reward_type);
+ assert.equal(api.reduce((n,r)=>n+r.weight,0),10600);
+ const total=rows.reduce((n,r)=>n+r.weight,0);
+ const expected=api.reduce((n,r)=>n+BigInt(r.amount)*BigInt(r.weight),0n);
+ assert.equal(total,100000);
+ assert.equal(expected/BigInt(total),25000n);
+ assert.equal(api.map(r=>r.amount).join(','),'125000,250000,1000000,5000000');
+ assert.equal(context.MetarPeriodAdmin.recommendedRewards(3),null);
+});
