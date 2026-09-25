@@ -5,6 +5,7 @@ ROOT="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 TAG="${1:-}"
 [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || exit 1
 cd "$ROOT"
+python3 "$ROOT/release/preflight.py" "$TAG" --tagged
 [[ "$(git rev-parse "$TAG^{commit}")" == "$(git rev-parse HEAD)" ]] || exit 1
 OUTPUT="$ROOT/dist/release-$TAG"
 [[ -s "$OUTPUT/SHA256SUMS" && -s "releases/$TAG.md" ]] || exit 1

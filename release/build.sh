@@ -8,7 +8,7 @@ cd "$ROOT"
 REVISION="$(git rev-parse HEAD)"
 [[ "$(git rev-parse "$TAG^{commit}")" == "$REVISION" ]] || { echo '标签与当前提交不一致' >&2; exit 1; }
 git diff --quiet && git diff --cached --quiet || { echo '存在未提交的受跟踪改动' >&2; exit 1; }
-[[ "v$(cat VERSION)" == "$TAG" && -s "releases/$TAG.md" ]] || { echo '版本号或中文更新说明缺失' >&2; exit 1; }
+python3 "$ROOT/release/preflight.py" "$TAG" --tagged
 OUTPUT="$ROOT/dist/release-$TAG"
 [[ ! -e "$OUTPUT" ]] || { echo "输出目录已存在：$OUTPUT" >&2; exit 1; }
 STAGING="$(mktemp -d)"

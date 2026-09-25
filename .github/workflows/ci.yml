@@ -10,6 +10,14 @@ permissions:
   contents: read
 
 jobs:
+  release-metadata:
+    name: Release metadata and regression tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 release/preflight.py
+      - run: python3 -m unittest discover -s release -p 'test_*.py' -v
+
   go:
     name: Go (pulse + forum plugin)
     runs-on: ubuntu-latest

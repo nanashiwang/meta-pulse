@@ -12,7 +12,19 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  preflight:
+    name: Release metadata preflight
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check tag, committed version and Chinese notes
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python3 release/preflight.py "$RELEASE_TAG" --tagged
   verify:
+    needs: preflight
     uses: ./.github/workflows/ci.yml
   publish:
     name: Build, verify and publish release assets

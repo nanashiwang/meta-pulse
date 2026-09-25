@@ -5,14 +5,15 @@
 ## 发布
 
 1. 更新版本与中文说明，完成改动相关测试，提交并推送 `main`。
-2. 在该提交创建附注标签并推送：
+2. 先对已提交内容运行检查（不读取未提交版本文件），通过后才创建附注标签并推送：
 
    ```bash
+   python3 release/preflight.py v0.1.1
    git tag -a v0.1.1 -m '发布 Meta Pulse v0.1.1'
    git push origin v0.1.1
    ```
 
-3. `Release` 工作流复用完整 CI（Go、MySQL、Forum/Pulse 镜像和博客）。全部通过后，按标签提交隔离构建附件：
+3. `Release` 工作流首先检查标签指向当前提交、VERSION 与标签一致、对应中文说明标题及 CHANGELOG 条目完整；失败时不会启动完整 CI 或构建。普通 CI 同样检查已提交版本元数据并执行发布回归测试。构建和上传脚本重复执行检查，已公开版本（包括缺少附件的版本）必须使用下一个可用补丁版本，不能移动标签或覆盖附件。随后工作流复用完整 CI（Go、MySQL、Forum/Pulse 镜像和博客）。全部通过后，按标签提交隔离构建附件：
 
    - `meta-pulse_v0.1.1_linux_amd64.tar.gz`
    - `meta-pulse_v0.1.1_linux_arm64.tar.gz`

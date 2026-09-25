@@ -87,7 +87,7 @@ bash "$ROOT/deploy/update_test.sh"
 python3 "$ROOT/deploy/test_metar.py"
 python3 "$ROOT/deploy/test_blog_build.py"
 python3 "$ROOT/deploy/test_accept_ingest.py"
-python3 "$ROOT/release/test_release.py"
+python3 -m unittest discover -s "$ROOT/release" -p 'test_*.py'
 bash -n "$ROOT/release/build.sh" "$ROOT/release/publish.sh"
 
 echo '部署脚本离线测试通过'
