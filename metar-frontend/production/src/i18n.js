@@ -582,7 +582,29 @@
     "本次请求存在冲突，请查询原抽奖记录。": "This request has a conflict. Check the original draw record.",
     "请求过于频繁，请稍后查询原请求。": "Too many requests. Check the original request later.",
     "请求来源校验失败，请刷新页面后重试。": "Request origin verification failed. Refresh the page and try again.",
-    "抽奖请求无效，请刷新页面后查询原请求。": "The draw request is invalid. Refresh the page and check the original request."
+    "抽奖请求无效，请刷新页面后查询原请求。": "The draw request is invalid. Refresh the page and check the original request.",
+    "脉冲核心": "Pulse Core",
+    "社区经验 · EXP": "Community EXP",
+    "光效": "Light effect",
+    "选择脉冲光效": "Choose a Pulse light effect",
+    "翡翠极光": "Jade aurora",
+    "紫蓝星云": "Violet nebula",
+    "开启你的脉冲": "Ignite your Pulse",
+    "让每一次积累，在这一刻绽放。": "Let every spark of progress shine.",
+    "这一份回馈，属于你": "A reward for your progress",
+    "跳过动画": "Skip animation",
+    "每次开启消耗 1 张脉冲券": "Each Pulse uses 1 ticket",
+    "一枚核心，等待被点亮": "A core, waiting for its spark",
+    "正在开启": "Opening your Pulse",
+    "本次回馈：{amount} {unit} · {status}": "Your reward: {amount} {unit} · {status}",
+    "微光汇聚，点亮你的积累": "Gathering the sparks of your progress",
+    "脉冲共振，即将绽放": "Energy rising, ready to unfold",
+    "正在确认本次结果，请稍候…": "Confirming your result. Please wait…",
+    "这一刻，惊喜正在成形": "Your reward is taking shape",
+    "积累脉冲券后，即可开启下一次回馈": "Earn a Pulse ticket to unlock your next reward",
+    "权益数据刷新失败，已显示的结果会保留，请刷新奖励状态。": "Reward data could not refresh. Your displayed result is preserved; refresh the reward status.",
+    "API 额度": "API credits",
+    "社区经验": "Community EXP"
 });
   const STORAGE_KEY = 'metar-language';
   const SUPPORTED = Object.freeze(['zh_CN', 'en_US']);

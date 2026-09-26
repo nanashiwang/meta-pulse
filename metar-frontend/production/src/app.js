@@ -27,6 +27,12 @@
   const pulseAdmin = new window.MetarPulseAdmin.View(new PulseAdminAdapter(answer));
   let pulseBusy = false;
   let pulseMessage = "";
+  let pulseView = null;
+  let pulseCoreState = null;
+  let pulseLastResult = null;
+  let pulseAssets = null;
+  let pulseCoreReady = false;
+  let pulseRefreshing = false;
   const knowledge = new KnowledgeAdapter(config);
   const app = document.getElementById('app');
   let navigationSequence = 0;
@@ -207,6 +213,11 @@
   function renderView(html) {
     const view = document.getElementById('view');
     if (view) view.innerHTML = html;
+    const core = document.querySelector('[data-pulse-core]');
+    if (core && window.MetarPulseCore && pulseCoreState) {
+      pulseView = new window.MetarPulseCore.View(core, { t });
+      pulseView.update(pulseCoreState);
+    }
     app.setAttribute('aria-busy', 'false');
     window.MetarSEO?.update();
     document.getElementById('main')?.focus({ preventScroll: true });
@@ -312,19 +323,63 @@
     return `${crumb([[t("账号绑定")]])}${heading(t("连接元衡 API 账号"), t("绑定是可选的一对一关系，不会合并两个账号、密码或余额。"))}<section class="card card-pad"><div class="between wrap"><h2>${t("元衡 API 身份")}</h2>${badge(bound ? I('check', 'sm') + t(" 已绑定") : t("未绑定"), bound ? 'green' : '')}</div>${bound ? `<div class="prod-binding-account"><div class="topic-icon">${I('link')}</div><div><strong>${t("已通过可信回调完成绑定")}</strong><p class="muted">${t("服务端已确认一对一关系；页面不会展示外部用户 ID 或任何 API 凭据。")}</p></div>${badge(t("受保护关系"), 'green')}</div><dl class="info-pairs"><dt>${t("社区账号")}</dt><dd>${esc(displayName(currentUser))}</dd><dt>${t("社区身份事实源")}</dt><dd>Apache Answer</dd><dt>${t("API / 资金身份事实源")}</dt><dd>new-api</dd><dt>${t("普通解绑或换绑")}</dt><dd>${t("不开放；纠错需要支持流程与审计")}</dd></dl><div class="flex wrap mt24">${link('/pulse', t("查看 Pulse 状态 ") + I('arrow', 'sm'), 'btn primary')}${link('/support', t("联系支持"), 'btn')}</div>` : `<div class="prod-binding-steps"><div class="prod-binding-step"><span class="number">1</span><strong>${t("确认社区身份")}</strong><p>${t("当前登录：")}${esc(displayName(currentUser))}</p></div><div class="prod-binding-step"><span class="number">2</span><strong>${t("前往元衡授权")}</strong><p>${t("由 Connector、浏览器 flow 和固定 callback 校验 API 身份。")}</p></div><div class="prod-binding-step"><span class="number">3</span><strong>${t("建立一对一关系")}</strong><p>${t("不按同名邮箱静默合并，冲突时拒绝覆盖。")}</p></div></div><div class="prod-status">${I('shield')}<div><strong>${t("开始前请确认")}</strong><p>${t("绑定后不能普通自助解绑或换绑；不会读取 API Key，不会改变社区密码或治理角色。")}</p></div></div><div class="flex wrap mt24">${external(connectorPath, I('link') + t("开始安全绑定"), 'btn primary')}${link('/latest', t("暂不绑定"), 'btn ghost')}</div>`}</section><section class="card card-pad mt24"><h3>${t("身份边界")}</h3><p class="muted mt8">${t("浏览器不能提交可信 user_id。所有回调参数在服务端验签、校验 flow 与 nonce 前都视为不可信输入。")}</p></section>${footer()}`;
   }
 
+  function loadPulseCore() {
+    if (pulseCoreReady) return Promise.resolve(true);
+    if (!pulseAssets) {
+      const nodes = [];
+      const cleanups = [];
+      pulseAssets = Promise.all(['css', 'js'].map((kind) => new Promise((resolve, reject) => {
+        if (kind === 'js' && window.MetarPulseCore) { resolve(); return; }
+        const asset = document.createElement(kind === 'css' ? 'link' : 'script');
+        nodes.push(asset);
+        if (kind === 'css') { asset.rel = 'stylesheet'; asset.href = '/metar-assets/pulse-core.css'; }
+        else asset.src = '/metar-assets/pulse-core.js';
+        const timer = setTimeout(() => reject(new Error('Pulse presentation timed out')), 5000);
+        cleanups.push(() => { clearTimeout(timer); asset.onload = asset.onerror = null; });
+        asset.onload = () => { clearTimeout(timer); resolve(); };
+        asset.onerror = () => { clearTimeout(timer); reject(new Error('Pulse presentation unavailable')); };
+        document.head.appendChild(asset);
+      }))).then(() => {
+        if (!window.MetarPulseCore) throw new Error('Pulse presentation unavailable');
+        pulseCoreReady = true; return true;
+      }).catch(() => {
+        nodes.forEach(node => node.remove()); pulseAssets = null; return false;
+      }).finally(() => cleanups.forEach(cleanup => cleanup()));
+    }
+    return pulseAssets;
+  }
+
+  function validPulseResult(result, actionId) {
+    return result && typeof result.grant_id === 'string' && result.grant_id.length > 0
+      && result.action_id === actionId && Number.isSafeInteger(result.amount) && result.amount >= 0
+      && ['community_exp', 'newapi_quota'].includes(result.reward_type);
+  }
+
+  function pulseResultDisplay(result, quotaPerUnit) {
+    const states = { settled: '已到账', reversed: '已撤销', pending: '发放中', settling: '发放中', failed: '等待处理', settlement_dead: '等待处理' };
+    const exp = result.reward_type === 'community_exp';
+    const formatted = formatPulseQuota(result.amount, quotaPerUnit, locale());
+    return { type: result.reward_type, amount: exp ? number(result.amount) : formatted.replace(/ (API credits|API 额度|quota)$/, ''),
+      unit: exp ? t('社区经验 · EXP') : Number.isSafeInteger(quotaPerUnit) && quotaPerUnit > 0 ? t('API 额度') : 'quota',
+      status: t(states[result.status] || '等待核对') };
+  }
+
   async function pulsePage() {
+    const sequence = navigationSequence;
     if (currentUserState === 'unavailable') return identityUnavailable(t("Pulse 权益"));
     if (!currentUser) return loginRequired(t("Pulse 权益"), t("Pulse 只对主动绑定元衡 API 身份的社区成员展示本人权益。"));
     if (!isActiveUser(currentUser)) return accountUnavailable(t("Pulse 权益"));
     const binding = await answer.getBindingState();
     if (binding.status === 'unbound') return `${crumb([[t("Pulse 权益")]])}${heading(t("Pulse 权益"), t("调用之后的增长与权益系统。"))}<section class="pulse-hero"><div><div class="eyebrow">${t("付费调用回馈计划")}</div><h1>${t("先完成可选账号绑定")}</h1><p>${t("社区账号可以独立使用。只有当你希望查看基于真实付费调用产生的等级、券和回馈时，才需要连接元衡 API 身份。")}</p><div class="actions">${link('/settings/binding', t("了解并开始绑定 ") + I('arrow', 'sm'), 'btn light')}${link('/latest', t("继续浏览社区"), 'btn outline-light')}</div></div>${I('pulse')}</section>${footer()}`;
     if (binding.status === 'unavailable') throw new AdapterError(t("绑定状态暂时不可查询，Pulse 页面不会据此猜测身份。"), { code: 'binding_unavailable' });
-    const [summary, rules, history] = await Promise.all([pulse.summary(), pulse.rules(), pulse.rewards()]);
+    const [summary, rules, history, coreReady] = await Promise.all([pulse.summary(), pulse.rules(), pulse.rewards(), loadPulseCore()]);
     const operationStore = new PulseOperation(currentUser.id);
     let pending = operationStore.read();
-    if (pending) {
+    if (pending && !pulseBusy) {
       const recovery = await pulse.rewards(pending.actionId);
-      if (Array.isArray(recovery.rewards) && recovery.rewards.some((r) => r.action_id === pending.actionId)) {
+      const recovered = Array.isArray(recovery.rewards) && recovery.rewards.find((r) => validPulseResult(r, pending.actionId));
+      if (recovered) {
+        pulseLastResult = { userId: currentUser.id, reward: recovered, quotaPerUnit: rules.quota_per_unit };
         operationStore.clear(); pending = null; pulseMessage = '已找到本次抽奖记录，请查看奖励明细。';
       }
     }
@@ -337,15 +392,26 @@
     const rewardAmount = r => r.reward_type === 'community_exp' ? number(r.amount)+' EXP' : formatPulseQuota(r.amount,rules.quota_per_unit,locale());
     const rewardRows = rewards.map((r) => `<tr><td>${esc(rewardAmount(r))}</td><td>${esc(t(states[r.status] || '等待核对'))}</td><td>${esc(r.created_at ? new Date(r.created_at).toLocaleString(locale()) : '—')}</td><td><code>${esc(r.grant_id)}</code></td></tr>`).join('');
     const prizeRows = prizes.map((r) => `<li><strong>${esc(r.name)}</strong><span>${esc(rewardAmount(r))}</span><span>${esc(t('概率 {weight} / {total}', { weight: r.weight, total: rules.total_weight }))}</span></li>`).join('');
+    const last = pulseLastResult?.userId === currentUser.id ? pulseLastResult : null;
+    const latest = last && rewards.find(r => r.grant_id === last.reward.grant_id);
+    if (latest && validPulseResult(latest, last.reward.action_id)) last.reward = latest;
+    if (sequence === navigationSequence) pulseCoreState = {
+      tickets: number(available), canDraw, pending: Boolean(pending), busy: pulseBusy, quotaPerUnit: rules.quota_per_unit,
+      result: last ? pulseResultDisplay(last.reward, last.quotaPerUnit) : null,
+      message: pulseMessage ? t(pulseMessage) : '',
+      reason: pending ? t('正在确认上一次抽奖') : !rules.enabled ? t(unavailable[rules.unavailable_reason] || '活动暂不可用') : available === 0 ? t('积累脉冲券后，即可开启下一次回馈') : '',
+    };
     return `${crumb([[t('Pulse 权益')]])}${heading(t('开启脉冲，获得调用回馈'), t('经核验的付费调用积累脉冲券，额度奖励发往元衡 API，经验奖励计入社区等级。'))}
-      <section class="pulse-hero"><div><div class="eyebrow">${esc(rules.period?.continuous ? t('元衡脉冲') : rules.period?.key || t('元衡脉冲'))}</div><h1>${esc(t('可用脉冲券：{count}', { count: number(available) }))}</h1><p>${t('每次消耗 1 张券。额度用于 API 调用，经验用于社区升级，均不可转赠。')}</p>${rules.period?.continuous ? `<p>${esc(t('脉冲券获得后 {days} 天内可抽取额度奖励，之后仍可抽取经验。', {days: rules.quota_validity_days}))}</p><p>${esc(rules.experience_only ? t('下一张券已超过额度有效期，仅抽取经验。') : t('优先使用最早获得的券；下方显示下一张券适用的概率。'))}</p>` : ''}
+      ${coreReady ? window.MetarPulseCore.markup({ t }) : ''}
+      <div data-pulse-details>
+      <section class="${coreReady ? 'card card-pad mt24 prod-pulse-rules-note' : 'pulse-hero'}"><div><div class="eyebrow">${esc(rules.period?.continuous ? t('元衡脉冲') : rules.period?.key || t('元衡脉冲'))}</div><h1>${esc(t('可用脉冲券：{count}', { count: number(available) }))}</h1><p>${t('每次消耗 1 张券。额度用于 API 调用，经验用于社区升级，均不可转赠。')}</p>${rules.period?.continuous ? `<p>${esc(t('脉冲券获得后 {days} 天内可抽取额度奖励，之后仍可抽取经验。', {days: rules.quota_validity_days}))}</p><p>${esc(rules.experience_only ? t('下一张券已超过额度有效期，仅抽取经验。') : t('优先使用最早获得的券；下方显示下一张券适用的概率。'))}</p>` : ''}
       ${!rules.enabled ? `<p role="status">${esc(t(unavailable[rules.unavailable_reason] || '活动暂不可用'))}</p>` : ''}
-      <div class="actions"><button type="button" class="btn light" data-action="pulse-draw" ${canDraw ? '' : 'disabled'}>${t(pulseBusy ? '正在处理…' : '开启一次脉冲 · 1 券')}</button><button type="button" class="btn outline-light" data-action="retry">${t('刷新奖励状态')}</button></div></div>${I('pulse')}</section>
+      ${coreReady ? '' : `<div class="actions"><button type="button" class="btn light" data-action="pulse-draw" ${canDraw ? '' : 'disabled'}>${t(pulseBusy ? '正在处理…' : '开启一次脉冲 · 1 券')}</button><button type="button" class="btn outline-light" data-action="retry">${t('刷新奖励状态')}</button></div>`}</div>${I('pulse')}</section>
       ${pulseMessage ? `<div class="prod-status mt24" role="status"><p>${esc(t(pulseMessage))}</p></div>` : ''}
       ${pending ? `<section class="card card-pad mt24" role="status"><h3>${t('正在确认上一次抽奖')}</h3><p class="muted mt8">${t('请先查询原请求。继续处理会沿用同一次抽奖，不会重新扣券或更换结果。')}</p><div class="flex wrap mt16"><button class="btn" data-action="retry">${t('查询原抽奖')}</button><button class="btn primary" data-action="pulse-resume" ${pulseBusy ? 'disabled' : ''}>${t('继续处理原请求')}</button></div></section>` : ''}
       <div class="prod-pulse-stats mt24"><section class="card card-pad"><h3>${t('当前等级')}</h3><p>${esc(summary.level?.name || t('未定级'))}</p></section><section class="card card-pad"><h3>${t('累计贡献')}</h3><p>${esc(Number.isSafeInteger(summary.lifetime_contribution_milli) ? number(summary.lifetime_contribution_milli / 1000) : t('待核对'))}</p></section><section class="card card-pad"><h3>${t('额度奖励资格')}</h3><p>${esc(rules.period?.continuous ? (rules.experience_only ? t('仅经验') : rules.quota_expires_at ? new Date(rules.quota_expires_at).toLocaleString(locale()) : t('从获得券时计算')) : rules.period?.ends_at ? new Date(rules.period.ends_at).toLocaleString(locale()) : '—')}</p></section></div>
       <section class="card card-pad mt24"><h2>${t('当前奖池与规则')}</h2>${prizeRows ? `<ul class="prod-pulse-prizes">${prizeRows}</ul>` : `<p class="muted mt16">${t('暂无可参与奖池。')}</p>`}<p class="muted mt16">${t('每次独立抽取，中奖后概率不变。已有券保留领取时的规则；到期券仅按经验奖项权重抽取。预算不足不扣券，发放延迟会保留中奖结果。赠送额度和无法核验资金来源的消费不产生脉冲券。')}</p><p class="muted mt8">${t('API 额度按元衡账户的额度单位展示，不代表人民币或可提现金额。')}</p></section>
-      <section class="card card-pad mt24"><h2>${t('奖励记录')}</h2><div class="prod-pulse-table"><table><thead><tr><th>${t('奖励')}</th><th>${t('到账状态')}</th><th>${t('时间')}</th><th>${t('奖励编号')}</th></tr></thead><tbody>${rewardRows || `<tr><td colspan="4">${t('暂无奖励记录')}</td></tr>`}</tbody></table></div></section>${footer()}`;
+      <section class="card card-pad mt24"><h2>${t('奖励记录')}</h2><div class="prod-pulse-table"><table><thead><tr><th>${t('奖励')}</th><th>${t('到账状态')}</th><th>${t('时间')}</th><th>${t('奖励编号')}</th></tr></thead><tbody>${rewardRows || `<tr><td colspan="4">${t('暂无奖励记录')}</td></tr>`}</tbody></table></div></section></div>${footer()}`;
   }
 
   function supportPage() {
@@ -397,25 +463,60 @@
   }
 
   async function submitPulse(resume = false) {
-    if (pulseBusy || !currentUser || !isActiveUser(currentUser)) return;
+    if (pulseBusy || pulseRefreshing || !currentUser || !isActiveUser(currentUser)) return;
     pulseBusy = true;
+    pulseMessage = '';
+    pulseLastResult = null;
+    const presentation = pulseView;
+    const quotaPerUnit = pulseCoreState?.quotaPerUnit;
+    const userId = currentUser.id;
     document.querySelectorAll('[data-action="pulse-draw"], [data-action="pulse-resume"]').forEach((button) => { button.disabled = true; });
-    const store = new PulseOperation(currentUser.id);
+    const store = new PulseOperation(userId);
     try {
       const operation = resume ? store.read() : store.begin();
       if (!operation) return;
+      presentation?.begin();
       const result = await pulse.act(operation);
-      if (!result.grant_id || result.action_id !== operation.actionId) throw new AdapterError(t('本次结果仍待确认'), { code: 'action_pending' });
+      if (!validPulseResult(result, operation.actionId)) throw new AdapterError(t('本次结果仍待确认'), { code: 'action_pending' });
+      pulseLastResult = { userId, reward: result, quotaPerUnit };
       store.clear();
       pulseMessage = result.status === 'settled' ? '奖励已到账。' : '抽奖已完成，奖励正在发放，请查看奖励记录。';
+      await presentation?.reveal(pulseResultDisplay(result, quotaPerUnit));
     } catch (error) {
       if (error.code === 'action_rejected') { store.clear(); pulseMessage = '本次未扣券，可能是可用券或活动预算不足，请刷新后查看。'; }
       else if (error.code === 'storage_unavailable') pulseMessage = '无法保存本次请求，请允许站点存储后重试';
       else pulseMessage = '暂时无法确认本次结果，请查询原抽奖或继续处理原请求。';
+      presentation?.fail(t(pulseMessage));
     } finally {
       pulseBusy = false;
-      if (route().path === '/pulse') await navigate();
+      if (route().path === '/pulse') await refreshPulse();
     }
+  }
+
+  async function refreshPulse() {
+    if (pulseBusy || pulseRefreshing || route().path !== '/pulse') return;
+    if (!pulseView) { await navigate(); return; }
+    const presentation = pulseView;
+    const sequence = navigationSequence;
+    pulseRefreshing = true;
+    presentation.button.disabled = presentation.refresh.disabled = true;
+    try {
+      const html = await pulsePage();
+      if (sequence !== navigationSequence || presentation !== pulseView) return;
+      const template = document.createElement('template');
+      template.innerHTML = html;
+      const next = template.content.querySelector('[data-pulse-details]');
+      const previous = document.querySelector('[data-pulse-details]');
+      if (!next || !previous) { await navigate(); return; }
+      previous.replaceWith(next);
+      presentation.update(pulseCoreState);
+    } catch (_) {
+      if (presentation === pulseView) {
+        presentation.status.textContent = t('权益数据刷新失败，已显示的结果会保留，请刷新奖励状态。');
+        presentation.refresh.disabled = false;
+        // Re-read authoritative eligibility before allowing another ticket spend.
+      }
+    } finally { pulseRefreshing = false; }
   }
 
   function closeAccountMenu(restoreFocus = false) {
@@ -455,6 +556,8 @@
     if (destination) { location.replace(destination); return; }
     const sequence = ++navigationSequence;
     closeMobileMenu();
+    pulseView?.dispose();
+    pulseView = null;
     if (route().path !== '/admin/pulse') pulseAdmin.dispose();
     renderShell();
     try {
@@ -536,6 +639,7 @@
     if (action === 'retry') navigate();
     if (action === 'pulse-draw') submitPulse();
     if (action === 'pulse-resume') submitPulse(true);
+    if (action === 'pulse-refresh') refreshPulse();
     if (action === 'retry-identity') initializeIdentity().then(navigate);
   });
 

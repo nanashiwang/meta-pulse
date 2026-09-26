@@ -51,7 +51,7 @@ test('参数文案和数量在两种语言下保持完整语序', () => {
 
 test('app、适配器、头像中的显式中文界面词条都有英文翻译', () => {
   const { i18n } = languageContext('en_US');
-  for (const name of ['app.js', 'admin-periods.js', 'admin-pulse.js', 'adapters.js', 'avatars.js']) {
+  for (const name of ['app.js', 'admin-periods.js', 'admin-pulse.js', 'adapters.js', 'avatars.js', 'pulse-core.js']) {
     for (const match of script(name).matchAll(/\bt\(\s*(["'])([^"'\n]+)\1/g)) {
       const key = match[2];
       if (/[\u3400-\u9fff]/.test(key)) assert.notEqual(i18n.t(key), key, `${name}: ${key}`);
@@ -112,7 +112,7 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
         else if (pathname.endsWith('/actions')) {
           if (actionResult === 'timeout') throw new Error('Lost response');
           if (actionResult === 'action_rejected') return { ok: false, status: 409, json: async () => ({ error: 'action_rejected' }) };
-          payload = { grant_id: 'grant-1', action_id: JSON.parse(options.body).action_id, status: actionResult };
+          payload = { grant_id: 'grant-1', action_id: JSON.parse(options.body).action_id, status: actionResult, reward_type: 'newapi_quota', amount: 50000 };
         }
         return { ok: true, status: 200, json: async () => payload };
       }
@@ -131,7 +131,7 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
     replaceState(_state, _title, url) { context.location = localLocation(url); },
     pushState(_state, _title, url) { context.location = localLocation(url); },
   };
-  for (const name of ['theme.js', 'adapters.js', 'avatars.js', 'growth.js', 'admin-pulse.js', 'route-policy.js', 'router.js', 'app.js']) vm.runInContext(script(name), context);
+  for (const name of ['theme.js', 'adapters.js', 'avatars.js', 'growth.js', 'admin-pulse.js', 'route-policy.js', 'router.js', 'pulse-core.js', 'app.js']) vm.runInContext(script(name), context);
   await new Promise(setImmediate);
   return {
     i18n, values, document, nodes, requests, operations, redirects,

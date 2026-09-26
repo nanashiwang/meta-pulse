@@ -40,6 +40,9 @@ class ProductionBuildTest(unittest.TestCase):
             self.assertTrue((output / "assets/router.js").is_file())
             self.assertTrue((output / "assets/route-policy.js").is_file())
             self.assertTrue((output / "assets/theme.js").is_file())
+            self.assertTrue((output / "assets/pulse-core.js").is_file())
+            self.assertTrue((output / "assets/pulse-core.css").is_file())
+            self.assertNotIn("/metar-assets/pulse-core.js", index)
             self.assertLess(index.index("/metar-assets/theme.js"), index.index("/metar-assets/app.css"))
             self.assertLess(index.index("/metar-assets/route-policy.js"), index.index("/metar-assets/router.js"))
             self.assertLess(index.index("/metar-assets/router.js"), index.index("/metar-assets/app.js"))
@@ -54,6 +57,7 @@ class ProductionBuildTest(unittest.TestCase):
         subprocess.run(["node", "--check", str(ROOT / "src/avatars.js")], check=True)
         subprocess.run(["node", "--check", str(ROOT / "src/router.js")], check=True)
         subprocess.run(["node", "--check", str(ROOT / "src/app.js")], check=True)
+        subprocess.run(["node", "--check", str(ROOT / "src/pulse-core.js")], check=True)
         subprocess.run(["node", "--check", str(ROOT / "src/admin-pulse.js")], check=True)
 
     def test_ui_state_regressions(self):

@@ -64,6 +64,7 @@ def build(output: Path, config_path: Path) -> None:
         "growth-presentation": (ROOT.parents[1] / "services/forum-plugin/user-center-pulse/growth-presentation.js").read_text(encoding="utf-8"),
         "growth": (ROOT / "src/growth.js").read_text(encoding="utf-8"),
         "app": (ROOT / "src/app.js").read_text(encoding="utf-8"),
+        "pulse-core": (ROOT / "src/pulse-core.js").read_text(encoding="utf-8"),
         "favicon": (ROOT / "src/favicon.svg").read_text(encoding="utf-8"),
     }
     production_text = "\n".join(sources.values())
@@ -92,6 +93,8 @@ def build(output: Path, config_path: Path) -> None:
     (assets / "growth-presentation.js").write_text(sources["growth-presentation"], encoding="utf-8")
     (assets / "growth.js").write_text(sources["growth"], encoding="utf-8")
     (assets / "app.js").write_text(sources["app"], encoding="utf-8")
+    (assets / "pulse-core.js").write_text(sources["pulse-core"], encoding="utf-8")
+    shutil.copyfile(ROOT / "src/pulse-core.css", assets / "pulse-core.css")
     (assets / "favicon.svg").write_text(sources["favicon"], encoding="utf-8")
     build_seo(output, sources["index"])
     runtime = "window.__METAR_RUNTIME_CONFIG__ = Object.freeze(" + json.dumps(config, ensure_ascii=False, separators=(",", ":")) + ");\n"
