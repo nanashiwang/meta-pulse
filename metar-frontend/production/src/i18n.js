@@ -237,6 +237,7 @@
     "社区": "Community",
     "面包屑": "Breadcrumbs",
     "正在读取社区实时数据…": "Loading community data…",
+    "正在确认身份…": "Checking account…",
     "社区成员": "Community member",
     "时间未知": "Unknown date",
     "话题": "Topic",

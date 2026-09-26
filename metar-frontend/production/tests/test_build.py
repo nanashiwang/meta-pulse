@@ -43,6 +43,9 @@ class ProductionBuildTest(unittest.TestCase):
             self.assertTrue((output / "assets/pulse-core.js").is_file())
             self.assertTrue((output / "assets/pulse-core.css").is_file())
             self.assertNotIn("/metar-assets/pulse-core.js", index)
+            for feature in ("admin-periods", "admin-pulse", "growth-presentation", "growth"):
+                self.assertTrue((output / f"assets/{feature}.js").is_file())
+                self.assertNotIn(f"/metar-assets/{feature}.js", index)
             self.assertLess(index.index("/metar-assets/theme.js"), index.index("/metar-assets/app.css"))
             self.assertLess(index.index("/metar-assets/route-policy.js"), index.index("/metar-assets/router.js"))
             self.assertLess(index.index("/metar-assets/router.js"), index.index("/metar-assets/app.js"))

@@ -38,7 +38,7 @@
 
   function markup(user, className = '') {
     const image = source(user?.avatar);
-    return `<span class="avatar a4 prod-avatar${className ? ` ${escapeHTML(className)}` : ''}" role="img" aria-label="${escapeHTML(username(user))}${t(" 的头像")}"><span class="prod-avatar-initial" aria-hidden="true">${escapeHTML(initial(user))}</span>${image ? `<img class="prod-avatar-image" data-metar-avatar-image src="${escapeHTML(image)}" alt="" aria-hidden="true" decoding="async">` : ''}</span>`;
+    return `<span class="avatar a4 prod-avatar${className ? ` ${escapeHTML(className)}` : ''}" role="img" aria-label="${escapeHTML(username(user))}${t(" 的头像")}"><span class="prod-avatar-initial" aria-hidden="true">${escapeHTML(initial(user))}</span>${image ? `<img class="prod-avatar-image" data-metar-avatar-image src="${escapeHTML(image)}" alt="" aria-hidden="true" width="40" height="40" loading="lazy" decoding="async">` : ''}</span>`;
   }
 
   function handleImageEvent(event) {

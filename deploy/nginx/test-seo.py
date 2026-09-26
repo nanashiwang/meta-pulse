@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise the real gateway against built public assets in an isolated container."""
 import http.client
+import gzip
 import ssl
 import subprocess
 import tempfile
@@ -37,13 +38,18 @@ def main():
             port = int(run('docker', 'port', name, '443/tcp').rsplit(':', 1)[1])
             http_port = int(run('docker', 'port', name, '80/tcp').rsplit(':', 1)[1])
 
-            def get(path, user_agent='Mozilla/5.0', host='metar.uk', method='GET', https=True):
+            def get(path, user_agent='Mozilla/5.0', host='metar.uk', method='GET', https=True, request_headers=None):
                 conn = (http.client.HTTPSConnection('localhost', port, context=context, timeout=5)
                         if https else http.client.HTTPConnection('localhost', http_port, timeout=5))
                 try:
-                    conn.request(method, path, headers={'Host': host, 'User-Agent': user_agent})
+                    conn.request(method, path, headers={'Host': host, 'User-Agent': user_agent, **(request_headers or {})})
                     res = conn.getresponse()
-                    return res.status, dict(res.getheaders()), res.read().decode()
+                    headers = dict(res.getheaders())
+                    body = res.read()
+                    headers['_wire_bytes'] = len(body)
+                    if headers.get('Content-Encoding') == 'gzip':
+                        body = gzip.decompress(body)
+                    return res.status, headers, body.decode()
                 finally:
                     conn.close()
 
@@ -57,6 +63,18 @@ def main():
             else:
                 raise AssertionError('Gateway failed to become ready')
             regular = get('/')
+            for asset in ['/metar-assets/app.js', '/metar-assets/app.css', '/blog/']:
+                plain = get(asset)
+                compressed = get(asset, request_headers={'Accept-Encoding':'gzip'})
+                assert compressed[0] == plain[0] == 200
+                assert compressed[1].get('Content-Encoding') == 'gzip', asset
+                assert 'Accept-Encoding' in compressed[1].get('Vary', ''), asset
+                assert compressed[2] == plain[2], asset
+                assert compressed[1]['_wire_bytes'] < plain[1]['_wire_bytes'] * .5, asset
+                if asset.startswith('/metar-assets/'):
+                    assert compressed[1]['Cache-Control'] == 'no-cache'
+                    assert get(asset, request_headers={'If-None-Match':plain[1]['ETag']})[0] == 304
+                print(f'Static transfer {asset}: {plain[1]["_wire_bytes"]} -> {compressed[1]["_wire_bytes"]} bytes')
             assert '<h1>METAR 元衡社区</h1>' in regular[2]
             assert 'google-site-verification' in regular[2]
             assert 'X-Robots-Tag' not in regular[1]

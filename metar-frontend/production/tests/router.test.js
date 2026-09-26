@@ -8,8 +8,8 @@ const { create, owns } = require('../src/router.js');
 function browser(url) {
   const host = { location: new URL(url), pushes: 0, replacements: 0 };
   host.history = {
-    replaceState(_state, _title, value) { host.replacements++; host.location = new URL(value, host.location); },
-    pushState(_state, _title, value) { host.pushes++; host.location = new URL(value, host.location); },
+    replaceState(state, _title, value) { this.state = state; host.lastReplaced = state; host.replacements++; host.location = new URL(value, host.location); },
+    pushState(state, _title, value) { this.state = state; host.pushes++; host.location = new URL(value, host.location); },
   };
   return host;
 }
@@ -113,4 +113,29 @@ test('登录注册找回与发布旧入口直接交接且拒绝外部或循环�
     assert.equal(nativeDestination(new URL('https://metar.uk/login'), { answerLoginPath: bad }), '/users/login', bad);
   }
   assert.equal(nativeDestination(new URL('https://metar.uk/login?status=inactive'), { answerLoginPath: '/users/login?lang=zh' }), '/users/login?lang=zh&status=inactive');
+});
+
+test('跳转保存当前滚动位置，历史项仅恢复同一路径的有效位置', () => {
+  const host = browser('https://metar.uk/latest?page=2');
+  host.scrollY = 940; host.scrollX = 0;
+  host.history.state = {existing:'preserved'};
+  const router = create(host);
+  router.go('/topics');
+  const saved = host.lastReplaced;
+  assert.equal(saved.existing, 'preserved');
+  assert.equal(saved.metarScroll.y, 940);
+  host.history.state = saved;
+  assert.equal(router.position(), null);
+  host.location = new URL('https://metar.uk/latest?page=2');
+  assert.deepEqual(router.position(), {x:0,y:940});
+  saved.metarScroll.y = -1;
+  assert.equal(router.position(), null);
+});
+
+test('重复点击当前页面不刷新、不增加历史项，仍阻止浏览器整页导航', () => {
+  const host = browser('https://metar.uk/topics');
+  const event = {button:0, preventDefault(){this.prevented=true;}, target:{closest:()=>({target:'',hasAttribute:()=>false,getAttribute:()=>'/topics'})}};
+  assert.equal(create(host).follow(event), false);
+  assert.equal(event.prevented, true);
+  assert.equal(host.pushes, 0);
 });

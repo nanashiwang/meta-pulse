@@ -51,6 +51,8 @@
     constructor(config) {
       this.base = relativePath(config.answerApiBase, '/answer/api/v1').replace(/\/$/, '');
       this.timeoutMs = Number.isInteger(config.requestTimeoutMs) ? config.requestTimeoutMs : DEFAULT_TIMEOUT_MS;
+      this.contentCache = new Map();
+      this.contentEpoch = 0;
     }
 
     token() {
@@ -95,10 +97,36 @@
 
     getCurrentUser() { return this.request('/user/info'); }
 
+    clearContentCache() { this.contentCache.clear(); this.contentEpoch++; }
+
+    // Only public browsing lists use this bounded, short-lived memory cache.
+    // Identity, permissions, binding, notifications and financial reads stay live.
+    content(path) {
+      if (!/^\/(?:question\/page|tags\/page|search)\?/.test(path)) return this.request(path);
+      const scope = `${this.token()}\u0000${window.MetarI18n?.locale() || 'zh-CN'}`;
+      if (this.contentScope !== scope) { this.clearContentCache(); this.contentScope = scope; }
+      const existing = this.contentCache.get(path);
+      if (existing && (existing.pending || existing.expires > Date.now())) return existing.promise;
+      const epoch = this.contentEpoch;
+      const entry = { pending: true, expires: 0 };
+      entry.promise = this.request(path).then(value => {
+        entry.pending = false;
+        entry.expires = Date.now() + 15000;
+        return value;
+      }).catch(error => {
+        if (epoch === this.contentEpoch && this.contentCache.get(path) === entry) this.contentCache.delete(path);
+        throw error;
+      });
+      this.contentCache.delete(path);
+      this.contentCache.set(path, entry);
+      if (this.contentCache.size > 24) this.contentCache.delete(this.contentCache.keys().next().value);
+      return entry.promise;
+    }
+
     listQuestions({ page = 1, pageSize = 20, order = 'active', tag = '' } = {}) {
       const params = new URLSearchParams({ page: String(page), page_size: String(pageSize), order });
       if (tag) params.set('tag', tag);
-      return this.request(`/question/page?${params}`);
+      return this.content(`/question/page?${params}`);
     }
 
     getQuestion(id) {
@@ -112,12 +140,12 @@
 
     listTags({ page = 1, pageSize = 24, order = 'popular' } = {}) {
       const params = new URLSearchParams({ page: String(page), page_size: String(pageSize), query_cond: order });
-      return this.request(`/tags/page?${params}`);
+      return this.content(`/tags/page?${params}`);
     }
 
     search(query, { page = 1, size = 30, order = 'relevance' } = {}) {
       const params = new URLSearchParams({ q: query, page: String(page), size: String(size), order });
-      return this.request(`/search?${params}`);
+      return this.content(`/search?${params}`);
     }
 
     getProfile(username) {

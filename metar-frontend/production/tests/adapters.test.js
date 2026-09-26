@@ -110,3 +110,58 @@ test('额度仅按配置的整数单位展示，不猜测币种', () => {
   assert.equal(format(2 ** 53, 500000, 'en-US'), 'Awaiting verification');
   assert.equal(format(10, 0, 'en-US'), '10 quota');
 });
+
+test('公开列表合并并发请求，短暂复用后过期，刷新可主动清空', async () => {
+  const client = new window.MetarAdapters.AnswerAdapter({});
+  let count = 0, release;
+  global.fetch = () => { count++; return new Promise(resolve => { release = () => resolve(jsonResponse({list:[], count})); }); };
+  const first = client.listQuestions(), second = client.listQuestions();
+  assert.equal(first, second);
+  assert.equal(count, 1);
+  release(); await first;
+  await client.listQuestions();
+  assert.equal(count, 1);
+  global.fetch = async () => { count++; return jsonResponse({list:[], count}); };
+  for (const entry of client.contentCache.values()) entry.expires = Date.now() - 1;
+  await client.listQuestions(); assert.equal(count, 2);
+  client.clearContentCache();
+  await client.listQuestions(); assert.equal(count, 3);
+});
+
+test('公开列表按令牌、语言、筛选和分页隔离，旧请求完成不能污染新会话', async () => {
+  const client = new window.MetarAdapters.AnswerAdapter({});
+  const previous = window.MetarI18n;
+  let language = 'zh-CN', count = 0, finishOld;
+  window.MetarI18n = {locale:()=>language};
+  const oldToken = window.localStorage.values.get('_a_ltk_');
+  try {
+    global.fetch = () => { count++; return new Promise(resolve => { finishOld = () => resolve(jsonResponse({source:'old'})); }); };
+    const old = client.listQuestions();
+    window.localStorage.values.set('_a_ltk_', 'new-session');
+    global.fetch = async () => { count++; return jsonResponse({source:'new'}); };
+    assert.equal((await client.listQuestions()).source, 'new');
+    finishOld(); await old;
+    assert.equal((await client.listQuestions()).source, 'new');
+    assert.equal(count, 2);
+    language = 'en-US'; await client.listQuestions();
+    await client.listQuestions({page:2}); await client.listQuestions({order:'hot'});
+    assert.equal(count, 5);
+    for (let i=0;i<30;i++) await client.listQuestions({page:i+1});
+    assert.ok(client.contentCache.size <= 24);
+  } finally { window.MetarI18n = previous; window.localStorage.values.set('_a_ltk_', oldToken); }
+});
+
+test('失败不进入内容缓存，身份、绑定和权益每次重新读取', async () => {
+  const client = new window.MetarAdapters.AnswerAdapter({});
+  let count = 0;
+  global.fetch = async () => { count++; throw Error('offline'); };
+  await assert.rejects(client.listTags()); await assert.rejects(client.listTags());
+  assert.equal(count, 2);
+  global.fetch = async url => { count++; return url.startsWith('/metar/') ? new Response('{}') : jsonResponse(null); };
+  await client.getCurrentUser(); await client.getCurrentUser();
+  await client.getBindingState(); await client.getBindingState();
+  await client.content('/user/info'); await client.content('/user/info');
+  const pulse = new window.MetarAdapters.PulseAdapter(client);
+  await pulse.summary(); await pulse.summary();
+  assert.equal(count, 10);
+});

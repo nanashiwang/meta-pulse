@@ -59,7 +59,7 @@ test('app、适配器、头像中的显式中文界面词条都有英文翻译',
   }
 });
 
-async function shell({ language = 'en_US', user = null, binding = 'unbound', content = false, failure = '', pulseRules = {}, pulseRewards = [], actionResult = 'settled', storageBlocked = false, adminError = 0, bookmarkCount = 0 } = {}) {
+async function shell({ language = 'en_US', user = null, binding = 'unbound', content = false, failure = '', pulseRules = {}, pulseRewards = [], actionResult = 'settled', storageBlocked = false, adminError = 0, bookmarkCount = 0, identityGate = null } = {}) {
   const { context, i18n, values } = languageContext(language);
   const node = () => ({ innerHTML: '', textContent: '', attributes: {}, setAttribute(key, value) { this.attributes[key] = value; }, focus() {} });
   const nodes = Object.fromEntries(['app', 'view', 'main', 'skip', 'description', 'theme', 'menu', 'language'].map((key) => [key, node()]));
@@ -74,6 +74,7 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
     body: { classList: { remove() {}, toggle() { return true; } } },
     getElementById: (id) => nodes[id] || null,
     querySelector: (selector) => ({
+      'header.topbar': {set outerHTML(value) { nodes.app.innerHTML = nodes.app.innerHTML.replace(/<header class="topbar">[\s\S]*?<\/header>/, () => value); }},
       '[data-action="skip"]': nodes.skip, 'meta[name="description"]': nodes.description,
       '[data-action="theme"]': nodes.theme, '[data-action="menu"]': nodes.menu,
       '[data-action="language"]': nodes.language,
@@ -98,6 +99,7 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
     fetch: async (url, options) => {
       requests.push({ url, options });
       const pathname = new URL(url, 'https://metar.uk').pathname;
+      if (pathname === '/answer/api/v1/user/info' && identityGate) await identityGate;
       if (failure === 'all' || (failure === 'identity' && pathname.endsWith('/user/info'))) return { ok: false, status: 503, json: async () => ({ msg: '中文服务器错误', data: null }) };
       if (pathname.startsWith('/metar/api/admin/pulse/')) {
         if (adminError) return { ok: false, status: adminError, json: async () => ({ error: 'settings_unavailable' }) };
@@ -349,4 +351,30 @@ test('社区经验奖项与到账记录保留 EXP 单位，不按 quota 汇率�
  assert.doesNotMatch(view.html(),/0\.001 API/);
  await view.changeLanguage('zh_CN');
  assert.equal((view.html().match(/500 EXP/g)||[]).length,2);
+});
+
+
+test('公开列表与身份查询并行，身份完成只更新导航，不重载已显示内容', async () => {
+  let release;
+  const identityGate = new Promise(resolve => { release = resolve; });
+  const view = await shell({identityGate, user:pulseUser, content:true});
+  assert.ok(view.requests.some(r => r.url.includes('/question/page?')));
+  assert.match(view.nodes.app.innerHTML, /Checking account/);
+  assert.match(view.nodes.view.innerHTML, /<h3>未读<\/h3>/);
+  const content = view.nodes.view.innerHTML;
+  release(); await new Promise(setImmediate);
+  assert.equal(view.nodes.view.innerHTML, content);
+  assert.doesNotMatch(view.nodes.app.innerHTML, /Checking account/);
+  assert.equal(view.requests.filter(r => r.url.includes('/question/page?')).length, 1);
+});
+
+test('身份仍在读取时，权益页等待认证，不提前请求绑定或财务接口', async () => {
+  let release;
+  const identityGate = new Promise(resolve => { release = resolve; });
+  const view = await shell({identityGate, user:pulseUser, binding:'bound'});
+  const navigation = view.navigate('/pulse');
+  await new Promise(setImmediate);
+  assert.equal(view.requests.filter(r => /\/metar\/api\/pulse|connector\/user/.test(r.url)).length, 0);
+  release(); await navigation;
+  assert.ok(view.requests.some(r => r.url.includes('/metar/api/pulse/summary')));
 });
