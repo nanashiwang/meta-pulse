@@ -10,12 +10,26 @@
   const tierLabels = {white:'白光', blue:'蓝光', purple:'紫光', gold:'金光', red:'红光'};
   const tier = value => tiers.includes(value) ? value : 'white';
   const strongest = rewards => tiers[Math.max(0, ...rewards.map(reward => tiers.indexOf(tier(reward.tier))))];
+  // All five cards finish inside the existing timeline, including a partial batch.
+  function cardFrame(progress, index = 0) {
+    const p = progress - Math.min(4, index) * .027;
+    const enter = out((p - .49) / .15);
+    return {
+      enter,
+      light: smooth((p - .49) / .10) * (1 - smooth((p - .68) / .17)),
+      bloom: smooth((p - .50) / .12) * (1 - smooth((p - .69) / .20)),
+      silhouette: smooth((p - .61) / .045) * (1 - smooth((p - .72) / .09)),
+      content: smooth((p - .70) / .14),
+      lift: p > .53 && p < .87 ? Math.sin(Math.PI * (p - .53) / .34) : 0,
+      shine: clamp((p - .75) / .18)
+    };
+  }
   function cards(result, t) {
-    return result.rewards.map((reward, index) => `<div class="pc-card" data-tier="${tier(reward.tier)}"><div class="pc-reward-inner">
+    return result.rewards.map((reward, index) => `<div class="pc-card" data-tier="${tier(reward.tier)}"><span class="pc-card-bloom" aria-hidden="true"></span><div class="pc-reward-inner"><div class="pc-card-content">
       <div class="pc-reward-label">${esc(t(tierLabels[tier(reward.tier)]))}<span>${result.total > 1 ? String(index + 1).padStart(2,'0') : 'PULSE'}</span></div>
       <div class="pc-emblem">${icon(reward.type)}</div><div class="pc-value"><span class="pc-amount">${esc(reward.amount)}</span><span class="pc-unit">${esc(reward.unit)}</span></div>
       <div class="pc-divider"></div><div class="pc-card-foot" data-pending="${Boolean(reward.pending)}">${esc(reward.status)}</div>
-      </div></div>`).join('');
+      </div></div><span class="pc-card-light" aria-hidden="true"><span class="pc-light-sigil">${icon(reward.type)}</span></span><span class="pc-card-frame" aria-hidden="true"></span></div>`).join('');
   }
 
   // Hold before fracture until a server result exists. No animation chooses a prize.
@@ -55,7 +69,7 @@
     try { ctx = canvas.getContext('2d'); } catch (_) { /* Keep the result card usable without Canvas. */ }
     const stage = root.querySelector('.pc-stage'), reward = root.querySelector('.pc-reward');
     const annotation = root.querySelector('.pc-annotation');
-    let w = 0, h = 0, colors = {}, progress = 0, waitingTime = null;
+    let w = 0, h = 0, colors = {}, progress = 0, waitingTime = null, cardLayout = [];
     const frac = x => x - Math.floor(x);
     const stars = Array.from({length:76}, (_, i) => ({a:frac(Math.sin(i*91.13+4)*874.73)*Math.PI*2,r:.25+frac(Math.sin(i*6.7+2)*476.1)*.75,size:.6+frac(Math.sin(i*71.1)*162.9)*1.6,delay:frac(Math.sin(i*4.92)*381.1)}));
     function size() {
@@ -65,17 +79,55 @@
       if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const css = getComputedStyle(root);
       for (const key of ['energy','secondary','core','gold','bg']) colors[key] = css.getPropertyValue('--pc-'+key).trim();
+      // Measure once on result/resize/theme changes, never inside the animation loop.
+      cardLayout = Array.from(reward.querySelectorAll('.pc-card'), card => {
+        const style = getComputedStyle(card);
+        return {card, x:reward.offsetLeft+card.offsetLeft+card.offsetWidth/2,
+          y:reward.offsetTop+card.offsetTop+card.offsetHeight/2, width:card.offsetWidth, height:card.offsetHeight,
+          power:tiers.indexOf(tier(card.dataset.tier)), flare:style.getPropertyValue('--pc-flare').trim()};
+      });
       if (ctx) draw(progress, waitingTime);
     }
   function ellipse(cx,cy,rx,ry,angle,alpha,color=colors.energy,width=1) {
     ctx.save();ctx.globalAlpha=alpha;ctx.strokeStyle=color;ctx.lineWidth=width;ctx.beginPath();ctx.ellipse(cx,cy,rx,ry,angle,0,Math.PI*2);ctx.stroke();ctx.restore();
   }
   function dot(x,y,r,alpha,color=colors.energy) {ctx.globalAlpha=alpha;ctx.fillStyle=color;ctx.beginPath();ctx.arc(x,y,Math.max(.1,r),0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;}
-  function aura(x,y,r,alpha) {
-    ctx.save();ctx.globalAlpha=alpha;const g=ctx.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,colors.energy);g.addColorStop(1,'transparent');ctx.fillStyle=g;ctx.fillRect(x-r,y-r,2*r,2*r);ctx.restore();
+  function aura(x,y,r,alpha,color=colors.energy) {
+    ctx.save();ctx.globalAlpha=alpha;const g=ctx.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,color);g.addColorStop(1,'transparent');ctx.fillStyle=g;ctx.fillRect(x-r,y-r,2*r,2*r);ctx.restore();
+  }
+  function cardRadiance(layout, frame, p) {
+    const {x,y,width,height,power,flare} = layout;
+    const glow = frame.bloom * (.20 + power * .17);
+    if (glow <= 0) return;
+    aura(x,y,width*(1.4+power*.18),glow,flare);
+    aura(x,y,height*.74,glow*.6,'#fff3c7');
+    if (power >= 2) {
+      // Broad, feathered shafts radiate from the card, rather than a central wheel.
+      ctx.save();ctx.translate(x,y);ctx.rotate(-.35+frame.lift*.10);
+      for(let i=0;i<10;i++) {
+        ctx.rotate(Math.PI*2/10);
+        const length=width*(1.5+(i%3)*.38),spread=length*(.10+(i%2)*.12);
+        const ray=ctx.createLinearGradient(0,0,length,0);
+        ray.addColorStop(0,'#fff8df');ray.addColorStop(.18,flare);ray.addColorStop(1,'transparent');
+        ctx.fillStyle=ray;ctx.globalAlpha=glow*(i%2?.16:.40);
+        ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(length,-spread);ctx.quadraticCurveTo(length*1.08,0,length,spread);ctx.closePath();ctx.fill();
+      }
+      ctx.restore();
+    }
+    if (power >= 3) {
+      ctx.save();ctx.globalAlpha=glow*.65;
+      const streak=ctx.createLinearGradient(x-width*2,y,x+width*2,y);
+      streak.addColorStop(0,'transparent');streak.addColorStop(.44,flare);streak.addColorStop(.5,'#fffbea');streak.addColorStop(.56,flare);streak.addColorStop(1,'transparent');
+      ctx.fillStyle=streak;ctx.fillRect(x-width*2,y-height*.12,width*4,1.5);
+      ctx.restore();
+      stars.slice(0,power===4?22:14).forEach((star,i)=>{
+        const travel=clamp((p-.53)/.47),px=x+Math.cos(star.a)*width*(.48+travel*star.r),py=y+Math.sin(star.a)*height*.52-travel*height*.3;
+        dot(px,py,star.size*(i%3===0?1.4:.65),glow*(.3+star.r*.6),i%3===0?'#fffbea':flare);
+      });
+    }
   }
   function crystal(x,y,s,p) {
-    const gather=smooth(p/.44), split=out((p-.46)/.22), disappear=1-smooth((p-.57)/.16);
+    const gather=smooth(p/.44), split=out((p-.46)/.22), disappear=1-smooth((p-.49)/.12);
     if(disappear<=0) return;
     const points=[[0,-1.08],[.68,-.43],[.62,.45],[0,1.1],[-.62,.45],[-.68,-.43],[0,-.35],[0,.44]];
     const faces=[[0,1,6],[0,6,5],[1,2,7,6],[5,6,7,4],[2,3,7],[4,7,3],[6,7,3],[6,0,5]];
@@ -98,7 +150,7 @@
     const breath=waiting === null ? 0 : Math.sin(waiting/650);
     const orbit=waiting === null ? 0 : waiting/1400;
     const cx=w/2,cy=h*.46+breath*3,base=Math.min(w*.18,h*.24,60)*(1+breath*.025),bound=Math.min(w*.46,300);
-    const gather=smooth(p/.43),release=clamp((p-.46)/.36),isResult=p>=1;
+    const gather=smooth(p/.43),release=clamp((p-.46)/.20),isResult=p>=1;
     aura(cx,cy,base*(2.4+gather*.5),isResult?.10:.13+gather*.12);
     ellipse(cx,cy+base*1.47,base*1.55,base*.20,0,.18);
     ellipse(cx,cy+base*1.47,base*1.05,base*.12,0,.12);
@@ -127,34 +179,20 @@
       ellipse(cx,cy,radius,radius*.74,0,(1-release)*.7,colors.energy,1.6);
       ellipse(cx,cy,radius*.81,radius*.6,0,(1-release)*.35,colors.secondary,1);
       ctx.save();ctx.globalAlpha=(1-release)*.6;const g=ctx.createLinearGradient(cx-bound,cy,cx+bound,cy);g.addColorStop(0,'transparent');g.addColorStop(.5,colors.core);g.addColorStop(1,'transparent');ctx.fillStyle=g;ctx.fillRect(cx-bound,cy-1,bound*2,2);ctx.restore();
-      // One smooth burst, never a strobe. Higher tiers add rays and a pillar.
-      const power = Math.max(0, tiers.indexOf(tier(root.dataset.tier)));
-      const glow = Math.sin(Math.PI * release) * (0.12 + power * .08);
-      aura(cx,cy,bound*(.65+release),glow);
-      if (power >= 1) {
-        ctx.save();ctx.translate(cx,cy);ctx.rotate(release*.25);
-        for(let i=0;i<8+power*4;i++) {
-          ctx.rotate(Math.PI*2/(8+power*4));ctx.globalAlpha=glow*.55;
-          const ray=ctx.createLinearGradient(0,0,bound,0);ray.addColorStop(0,colors.core);ray.addColorStop(.2,colors.energy);ray.addColorStop(1,'transparent');ctx.fillStyle=ray;
-          ctx.beginPath();ctx.moveTo(base*.3,0);ctx.lineTo(bound*(.6+release),-3-power);ctx.lineTo(bound*(.6+release),3+power);ctx.closePath();ctx.fill();
-        }
-        ctx.restore();
-      }
-      if (power >= 3) {
-        ctx.save();ctx.globalAlpha=glow;
-        const beam=ctx.createLinearGradient(cx-36,0,cx+36,0);beam.addColorStop(0,'transparent');beam.addColorStop(.45,colors.energy);beam.addColorStop(.5,colors.core);beam.addColorStop(.55,colors.energy);beam.addColorStop(1,'transparent');ctx.fillStyle=beam;ctx.fillRect(cx-36,0,72,h);
-        ellipse(cx,cy,radius*.65,radius*.65,0,(1-release)*.7,colors.core,power===4?3:1);
-        if(power===4) { ellipse(cx,cy,radius*.95,radius*.4,-.35,(1-release)*.65,colors.energy,2); ellipse(cx,cy,radius*.9,radius*.45,.35,(1-release)*.4,colors.secondary,2); }
-        ctx.restore();
-      }
     }
-    const reveal=out((p-.58)/.3);
-    reward.style.opacity=String(reveal);reward.style.visibility=reveal>0?'visible':'hidden';
-    reward.querySelectorAll('.pc-card').forEach((card, i) => {
-      const f=out((p-.57-i*.035)/.24);
-      card.style.opacity=String(f);
-      card.style.transform=`translateY(${36*(1-f)}px) rotateY(${-38*(1-f)}deg) scale(${.84+.16*f})`;
-      card.style.setProperty('--shine',`${clamp((p-.66-i*.035)/.17)*520}px`);
+    const power = Math.max(0, tiers.indexOf(tier(root.dataset.tier)));
+    stage.style.setProperty('--pc-dim', String(smooth((p-.20)/.27)*(1-smooth((p-.81)/.19))*(.30+power*.13)));
+    reward.style.opacity=p>.49?'1':'0';reward.style.visibility=p>.49?'visible':'hidden';
+    cardLayout.forEach((layout, i) => {
+      const {card,power} = layout, frame=cardFrame(p,i);
+      cardRadiance(layout,frame,p-i*.027);
+      card.style.opacity=String(frame.enter);
+      card.style.transform=`translateY(${24*(1-frame.enter)-frame.lift*3}px) rotateY(${-24*(1-frame.enter)}deg) scale(${.78+.22*frame.enter+frame.lift*(power>=3?.04:.015)})`;
+      card.style.setProperty('--card-light',String(frame.light));
+      card.style.setProperty('--card-bloom',String(frame.bloom));
+      card.style.setProperty('--card-silhouette',String(frame.silhouette));
+      card.style.setProperty('--card-content',String(frame.content));
+      card.style.setProperty('--shine',`${frame.shine*520}px`);
     });
     annotation.style.opacity=String(1-gather);
   }
@@ -162,6 +200,7 @@
     const theme = new MutationObserver(size); theme.observe(document.documentElement, { attributes:true, attributeFilter:['data-theme'] });
     size();
     return {
+      canAnimate: Boolean(ctx),
       paint(p, waiting = null) {
         progress = p; waitingTime = waiting;
         if (ctx) draw(p, waiting);
@@ -169,6 +208,7 @@
           reward.style.opacity = p >= 1 ? '1' : '0';
           reward.style.visibility = p >= 1 ? 'visible' : 'hidden';
           reward.style.transform = 'none';
+          annotation.style.opacity = p >= 1 ? '0' : '1';
         }
       },
       size,
@@ -228,7 +268,7 @@
     begin(total = 1) {
       if (this.dead) return;
       this.resolve?.(false); this.resolve = null;
-      this.timeline = new Timeline(performance.now(), this.skipInput.checked || this.motion.matches || document.hidden);
+      this.timeline = new Timeline(performance.now(), this.skipInput.checked || this.motion.matches || document.hidden || !this.scene.canAnimate);
       this.total = total; this.confirmed = 0;
       this.root.dataset.tier = ''; this.root.dataset.count = String(total);
       this.reward.innerHTML = ''; this.resultHTML = '';
@@ -298,5 +338,5 @@
       this.motion.removeEventListener('change', this.onMotion);
     }
   }
-  window.MetarPulseCore = Object.freeze({ Timeline, markup, cards, strongest, View });
+  window.MetarPulseCore = Object.freeze({ Timeline, cardFrame, markup, cards, strongest, View });
 })();

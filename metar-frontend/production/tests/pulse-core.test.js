@@ -6,7 +6,7 @@ const vm = require('node:vm');
 const path = require('node:path');
 const context = vm.createContext({ window: {} });
 vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/pulse-core.js'), 'utf8'), context);
-const { Timeline, markup, cards, strongest } = context.window.MetarPulseCore;
+const { Timeline, cardFrame, markup, cards, strongest } = context.window.MetarPulseCore;
 
 test('without a server result, even a long wait cannot fracture or reveal a reward', () => {
   const clock = new Timeline(100);
@@ -40,6 +40,36 @@ test('skip and reduced motion wait for the same result and then reveal immediate
     clock.receive(2000);
     assert.equal(clock.sample(2000).phase, 'result');
     assert.equal(clock.sample(2000).animate, false);
+  }
+});
+
+test('cards stay hidden at the server hold, bloom before readable content and settle after a skip', () => {
+  for (let index = 0; index < 5; index++) {
+    assert.equal(cardFrame(.44, index).enter, 0);
+    const burst = cardFrame(.64 + index * .027, index);
+    assert.equal(burst.light, 1);
+    assert.equal(burst.bloom, 1);
+    assert.equal(burst.content, 0);
+    assert.ok(burst.silhouette > 0);
+    const end = cardFrame(1, index);
+    assert.equal(end.enter, 1);
+    assert.equal(end.content, 1);
+    for (const key of ['light', 'bloom', 'silhouette', 'lift']) assert.equal(end[key], 0);
+  }
+  assert.ok(cardFrame(.73, 0).content > cardFrame(.73, 4).content);
+});
+
+test('each card has one smooth light burst and content never disappears again', () => {
+  for (let index = 0; index < 5; index++) {
+    let previous = cardFrame(0, index), fading = false;
+    for (let tick = 1; tick <= 1000; tick++) {
+      const frame = cardFrame(tick / 1000, index);
+      for (const value of Object.values(frame)) assert.ok(value >= 0 && value <= 1);
+      assert.ok(frame.content >= previous.content);
+      if (frame.light < previous.light) fading = true;
+      if (fading) assert.ok(frame.light <= previous.light);
+      previous = frame;
+    }
   }
 });
 

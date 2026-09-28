@@ -8,15 +8,25 @@
 .pulse-core h2 { font-size:22px; line-height:1.3; margin:0; font-weight:600; letter-spacing:-.05em; }
 .pulse-core .pc-subtitle { color:var(--pc-muted); margin:8px 0 0; font-size:12px; }
 .pulse-core .pc-stage { position:relative; height:204px; width:100%; isolation:isolate; perspective:900px; }
+.pulse-core .pc-stage:before { content:""; position:absolute; inset:-12px 0; z-index:-1; background:radial-gradient(ellipse at center,#07100e 12%,transparent 74%); opacity:calc(var(--pc-dim,0) * .38); pointer-events:none; }
+:root[data-theme="dark"] .pulse-core .pc-stage:before { opacity:var(--pc-dim,0); }
 .pulse-core canvas { width:100%; height:100%; display:block; mask-image:linear-gradient(transparent,#000 10%,#000 90%,transparent); }
 .pulse-core .pc-horizon { position:absolute; left:14%; right:14%; bottom:34px; height:1px; background:linear-gradient(90deg,transparent,var(--pc-line),transparent); z-index:-1; }
 .pulse-core .pc-annotation { position:absolute; left:50%; bottom:20px; transform:translateX(-50%); color:var(--pc-muted); font-size:10px; letter-spacing:.18em; white-space:nowrap; transition:opacity .2s; }
 .pulse-core .pc-reward { position:absolute; inset:8px 18px; display:flex; justify-content:center; align-items:center; gap:10px; opacity:0; visibility:hidden; }
-.pulse-core .pc-card { --pc-energy:#637380; --pc-soft:#ecf0f3; --pc-core:#fff; width:148px; min-width:0; flex:none; height:184px; padding:1px; border-radius:14px; background:linear-gradient(145deg,var(--pc-energy),var(--pc-line) 45%,var(--pc-energy)); box-shadow:0 8px 28px var(--pc-shadow); transform-origin:50% 80%; }
+.pulse-core .pc-card { --pc-energy:#637380; --pc-soft:#ecf0f3; --pc-core:#fff; --pc-flare:#e3edf4; --pc-hot:#fff; --light-strength:.48; --bloom-strength:.15; position:relative; width:148px; min-width:0; flex:none; height:184px; padding:1px; border-radius:14px; background:linear-gradient(145deg,var(--pc-energy),var(--pc-line) 45%,var(--pc-energy)); box-shadow:0 8px 28px var(--pc-shadow); transform-origin:50% 80%; }
 .pulse-core[data-count="5"] .pc-card { flex:1; max-width:158px; }
 .pulse-core .pc-reward-inner { height:100%; position:relative; overflow:hidden; border-radius:13px; background:var(--pc-surface); text-align:center; padding:12px 10px; }
 .pulse-core .pc-reward-inner:before { content:""; position:absolute; inset:0; background:radial-gradient(ellipse at 90% 0%,color-mix(in srgb,var(--pc-energy) 17%,transparent),transparent 65%); pointer-events:none; }
 .pulse-core .pc-reward-inner:after { content:""; position:absolute; top:-60%; left:-80%; height:230%; width:40%; transform:rotate(28deg) translateX(var(--shine,0px)); background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--pc-core) 50%,transparent),transparent); pointer-events:none; }
+.pulse-core .pc-card-content { position:relative; opacity:var(--card-content,1); }
+.pulse-core .pc-card-bloom { position:absolute; inset:-24px -44px; border-radius:28%; background:radial-gradient(ellipse,var(--pc-hot) 12%,color-mix(in srgb,var(--pc-flare) 85%,transparent) 43%,transparent 74%); filter:blur(14px); opacity:calc(var(--card-bloom,0) * var(--bloom-strength)); pointer-events:none; }
+.pulse-core .pc-card-light { position:absolute; inset:1px; border-radius:12px; display:grid; place-items:center; background:radial-gradient(ellipse at 48% 40%,var(--pc-hot) 28%,color-mix(in srgb,var(--pc-hot) 94%,var(--pc-flare)) 66%,var(--pc-flare) 100%); box-shadow:0 0 12px var(--pc-hot),0 0 32px var(--pc-flare),0 0 66px var(--pc-flare); opacity:calc(var(--card-light,0) * var(--light-strength)); pointer-events:none; }
+.pulse-core .pc-card-light:before { content:""; position:absolute; inset:-4px; border-radius:inherit; background:linear-gradient(110deg,transparent 10%,var(--pc-hot) 35%,transparent 58%,var(--pc-hot) 82%,transparent); filter:blur(7px); opacity:calc(1 - var(--card-silhouette,0) * .75); }
+.pulse-core .pc-light-sigil { display:grid; place-items:center; width:70%; height:70%; color:var(--pc-flare); opacity:var(--card-silhouette,0); filter:drop-shadow(0 0 3px var(--pc-hot)); }
+.pulse-core .pc-light-sigil svg { width:100%; height:100%; fill:color-mix(in srgb,var(--pc-flare) 20%,transparent); stroke-width:.6; }
+.pulse-core .pc-card-frame { position:absolute; inset:5px; border-radius:9px; opacity:var(--card-content,1); pointer-events:none; }
+.pulse-core[data-stage="gather"] .pc-card,.pulse-core[data-stage="charge"] .pc-card,.pulse-core[data-stage="reveal"] .pc-card { will-change:transform,opacity; }
 .pulse-core .pc-reward-label { position:relative; color:var(--pc-energy); font-size:10px; font-weight:650; letter-spacing:.08em; display:flex; justify-content:space-between; gap:4px; }
 .pulse-core .pc-emblem { margin:13px auto 9px; display:grid; place-items:center; height:32px; width:32px; background:var(--pc-soft); border-radius:12px; color:var(--pc-energy); transform:rotate(-8deg); flex:none; }
 .pulse-core .pc-emblem svg { width:22px; height:22px; transform:rotate(8deg); }
@@ -69,8 +79,14 @@
 :root[data-theme="dark"] .pulse-core .pc-card[data-tier="purple"], :root[data-theme="dark"] .pulse-core[data-tier="purple"] { --pc-energy:#c09aff; --pc-soft:#302346; --pc-secondary:#e3baff; }
 :root[data-theme="dark"] .pulse-core .pc-card[data-tier="gold"], :root[data-theme="dark"] .pulse-core[data-tier="gold"] { --pc-energy:#ffd16d; --pc-soft:#3e301b; --pc-secondary:#ffae46; }
 :root[data-theme="dark"] .pulse-core .pc-card[data-tier="red"], :root[data-theme="dark"] .pulse-core[data-tier="red"] { --pc-energy:#ff7d91; --pc-soft:#43252f; --pc-secondary:#ffc173; }
-.pulse-core .pc-card[data-tier="gold"], .pulse-core .pc-card[data-tier="red"] { box-shadow:0 0 24px color-mix(in srgb,var(--pc-energy) 24%,transparent),0 8px 28px var(--pc-shadow); }
-.pulse-core .pc-card[data-tier="red"] { border-top:2px solid var(--pc-energy); }
+.pulse-core .pc-card[data-tier="blue"] { --pc-flare:#70bfff; --light-strength:.65; --bloom-strength:.30; }
+.pulse-core .pc-card[data-tier="purple"] { --pc-flare:#c198ff; --light-strength:.82; --bloom-strength:.55; }
+.pulse-core .pc-card[data-tier="gold"],.pulse-core .pc-card[data-tier="red"] { --pc-flare:#ffbf48; --pc-hot:#fffbe3; --pc-energy:#ffd577; --pc-ink:#fff7df; --pc-muted:#d6c69f; --pc-line:#a88b493b; --pc-soft:#46391f; --light-strength:1; --bloom-strength:1; padding:2px; background:linear-gradient(135deg,#fff8cc,var(--pc-flare) 18%,#885919 46%,var(--pc-flare) 73%,#fff4c4); box-shadow:0 0 15px color-mix(in srgb,var(--pc-flare) 32%,transparent),0 0 34px color-mix(in srgb,var(--pc-flare) 16%,transparent),0 8px 28px var(--pc-shadow); }
+.pulse-core .pc-card[data-tier="gold"] .pc-reward-inner { background:radial-gradient(ellipse at 50% -10%,#655125 0%,#242b20 48%,#13221b 100%); border-radius:12px; }
+.pulse-core .pc-card[data-tier="red"] { --pc-flare:#ff526b; --pc-hot:#fff2d4; --pc-energy:#ffb2ae; --pc-muted:#e1bbb4; --pc-line:#ba76683b; --pc-soft:#4b2a2b; background:linear-gradient(135deg,#fff0c9,#ff8a78 18%,#9c2942 46%,#ff8871 73%,#ffdfae); box-shadow:0 0 19px #ff526b66,0 0 42px #ff75582b,0 8px 28px var(--pc-shadow); }
+.pulse-core .pc-card[data-tier="red"] .pc-reward-inner { background:radial-gradient(ellipse at 50% -10%,#753c30 0%,#392128 48%,#21191e 100%); border-radius:12px; }
+.pulse-core .pc-card[data-tier="gold"] .pc-card-frame,.pulse-core .pc-card[data-tier="red"] .pc-card-frame { border:1px solid color-mix(in srgb,var(--pc-flare) 28%,transparent); background:linear-gradient(var(--pc-hot),var(--pc-flare)) left top/15px 1px no-repeat,linear-gradient(var(--pc-hot),var(--pc-flare)) left top/1px 15px no-repeat,linear-gradient(var(--pc-flare),var(--pc-hot)) right bottom/15px 1px no-repeat,linear-gradient(var(--pc-flare),var(--pc-hot)) right bottom/1px 15px no-repeat; }
+.pulse-core .pc-card[data-tier="gold"] .pc-emblem,.pulse-core .pc-card[data-tier="red"] .pc-emblem { background:radial-gradient(ellipse,color-mix(in srgb,var(--pc-flare) 26%,transparent),transparent 75%); box-shadow:0 0 20px color-mix(in srgb,var(--pc-flare) 15%,transparent); }
 .prod-pulse-rules-note { padding:12px 16px; }
 .prod-pulse-rules-note summary { cursor:pointer; font-weight:600; font-size:13px; }
 .prod-pulse-stats .card { padding:14px 16px; }
