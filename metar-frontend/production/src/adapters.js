@@ -206,7 +206,7 @@
     const n = BigInt(amount), d = BigInt(perUnit), scale = 1000000n;
     const tail = ((n % d) * scale / d).toString().padStart(6, '0').replace(/0+$/, '');
     const approximate = (n % d) * scale % d !== 0n ? '≈' : '';
-    return `${approximate}${n / d}${tail ? `.${tail}` : ''} ${english ? 'API credits' : 'API 额度'}`;
+    return `${approximate}${n / d}${tail ? `.${tail}` : ''} ⚡️`;
   }
 
   class PulseAdapter {

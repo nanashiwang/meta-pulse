@@ -101,12 +101,12 @@ test('站点存储失败时不能发起不可恢复抽奖', () => {
 
 test('额度仅按配置的整数单位展示，不猜测币种', () => {
   const format = window.MetarAdapters.formatPulseQuota;
-  assert.equal(format(50000, 500000), '0.1 API 额度');
-  assert.equal(format(1, 500000), '0.000002 API 额度');
+  assert.equal(format(50000, 500000), '0.1 ⚡️');
+  assert.equal(format(1, 500000), '0.000002 ⚡️');
   assert.equal(format(10, 0), '10 quota');
   assert.equal(format(2 ** 53, 500000), '待核对');
-  assert.equal(format(50000, 500000, 'en-US'), '0.1 API credits');
-  assert.equal(format(1, 3, 'en_US'), '≈0.333333 API credits');
+  assert.equal(format(50000, 500000, 'en-US'), '0.1 ⚡️');
+  assert.equal(format(1, 3, 'en_US'), '≈0.333333 ⚡️');
   assert.equal(format(2 ** 53, 500000, 'en-US'), 'Awaiting verification');
   assert.equal(format(10, 0, 'en-US'), '10 quota');
 });

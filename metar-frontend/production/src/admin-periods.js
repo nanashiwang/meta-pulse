@@ -100,7 +100,7 @@
   function rewardRow(prize = {}) {
     return `<div class="prod-admin-grid prod-period-prize mt16">
       <label>${t("奖项编号")}<input name="prize_key" required pattern="[a-z0-9](?:[a-z0-9_]|-){0,63}" placeholder="reward-1" value="${esc(prize.key || '')}"></label>
-      <label>${t("奖励类型")}<select name="prize_type"><option value="newapi_quota">${t("API 调用额度")}</option><option value="community_exp" ${prize.reward_type === 'community_exp' ? 'selected' : ''}>${t("社区经验 EXP")}</option></select></label><label>${t("奖励数量（整数）")}<input name="prize_amount" required inputmode="numeric" pattern="[1-9][0-9]*" value="${esc(prize.amount || '')}"></label>
+      <label>${t("奖励类型")}<select name="prize_type"><option value="newapi_quota">${t("⚡️ 调用额度")}</option><option value="community_exp" ${prize.reward_type === 'community_exp' ? 'selected' : ''}>${t("社区经验 EXP")}</option></select></label><label>${t("奖励数量（整数）")}<input name="prize_amount" required inputmode="numeric" pattern="[1-9][0-9]*" value="${esc(prize.amount || '')}"></label>
       <label>${t("概率权重")}<input name="prize_weight" required inputmode="numeric" pattern="[1-9][0-9]*" value="${esc(prize.weight || '')}"></label>
       <button type="button" class="btn small" data-action="admin-period-remove">${t("移除奖项")}</button></div>`;
   }
@@ -164,7 +164,7 @@
         </div>
         <h3 class="mt24">${t("新券奖励规则")}</h3><p class="prod-field-help">${t("每次独立抽取，中奖不减少奖项权重。至少设置一个经验奖项。新规则可取消额度总上限；旧规则保持不变，保存不会开启抽奖。")}</p>
         <label class="prod-check mt16"><input name="unlimited_quota" type="checkbox" checked> ${t("不限制额度奖励总量")}</label><p class="prod-field-help">${t("通过奖项和权重控制平均成本；实际支出会波动，不保证固定总额。经验预算仍单独生效。")}</p><label class="prod-admin-field mt16">${t("额度奖池预算（整数 quota）")}<input name="reward_budget" value="0" inputmode="numeric" pattern="0|[1-9][0-9]*"><span class="prod-field-help">${t("不限制总量时忽略此项；取消勾选后填写额度上限。")}</span></label><label class="prod-admin-field mt16">${t("经验奖池预算（整数 EXP）")}<input name="experience_budget" required value="${this.current?.rewards?.some(r => r.reward_type === 'community_exp') ? (this.current.experience_budget || 0) : 100000}" inputmode="numeric" pattern="0|[1-9][0-9]*"></label>
-        <div data-period-prizes>${initialRewards.map(rewardRow).join('')}</div><button class="btn mt16" type="button" data-action="admin-period-add">${t("添加奖项")}</button><button class="btn mt16" type="button" data-action="admin-period-preset">${t("载入 1% 多级奖池方案")}</button><p class="prod-field-help">${t("推荐方案：API 额度中奖概率 10.6%，API 额度平均成本为每张券 0.05 个 API 额度单位；四档额度奖励按当前 quota_per_unit 自动换算。")}</p>
+        <div data-period-prizes>${initialRewards.map(rewardRow).join('')}</div><button class="btn mt16" type="button" data-action="admin-period-add">${t("添加奖项")}</button><button class="btn mt16" type="button" data-action="admin-period-preset">${t("载入 1% 多级奖池方案")}</button><p class="prod-field-help">${t("推荐方案：⚡️ 额度中奖概率 10.6%，⚡️ 额度平均成本为每张券 0.05 ⚡️；四档额度奖励按当前 quota_per_unit 自动换算。")}</p>
         <p class="prod-field-help mt16">${t("奖项概率 = 该奖项权重 ÷ 所有奖项权重之和。到期券仅在经验奖项之间按权重抽取。")}</p>
         <button class="btn mt16" type="button" data-action="admin-period-expectation">${t("计算期望额度")}</button><p class="prod-field-help mt8" data-period-expectation role="status"></p><label class="prod-admin-field mt24">${t("修改原因")}<textarea name="reason" required minlength="3" maxlength="500" rows="2"></textarea></label>
         <label class="prod-check mt16"><input name="confirm" type="checkbox" required> ${t("我已核对有效天数、概率、额度上限模式和经验预算；已有券继续使用原规则。")}</label>
@@ -310,7 +310,7 @@
       if (action === "admin-period-preset") {
         const rewards = recommendedRewards(this.quotaPerUnit);
         if (!rewards) {
-          form.querySelector("[data-period-expectation]").textContent = t("当前 quota_per_unit 不能精确换算 0.25 API 额度单位，请先将其设置为 4 的倍数。");
+          form.querySelector("[data-period-expectation]").textContent = t("当前 quota_per_unit 不能精确换算 0.25 ⚡️，请先将其设置为 4 的倍数。");
           return;
         }
         form.querySelector('[name="multiplier"]').value = "1";
@@ -319,7 +319,7 @@
         form.querySelector('[name="experience_budget"]').value = "100000";
         form.querySelector('[name="unlimited_quota"]').checked = true;
         form.querySelector('[data-period-prizes]').innerHTML = rewards.map(rewardRow).join('');
-        form.querySelector('[name="reason"]').value = t("采用收入 1% 的多级奖池方案：每 5 contribution 产 1 张券，API 额度中奖概率 10.6%。");
+        form.querySelector('[name="reason"]').value = t("采用收入 1% 的多级奖池方案：每 5 contribution 产 1 张券，⚡️ 额度中奖概率 10.6%。");
         form.querySelector("[data-period-expectation]").textContent = t("已载入推荐方案，请核对 quota_per_unit、经验预算和管理原因后保存。");
         return;
       }

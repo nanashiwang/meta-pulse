@@ -208,13 +208,13 @@ test('Pulse 奖池、状态与失败提示完整翻译，奖项名称和参数�
   await view.navigate('/pulse');
   assertEnglish(view, 'real Pulse payload');
   assert.match(view.html(), /Available Pulse tickets: 2/);
-  assert.match(view.html(), /0\.1 API credits/);
+  assert.match(view.html(), /0\.1 ⚡️/);
   assert.match(view.html(), /Probability 100 \/ 100/);
   assert.match(view.html(), /Credited/);
   assert.match(view.html(), /Awaiting processing/);
   await view.changeLanguage('zh_CN');
   assert.match(view.html(), /可用脉冲券：2/);
-  assert.match(view.html(), /0\.1 API 额度/);
+  assert.match(view.html(), /0\.1 ⚡️/);
 
   const original = await shell({ user: pulseUser, binding: 'bound', pulseRules: { rewards: [{ name: '未读<script>', amount: 50000, weight: '<b>5</b>' }] } });
   await original.navigate('/pulse');
