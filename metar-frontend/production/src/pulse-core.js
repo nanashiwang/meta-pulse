@@ -36,17 +36,25 @@
   class Timeline {
     constructor(now, reduced = false) {
       this.start = now; this.duration = 3900; this.hold = 0.44;
-      this.readyAt = null; this.skipped = reduced;
+      this.revealStart = .46; this.shortenedAt = null;
+      this.readyAt = null; this.reduced = reduced;
     }
     receive(now) { if (this.readyAt === null) this.readyAt = now; }
-    skip() { this.skipped = true; }
+    skipCharge(now) {
+      // Never rewind a reveal or restart its light burst when the preference changes.
+      if (this.shortenedAt === null && this.sample(now).progress < this.revealStart) this.shortenedAt = now;
+    }
+    finish() { this.reduced = true; }
     sample(now) {
       const ready = this.readyAt !== null;
-      if (this.skipped) return { progress: ready ? 1 : this.hold, phase: ready ? 'result' : 'waiting', animate: false };
+      if (this.reduced) return { progress: ready ? 1 : this.hold, phase: ready ? 'result' : 'waiting', animate: false };
       const elapsed = Math.max(0, now - this.start);
       const wait = ready ? Math.max(0, this.readyAt - this.start - this.duration * this.hold) : 0;
-      const progress = ready ? clamp((elapsed - wait) / this.duration) : Math.min(this.hold, elapsed / this.duration);
-      const phase = progress >= 1 ? 'result' : !ready && progress >= this.hold ? 'waiting' : progress < .29 ? 'gather' : progress < .54 ? 'charge' : 'reveal';
+      const shortened = this.shortenedAt !== null;
+      const progress = shortened
+        ? ready ? clamp(this.revealStart + Math.max(0, now - Math.max(this.shortenedAt, this.readyAt)) / this.duration) : this.hold
+        : ready ? clamp((elapsed - wait) / this.duration) : Math.min(this.hold, elapsed / this.duration);
+      const phase = progress >= 1 ? 'result' : !ready && progress >= this.hold ? 'waiting' : shortened ? 'reveal' : progress < .29 ? 'gather' : progress < .54 ? 'charge' : 'reveal';
       return { progress, phase, animate: phase !== 'result' };
     }
   }
@@ -59,7 +67,7 @@
         <div class="pc-reward" aria-hidden="true"></div>
       </div>
       <div class="pc-bottom"><p class="pc-state" role="status" aria-live="polite" aria-atomic="true"></p><div class="pc-controls"><p class="pc-tickets"></p><div class="pc-actions"><button type="button" class="pc-primary" data-action="pulse-draw" disabled>${esc(t('开启一次脉冲 · 1 券'))}</button><button type="button" class="pc-primary pc-five" data-action="pulse-draw-five" disabled>${esc(t('五连抽 · 5 券'))}</button></div></div></div>
-      <div class="pc-footer"><label class="pc-skip"><input type="checkbox" data-core-skip>${esc(t('跳过动画'))}</label><button type="button" class="pc-refresh" data-action="pulse-refresh">${esc(t('刷新奖励状态'))}</button></div>
+      <div class="pc-footer"><label class="pc-skip" title="${esc(t('保留闪光与翻牌'))}"><input type="checkbox" data-core-skip>${esc(t('跳过蓄能'))}</label><button type="button" class="pc-refresh" data-action="pulse-refresh">${esc(t('刷新奖励状态'))}</button></div>
     </section>`;
   }
 
@@ -237,13 +245,14 @@
         try { window.localStorage.setItem('_metar_pulse_palette', this.palette.value); } catch (_) { /* Keep this page's selection. */ }
         this.scene.size();
       };
-      this.onSkip = () => { if (this.timeline) { this.timeline.skip(); this.tick(); } };
+      this.onSkip = () => { if (this.timeline) { this.timeline.skipCharge(performance.now()); this.tick(); } };
+      this.onFinish = () => { if (this.timeline) { this.timeline.finish(); this.tick(); } };
       this.onSkipPreference = () => {
         try { window.localStorage.setItem('_metar_pulse_skip_animation', this.skipInput.checked ? '1' : '0'); } catch (_) { /* Keep this page's selection. */ }
         if (this.skipInput.checked) this.onSkip();
       };
-      this.onVisibility = () => { if (document.hidden) this.onSkip(); };
-      this.onMotion = () => { if (this.motion.matches) this.onSkip(); };
+      this.onVisibility = () => { if (document.hidden) this.onFinish(); };
+      this.onMotion = () => { if (this.motion.matches) this.onFinish(); };
       this.palette.addEventListener('change', this.onPalette);
       this.skipInput.addEventListener('change', this.onSkipPreference);
       document.addEventListener('visibilitychange', this.onVisibility);
@@ -268,7 +277,9 @@
     begin(total = 1) {
       if (this.dead) return;
       this.resolve?.(false); this.resolve = null;
-      this.timeline = new Timeline(performance.now(), this.skipInput.checked || this.motion.matches || document.hidden || !this.scene.canAnimate);
+      const now = performance.now();
+      this.timeline = new Timeline(now, this.motion.matches || document.hidden || !this.scene.canAnimate);
+      if (this.skipInput.checked) this.timeline.skipCharge(now);
       this.total = total; this.confirmed = 0;
       this.root.dataset.tier = ''; this.root.dataset.count = String(total);
       this.reward.innerHTML = ''; this.resultHTML = '';

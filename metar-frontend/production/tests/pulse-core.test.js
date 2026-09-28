@@ -31,10 +31,10 @@ test('a fast result completes a 3.9 second performance; a slow result resumes fr
   assert.equal(slow.sample(8500).phase, 'result');
 });
 
-test('skip and reduced motion wait for the same result and then reveal immediately', () => {
+test('reduced motion and finishing wait for the same result, then reveal immediately', () => {
   for (const reduced of [false, true]) {
     const clock = new Timeline(0, reduced);
-    if (!reduced) clock.skip();
+    if (!reduced) clock.finish();
     assert.equal(clock.sample(100).phase, 'waiting');
     assert.equal(clock.sample(100).animate, false);
     clock.receive(2000);
@@ -43,7 +43,61 @@ test('skip and reduced motion wait for the same result and then reveal immediate
   }
 });
 
-test('cards stay hidden at the server hold, bloom before readable content and settle after a skip', () => {
+test('skip charge waits for a result, then keeps the entire 2.1 second card reveal', () => {
+  for (const readyAt of [100, 6000]) {
+    const clock = new Timeline(0);
+    clock.skipCharge(0);
+    assert.equal(clock.sample(readyAt - 1).phase, 'waiting');
+    assert.equal(clock.sample(readyAt - 1).progress, .44);
+    assert.equal(clock.sample(readyAt - 1).animate, true);
+    clock.receive(readyAt);
+    assert.equal(clock.sample(readyAt).phase, 'reveal');
+    assert.equal(clock.sample(readyAt).progress, .46);
+    for (let index = 0; index < 5; index++) {
+      const burstAt = readyAt + (.64 + index * .027 - .46) * clock.duration;
+      const frame = cardFrame(clock.sample(burstAt).progress, index);
+      assert.equal(frame.light, 1);
+      assert.equal(frame.content, 0);
+    }
+    assert.notEqual(clock.sample(readyAt + 2105).phase, 'result');
+    assert.equal(clock.sample(readyAt + 2106).phase, 'result');
+  }
+});
+
+test('skipping charge midflight only advances; repeated or late skips cannot replay the flash', () => {
+  const clock = new Timeline(0);
+  clock.receive(100);
+  clock.skipCharge(1200);
+  assert.equal(clock.sample(1200).progress, .46);
+  const inReveal = clock.sample(2000).progress;
+  clock.skipCharge(2000);
+  assert.equal(clock.sample(2000).progress, inReveal);
+  assert.equal(clock.sample(3306).phase, 'result');
+  clock.receive(4000);
+  assert.equal(clock.sample(4000).phase, 'result');
+  const late = new Timeline(0);
+  late.receive(100);
+  const before = late.sample(2500).progress;
+  late.skipCharge(2500);
+  assert.equal(late.sample(2500).progress, before);
+  assert.equal(late.sample(3900).phase, 'result');
+});
+
+test('no-motion modes override skip charge, including a mid-reveal visibility or motion change', () => {
+  const reduced = new Timeline(0, true);
+  reduced.skipCharge(0);
+  reduced.receive(100);
+  assert.equal(reduced.sample(100).phase, 'result');
+  const hidden = new Timeline(0);
+  hidden.skipCharge(0);
+  hidden.receive(200);
+  assert.equal(hidden.sample(400).phase, 'reveal');
+  hidden.finish();
+  assert.equal(hidden.sample(400).phase, 'result');
+  assert.equal(hidden.sample(400).animate, false);
+});
+
+test('cards stay hidden at the server hold, bloom before readable content and settle at the end', () => {
   for (let index = 0; index < 5; index++) {
     assert.equal(cardFrame(.44, index).enter, 0);
     const burst = cardFrame(.64 + index * .027, index);
