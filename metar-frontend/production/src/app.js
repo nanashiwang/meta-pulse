@@ -73,6 +73,9 @@
   let pulseAssets = null;
   let pulseCoreReady = false;
   let pulseRefreshing = false;
+  let pulseStatusTimer = 0, pulseStatusAttempts = 0, pulseStatusEpoch = 0, pulseHasPendingRewards = false;
+  const pulseRewardStates = { pending: '发放中', settling: '发放中', settled: '已到账', reversed: '已撤销', failed: '等待处理', settlement_dead: '等待处理' };
+  const pulseRewardPending = reward => ['pending', 'settling'].includes(reward?.status);
   const knowledge = new KnowledgeAdapter(config);
   const app = document.getElementById('app');
   let navigationSequence = 0;
@@ -299,6 +302,7 @@
       pulseView = new window.MetarPulseCore.View(core, { t });
       pulseView.update(pulseCoreState);
     }
+    schedulePulseStatus();
     app.setAttribute('aria-busy', 'false');
     window.MetarSEO?.update();
     const selectedTab = document.querySelector('.discussion-tab.active');
@@ -455,12 +459,11 @@
   }
 
   function pulseResultDisplay(result, quotaPerUnit) {
-    const states = { settled: '已到账', reversed: '已撤销', pending: '发放中', settling: '发放中', failed: '等待处理', settlement_dead: '等待处理' };
     const exp = result.reward_type === 'community_exp';
     const formatted = formatPulseQuota(result.amount, quotaPerUnit, locale());
     return { type: result.reward_type, amount: exp ? number(result.amount) : formatted.replace(/ (API credits|API 额度|quota)$/, ''),
       unit: exp ? t('社区经验 · EXP') : Number.isSafeInteger(quotaPerUnit) && quotaPerUnit > 0 ? t('API 额度') : 'quota',
-      status: t(states[result.status] || '等待核对') };
+      status: t(pulseRewardStates[result.status] || '等待核对'), pending: pulseRewardPending(result) };
   }
 
   async function pulsePage() {
@@ -482,31 +485,34 @@
         operationStore.clear(); pending = null; pulseMessage = '已找到本次抽奖记录，请查看奖励明细。';
       }
     }
-    const states = { pending: '发放中', settling: '发放中', settled: '已到账', reversed: '已撤销', failed: '等待处理', settlement_dead: '等待处理' };
     const unavailable = { budget_exhausted: '当前可用奖励预算已用完', activity_paused: '活动暂未开放', no_active_period: '当前规则尚未准备好', funding_verification_required: '当前权益正在核验', reward_pool_unavailable: '奖池准备中' };
     const available = Number.isSafeInteger(summary.available_tickets) ? summary.available_tickets : 0;
     const rewards = Array.isArray(history.rewards) ? history.rewards : [];
     const prizes = Array.isArray(rules.rewards) ? rules.rewards : [];
     const canDraw = rules.enabled === true && available > 0 && !pending && !pulseBusy;
     const rewardAmount = r => r.reward_type === 'community_exp' ? number(r.amount)+' EXP' : formatPulseQuota(r.amount,rules.quota_per_unit,locale());
-    const rewardRows = rewards.map((r) => `<tr><td>${esc(rewardAmount(r))}</td><td>${esc(t(states[r.status] || '等待核对'))}</td><td>${esc(r.created_at ? new Date(r.created_at).toLocaleString(locale()) : '—')}</td><td><code>${esc(r.grant_id)}</code></td></tr>`).join('');
+    const rewardRows = rewards.map((r) => `<tr><td>${esc(rewardAmount(r))}</td><td data-pulse-reward-status="${esc(r.grant_id)}">${esc(t(pulseRewardStates[r.status] || '等待核对'))}</td><td>${esc(r.created_at ? new Date(r.created_at).toLocaleString(locale()) : '—')}</td><td><code>${esc(r.grant_id)}</code></td></tr>`).join('');
     const prizeRows = prizes.map((r) => `<li><strong>${esc(r.name)}</strong><span>${esc(rewardAmount(r))}</span><span>${esc(t('概率 {weight} / {total}', { weight: r.weight, total: rules.total_weight }))}</span></li>`).join('');
     const last = pulseLastResult?.userId === currentUser.id ? pulseLastResult : null;
     const latest = last && rewards.find(r => r.grant_id === last.reward.grant_id);
     if (latest && validPulseResult(latest, last.reward.action_id)) last.reward = latest;
-    if (sequence === navigationSequence) pulseCoreState = {
-      tickets: number(available), canDraw, pending: Boolean(pending), busy: pulseBusy, quotaPerUnit: rules.quota_per_unit,
-      result: last ? pulseResultDisplay(last.reward, last.quotaPerUnit) : null,
-      message: pulseMessage ? t(pulseMessage) : '',
-      reason: pending ? t('正在确认上一次抽奖') : !rules.enabled ? t(unavailable[rules.unavailable_reason] || '活动暂不可用') : available === 0 ? t('积累脉冲券后，即可开启下一次回馈') : '',
-    };
+    updatePulseResultMessage(last?.reward);
+    if (sequence === navigationSequence) {
+      pulseHasPendingRewards = rewards.some(pulseRewardPending) || pulseRewardPending(last?.reward);
+      pulseCoreState = {
+        tickets: number(available), canDraw, pending: Boolean(pending), busy: pulseBusy, quotaPerUnit: rules.quota_per_unit,
+        result: last ? pulseResultDisplay(last.reward, last.quotaPerUnit) : null,
+        message: pulseMessage ? t(pulseMessage) : '',
+        reason: pending ? t('正在确认上一次抽奖') : !rules.enabled ? t(unavailable[rules.unavailable_reason] || '活动暂不可用') : available === 0 ? t('积累脉冲券后，即可开启下一次回馈') : '',
+      };
+    }
     return `${crumb([[t('Pulse 权益')]])}${heading(t('开启脉冲，获得调用回馈'), t('经核验的付费调用积累脉冲券，额度奖励发往元衡 API，经验奖励计入社区等级。'))}
       ${coreReady ? window.MetarPulseCore.markup({ t }) : ''}
       <div data-pulse-details>
       <section class="${coreReady ? 'card card-pad mt24 prod-pulse-rules-note' : 'pulse-hero'}"><div><div class="eyebrow">${esc(rules.period?.continuous ? t('元衡脉冲') : rules.period?.key || t('元衡脉冲'))}</div><h1>${esc(t('可用脉冲券：{count}', { count: number(available) }))}</h1><p>${t('每次消耗 1 张券。额度用于 API 调用，经验用于社区升级，均不可转赠。')}</p>${rules.period?.continuous ? `<p>${esc(t('脉冲券获得后 {days} 天内可抽取额度奖励，之后仍可抽取经验。', {days: rules.quota_validity_days}))}</p><p>${esc(rules.experience_only ? t('下一张券已超过额度有效期，仅抽取经验。') : t('优先使用最早获得的券；下方显示下一张券适用的概率。'))}</p>` : ''}
       ${!rules.enabled ? `<p role="status">${esc(t(unavailable[rules.unavailable_reason] || '活动暂不可用'))}</p>` : ''}
       ${coreReady ? '' : `<div class="actions"><button type="button" class="btn light" data-action="pulse-draw" ${canDraw ? '' : 'disabled'}>${t(pulseBusy ? '正在处理…' : '开启一次脉冲 · 1 券')}</button><button type="button" class="btn outline-light" data-action="retry">${t('刷新奖励状态')}</button></div>`}</div>${I('pulse')}</section>
-      ${pulseMessage ? `<div class="prod-status mt24" role="status"><p>${esc(t(pulseMessage))}</p></div>` : ''}
+      ${pulseMessage ? `<div class="prod-status mt24" role="status"><p data-pulse-message>${esc(t(pulseMessage))}</p></div>` : ''}
       ${pending ? `<section class="card card-pad mt24" role="status"><h3>${t('正在确认上一次抽奖')}</h3><p class="muted mt8">${t('请先查询原请求。继续处理会沿用同一次抽奖，不会重新扣券或更换结果。')}</p><div class="flex wrap mt16"><button class="btn" data-action="retry">${t('查询原抽奖')}</button><button class="btn primary" data-action="pulse-resume" ${pulseBusy ? 'disabled' : ''}>${t('继续处理原请求')}</button></div></section>` : ''}
       <div class="prod-pulse-stats mt24"><section class="card card-pad"><h3>${t('当前等级')}</h3><p>${esc(summary.level?.name || t('未定级'))}</p></section><section class="card card-pad"><h3>${t('累计贡献')}</h3><p>${esc(Number.isSafeInteger(summary.lifetime_contribution_milli) ? number(summary.lifetime_contribution_milli / 1000) : t('待核对'))}</p></section><section class="card card-pad"><h3>${t('额度奖励资格')}</h3><p>${esc(rules.period?.continuous ? (rules.experience_only ? t('仅经验') : rules.quota_expires_at ? new Date(rules.quota_expires_at).toLocaleString(locale()) : t('从获得券时计算')) : rules.period?.ends_at ? new Date(rules.period.ends_at).toLocaleString(locale()) : '—')}</p></section></div>
       <section class="card card-pad mt24"><h2>${t('当前奖池与规则')}</h2>${prizeRows ? `<ul class="prod-pulse-prizes">${prizeRows}</ul>` : `<p class="muted mt16">${t('暂无可参与奖池。')}</p>`}<p class="muted mt16">${t('每次独立抽取，中奖后概率不变。已有券保留领取时的规则；到期券仅按经验奖项权重抽取。预算不足不扣券，发放延迟会保留中奖结果。赠送额度和无法核验资金来源的消费不产生脉冲券。')}</p><p class="muted mt8">${t('API 额度按元衡账户的额度单位展示，不代表人民币或可提现金额。')}</p></section>
@@ -565,6 +571,9 @@
   async function submitPulse(resume = false) {
     if (pulseBusy || pulseRefreshing || !currentUser || !isActiveUser(currentUser)) return;
     pulseBusy = true;
+    clearTimeout(pulseStatusTimer);
+    pulseStatusEpoch++;
+    pulseStatusAttempts = 0;
     pulseMessage = '';
     pulseLastResult = null;
     const presentation = pulseView;
@@ -580,7 +589,7 @@
       if (!validPulseResult(result, operation.actionId)) throw new AdapterError(t('本次结果仍待确认'), { code: 'action_pending' });
       pulseLastResult = { userId, reward: result, quotaPerUnit };
       store.clear();
-      pulseMessage = result.status === 'settled' ? '奖励已到账。' : '抽奖已完成，奖励正在发放，请查看奖励记录。';
+      pulseMessage = result.status === 'settled' ? '奖励已到账。' : '奖励将在后台发放，可继续浏览或开启下一次。';
       await presentation?.reveal(pulseResultDisplay(result, quotaPerUnit));
     } catch (error) {
       if (error.code === 'action_rejected') { store.clear(); pulseMessage = '本次未扣券，可能是可用券或活动预算不足，请刷新后查看。'; }
@@ -599,6 +608,8 @@
     const presentation = pulseView;
     const sequence = navigationSequence;
     pulseRefreshing = true;
+    clearTimeout(pulseStatusTimer);
+    pulseStatusEpoch++;
     presentation.button.disabled = presentation.refresh.disabled = true;
     try {
       const html = await pulsePage();
@@ -616,8 +627,56 @@
         presentation.refresh.disabled = false;
         // Re-read authoritative eligibility before allowing another ticket spend.
       }
-    } finally { pulseRefreshing = false; }
+    } finally { pulseRefreshing = false; schedulePulseStatus(); }
   }
+
+  // Status reads never hold the draw button or wait for settlement. They stop
+  // after a bounded window, on navigation and while the document is hidden.
+  function schedulePulseStatus() {
+    clearTimeout(pulseStatusTimer);
+    if (route().path !== '/pulse' || currentUserState !== 'ready' || !isActiveUser(currentUser) || !pulseHasPendingRewards || document.hidden || pulseStatusAttempts >= 12) return;
+    pulseStatusTimer = setTimeout(refreshPulseStatus, pulseStatusAttempts < 5 ? 2000 : 5000);
+  }
+
+  function updatePulseResultMessage(reward) {
+    if (reward && !pulseRewardPending(reward) && pulseMessage === '奖励将在后台发放，可继续浏览或开启下一次。') {
+      pulseMessage = reward.status === 'settled' ? '奖励已到账。' : pulseRewardStates[reward.status] || '等待核对';
+    }
+  }
+
+  async function refreshPulseStatus() {
+    if (pulseBusy || pulseRefreshing) { schedulePulseStatus(); return; }
+    const sequence = navigationSequence, epoch = pulseStatusEpoch, userId = currentUser?.id;
+    pulseStatusAttempts++;
+    try {
+      const history = await pulse.rewards();
+      if (sequence !== navigationSequence || epoch !== pulseStatusEpoch || userId !== currentUser?.id || pulseBusy || pulseRefreshing) return;
+      const rewards = Array.isArray(history.rewards) ? history.rewards : [];
+      const last = pulseLastResult?.userId === userId ? pulseLastResult : null;
+      const latest = last && rewards.find(reward => reward.grant_id === last.reward.grant_id && validPulseResult(reward, last.reward.action_id));
+      if (latest) {
+        last.reward = latest;
+        updatePulseResultMessage(latest);
+        const message = document.querySelector('[data-pulse-message]');
+        if (message) message.textContent = t(pulseMessage);
+        if (pulseCoreState) pulseCoreState.result = pulseResultDisplay(latest, last.quotaPerUnit);
+        // A history read cannot restore eligibility after a failed rules refresh.
+        if (pulseView && pulseCoreState) pulseView.showResult(pulseCoreState.result);
+      }
+      const byGrant = new Map(rewards.map(reward => [reward.grant_id, reward]));
+      document.querySelectorAll('[data-pulse-reward-status]').forEach(node => {
+        const reward = byGrant.get(node.dataset.pulseRewardStatus);
+        if (reward) node.textContent = t(pulseRewardStates[reward.status] || '等待核对');
+      });
+      pulseHasPendingRewards = rewards.some(pulseRewardPending) || pulseRewardPending(last?.reward);
+    } catch (_) { /* Keep the confirmed prize and allow manual status refresh. */ }
+    finally { if (sequence === navigationSequence && epoch === pulseStatusEpoch) schedulePulseStatus(); }
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) pulseStatusAttempts = 0;
+    schedulePulseStatus();
+  });
 
   function closeAccountMenu(restoreFocus = false) {
     const menu = document.querySelector('.account-menu[open]');
@@ -656,6 +715,9 @@
     const destination = nativeDestination(location, config);
     if (destination) { location.replace(destination); return; }
     const sequence = ++navigationSequence;
+    clearTimeout(pulseStatusTimer);
+    pulseStatusAttempts = 0;
+    pulseHasPendingRewards = false;
     closeMobileMenu();
     pulseView?.dispose();
     pulseView = null;

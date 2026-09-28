@@ -85,7 +85,7 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
   const question = { id: '42', title: content ? '未读' : 'User question', description: content ? '社区规范' : 'User summary', content: content ? '我的收藏' : 'User content', user_info: user, created_at: Math.floor(Date.now() / 1000) - 3600 };
   Object.assign(context, {
     document, location: localLocation('/latest'),
-    URL, URLSearchParams, Headers, AbortController, setTimeout, clearTimeout,
+    URL, URLSearchParams, Headers, AbortController, setTimeout: (...args) => { const timer = setTimeout(...args); timer.unref(); return timer; }, clearTimeout,
     crypto: require('node:crypto').webcrypto,
     sessionStorage: {
       getItem: (key) => operations.get(key) || null,
@@ -236,7 +236,7 @@ test('Pulse 奖池、状态与失败提示完整翻译，奖项名称和参数�
 test('Pulse 提交结果与原请求恢复提示随切换语言更新，超时不换操作编号', async () => {
   for (const [actionResult, english, chinese] of [
     ['settled', 'Your reward has been credited.', '奖励已到账。'],
-    ['pending', 'Your draw is complete', '抽奖已完成'],
+    ['pending', 'Your reward is being delivered in the background', '奖励将在后台发放'],
     ['action_rejected', 'No ticket was spent.', '本次未扣券'],
     ['timeout', 'The result cannot be confirmed yet.', '暂时无法确认本次结果'],
   ]) {

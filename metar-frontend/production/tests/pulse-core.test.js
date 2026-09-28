@@ -15,7 +15,7 @@ test('without a server result, even a long wait cannot fracture or reveal a rewa
     const sample = clock.sample(now);
     assert.equal(sample.phase, 'waiting');
     assert.ok(sample.progress < 0.46);
-    assert.equal(sample.animate, false);
+    assert.equal(sample.animate, true);
   }
 });
 

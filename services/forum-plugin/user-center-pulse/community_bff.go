@@ -202,10 +202,10 @@ func (uc *UserCenter) communityHandler(operation string, session func(*gin.Conte
 			return
 		}
 
-		// The original result remains authoritative even if optional EXP
-		// delivery is delayed. Refresh drains the durable community outbox.
+		// Return the committed draw immediately. EXP delivery runs independently
+		// of this HTTP request; refreshes only wake the durable community outbox.
 		if operation == "actions" || operation == "rewards" {
-			_ = uc.consumePulseExperience(ctx, forumID, externalID)
+			uc.schedulePulseExperience(forumID)
 		}
 		c.JSON(status, projection)
 	}

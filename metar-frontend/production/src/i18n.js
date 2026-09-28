@@ -593,6 +593,7 @@
     "开启你的脉冲": "Ignite your Pulse",
     "让每一次积累，在这一刻绽放。": "Let every spark of progress shine.",
     "这一份回馈，属于你": "A reward for your progress",
+    "奖励将在后台发放，可继续浏览或开启下一次。": "Your reward is being delivered in the background. You can keep browsing or start another draw.",
     "跳过动画": "Skip animation",
     "每次开启消耗 1 张脉冲券": "Each Pulse uses 1 ticket",
     "一枚核心，等待被点亮": "A core, waiting for its spark",

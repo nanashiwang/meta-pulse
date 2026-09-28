@@ -22,7 +22,7 @@
       const wait = ready ? Math.max(0, this.readyAt - this.start - this.duration * this.hold) : 0;
       const progress = ready ? clamp((elapsed - wait) / this.duration) : Math.min(this.hold, elapsed / this.duration);
       const phase = progress >= 1 ? 'result' : !ready && progress >= this.hold ? 'waiting' : progress < .29 ? 'gather' : progress < .54 ? 'charge' : 'reveal';
-      return { progress, phase, animate: phase !== 'result' && phase !== 'waiting' };
+      return { progress, phase, animate: phase !== 'result' };
     }
   }
 
@@ -33,8 +33,8 @@
       <div class="pc-stage"><canvas aria-hidden="true"></canvas><div class="pc-horizon" aria-hidden="true"></div><span class="pc-annotation" aria-hidden="true">PULSE CORE</span>
         <div class="pc-reward" aria-hidden="true"><div class="pc-reward-inner"><div class="pc-reward-label">${esc(t('这一份回馈，属于你'))}</div><div class="pc-emblem"></div><div class="pc-amount"></div><div class="pc-unit"></div><div class="pc-divider"></div><div class="pc-card-foot"></div></div></div>
       </div>
-      <div class="pc-bottom"><p class="pc-state" role="status" aria-live="polite" aria-atomic="true"></p><p class="pc-tickets"></p><button type="button" class="pc-primary" data-action="pulse-draw" disabled>${esc(t('开启一次脉冲 · 1 券'))}</button><div class="pc-skip-wrap"><button type="button" class="pc-skip" data-core-skip hidden>${esc(t('跳过动画'))}</button></div></div>
-      <div class="pc-footer"><span>${esc(t('每次开启消耗 1 张脉冲券'))}</span><button type="button" class="pc-refresh" data-action="pulse-refresh">${esc(t('刷新奖励状态'))}</button></div>
+      <div class="pc-bottom"><p class="pc-state" role="status" aria-live="polite" aria-atomic="true"></p><p class="pc-tickets"></p><button type="button" class="pc-primary" data-action="pulse-draw" disabled>${esc(t('开启一次脉冲 · 1 券'))}</button></div>
+      <div class="pc-footer"><label class="pc-skip"><input type="checkbox" data-core-skip>${esc(t('跳过动画'))}</label><button type="button" class="pc-refresh" data-action="pulse-refresh">${esc(t('刷新奖励状态'))}</button></div>
     </section>`;
   }
 
@@ -44,7 +44,7 @@
     try { ctx = canvas.getContext('2d'); } catch (_) { /* Keep the result card usable without Canvas. */ }
     const stage = root.querySelector('.pc-stage'), reward = root.querySelector('.pc-reward');
     const annotation = root.querySelector('.pc-annotation');
-    let w = 0, h = 0, colors = {}, progress = 0;
+    let w = 0, h = 0, colors = {}, progress = 0, waitingTime = null;
     const frac = x => x - Math.floor(x);
     const stars = Array.from({length:76}, (_, i) => ({a:frac(Math.sin(i*91.13+4)*874.73)*Math.PI*2,r:.25+frac(Math.sin(i*6.7+2)*476.1)*.75,size:.6+frac(Math.sin(i*71.1)*162.9)*1.6,delay:frac(Math.sin(i*4.92)*381.1)}));
     function size() {
@@ -54,7 +54,7 @@
       if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const css = getComputedStyle(root);
       for (const key of ['energy','secondary','core','gold','bg']) colors[key] = css.getPropertyValue('--pc-'+key).trim();
-      if (ctx) draw(progress);
+      if (ctx) draw(progress, waitingTime);
     }
   function ellipse(cx,cy,rx,ry,angle,alpha,color=colors.energy,width=1) {
     ctx.save();ctx.globalAlpha=alpha;ctx.strokeStyle=color;ctx.lineWidth=width;ctx.beginPath();ctx.ellipse(cx,cy,rx,ry,angle,0,Math.PI*2);ctx.stroke();ctx.restore();
@@ -81,10 +81,12 @@
     ctx.restore();
     if(p<.51) {ctx.save();ctx.strokeStyle=colors.core;ctx.lineWidth=1+gather*2;ctx.globalAlpha=.3+gather*.6;ctx.shadowColor=colors.energy;ctx.shadowBlur=12+gather*20;ctx.beginPath();ctx.moveTo(x,y-s*.84);ctx.lineTo(x+3,y-s*.1);ctx.lineTo(x-4,y+s*.2);ctx.lineTo(x,y+s*.82);ctx.stroke();ctx.restore();}
   }
-  function draw(p) {
+  function draw(p, waiting = null) {
     if(!w||!h) return;
     ctx.clearRect(0,0,w,h);
-    const cx=w/2,cy=h*.46,base=Math.min(w*.23,82),bound=Math.min(w*.46,260);
+    const breath=waiting === null ? 0 : Math.sin(waiting/650);
+    const orbit=waiting === null ? 0 : waiting/1400;
+    const cx=w/2,cy=h*.46+breath*3,base=Math.min(w*.23,82)*(1+breath*.025),bound=Math.min(w*.46,260);
     const gather=smooth(p/.43),release=clamp((p-.46)/.36),isResult=p>=1;
     aura(cx,cy,base*(2.4+gather*.5),isResult?.10:.13+gather*.12);
     ellipse(cx,cy+base*1.47,base*1.55,base*.20,0,.18);
@@ -97,7 +99,7 @@
       const staticX=cx+Math.cos(star.a)*bound*star.r,staticY=cy+Math.sin(star.a)*h*.43*star.r;
       if(p===0||isResult){dot(staticX,staticY,star.size*.7,.12+star.delay*.25,i%4===0?colors.secondary:colors.energy);return;}
       if(p<.47) {
-        const f=clamp((p/.46-star.delay*.25)/.75),r=bound*star.r*(1-f*.91),a=star.a+f*1.3;
+        const f=clamp((p/.46-star.delay*.25)/.75),r=bound*star.r*(1-f*.91),a=star.a+f*1.3+orbit;
         const x=cx+Math.cos(a)*r,y=cy+Math.sin(a)*r*.72;
         ctx.save();ctx.globalAlpha=.10+f*.5;ctx.strokeStyle=i%3===0?colors.secondary:colors.energy;ctx.lineWidth=star.size*.65;
         ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(cx+Math.cos(a-.06-f*.15)*(r+8+f*14),cy+Math.sin(a-.06-f*.15)*(r+8+f*14)*.72);ctx.stroke();ctx.restore();dot(x,y,star.size,.4+f*.5);
@@ -125,9 +127,9 @@
     const theme = new MutationObserver(size); theme.observe(document.documentElement, { attributes:true, attributeFilter:['data-theme'] });
     size();
     return {
-      paint(p) {
-        progress = p;
-        if (ctx) draw(p);
+      paint(p, waiting = null) {
+        progress = p; waitingTime = waiting;
+        if (ctx) draw(p, waiting);
         else {
           reward.style.opacity = p >= 1 ? '1' : '0';
           reward.style.visibility = p >= 1 ? 'visible' : 'hidden';
@@ -143,7 +145,7 @@
     constructor(root, { t }) {
       this.root = root; this.t = t; this.dead = false; this.frame = 0;
       this.button = root.querySelector('.pc-primary');
-      this.skipButton = root.querySelector('[data-core-skip]');
+      this.skipInput = root.querySelector('[data-core-skip]');
       this.status = root.querySelector('.pc-state');
       this.reward = root.querySelector('.pc-reward');
       this.palette = root.querySelector('[data-core-palette]');
@@ -151,6 +153,7 @@
       this.motion = window.matchMedia('(prefers-reduced-motion: reduce)');
       let palette = 'jade';
       try { if (window.localStorage.getItem('_metar_pulse_palette') === 'nebula') palette = 'nebula'; } catch (_) { /* Visual preference is optional. */ }
+      try { this.skipInput.checked = window.localStorage.getItem('_metar_pulse_skip_animation') === '1'; } catch (_) { /* Keep the checkbox usable without storage. */ }
       root.dataset.palette = this.palette.value = palette;
       this.scene = scene(root);
       this.onPalette = () => {
@@ -158,11 +161,15 @@
         try { window.localStorage.setItem('_metar_pulse_palette', this.palette.value); } catch (_) { /* Keep this page's selection. */ }
         this.scene.size();
       };
-      this.onSkip = () => { if (this.timeline) { this.restoreFocus = document.activeElement === this.skipButton; this.timeline.skip(); this.tick(); } };
+      this.onSkip = () => { if (this.timeline) { this.timeline.skip(); this.tick(); } };
+      this.onSkipPreference = () => {
+        try { window.localStorage.setItem('_metar_pulse_skip_animation', this.skipInput.checked ? '1' : '0'); } catch (_) { /* Keep this page's selection. */ }
+        if (this.skipInput.checked) this.onSkip();
+      };
       this.onVisibility = () => { if (document.hidden) this.onSkip(); };
       this.onMotion = () => { if (this.motion.matches) this.onSkip(); };
       this.palette.addEventListener('change', this.onPalette);
-      this.skipButton.addEventListener('click', this.onSkip);
+      this.skipInput.addEventListener('change', this.onSkipPreference);
       document.addEventListener('visibilitychange', this.onVisibility);
       this.motion.addEventListener('change', this.onMotion);
     }
@@ -175,10 +182,6 @@
       this.button.textContent = this.t(options.busy ? '正在处理…' : options.pending ? '继续处理原请求' : '开启一次脉冲 · 1 券');
       this.refresh.disabled = options.busy;
       this.palette.disabled = options.busy;
-      if (this.restoreFocus && !options.busy) {
-        (this.button.disabled ? this.refresh : this.button).focus({ preventScroll:true });
-        this.restoreFocus = false;
-      }
       if (!this.timeline) {
         if (options.result) this.showResult(options.result);
         else this.status.textContent = options.message || options.reason || this.t('一枚核心，等待被点亮');
@@ -187,7 +190,7 @@
     begin() {
       if (this.dead) return;
       this.resolve?.(false); this.resolve = null;
-      this.timeline = new Timeline(performance.now(), this.motion.matches || document.hidden);
+      this.timeline = new Timeline(performance.now(), this.skipInput.checked || this.motion.matches || document.hidden);
       this.button.disabled = this.refresh.disabled = this.palette.disabled = true;
       this.button.textContent = this.t('正在开启');
       this.reward.setAttribute('aria-hidden', 'true');
@@ -208,20 +211,20 @@
       this.root.querySelector('.pc-unit').textContent = result.unit;
       this.root.querySelector('.pc-emblem').innerHTML = icon(result.type);
       this.root.querySelector('.pc-card-foot').textContent = result.status;
+      this.root.querySelector('.pc-card-foot').dataset.pending = String(Boolean(result.pending));
     }
     showResult(result) {
       this.fillResult(result); this.root.dataset.stage = 'result'; this.scene.paint(1);
       this.reward.setAttribute('aria-hidden', 'false');
       this.status.textContent = this.t('本次回馈：{amount} {unit} · {status}', result);
+      if (result.pending) this.status.textContent += ' ' + this.t('奖励将在后台发放，可继续浏览或开启下一次。');
     }
     tick() {
       cancelAnimationFrame(this.frame); this.frame = 0;
       if (this.dead || !this.timeline) return;
       const state = this.timeline.sample(performance.now());
       this.root.dataset.stage = state.phase;
-      this.scene.paint(state.progress);
-      this.skipButton.hidden = this.timeline.skipped || state.phase === 'result';
-      this.skipButton.disabled = this.skipButton.hidden;
+      this.scene.paint(state.progress, state.phase === 'waiting' && state.animate ? performance.now() - this.timeline.start : null);
       if (state.phase === 'result') {
         this.timeline = null; this.showResult(this.result);
         this.resolve?.(true); this.resolve = null;
@@ -237,7 +240,7 @@
       cancelAnimationFrame(this.frame); this.frame = 0; this.timeline = null;
       this.resolve?.(false); this.resolve = null;
       this.root.dataset.stage = 'idle'; this.scene.paint(0);
-      this.reward.setAttribute('aria-hidden', 'true'); this.skipButton.hidden = true;
+      this.reward.setAttribute('aria-hidden', 'true');
       this.status.textContent = message;
     }
     dispose() {
@@ -245,7 +248,7 @@
       this.resolve?.(false); this.resolve = null;
       this.scene.dispose();
       this.palette.removeEventListener('change', this.onPalette);
-      this.skipButton.removeEventListener('click', this.onSkip);
+      this.skipInput.removeEventListener('change', this.onSkipPreference);
       document.removeEventListener('visibilitychange', this.onVisibility);
       this.motion.removeEventListener('change', this.onMotion);
     }

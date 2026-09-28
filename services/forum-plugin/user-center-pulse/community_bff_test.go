@@ -38,6 +38,11 @@ func communityTestRouter(t *testing.T, upstream http.HandlerFunc) (*gin.Engine, 
 	cfg.CommunityBFFHMACSecret = strings.Repeat("c", 32)
 	guard := &communityTestGuard{identity: "42"}
 	uc := &UserCenter{Config: cfg, Client: NewPulseClient(cfg), Guard: guard}
+	// These tests isolate HTTP identity/projection from the independent delivery
+	// worker. Delivery scheduling and cancellation have their own regressions.
+	uc.pulseDeliveryOnce.Do(func() {
+		uc.pulseDelivery = &pulseExperienceDelivery{sync: func(context.Context, string) error { return nil }}
+	})
 	router := gin.New()
 	uc.registerCommunityRoutes(router.Group("/answer/api/v1"), func(*gin.Context) (string, error) { return "7", nil }, func() string { return "https://metar.example.test" })
 	return router, uc, guard

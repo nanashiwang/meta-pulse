@@ -43,13 +43,15 @@ var Info embed.FS
 // the Connector only binds one immutable new-api identity, while UserCenter
 // contributes optional Pulse branding for bound accounts.
 type UserCenter struct {
-	runtimeMu   sync.RWMutex
-	growthMu    sync.Mutex
-	growthStore *growth.Store
-	Config      *Config
-	Client      *PulseClient
-	Logins      LoginFlowStore
-	Guard       BindingGuard
+	pulseDeliveryOnce sync.Once
+	pulseDelivery     *pulseExperienceDelivery
+	runtimeMu         sync.RWMutex
+	growthMu          sync.Mutex
+	growthStore       *growth.Store
+	Config            *Config
+	Client            *PulseClient
+	Logins            LoginFlowStore
+	Guard             BindingGuard
 
 	newBindingGuard func(string) (BindingGuard, error)
 }
