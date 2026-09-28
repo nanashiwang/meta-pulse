@@ -6,7 +6,7 @@ const vm = require('node:vm');
 const path = require('node:path');
 const context = vm.createContext({ window: {} });
 vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/pulse-core.js'), 'utf8'), context);
-const { Timeline, markup } = context.window.MetarPulseCore;
+const { Timeline, markup, cards, strongest } = context.window.MetarPulseCore;
 
 test('without a server result, even a long wait cannot fracture or reveal a reward', () => {
   const clock = new Timeline(100);
@@ -50,5 +50,15 @@ test('the presentation contains no placeholder prize and translates all its visi
   assert.doesNotMatch(html, /[\u3400-\u9fff]|\+1\.00/);
   assert.match(html, /aria-hidden="true"/);
   assert.match(html, /data-action="pulse-draw" disabled/);
+  assert.match(html, /data-action="pulse-draw-five" disabled/);
   assert.match(html, /role="status" aria-live="polite"/);
+});
+
+test('five cards keep their own tier, share the strongest burst and escape displayed values', () => {
+  const rewards=['white','red','blue','gold','purple'].map(tier=>({tier,type:'newapi_quota',amount:'<img>',unit:'⚡️',status:'pending',pending:true}));
+  assert.equal(strongest(rewards),'red');
+  const html=cards({rewards,total:5},s=>s);
+  assert.equal((html.match(/class="pc-card"/g)||[]).length,5);
+  assert.doesNotMatch(html,/<img>/); assert.match(html,/&lt;img&gt;/);
+  assert.equal(strongest([{tier:'unknown'}]),'white');
 });

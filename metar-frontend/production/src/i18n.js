@@ -605,7 +605,18 @@
     "这一刻，惊喜正在成形": "Your reward is taking shape",
     "积累脉冲券后，即可开启下一次回馈": "Earn a Pulse ticket to unlock your next reward",
     "权益数据刷新失败，已显示的结果会保留，请刷新奖励状态。": "Reward data could not refresh. Your displayed result is preserved; refresh the reward status.",
-    "社区经验": "Community EXP"
+    "社区经验": "Community EXP",
+    "五连抽 · 5 券": "Draw five · 5 tickets",
+    "奖励后台发放中。": "Rewards are being delivered.",
+    "五连抽需要至少 5 张可用脉冲券": "At least 5 available tickets are needed",
+    "本次已揭晓 {count} / {total} 份回馈": "Revealed {count} / {total} rewards",
+    "正在确认五连抽：{count} / 5": "Confirming your five draws: {count} / 5",
+    "连抽已停止，已获得的奖励保留；未完成的次数不再继续。": "The draws have stopped. Confirmed rewards are kept; remaining draws will not proceed.",
+    "请查看各奖励的到账状态。": "Check the delivery status of each reward.",
+    "抽取规则": "Draw rules",
+    "五连抽消耗 5 张券，与单抽概率相同；中断时保留已获得的奖励。": "Five draws use 5 tickets with the same odds as single draws. Confirmed rewards are kept if interrupted.",
+    "白光为经验奖励；额度奖励依次为蓝光（小于 0.5 ⚡️）、紫光（0.5 起）、金光（2 起）、红光（10 起）。光效不影响中奖概率。": "EXP glows white. Credits glow blue below 0.5 ⚡️, purple from 0.5, gold from 2, and red from 10. Effects do not change the odds.",
+    "白光": "White", "蓝光": "Blue", "紫光": "Purple", "金光": "Gold", "红光": "Red"
 });
   const STORAGE_KEY = 'metar-language';
   const SUPPORTED = Object.freeze(['zh_CN', 'en_US']);

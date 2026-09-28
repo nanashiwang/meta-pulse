@@ -59,7 +59,7 @@ test('app、适配器、头像中的显式中文界面词条都有英文翻译',
   }
 });
 
-async function shell({ language = 'en_US', user = null, binding = 'unbound', content = false, failure = '', pulseRules = {}, pulseRewards = [], actionResult = 'settled', storageBlocked = false, adminError = 0, bookmarkCount = 0, identityGate = null } = {}) {
+async function shell({ language = 'en_US', user = null, binding = 'unbound', content = false, failure = '', pulseRules = {}, pulseRewards = [], actionResult = 'settled', tickets = 2, rejectAt = 0, storageBlocked = false, adminError = 0, bookmarkCount = 0, identityGate = null } = {}) {
   const { context, i18n, values } = languageContext(language);
   const node = () => ({ innerHTML: '', textContent: '', attributes: {}, setAttribute(key, value) { this.attributes[key] = value; }, focus() {} });
   const nodes = Object.fromEntries(['app', 'view', 'main', 'skip', 'description', 'theme', 'menu', 'language'].map((key) => [key, node()]));
@@ -108,13 +108,13 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
       if (pathname.startsWith('/metar/api/pulse/')) {
         if (failure === 'pulse') return { ok: false, status: 503, json: async () => ({ error: 'pulse_unavailable' }) };
         let payload;
-        if (pathname.endsWith('/summary')) payload = { available_tickets: 2, current_contribution_milli: 1200500, level: { name: 'Member' } };
+        if (pathname.endsWith('/summary')) payload = { available_tickets: tickets, current_contribution_milli: 1200500, level: { name: 'Member' } };
         else if (pathname.endsWith('/rules')) payload = { enabled: true, quota_per_unit: 500000, total_weight: 100, period: { key: 'test-period', ends_at: '2026-10-01T00:00:00Z' }, rewards: [{ name: 'Daily reward', amount: 50000, weight: 100 }], ...pulseRules };
         else if (pathname.endsWith('/rewards')) payload = { rewards: new URL(url, 'https://metar.uk').searchParams.has('action_id') ? [] : pulseRewards };
         else if (pathname.endsWith('/actions')) {
           if (actionResult === 'timeout') throw new Error('Lost response');
-          if (actionResult === 'action_rejected') return { ok: false, status: 409, json: async () => ({ error: 'action_rejected' }) };
-          payload = { grant_id: 'grant-1', action_id: JSON.parse(options.body).action_id, status: actionResult, reward_type: 'newapi_quota', amount: 50000 };
+          if (actionResult === 'action_rejected' || (rejectAt && requests.filter(r=>r.url.endsWith('/actions')).length === rejectAt)) return { ok: false, status: 409, json: async () => ({ error: 'action_rejected' }) };
+          payload = { grant_id: 'grant-'+JSON.parse(options.body).action_id, action_id: JSON.parse(options.body).action_id, status: actionResult, reward_type: 'newapi_quota', amount: 50000 };
         }
         return { ok: true, status: 200, json: async () => payload };
       }
@@ -267,6 +267,23 @@ test('Pulse 提交结果与原请求恢复提示随切换语言更新，超时�
   assert.equal(blocked.requests.some(({ url }) => url.endsWith('/actions')), false);
 });
 
+
+test('five-draw fallback submits five unique actions, refuses insufficient tickets and stops on definite rejection', async () => {
+  const view=await shell({user:pulseUser,binding:'bound',tickets:5});
+  await view.navigate('/pulse');await view.click('pulse-draw-five');
+  const actions=view.requests.filter(r=>r.url.endsWith('/actions'));
+  assert.equal(actions.length,5);
+  assert.equal(new Set(actions.map(r=>r.options.headers.get('Idempotency-Key'))).size,5);
+  assert.equal(view.operations.size,0);assertEnglish(view,'five draws');
+  const insufficient=await shell({user:pulseUser,binding:'bound',tickets:4});
+  await insufficient.navigate('/pulse');await insufficient.click('pulse-draw-five');
+  assert.equal(insufficient.requests.filter(r=>r.url.endsWith('/actions')).length,0);
+  const partial=await shell({user:pulseUser,binding:'bound',tickets:5,rejectAt:3});
+  await partial.navigate('/pulse');await partial.click('pulse-draw-five');
+  assert.equal(partial.requests.filter(r=>r.url.endsWith('/actions')).length,3);
+  assert.equal(partial.operations.size,0);
+  assert.match(partial.html(),/Confirmed rewards are kept/);assertEnglish(partial,'partial draw');
+});
 
 test('Pulse 管理入口仅对 Answer 正常激活管理员显示，版主和伪造 is_admin 无权展示', async () => {
   for (const role_id of [1, 3, 0, undefined]) {

@@ -183,20 +183,72 @@
     read() {
       try {
         const value = JSON.parse(window.sessionStorage.getItem(this.key) || 'null');
-        if (value && /^[a-f0-9-]{36}$/.test(value.actionId) && value.actionId === value.idempotencyKey) return value;
-      } catch (_) { /* Missing storage never creates an operation. */ }
-      return null;
+        const valid = item => item && /^[a-f0-9-]{36}$/.test(item.actionId) && item.actionId === item.idempotencyKey;
+        if (value === null) return null;
+        if (valid(value) && (!value.actions || ([1, 5].includes(value.actions.length) && value.actions.every(valid)
+          && value.actions[0].actionId === value.actionId && new Set(value.actions.map(item => item.actionId)).size === value.actions.length))) return value;
+        throw new Error('Invalid saved operation');
+      } catch (_) { throw new AdapterError('无法读取原抽奖请求，请恢复站点存储后重试', { code: 'storage_unavailable' }); }
     }
-    begin() {
+    begin(count = 1) {
       const previous = this.read();
       if (previous) return previous;
-      const id = window.crypto.randomUUID();
-      const value = { actionId: id, idempotencyKey: id };
+      if (![1, 5].includes(count)) throw new AdapterError('invalid draw count', { code: 'invalid_request' });
+      const actions = Array.from({length: count}, () => { const id = window.crypto.randomUUID(); return { actionId: id, idempotencyKey: id }; });
+      const value = count === 1 ? actions[0] : { ...actions[0], actions };
       try { window.sessionStorage.setItem(this.key, JSON.stringify(value)); }
       catch (_) { throw new AdapterError('无法保存本次请求，请允许站点存储后重试', { code: 'storage_unavailable' }); }
       return value;
     }
-    clear() { window.sessionStorage.removeItem(this.key); }
+    clear() {
+      try { window.sessionStorage.removeItem(this.key); }
+      catch (_) { throw new AdapterError('无法保存本次请求，请允许站点存储后重试', {code:'storage_unavailable'}); }
+    }
+  }
+
+  const pulseActions = operation => operation?.actions || (operation ? [operation] : []);
+  function validPulseResult(result, actionId) {
+    return result && typeof result.grant_id === 'string' && result.grant_id.length > 0
+      && result.action_id === actionId && Number.isSafeInteger(result.amount) && result.amount >= 0
+      && ['community_exp', 'newapi_quota'].includes(result.reward_type);
+  }
+
+  // A five-draw session is five ordinary actions, each with its original key.
+  // Persist identifiers before the first POST; never persist or invent outcomes.
+  class PulseDrawSession {
+    constructor(client, store) { this.client = client; this.store = store; }
+    async recover(operation) {
+      const results = (await Promise.all(pulseActions(operation).map(async action => {
+        const history = await this.client.rewards(action.actionId);
+        return Array.isArray(history.rewards) ? history.rewards.find(result => validPulseResult(result, action.actionId)) : null;
+      }))).filter(Boolean);
+      if (new Set(results.map(result => result.grant_id)).size !== results.length) throw new AdapterError('duplicate grant', {code:'action_pending'});
+      return results;
+    }
+    async run(operation, { known = [], onResult = () => {}, canContinue = () => true } = {}) {
+      const results = [], actions = pulseActions(operation);
+      for (const action of actions) {
+        let result = known.find(item => validPulseResult(item, action.actionId));
+        if (!result) {
+          if (!canContinue()) throw new AdapterError('draw interrupted', {code:'action_interrupted'});
+          result = await this.client.act(action);
+          if (!validPulseResult(result, action.actionId)) throw new AdapterError('unconfirmed result', {code:'action_pending'});
+        }
+        if (results.some(item => item.grant_id === result.grant_id)) throw new AdapterError('duplicate grant', {code:'action_pending'});
+        results.push(result);
+        onResult([...results], actions.length);
+      }
+      this.store.clear();
+      return results;
+    }
+  }
+
+  // Presentation only: these thresholds neither choose rewards nor change odds.
+  function pulseRewardTier(reward, perUnit) {
+    if (reward?.reward_type !== 'newapi_quota' || !Number.isSafeInteger(reward.amount) || reward.amount <= 0
+      || !Number.isSafeInteger(perUnit) || perUnit <= 0) return 'white';
+    const amount = BigInt(reward.amount), unit = BigInt(perUnit);
+    return amount >= unit * 10n ? 'red' : amount >= unit * 2n ? 'gold' : amount * 2n >= unit ? 'purple' : 'blue';
   }
 
   function formatPulseQuota(amount, perUnit, language = 'zh_CN') {
@@ -341,5 +393,5 @@
     }
   }
 
-  window.MetarAdapters = Object.freeze({ AdapterError, AnswerAdapter, PulseAdminAdapter, PULSE_ADMIN_SECRET_KEYS, isCommunityAdministrator, PulseAdapter, PulseOperation, formatPulseQuota, KnowledgeAdapter, loadIdentitySnapshot, relativePath, routeMatchesNavigation });
+  window.MetarAdapters = Object.freeze({ AdapterError, AnswerAdapter, PulseAdminAdapter, PULSE_ADMIN_SECRET_KEYS, isCommunityAdministrator, PulseAdapter, PulseOperation, PulseDrawSession, pulseActions, validPulseResult, pulseRewardTier, formatPulseQuota, KnowledgeAdapter, loadIdentitySnapshot, relativePath, routeMatchesNavigation });
 })();
