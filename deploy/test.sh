@@ -83,6 +83,7 @@ python3 "$ROOT/metar-frontend/production/build.py" --output "$community_dist" >/
 [[ -s "$community_dist/index.html" && -s "$community_dist/assets/app.js" && -s "$community_dist/assets/favicon.svg" && -s "$community_dist/runtime-config.js" ]]
 ! grep -R -E 'SEED_POSTS|CANDIDATES|X-Pulse-Signature|New-Api-User|未发送到线上' "$community_dist" >/dev/null
 
+python3 "$ROOT/deploy/test_backup_retention.py"
 bash "$ROOT/deploy/update_test.sh"
 python3 "$ROOT/deploy/test_metar.py"
 python3 "$ROOT/deploy/test_blog_build.py"

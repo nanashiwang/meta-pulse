@@ -1276,3 +1276,7 @@ Answer 验证受保护的一对一绑定后，先提交 EXP 账本，再 ACK。A
 独立 admin 角色 POST `/v1/internal/admin/experience/reverse`，幂等范围 `experience_reverse:actor`，同 key 同 payload 返回原结果，不同 payload 冲突。只对 community_exp 允许 pending/settled → reversed；同事务释放对应 EXP 预算、重置待交付、追加审计。Answer 下次同步追加 reversal 或墓碑，再确认 reversed，迟到的 pending ACK 冲突。该流程不返券、不调用 new-api 撤销接口，不保证离线账号即时扣回。
 
 无需新增 Pulse 表；仅扩展既有奖项/预算类型和 outbox 状态。升级需同时更新 Pulse API/Worker、Answer 插件与静态资源；启用经验奖池后不可把 API/Worker 回退到不认识经验类型的旧版，需先暂停新抽奖并清理待交付，再执行经过验证的整体回退。
+
+## 部署备份生命周期
+
+`deploy/update.sh` 的 Git flock 覆盖备份、更新、健康/版本与可选摄入验收及保留清理。固定 `.data/deploy-backups` 内的备份使用本地 schema 1 状态：创建为 running，正常失败为 failed，全部验收通过后原子发布 success；中断、未知与旧版无状态始终保护。只有明确成功的历史备份进入数量筛选，默认 3（0 禁用），当前备份始终保留作为更新前回滚基线，`.keep` 保护额外恢复点。清理失败单独报告，不改变已通过验收的部署结果；不自动回滚数据库或密钥。预览复用同一筛选规则和更新锁，链接、越界和不安全文件类型不进入删除路径。这是本地运维元数据，不是业务账本或生产版本健康的替代证据。

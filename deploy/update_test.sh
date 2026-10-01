@@ -4,10 +4,11 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 ROOT="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/meta-pulse-update-test.XXXXXX")"
+tmp="$(cd "$tmp" && pwd -P)"
 trap 'rm -rf "$tmp"' EXIT
 export REAL_GIT="$(command -v git)"
 mkdir -p "$tmp/repo/deploy/nginx" "$tmp/repo/metar-frontend/src" "$tmp/mock"
-cp "$ROOT/deploy/"{update.sh,lib.sh,meta-pulse.env.example} "$tmp/repo/deploy/"
+cp "$ROOT/deploy/"{update.sh,lib.sh,backup-retention.py,meta-pulse.env.example} "$tmp/repo/deploy/"
 printf 'server {}\n' >"$tmp/repo/deploy/nginx/meta-pulse.conf"
 printf 'body{}\n' >"$tmp/repo/metar-frontend/src/styles.css"
 cat >"$tmp/repo/deploy/build-community.sh" <<'BUILD'
@@ -32,13 +33,19 @@ MOCK
 cat >"$tmp/mock/flock" <<'MOCK'
 #!/usr/bin/env bash
 printf 'lock\n' >>"$MOCK_LOG"
-[[ "${MOCK_FLOCK_FAIL:-0}" != 1 ]]
+[[ "${MOCK_FLOCK_FAIL:-0}" != 1 ]] || exit 1
+python3 -c 'import fcntl; fcntl.flock(9, fcntl.LOCK_EX | fcntl.LOCK_NB)'
 MOCK
 cat >"$tmp/mock/git" <<'MOCK'
 #!/usr/bin/env bash
 for arg in "$@"; do
   if [[ "$arg" == fetch ]]; then
     printf 'fetch\n' >>"$MOCK_LOG"
+    if [[ "${MOCK_FETCH_WAIT:-0}" == 1 ]]; then
+      touch "$MOCK_REPO/fetch-waiting"
+      while [[ ! -e "$MOCK_REPO/fetch-release" ]]; do sleep 0.05; done
+    fi
+    if [[ "${MOCK_TERMINATE:-0}" == 1 ]]; then kill -TERM "$PPID"; exit 42; fi
     if [[ "${MOCK_FETCH_SUCCEED:-0}" == 1 ]]; then exit 0; fi
     exit 42  # Stop before any real network/Git update.
   fi
@@ -70,6 +77,7 @@ MOCK
 cat >"$tmp/mock/docker" <<'MOCK'
 #!/usr/bin/env bash
 printf 'docker %s\n' "$*" >>"$MOCK_LOG"
+if [[ -n "${MOCK_DOCKER_FAIL:-}" && "${MOCK_DOCKER_FAIL:-}" != health && "$*" == *"$MOCK_DOCKER_FAIL"* ]]; then exit 46; fi
 case " $* " in
   *' config --services '*)
     [[ "${MOCK_GATEWAY:-0}" == 1 ]] && printf 'gateway\n'
@@ -81,7 +89,9 @@ case " $* " in
       cat "$MOCK_REPO/VERSION"
     elif [[ "$*" == *'.Mounts'* ]]; then
       [[ "${MOCK_RUNTIME_KEYS:-0}" == 1 ]] && printf 'volume\n'
-    elif [[ "$*" == *'.State.Health'* ]]; then printf 'running healthy\n'; else printf 'running\n'; fi
+    elif [[ "$*" == *'.State.Health'* ]]; then
+      if [[ "${MOCK_DOCKER_FAIL:-}" == health ]]; then printf 'dead\n'; else printf 'running healthy\n'; fi
+    else printf 'running\n'; fi
     ;;
   *' cp '*)
     [[ "${MOCK_RUNTIME_COPY_FAIL:-0}" == 0 ]] || exit 45
@@ -232,3 +242,81 @@ fi
 grep -q '当前代码超前或分叉' "$tmp/output"
 [[ "$("$REAL_GIT" -C "$tmp/repo" rev-parse HEAD)" == "$before" ]]
 printf '更新配置只读、锁、备份、网关和指定发布版本回归通过\n'
+
+# Seed an eligible old backup, then verify every failure preserves it.
+old_name="20000101T000000Z-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-1"
+old_backup="$tmp/repo/.data/deploy-backups/$old_name"
+mkdir -p "$old_backup"
+python3 - "$old_backup" "$old_name" <<'STATE'
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+(p / '.update-state.json').write_text(json.dumps({'schema': 1, 'name': sys.argv[2], 'status': 'success'}))
+(p / 'pulse.sql').write_text('rollback fixture')
+STATE
+for stage in 'mysqldump' ' build ' 'migrate-up' health 'nginx -t'; do
+  # Match actual Docker argv without relying on a mock timeout.
+  case "$stage" in
+    ' build ') stage='build pulse-api' ;;
+    ' exec -T pulse-api ') stage='exec -T pulse-api' ;;
+  esac
+  if MOCK_DOCKER_FAIL="$stage" MOCK_GATEWAY=1 MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" --backup-keep 1 >"$tmp/output" 2>&1; then
+    echo "rollout failure ignored: $stage" >&2; cat "$tmp/output"; exit 1
+  fi
+  [[ -f "$old_backup/pulse.sql" ]]
+  ! grep -q '^REMOVED ' "$tmp/output"
+done
+cat >"$tmp/repo/deploy/accept-ingest.py" <<'ACCEPT'
+import json, os, pathlib, sys
+root = pathlib.Path(os.environ['MOCK_REPO']) / '.data/deploy-backups'
+assert any(json.loads(p.read_text())['status'] == 'running' for p in root.glob('*/.update-state.json'))
+assert (root / os.environ['MOCK_OLD_NAME'] / 'pulse.sql').is_file()
+sys.exit(int(os.environ.get('MOCK_ACCEPT_FAIL', '0')))
+ACCEPT
+export MOCK_OLD_NAME="$old_name"
+if MOCK_ACCEPT_FAIL=1 MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" --accept-ingest --backup-keep 1 >"$tmp/output" 2>&1; then
+  echo 'acceptance failure ignored' >&2; exit 1
+fi
+[[ -f "$old_backup/pulse.sql" ]]
+! grep -q '更新及验收完成' "$tmp/output"
+# TERM is classified as failed, and never triggers retention.
+if MOCK_TERMINATE=1 bash "$tmp/repo/deploy/update.sh" --backup-keep 1 >"$tmp/output" 2>&1; then
+  echo 'TERM ignored' >&2; exit 1
+fi
+[[ -f "$old_backup/pulse.sql" ]]
+# Preview bypasses config/Docker/Git fetch and changes no backup files.
+mv "$tmp/repo/.env" "$tmp/preview.env"
+: >"$MOCK_LOG"
+bash "$tmp/repo/deploy/update.sh" --backup-preview --backup-keep 1 >"$tmp/output" 2>&1
+[[ -f "$old_backup/pulse.sql" ]]
+grep -q "^DELETE $old_name$" "$tmp/output"
+! grep -Eq '^(docker|fetch)' "$MOCK_LOG"
+mv "$tmp/preview.env" "$tmp/repo/.env"
+# Real flock ownership spans the whole update; both update and preview are blocked.
+MOCK_FETCH_WAIT=1 bash "$tmp/repo/deploy/update.sh" >"$tmp/holding-output" 2>&1 &
+holder=$!
+for ((attempt=0; attempt<200; attempt++)); do
+  [[ ! -e "$tmp/repo/fetch-waiting" ]] || break
+  sleep 0.05
+done
+[[ -e "$tmp/repo/fetch-waiting" ]]
+for option in --backup-preview --no-build; do
+  if bash "$tmp/repo/deploy/update.sh" "$option" >"$tmp/output" 2>&1; then
+    touch "$tmp/repo/fetch-release"; wait "$holder" || true
+    echo 'concurrent updater accepted' >&2; exit 1
+  fi
+  grep -q '已有另一个' "$tmp/output"
+done
+touch "$tmp/repo/fetch-release"
+wait "$holder" && exit 1
+[[ -f "$old_backup/pulse.sql" ]]
+# A successful acceptance can finally remove eligible old successes, not failures.
+MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" --accept-ingest --backup-keep 1 >"$tmp/output" 2>&1 || { cat "$tmp/output"; exit 1; }
+[[ ! -e "$old_backup" ]]
+python3 - "$tmp/repo/.data/deploy-backups" <<'CHECK'
+import json, pathlib, sys
+states = [json.loads(p.read_text())['status'] for p in pathlib.Path(sys.argv[1]).glob('*/.update-state.json')]
+assert states.count('success') == 1, states
+assert states.count('failed') >= 8, states
+assert 'running' not in states, states
+CHECK
+printf '备份保留、预览、更新/验收失败、TERM 与真实并发互斥回归通过\n'

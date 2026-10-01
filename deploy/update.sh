@@ -13,6 +13,8 @@ SKIP_WORKER=0
 REF=""
 RELEASE_TAG=""
 ACCEPT_INGEST=0
+BACKUP_KEEP="${META_PULSE_BACKUP_KEEP:-3}"
+BACKUP_PREVIEW=0
 
 usage() {
   cat <<'USAGE'
@@ -22,6 +24,8 @@ usage() {
 .env 只读校验，不会初始化或轮换凭据；缺失配置时停止。脚本使用 Git 锁避免并发更新。
 
 选项：
+  --backup-keep N   保留最近 N 份成功更新备份（默认 3；0 禁用清理）
+  --backup-preview  仅预览现有备份清理计划，不更新、不删除
   --accept-ingest   更新后执行 180 秒只读摄入验收（需 python3）
   --env-file PATH   使用指定生产配置文件（默认：.env）
   --ref BRANCH      更新指定远程分支（默认：当前分支）
@@ -35,6 +39,19 @@ USAGE
 
 while (($# > 0)); do
   case "$1" in
+    --backup-keep)
+      (($# >= 2)) || die "--backup-keep 需要数量"
+      BACKUP_KEEP="$2"
+      shift 2
+      ;;
+    --backup-keep=*)
+      BACKUP_KEEP="${1#*=}"
+      shift
+      ;;
+    --backup-preview)
+      BACKUP_PREVIEW=1
+      shift
+      ;;
     --env-file)
       (($# >= 2)) || die "--env-file 需要路径"
       ENV_FILE="$(absolute_path "$2")"
@@ -90,6 +107,9 @@ while (($# > 0)); do
   esac
 done
 
+[[ "$BACKUP_KEEP" =~ ^(0|[1-9][0-9]{0,5})$ ]] || die "备份保留数量必须是 0..999999 的整数（0 禁用清理）"
+require_command python3
+
 if [[ -n "$RELEASE_TAG" ]]; then
   [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || die "正式版本必须为 vX.Y.Z"
   [[ -z "$REF" ]] || die "--release 不能与 --ref 同用"
@@ -102,7 +122,6 @@ if (( ACCEPT_INGEST == 1 )); then
   (( SKIP_WORKER == 0 )) || die "--accept-ingest 不能与 --skip-worker 同用"
 fi
 
-check_host_prerequisites
 # Lock before reading or backing up deployment configuration. Updating must
 # never initialize credentials or import shell overrides like install does.
 require_command flock
@@ -111,6 +130,11 @@ LOCK_FILE="$GIT_DIR/meta-pulse-update.lock"
 exec 9>"$LOCK_FILE"
 flock -n 9 || die "已有另一个 Meta Pulse 更新正在执行"
 
+if (( BACKUP_PREVIEW == 1 )); then
+  python3 "$SCRIPT_DIR/backup-retention.py" preview "$REPO_ROOT" --keep "$BACKUP_KEEP"
+  exit 0
+fi
+check_host_prerequisites
 require_existing_env_file
 validate_environment
 if (( SKIP_WORKER == 0 )); then
@@ -129,13 +153,21 @@ git -C "$REPO_ROOT" diff --cached --quiet || die "存在已暂存的 tracked 修
 OLD_COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD)"
 OLD_BRANCH="$CURRENT_BRANCH"
 
-BACKUP_DIR="$REPO_ROOT/.data/deploy-backups/$(date -u +%Y%m%dT%H%M%SZ)-$OLD_COMMIT-$$"
-mkdir -p "$BACKUP_DIR"
-chmod 700 "$REPO_ROOT/.data" "$REPO_ROOT/.data/deploy-backups" "$BACKUP_DIR"
-cp "$ENV_FILE" "$BACKUP_DIR/.env"
-chmod 600 "$BACKUP_DIR/.env"
-compose config >"$BACKUP_DIR/compose.before.yml"
-chmod 600 "$BACKUP_DIR/compose.before.yml"
+BACKUP_NAME="$(date -u +%Y%m%dT%H%M%SZ)-$OLD_COMMIT-$$"
+BACKUP_DIR="$REPO_ROOT/.data/deploy-backups/$BACKUP_NAME"
+python3 "$SCRIPT_DIR/backup-retention.py" create "$REPO_ROOT" --name "$BACKUP_NAME" --keep "$BACKUP_KEEP"
+# EXIT also covers explicit die, TERM and INT; SIGKILL leaves running protected.
+on_exit() {
+  local rc=$?
+  trap - EXIT
+  if (( rc != 0 )); then
+    python3 "$SCRIPT_DIR/backup-retention.py" failed "$REPO_ROOT" --name "$BACKUP_NAME" || true
+  fi
+  exit "$rc"
+}
+trap on_exit EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 on_error() {
   local rc=$?
@@ -155,6 +187,11 @@ EOF_ERROR
   exit "$rc"
 }
 trap on_error ERR
+
+cp "$ENV_FILE" "$BACKUP_DIR/.env"
+chmod 600 "$BACKUP_DIR/.env"
+compose config >"$BACKUP_DIR/compose.before.yml"
+chmod 600 "$BACKUP_DIR/compose.before.yml"
 
 backup_database_if_running mysql "$BACKUP_DIR/pulse.sql"
 backup_database_if_running forum-mysql "$BACKUP_DIR/forum.sql"
@@ -295,11 +332,15 @@ if [[ -n "$RELEASE_TAG" ]]; then
   log "运行版本已核实：$RELEASE_TAG ($TARGET_COMMIT)"
 fi
 
-trap - ERR
-log "更新完成：$(git -C "$REPO_ROOT" rev-parse --short HEAD)"
 show_runtime_status
-log "备份目录：$BACKUP_DIR"
-
 if (( ACCEPT_INGEST == 1 )); then
   META_PULSE_ENV_FILE="$ENV_FILE" python3 "$SCRIPT_DIR/accept-ingest.py"
+fi
+
+# No success marker or deletion until every requested acceptance step has passed.
+trap - ERR
+log "更新及验收完成：$(git -C "$REPO_ROOT" rev-parse --short HEAD)"
+log "备份目录：$BACKUP_DIR"
+if ! python3 "$SCRIPT_DIR/backup-retention.py" finish "$REPO_ROOT" --name "$BACKUP_NAME" --keep "$BACKUP_KEEP"; then
+  warn "更新已成功，但备份保留未完成；请检查上方错误，备份可能超出保留数量"
 fi

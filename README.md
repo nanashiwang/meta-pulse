@@ -125,7 +125,7 @@ cd /opt/meta-pulse
 ./deploy/update.sh
 ```
 
-更新脚本会先加锁、只读校验已有配置，再备份数据库和原配置、fast-forward 拉取代码、执行迁移、重建服务并检查 API/Worker 的 `/readyz`。更新不会生成或轮换凭据；配置缺失时必须先恢复原配置。详细参数、日志、回滚和外部依赖见 [`deploy/README.md`](deploy/README.md)。
+更新脚本会先加锁、只读校验已有配置，再备份数据库和原配置、fast-forward 拉取代码、执行迁移、重建服务并检查 API/Worker 的 `/readyz`。全部验收成功后默认保留最近 3 份成功部署备份，保护当前、失败及旧版无状态备份；`--backup-preview` 仅预览，`--backup-keep N` 配置数量（0 禁用清理）。更新不会生成或轮换凭据；配置缺失时必须先恢复原配置。详细参数、日志、回滚和外部依赖见 [`deploy/README.md`](deploy/README.md)。
 
 Pulse API 不持有发奖用的 `PULSE_SERVICE_HMAC_SECRET`，该密钥只交给 Worker 与 new-api 接收端；API 按需配置独立 `PULSE_ROLLBACK_HMAC_SECRET`，仅用于受控查询和撤销。Worker 不持有撤销、BFF 或 Admin 密钥。
 
