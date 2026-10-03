@@ -70,3 +70,5 @@ tool_env = {**env, 'PULSE_ENV':'production', 'PULSE_DB_DSN':'pulse@tcp(mysql:330
 subprocess.run([str(tmp/'meta-pulse-tool'),'config-check','--role','tool'], env=tool_env, check=True)
 print('生产 Compose API/Worker/Tool 最小权限配置回归通过')
 PY
+
+METAR_TEST_COMPOSE=1 python3 "$ROOT/deploy/test_infrastructure.py"

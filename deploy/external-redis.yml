@@ -1,0 +1,13 @@
+services:
+  redis:
+    profiles: [disabled-local-redis]
+  pulse-api:
+    depends_on:
+      redis:
+        condition: service_healthy
+        required: false
+  pulse-worker:
+    depends_on:
+      redis:
+        condition: service_healthy
+        required: false

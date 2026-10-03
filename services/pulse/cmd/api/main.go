@@ -52,7 +52,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	cache, err := redisstore.Open(cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB)
+	cache, err := redisstore.OpenConfigured(cfg.RedisURL, cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB)
 	if err != nil {
 		logger.Error("initialize redis", "error", err)
 		os.Exit(1)

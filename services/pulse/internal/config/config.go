@@ -17,6 +17,7 @@ type Config struct {
 	HTTPAddr                       string
 	WorkerHTTPAddr                 string
 	PulseDBDSN                     string
+	RedisURL                       string
 	RedisAddr                      string
 	RedisPassword                  string
 	RedisDB                        int
@@ -115,6 +116,7 @@ func Load() (Config, error) {
 		HTTPAddr:                       getenv("PULSE_HTTP_ADDR", ":8088"),
 		WorkerHTTPAddr:                 getenv("PULSE_WORKER_HTTP_ADDR", ":8089"),
 		PulseDBDSN:                     os.Getenv("PULSE_DB_DSN"),
+		RedisURL:                       os.Getenv("PULSE_REDIS_URL"),
 		RedisAddr:                      getenv("PULSE_REDIS_ADDR", "127.0.0.1:6379"),
 		RedisPassword:                  os.Getenv("PULSE_REDIS_PASSWORD"),
 		RedisDB:                        redisDB,
@@ -167,7 +169,7 @@ func (cfg Config) Validate() error {
 	if strings.TrimSpace(cfg.PulseDBDSN) == "" {
 		errs = append(errs, errors.New("PULSE_DB_DSN is required"))
 	}
-	if strings.TrimSpace(cfg.RedisAddr) == "" {
+	if strings.TrimSpace(cfg.RedisAddr) == "" && strings.TrimSpace(cfg.RedisURL) == "" {
 		errs = append(errs, errors.New("PULSE_REDIS_ADDR is required"))
 	}
 	if cfg.RedisDB < 0 {

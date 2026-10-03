@@ -10,9 +10,10 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
-
+	"github.com/nanashiwang/meta-pulse/internal/dbconfig"
 	"github.com/nanashiwang/meta-pulse/internal/domain/usage"
 )
 
@@ -173,7 +174,11 @@ func OpenLogReader(dsn string) (*LogReader, error) {
 	if strings.TrimSpace(dsn) == "" {
 		return nil, errors.New("new-api log DSN is empty")
 	}
-	db, err := sql.Open("mysql", dsn)
+	normalized, err := dbconfig.Normalize(dsn)
+	if err != nil {
+		return nil, err
+	}
+	db, err := sql.Open("mysql", normalized)
 	if err != nil {
 		return nil, fmt.Errorf("open new-api log database: %w", err)
 	}
@@ -181,6 +186,8 @@ func OpenLogReader(dsn string) (*LogReader, error) {
 	// provisioned with SELECT privileges by deployment; code never receives a
 	// write-capable handle to Pulse's or new-api's primary database.
 	db.SetMaxOpenConns(5)
+	db.SetMaxIdleConns(2)
+	db.SetConnMaxLifetime(5 * time.Minute)
 	if err := db.Ping(); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping new-api log database: %w", err)

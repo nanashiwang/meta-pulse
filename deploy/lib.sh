@@ -98,10 +98,14 @@ ensure_env_file() {
   fi
   chmod 600 "$ENV_FILE"
 
-  ensure_generated_password PULSE_DB_PASSWORD
-  ensure_generated_password PULSE_DB_ROOT_PASSWORD
-  ensure_generated_password FORUM_DB_PASSWORD
-  ensure_generated_password FORUM_DB_ROOT_PASSWORD
+  if [[ "$(infra_mode PULSE_DB_MODE)" == local ]]; then
+    ensure_generated_password PULSE_DB_PASSWORD
+    ensure_generated_password PULSE_DB_ROOT_PASSWORD
+  fi
+  if [[ "$(infra_mode FORUM_DB_MODE)" == local ]]; then
+    ensure_generated_password FORUM_DB_PASSWORD
+    ensure_generated_password FORUM_DB_ROOT_PASSWORD
+  fi
   ensure_generated_secret PULSE_SERVICE_HMAC_SECRET
   ensure_generated_secret PULSE_FORUM_HMAC_SECRET
   ensure_generated_secret PULSE_USER_BFF_HMAC_SECRET
@@ -138,7 +142,11 @@ validate_environment() {
   [[ "$pulse_env" == production ]] || die "部署脚本只接受 PULSE_ENV=production（当前：${pulse_env:-未设置}）"
 
   local key value
-  for key in PULSE_DB_PASSWORD PULSE_DB_ROOT_PASSWORD FORUM_DB_PASSWORD FORUM_DB_ROOT_PASSWORD; do
+  local -a password_keys=()
+  [[ "$(infra_mode PULSE_DB_MODE)" != local ]] || password_keys+=(PULSE_DB_PASSWORD PULSE_DB_ROOT_PASSWORD)
+  [[ "$(infra_mode FORUM_DB_MODE)" != local ]] || password_keys+=(FORUM_DB_PASSWORD FORUM_DB_ROOT_PASSWORD)
+  validate_infrastructure_modes
+  for key in "${password_keys[@]}"; do
     require_env_value "$key"
     value="$(env_value "$key")"
     case "$value" in
@@ -168,13 +176,20 @@ compose() (
   local key
   for key in $(compgen -e); do
     case "$key" in
-      PULSE_*|NEWAPI_*|FORUM_*|COMPOSE_PROJECT_NAME) unset "$key" ;;
+      PULSE_*|NEWAPI_*|FORUM_*|COMPOSE_*|SSL_CERT_FILE|META_PULSE_CA_DIR|META_PULSE_MYSQL_IMAGE|META_PULSE_MYSQL_CLIENT_IMAGE) unset "$key" ;;
     esac
   done
   local -a compose_files=(-f "$COMPOSE_FILE")
   if [[ -f "$COMPOSE_OVERRIDE_FILE" ]]; then
     compose_files+=(-f "$COMPOSE_OVERRIDE_FILE")
   fi
+  local setting overlay
+  for setting in PULSE_DB_MODE FORUM_DB_MODE PULSE_REDIS_MODE; do
+    if [[ "$(infra_mode "$setting")" == external ]]; then
+      case "$setting" in PULSE_DB_MODE) overlay=pulse-db ;; FORUM_DB_MODE) overlay=forum-db ;; PULSE_REDIS_MODE) overlay=redis ;; esac
+      compose_files+=(-f "$SCRIPT_DIR/external-$overlay.yml")
+    fi
+  done
   export META_PULSE_REVISION="$(git -C "$REPO_ROOT" rev-parse HEAD)"
   export META_PULSE_VERSION=dev
   if [[ -f "$REPO_ROOT/VERSION" ]]; then
@@ -207,19 +222,24 @@ backup_database_if_running() {
   local output_file="$2"
   local container status
 
+  local mode_key which dsn_key backup_key
+  case "$service" in mysql) mode_key=PULSE_DB_MODE; which=pulse; dsn_key=PULSE_DB_DSN; backup_key=PULSE_BACKUP_DB_DSN ;; forum-mysql) mode_key=FORUM_DB_MODE; which=forum; dsn_key=FORUM_BINDING_GUARD_DSN; backup_key=FORUM_BACKUP_DB_DSN ;; *) die "未知数据库服务" ;; esac
+  if [[ "$(infra_mode "$mode_key")" == external || -n "$(env_value "$dsn_key")" || -n "$(env_value "$backup_key")" ]]; then
+    META_PULSE_ENV_FILE="$ENV_FILE" META_PULSE_COMPOSE_OVERRIDE_FILE="$COMPOSE_OVERRIDE_FILE" python3 "$SCRIPT_DIR/backup.py" dump --database "$which" --output "$output_file"
+    return
+  fi
   container="$(compose ps -q "$service" 2>/dev/null || true)"
-  [[ -n "$container" ]] || return 0
+  [[ -n "$container" ]] || die "$service 不存在，不能跳过更新备份"
   status="$(docker inspect --format '{{.State.Status}}' "$container" 2>/dev/null || true)"
   if [[ "$status" != running ]]; then
-    warn "$service 当前未运行，跳过数据库备份"
-    return 0
+    die "$service 当前未运行，无法完成更新备份"
   fi
 
   log "备份数据库：$service"
   : >"$output_file"
   chmod 600 "$output_file"
   compose exec -T "$service" sh -c \
-    'exec env MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysqldump --single-transaction --routines --events --triggers --hex-blob -uroot "$MYSQL_DATABASE"' \
+    'exec env MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysqldump --single-transaction --no-tablespaces --set-gtid-purged=OFF --routines --events --triggers --hex-blob -uroot "$MYSQL_DATABASE"' \
     >>"$output_file"
 }
 
@@ -285,4 +305,46 @@ show_runtime_status() {
 show_failure_logs() {
   warn "最近容器日志："
   compose logs --tail=120 pulse-api pulse-worker forum 2>&1 || true
+}
+
+# Defaults keep existing .env files and Compose volume identities unchanged.
+infra_mode() {
+  local value
+  value="$(env_value "$1")"
+  printf '%s\n' "${value:-local}"
+}
+
+validate_infrastructure_modes() {
+  local key mode
+  for key in PULSE_DB_MODE FORUM_DB_MODE PULSE_REDIS_MODE; do
+    mode="$(infra_mode "$key")"
+    [[ "$mode" == local || "$mode" == external ]] || die "$key 必须为 local 或 external"
+  done
+  [[ "$(infra_mode PULSE_DB_MODE)" != external ]] || require_env_value PULSE_DB_DSN
+  [[ "$(infra_mode FORUM_DB_MODE)" != external ]] || require_env_value FORUM_BINDING_GUARD_DSN
+  [[ "$(infra_mode PULSE_REDIS_MODE)" != external ]] || require_env_value PULSE_REDIS_URL
+}
+
+local_infrastructure_services() {
+  [[ "$(infra_mode PULSE_DB_MODE)" != local ]] || printf 'mysql\n'
+  [[ "$(infra_mode FORUM_DB_MODE)" != local ]] || printf 'forum-mysql\n'
+  [[ "$(infra_mode PULSE_REDIS_MODE)" != local ]] || printf 'redis\n'
+  return 0
+}
+
+preflight_infrastructure() {
+  compose run --rm --no-deps -T --entrypoint meta-pulse-tool pulse-api infra-check
+  # Existing Answer installations must target the same DB as their plugin.
+  if [[ "${SKIP_FORUM:-0}" == 0 || "$(infra_mode FORUM_DB_MODE)" == external ]]; then
+    compose run --rm --no-deps -T --entrypoint /usr/bin/forum-config forum check
+  fi
+}
+
+backup_forum_data() {
+  local destination="$1" container
+  container="$(compose ps -a -q forum | head -n 1)"
+  [[ -n "$container" ]] || die "Forum 容器缺失，无法备份配置和附件"
+  mkdir -p "$destination"
+  chmod 700 "$destination"
+  docker cp "$container:/data/." "$destination/" >/dev/null
 }

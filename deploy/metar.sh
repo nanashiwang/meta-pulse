@@ -11,6 +11,7 @@ usage() {
 不带命令打开数字菜单。
 
   update [升级参数]   备份、拉取、构建、迁移和检查（复用 update.sh）
+  backup [参数]      创建/验证备份或隔离恢复演练（backup.py --help）
   start              启动整套 METAR 服务，使用现有镜像
   restart            重启整套 METAR 服务并检查健康状态
   stop               停止整套 METAR 服务，保留容器和数据
@@ -60,6 +61,7 @@ run_command() (
   shift || true
   case "$command" in
     help|-h|--help) usage; return ;;
+    backup) exec python3 "$SCRIPT_DIR/backup.py" "$@" ;;
     update) exec "$SCRIPT_DIR/update.sh" "$@" ;;
     start|restart|stop|status) [[ $# == 0 ]] || die "$command 不接受额外参数" ;;
     uninstall) [[ $# == 0 || ( $# == 1 && "$1" == --yes ) ]] || die '用法：metar uninstall [--yes]' ;;

@@ -1,0 +1,8 @@
+services:
+  forum-mysql:
+    profiles: [disabled-local-forum-db]
+  forum:
+    depends_on:
+      forum-mysql:
+        condition: service_healthy
+        required: false

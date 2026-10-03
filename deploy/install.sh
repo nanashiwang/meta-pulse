@@ -81,7 +81,9 @@ on_error() {
 trap on_error ERR
 
 log "拉取基础镜像"
-compose pull mysql redis forum-mysql
+infra_services=()
+while IFS= read -r service; do [[ -z "$service" ]] || infra_services+=("$service"); done < <(local_infrastructure_services)
+if ((${#infra_services[@]})); then compose pull "${infra_services[@]}"; fi
 
 if (( NO_BUILD == 0 )); then
   build_services=(pulse-api)
@@ -102,10 +104,11 @@ if (( GATEWAY_ENABLED == 1 )); then
 fi
 
 log "启动数据库和 Redis"
-compose up -d mysql redis forum-mysql
-wait_for_service mysql 180 || die "Pulse MySQL 未就绪"
-wait_for_service redis 120 || die "Redis 未就绪"
-wait_for_service forum-mysql 180 || die "Forum MySQL 未就绪"
+if ((${#infra_services[@]})); then
+  compose up -d "${infra_services[@]}"
+  for service in "${infra_services[@]}"; do wait_for_service "$service" 180 || die "$service 未就绪"; done
+fi
+preflight_infrastructure
 
 log "执行 Pulse 数据库迁移"
 compose run --rm --no-deps --entrypoint meta-pulse-tool pulse-api migrate-up

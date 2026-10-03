@@ -1,12 +1,12 @@
 services:
   mysql:
-    image: mysql:8.0
+    image: ${META_PULSE_MYSQL_IMAGE:-mysql:8.0}
     restart: unless-stopped
     environment:
       MYSQL_DATABASE: meta_pulse
       MYSQL_USER: pulse
-      MYSQL_PASSWORD: ${PULSE_DB_PASSWORD:?set PULSE_DB_PASSWORD}
-      MYSQL_ROOT_PASSWORD: ${PULSE_DB_ROOT_PASSWORD:?set PULSE_DB_ROOT_PASSWORD}
+      MYSQL_PASSWORD: ${PULSE_DB_PASSWORD:-}
+      MYSQL_ROOT_PASSWORD: ${PULSE_DB_ROOT_PASSWORD:-}
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
@@ -18,7 +18,7 @@ services:
     volumes:
       - pulse_mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${PULSE_DB_ROOT_PASSWORD}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${PULSE_DB_ROOT_PASSWORD:-}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -45,8 +45,14 @@ services:
       PULSE_ENV: ${PULSE_ENV:-development}
       PULSE_HTTP_ADDR: :8088
       PULSE_RUNTIME_KEY_DIR: /app/runtime-keys
-      PULSE_DB_DSN: pulse:${PULSE_DB_PASSWORD}@tcp(mysql:3306)/meta_pulse?charset=utf8mb4&parseTime=True&loc=Asia%2FShanghai
-      PULSE_REDIS_ADDR: redis:6379
+      PULSE_DB_DSN: ${PULSE_DB_DSN:-pulse:${PULSE_DB_PASSWORD:-}@tcp(mysql:3306)/meta_pulse?charset=utf8mb4&parseTime=True&loc=Asia%2FShanghai}
+      PULSE_REDIS_ADDR: ${PULSE_REDIS_ADDR:-redis:6379}
+      PULSE_REDIS_URL: ${PULSE_REDIS_URL:-}
+      SSL_CERT_FILE: ${SSL_CERT_FILE:-}
+      PULSE_DB_MAX_OPEN_CONNS: ${PULSE_DB_MAX_OPEN_CONNS:-20}
+      PULSE_DB_MAX_IDLE_CONNS: ${PULSE_DB_MAX_IDLE_CONNS:-10}
+      PULSE_DB_CONN_MAX_LIFETIME: ${PULSE_DB_CONN_MAX_LIFETIME:-30m}
+      PULSE_DB_CONN_MAX_IDLE_TIME: ${PULSE_DB_CONN_MAX_IDLE_TIME:-5m}
       PULSE_REDIS_PASSWORD: ${PULSE_REDIS_PASSWORD:-}
       PULSE_REDIS_DB: ${PULSE_REDIS_DB:-0}
       NEWAPI_INTERNAL_BASE_URL: ${NEWAPI_INTERNAL_BASE_URL:-}
@@ -72,6 +78,7 @@ services:
     # Internal-only: browsers reach Pulse through a signed product BFF.
     volumes:
       - pulse_api_runtime_keys:/app/runtime-keys
+      - ${META_PULSE_CA_DIR:-./deploy/certs}:/etc/meta-pulse-ca:ro
     expose:
       - "8088"
     healthcheck:
@@ -98,8 +105,14 @@ services:
       PULSE_ENV: ${PULSE_ENV:-development}
       PULSE_WORKER_HTTP_ADDR: ":8089"
       PULSE_RUNTIME_KEY_DIR: /app/runtime-keys
-      PULSE_DB_DSN: pulse:${PULSE_DB_PASSWORD}@tcp(mysql:3306)/meta_pulse?charset=utf8mb4&parseTime=True&loc=Asia%2FShanghai
-      PULSE_REDIS_ADDR: redis:6379
+      PULSE_DB_DSN: ${PULSE_DB_DSN:-pulse:${PULSE_DB_PASSWORD:-}@tcp(mysql:3306)/meta_pulse?charset=utf8mb4&parseTime=True&loc=Asia%2FShanghai}
+      PULSE_REDIS_ADDR: ${PULSE_REDIS_ADDR:-redis:6379}
+      PULSE_REDIS_URL: ${PULSE_REDIS_URL:-}
+      SSL_CERT_FILE: ${SSL_CERT_FILE:-}
+      PULSE_DB_MAX_OPEN_CONNS: ${PULSE_DB_MAX_OPEN_CONNS:-20}
+      PULSE_DB_MAX_IDLE_CONNS: ${PULSE_DB_MAX_IDLE_CONNS:-10}
+      PULSE_DB_CONN_MAX_LIFETIME: ${PULSE_DB_CONN_MAX_LIFETIME:-30m}
+      PULSE_DB_CONN_MAX_IDLE_TIME: ${PULSE_DB_CONN_MAX_IDLE_TIME:-5m}
       PULSE_REDIS_PASSWORD: ${PULSE_REDIS_PASSWORD:-}
       PULSE_REDIS_DB: ${PULSE_REDIS_DB:-0}
       NEWAPI_LOG_DSN: ${NEWAPI_LOG_DSN:-}
@@ -121,6 +134,7 @@ services:
       PULSE_TICKET_THRESHOLD_MILLI: ${PULSE_TICKET_THRESHOLD_MILLI:-1000}
     volumes:
       - pulse_worker_runtime_keys:/app/runtime-keys
+      - ${META_PULSE_CA_DIR:-./deploy/certs}:/etc/meta-pulse-ca:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8089/readyz"]
       interval: 10s
@@ -136,13 +150,13 @@ services:
   # Forum database is a separate logical DB with its own account, per
   # ARCHITECTURE.md section 31 (services/databases/permissions stay independent).
   forum-mysql:
-    image: mysql:8.0
+    image: ${META_PULSE_MYSQL_IMAGE:-mysql:8.0}
     restart: unless-stopped
     environment:
       MYSQL_DATABASE: meta_pulse_forum
       MYSQL_USER: forum
-      MYSQL_PASSWORD: ${FORUM_DB_PASSWORD:?set FORUM_DB_PASSWORD}
-      MYSQL_ROOT_PASSWORD: ${FORUM_DB_ROOT_PASSWORD:?set FORUM_DB_ROOT_PASSWORD}
+      MYSQL_PASSWORD: ${FORUM_DB_PASSWORD:-}
+      MYSQL_ROOT_PASSWORD: ${FORUM_DB_ROOT_PASSWORD:-}
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
@@ -152,7 +166,7 @@ services:
     volumes:
       - forum_mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${FORUM_DB_ROOT_PASSWORD}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${FORUM_DB_ROOT_PASSWORD:-}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -169,15 +183,29 @@ services:
     environment:
       # The plugin uses Answer's own database account to install and verify
       # one-to-one immutable binding constraints. The DSN never reaches Pulse.
-      FORUM_BINDING_GUARD_DSN: forum:${FORUM_DB_PASSWORD}@tcp(forum-mysql:3306)/meta_pulse_forum?charset=utf8mb4&parseTime=True&loc=Local
+      FORUM_BINDING_GUARD_DSN: ${FORUM_BINDING_GUARD_DSN:-forum:${FORUM_DB_PASSWORD:-}@tcp(forum-mysql:3306)/meta_pulse_forum?charset=utf8mb4&parseTime=True&loc=Local}
+      FORUM_DB_MODE: ${FORUM_DB_MODE:-local}
+      SSL_CERT_FILE: ${SSL_CERT_FILE:-}
     # Internal-only: the HTTPS gateway is the sole public Answer entry.
     expose:
       - "80"
     volumes:
       - forum_data:/data
+      - ${META_PULSE_CA_DIR:-./deploy/certs}:/etc/meta-pulse-ca:ro
     depends_on:
       forum-mysql:
         condition: service_healthy
+
+  # Explicitly invoked maintenance client; never started by normal up/start.
+  database-client:
+    image: ${META_PULSE_MYSQL_CLIENT_IMAGE:-mysql:8.4}
+    profiles: [maintenance]
+    environment:
+      PULSE_BACKUP_DB_DSN: ${PULSE_BACKUP_DB_DSN:-}
+      FORUM_BACKUP_DB_DSN: ${FORUM_BACKUP_DB_DSN:-}
+    entrypoint: [sh]
+    volumes:
+      - ${META_PULSE_CA_DIR:-./deploy/certs}:/etc/meta-pulse-ca:ro
 
 volumes:
   pulse_api_runtime_keys:

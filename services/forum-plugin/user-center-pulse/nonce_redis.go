@@ -3,6 +3,7 @@ package pulse_user_center
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/hex"
 	"fmt"
 	"strings"
@@ -29,7 +30,13 @@ func NewRedisNonceStore(rawURL string) (*RedisNonceStore, error) {
 	}
 	options, err := redis.ParseURL(strings.TrimSpace(rawURL))
 	if err != nil {
-		return nil, fmt.Errorf("parse forum nonce redis url: %w", err)
+		return nil, fmt.Errorf("invalid forum nonce redis URL")
+	}
+	if options.TLSConfig != nil {
+		if options.TLSConfig.InsecureSkipVerify {
+			return nil, fmt.Errorf("forum Redis TLS must verify the server")
+		}
+		options.TLSConfig.MinVersion = tls.VersionTLS12
 	}
 	options.DialTimeout = 3 * time.Second
 	options.ReadTimeout = 2 * time.Second

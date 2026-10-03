@@ -197,6 +197,7 @@ backup_database_if_running mysql "$BACKUP_DIR/pulse.sql"
 backup_database_if_running forum-mysql "$BACKUP_DIR/forum.sql"
 backup_runtime_keys_if_present pulse-api "$BACKUP_DIR/runtime-keys/api"
 backup_runtime_keys_if_present pulse-worker "$BACKUP_DIR/runtime-keys/worker"
+backup_forum_data "$BACKUP_DIR/forum-data"
 
 if [[ -n "$RELEASE_TAG" ]]; then
   log "核实正式版本：$RELEASE_TAG"
@@ -273,6 +274,8 @@ if (( NO_BUILD == 0 )); then
   log "构建服务镜像：${build_services[*]}"
   compose build "${build_services[@]}"
 fi
+
+preflight_infrastructure
 
 # Drain every old API replica before the new idempotency implementation can
 # accept writes. New-api's model/billing/login services are not stopped.

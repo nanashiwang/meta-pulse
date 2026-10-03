@@ -31,6 +31,18 @@ func (uc *UserCenter) experienceStore(ctx context.Context) (*growth.Store, error
 	if err != nil || cfg.DBName == "" {
 		return nil, errors.New("experience database unavailable")
 	}
+	if cfg.TLSConfig == "skip-verify" || cfg.TLSConfig == "preferred" {
+		return nil, errors.New("Forum MySQL TLS must verify the server")
+	}
+	if cfg.Timeout == 0 {
+		cfg.Timeout = 5 * time.Second
+	}
+	if cfg.ReadTimeout == 0 {
+		cfg.ReadTimeout = 30 * time.Second
+	}
+	if cfg.WriteTimeout == 0 {
+		cfg.WriteTimeout = 30 * time.Second
+	}
 	cfg.MultiStatements = false
 	cfg.ParseTime = true
 	db, err := sql.Open("mysql", cfg.FormatDSN())

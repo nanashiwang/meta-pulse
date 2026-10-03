@@ -182,6 +182,7 @@ Apache Answer 源码不进入仓库，通过官方镜像与 Go module 引入。
 - [社区架构（论坛 + 博客）](docs/COMMUNITY.md)
 - [实施计划（里程碑与出口标准）](docs/IMPLEMENTATION_PLAN.md)
 - [工程约束](AGENTS.md)
+- [基础设施解耦、备份与恢复](docs/INFRASTRUCTURE.md)
 - [数据库迁移说明](services/pulse/migrations/README.md)
 - [服务器一键部署与更新](deploy/README.md)
 

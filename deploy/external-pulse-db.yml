@@ -1,0 +1,13 @@
+services:
+  mysql:
+    profiles: [disabled-local-pulse-db]
+  pulse-api:
+    depends_on:
+      mysql:
+        condition: service_healthy
+        required: false
+  pulse-worker:
+    depends_on:
+      mysql:
+        condition: service_healthy
+        required: false

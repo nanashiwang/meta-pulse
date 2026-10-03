@@ -90,12 +90,16 @@ jobs:
         run: make build-forum
 
   mysql-integration:
-    name: MySQL financial and forum identity invariants
+    name: MySQL ${{ matrix.mysql }} financial and forum identity invariants
+    strategy:
+      fail-fast: false
+      matrix:
+        mysql: ["8.0", "8.4"]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
       mysql:
-        image: mysql:8.0
+        image: mysql:${{ matrix.mysql }}
         env:
           MYSQL_ROOT_PASSWORD: pulse_ci_test_only
           MYSQL_DATABASE: pulse_integration
@@ -136,6 +140,19 @@ jobs:
         run: |
           docker exec "$MYSQL_CONTAINER" sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot -e "CREATE DATABASE community_growth_test;"'
           make test-growth-integration
+
+  recovery-integration:
+    name: Isolated backup, MySQL 8.4 restore and encrypted readback
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install encrypted repository client
+        run: sudo apt-get update && sudo apt-get install -y restic
+      - name: Real disposable recovery drill
+        env:
+          METAR_BACKUP_INTEGRATION: '1'
+        run: python3 deploy/test_backup_integration.py
 
   blog:
     name: Blog

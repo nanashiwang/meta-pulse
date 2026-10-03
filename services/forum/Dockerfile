@@ -27,6 +27,8 @@ RUN answer build \
     --with github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse@v0.1.0=/build/user-center-pulse \
     --output /out/answer
 
+RUN cd /build/user-center-pulse && CGO_ENABLED=0 go build -o /out/forum-config ./cmd/forum-config
+
 FROM alpine:3.20
 ARG META_PULSE_REVISION=unknown
 ARG META_PULSE_VERSION=dev
@@ -35,7 +37,10 @@ LABEL org.opencontainers.image.version=$META_PULSE_VERSION
 RUN apk add --no-cache ca-certificates tzdata
 COPY --from=answer-base /data /data
 COPY --from=builder /out/answer /usr/bin/answer
+COPY --from=builder /out/forum-config /usr/bin/forum-config
+COPY services/forum/entrypoint.sh /usr/bin/metar-forum-entrypoint
+RUN chmod 755 /usr/bin/metar-forum-entrypoint
 
 VOLUME /data
 EXPOSE 80
-ENTRYPOINT ["/usr/bin/answer", "run", "-C", "/data/conf"]
+ENTRYPOINT ["/usr/bin/metar-forum-entrypoint"]

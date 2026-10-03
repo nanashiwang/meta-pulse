@@ -14,6 +14,7 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/nanashiwang/meta-pulse/internal/dbconfig"
 	"github.com/nanashiwang/meta-pulse/internal/ports"
 )
 
@@ -23,11 +24,17 @@ func OpenReader(dsn string) (*Reader, error) {
 	if strings.TrimSpace(dsn) == "" {
 		return nil, errors.New("forum database DSN is empty")
 	}
-	db, err := sql.Open("mysql", dsn)
+	normalized, err := dbconfig.Normalize(dsn)
+	if err != nil {
+		return nil, err
+	}
+	db, err := sql.Open("mysql", normalized)
 	if err != nil {
 		return nil, fmt.Errorf("open forum database: %w", err)
 	}
 	db.SetMaxOpenConns(5)
+	db.SetMaxIdleConns(2)
+	db.SetConnMaxLifetime(5 * time.Minute)
 	if err := db.Ping(); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping forum database: %w", err)
