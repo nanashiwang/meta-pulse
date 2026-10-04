@@ -84,6 +84,7 @@
   let identityError = null;
   let identityReady = Promise.resolve(), identitySequence = 0;
   let shellReady = false, shellLanguage = '';
+  let renderedKey = null, renderedLanguage = '', renderedSession = '';
   let extrasUpdatedAt = 0;
 
   const ICONS = {
@@ -146,7 +147,7 @@
   const crumb = (parts = []) => `<nav class="breadcrumb" aria-label="${t("面包屑")}">${link('/latest', t("社区"))}${parts.map(([label, path]) => `<span>/</span>${path ? link(path, esc(label)) : `<span aria-current="page">${esc(label)}</span>`}`).join('')}</nav>`;
   const heading = (title, description = '', action = '') => `<div class="page-heading"><div><h1>${esc(title)}</h1>${description ? `<p>${esc(description)}</p>` : ''}</div>${action}</div>`;
   const empty = (title, description, action = '', icon = 'inbox') => `<div class="prod-empty">${I(icon)}<h2>${esc(title)}</h2><p>${esc(description)}</p>${action}</div>`;
-  const loading = () => `<div class="prod-loading" role="status"><div class="prod-skeleton" aria-hidden="true"><span></span><span></span><span></span><span></span></div><p>${t("正在读取社区实时数据…")}</p></div>`;
+  const loading = () => window.MetarLoading.render(document.getElementById('metar-loading-template').innerHTML, currentTitle(), route().path, t("正在读取社区实时数据…"), getLanguage() === 'en_US');
   const displayName = (user) => user?.display_name || user?.username || t("社区成员");
   const isActiveUser = (user) => Boolean(user) && Number(user.mail_status) === 1 && !['inactive', 'suspended', 'deleted'].includes(String(user.status || 'normal'));
   const number = (value) => new Intl.NumberFormat(locale()).format(Number(value) || 0);
@@ -277,14 +278,14 @@
     syncNavigation();
   }
 
-  function renderShell() {
+  function renderShell({retain = false} = {}) {
     syncDocument();
     if (!shellReady || shellLanguage !== getLanguage()) {
       app.innerHTML = `${topbar()}${sidebar()}<main class="page" id="main" tabindex="-1"><div class="page-inner" id="view">${loading()}</div></main>${mobileBottom()}`;
       shellReady = true; shellLanguage = getLanguage();
       extrasUpdatedAt = 0;
       refreshAccountExtras();
-    } else {
+    } else if (!retain) {
       const view = document.getElementById('view');
       if (view) view.innerHTML = loading();
     }
@@ -294,7 +295,7 @@
     window.MetarSEO?.update();
   }
 
-  function renderView(html) {
+  function renderView(html, {focus = true} = {}) {
     const view = document.getElementById('view');
     if (view) view.innerHTML = html;
     const core = document.querySelector('[data-pulse-core]');
@@ -312,7 +313,7 @@
       if (selected.right > bounds.right) tabs.scrollLeft += selected.right - bounds.right;
       else if (selected.left < bounds.left) tabs.scrollLeft -= bounds.left - selected.left;
     }
-    if (!document.activeElement?.matches?.('input, textarea, select, [contenteditable="true"]')) {
+    if (focus && !document.activeElement?.matches?.('input, textarea, select, [contenteditable="true"]')) {
       document.getElementById('main')?.focus({ preventScroll: true });
     }
     // Public author badges enhance an already usable page, outside its critical path.
@@ -729,10 +730,27 @@
     document.querySelector('[data-action="menu"]')?.setAttribute('aria-expanded', 'false');
   }
 
-  async function navigate({restore = null} = {}) {
+  function refreshMessage(failed = false) {
+    document.getElementById('view-refresh-message')?.remove();
+    const message = document.createElement('div');
+    message.id = 'view-refresh-message';
+    message.className = 'view-refresh-status';
+    message.setAttribute('role', 'status');
+    message.innerHTML = failed
+      ? `<span>${t('暂时无法更新，正在显示返回前的内容。')}</span> <button class="btn small" type="button" data-action="retry">${t('重新加载')}</button>`
+      : t('正在更新内容…');
+    document.getElementById('toast-root').append(message);
+  }
+
+  async function navigate({restore = null, preservePublicView = false} = {}) {
     const destination = nativeDestination(location, config);
     if (destination) { location.replace(destination); return; }
     const sequence = ++navigationSequence;
+    const key = location.pathname + location.search;
+    const session = answer.token();
+    const retain = preservePublicView && shellReady && window.MetarLoading.canRetain(route().path, key, renderedKey, getLanguage(), renderedLanguage, session === renderedSession);
+    document.getElementById('view-refresh-message')?.remove();
+    if (!retain) renderedKey = null;
     clearTimeout(pulseStatusTimer);
     pulseStatusAttempts = 0;
     pulseHasPendingRewards = false;
@@ -740,18 +758,24 @@
     pulseView?.dispose();
     pulseView = null;
     if (route().path !== '/admin/pulse') pulseAdmin?.dispose();
-    renderShell();
-    window.scrollTo({top:0, left:0, behavior:'auto'});
+    renderShell({retain});
+    if (retain) refreshMessage();
+    else window.scrollTo({top:0, left:0, behavior:'auto'});
     try {
       const html = await resolveView();
       if (sequence !== navigationSequence) return;
-      renderView(html);
+      renderView(html, {focus:!retain});
+      renderedKey = key;
+      renderedLanguage = getLanguage();
+      renderedSession = session;
+      document.getElementById('view-refresh-message')?.remove();
     } catch (error) {
       console.error('METAR view load failed', error);
       if (sequence !== navigationSequence) return;
-      renderError(error);
+      if (retain) { app.setAttribute('aria-busy', 'false'); refreshMessage(true); }
+      else renderError(error);
     }
-    if (restore) window.scrollTo({top:restore.y, left:restore.x, behavior:'auto'});
+    if (restore && !retain) window.scrollTo({top:restore.y, left:restore.x, behavior:'auto'});
   }
 
   function syncThemeControl() {
@@ -823,7 +847,7 @@
       document.querySelector('[data-action="menu"]')?.setAttribute('aria-expanded', String(opened));
     }
     if (action === 'theme') setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
-    if (action === 'retry') { answer.clearContentCache(); navigate(); }
+    if (action === 'retry') { answer.clearContentCache(); navigate({preservePublicView:true}); }
     if (action === 'pulse-draw') submitPulse();
     if (action === 'pulse-draw-five') submitPulse(false, 5);
     if (action === 'pulse-resume') submitPulse(true);
@@ -843,14 +867,14 @@
     if (!event.target.closest('.account-menu')) closeAccountMenu();
   });
 
-  window.addEventListener('popstate', () => navigate({restore:router.position()}));
+  window.addEventListener('popstate', () => navigate({restore:router.position(), preservePublicView:true}));
   window.addEventListener('pagehide', () => router.checkpoint());
   window.addEventListener('focus', refreshAccountExtras);
   window.addEventListener('storage', event => {
     if (event.key === '_a_ltk_' || event.key === null) { initializeIdentity(); refreshChrome(); navigate(); }
   });
   window.addEventListener('pageshow', event => {
-    if (event.persisted) { const restore = router.position(); initializeIdentity(); refreshChrome(); navigate({restore}); }
+    if (event.persisted) { const restore = router.position(); initializeIdentity(); refreshChrome(); navigate({restore, preservePublicView:true}); }
   });
   window.addEventListener('hashchange', () => { if (router.migrate()) navigate(); });
 

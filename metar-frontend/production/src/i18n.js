@@ -2,6 +2,8 @@
 'use strict';
 (() => {
   const EN = Object.freeze({
+ "正在更新内容…": "Updating content…",
+ "暂时无法更新，正在显示返回前的内容。": "Unable to update. Showing the content from before you left.",
  "额度上限": "Quota cap",
  "不限总量": "Unlimited total",
  "不限制额度奖励总量": "No total quota reward cap",

@@ -5,12 +5,54 @@ import os
 import subprocess
 import tempfile
 import unittest
+from html.parser import HTMLParser
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
+class InitialDOM(HTMLParser):
+    """Inspect painted markup, excluding inert templates and no-script fallback."""
+    def __init__(self):
+        super().__init__()
+        self.inert = 0
+        self.elements = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ('noscript', 'template'):
+            self.inert += 1
+        if not self.inert:
+            self.elements.append((tag, dict(attrs)))
+
+    def handle_endtag(self, tag):
+        if tag in ('noscript', 'template'):
+            self.inert -= 1
+
+
 class ProductionBuildTest(unittest.TestCase):
+    def test_every_entry_has_full_anonymous_first_paint_without_javascript(self):
+        with tempfile.TemporaryDirectory() as temp:
+            output = Path(temp) / 'dist'
+            subprocess.run(['python3', str(ROOT / 'build.py'), '--output', str(output)], check=True)
+            for path in output.rglob('*.html'):
+                source = path.read_text()
+                dom = InitialDOM()
+                dom.feed(source)
+                elements = dom.elements
+                for tag in ('header', 'aside', 'main', 'nav'):
+                    self.assertTrue(any(name == tag for name, _ in elements), (path, tag))
+                self.assertTrue(any(attrs.get('class') == 'page-loading' for _, attrs in elements), path)
+                self.assertTrue(any('data-loading-recovery' in attrs for _, attrs in elements), path)
+                self.assertTrue(any(attrs.get('href') == '/questions' for _, attrs in elements), path)
+                self.assertFalse(any(name == 'article' or 'data-pulse-core' in attrs for name, attrs in elements), path)
+                self.assertNotIn('/admin/dashboard', source)
+                self.assertIn('id="metar-loading-template"', source)
+                self.assertLess(source.index('/metar-assets/loading.js'), source.index('/metar-assets/app.js'))
+                # Searchable prose remains available with JS disabled, not as the loading UI.
+                if path.name == 'latest.html':
+                    self.assertIn('<noscript><section class="page-inner seo-fallback"><h1>最新讨论</h1>', source)
+            self.assertTrue((output / 'assets/loading.js').is_file())
+
     def test_private_deployment_umask_keeps_public_assets_readable(self):
         with tempfile.TemporaryDirectory() as temp:
             output = Path(temp) / "dist"
@@ -55,6 +97,7 @@ class ProductionBuildTest(unittest.TestCase):
             self.assertIn('data-action="skip"', (output / "index.html").read_text(encoding="utf-8"))
 
     def test_javascript_syntax(self):
+        subprocess.run(["node", "--check", str(ROOT / "src/loading.js")], check=True)
         subprocess.run(["node", "--check", str(ROOT / "src/i18n.js")], check=True)
         subprocess.run(["node", "--check", str(ROOT / "src/adapters.js")], check=True)
         subprocess.run(["node", "--check", str(ROOT / "src/avatars.js")], check=True)

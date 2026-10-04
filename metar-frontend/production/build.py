@@ -61,6 +61,7 @@ def build(output: Path, config_path: Path) -> None:
         "router": (ROOT / "src/router.js").read_text(encoding="utf-8"),
         "route-policy": (ROOT / "src/route-policy.js").read_text(encoding="utf-8"),
         "theme": (ROOT / "src/theme.js").read_text(encoding="utf-8"),
+        "loading": (ROOT / "src/loading.js").read_text(encoding="utf-8"),
         "growth-presentation": (ROOT.parents[1] / "services/forum-plugin/user-center-pulse/growth-presentation.js").read_text(encoding="utf-8"),
         "growth": (ROOT / "src/growth.js").read_text(encoding="utf-8"),
         "app": (ROOT / "src/app.js").read_text(encoding="utf-8"),
@@ -90,13 +91,14 @@ def build(output: Path, config_path: Path) -> None:
     (assets / "router.js").write_text(sources["router"], encoding="utf-8")
     (assets / "route-policy.js").write_text(sources["route-policy"], encoding="utf-8")
     (assets / "theme.js").write_text(sources["theme"], encoding="utf-8")
+    (assets / "loading.js").write_text(sources["loading"], encoding="utf-8")
     (assets / "growth-presentation.js").write_text(sources["growth-presentation"], encoding="utf-8")
     (assets / "growth.js").write_text(sources["growth"], encoding="utf-8")
     (assets / "app.js").write_text(sources["app"], encoding="utf-8")
     (assets / "pulse-core.js").write_text(sources["pulse-core"], encoding="utf-8")
     shutil.copyfile(ROOT / "src/pulse-core.css", assets / "pulse-core.css")
     (assets / "favicon.svg").write_text(sources["favicon"], encoding="utf-8")
-    build_seo(output, sources["index"])
+    build_seo(output, sources["index"], config["siteName"])
     runtime = "window.__METAR_RUNTIME_CONFIG__ = Object.freeze(" + json.dumps(config, ensure_ascii=False, separators=(",", ":")) + ");\n"
     (output / "runtime-config.js").write_text(runtime, encoding="utf-8")
     (output / "BUILD_INFO.json").write_text(json.dumps({"kind": "production", "mockData": False, "config": config_path.name}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

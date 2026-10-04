@@ -59,10 +59,13 @@ test('app、适配器、头像中的显式中文界面词条都有英文翻译',
   }
 });
 
-async function shell({ language = 'en_US', user = null, binding = 'unbound', content = false, failure = '', pulseRules = {}, pulseRewards = [], actionResult = 'settled', tickets = 2, rejectAt = 0, storageBlocked = false, adminError = 0, bookmarkCount = 0, identityGate = null } = {}) {
+async function shell({ language = 'en_US', user = null, binding = 'unbound', content = false, failure = '', pulseRules = {}, pulseRewards = [], actionResult = 'settled', tickets = 2, rejectAt = 0, storageBlocked = false, adminError = 0, bookmarkCount = 0, identityGate = null, publicControl = {} } = {}) {
   const { context, i18n, values } = languageContext(language);
   const node = () => ({ innerHTML: '', textContent: '', attributes: {}, setAttribute(key, value) { this.attributes[key] = value; }, focus() {} });
-  const nodes = Object.fromEntries(['app', 'view', 'main', 'skip', 'description', 'theme', 'menu', 'language'].map((key) => [key, node()]));
+  const nodes = Object.fromEntries(['app', 'view', 'main', 'skip', 'description', 'theme', 'menu', 'language', 'metar-loading-template'].map((key) => [key, node()]));
+  nodes['metar-loading-template'].innerHTML = script('loading-view.html');
+  nodes['toast-root'] = { append(message) { nodes[message.id] = message; } };
+  const scrolls = [];
   const documentEvents = new Map();
   const windowEvents = new Map();
   const requests = [];
@@ -73,6 +76,7 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
     title: '', documentElement: { dataset: {}, lang: '', getAttribute(key) { return this.dataset[key.replace('data-', '')]; }, setAttribute(key, value) { this.dataset[key.replace('data-', '')] = value; } },
     body: { classList: { remove() {}, toggle() { return true; } } },
     getElementById: (id) => nodes[id] || null,
+    createElement() { return {...node(), remove() { delete nodes[this.id]; }}; },
     querySelector: (selector) => ({
       'header.topbar': {set outerHTML(value) { nodes.app.innerHTML = nodes.app.innerHTML.replace(/<header class="topbar">[\s\S]*?<\/header>/, () => value); }},
       '[data-action="skip"]': nodes.skip, 'meta[name="description"]': nodes.description,
@@ -93,13 +97,17 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
       removeItem: (key) => operations.delete(key),
     },
     console: { warn() {}, error() {} },
-    matchMedia: () => ({ matches: false }), scrollTo() {},
+    matchMedia: () => ({ matches: false }), scrollTo(options) { scrolls.push(options); },
     addEventListener: (event, callback) => windowEvents.set(event, callback),
     __METAR_RUNTIME_CONFIG__: JSON.parse(fs.readFileSync(path.join(SOURCE, '../config.production.json'), 'utf8')),
     fetch: async (url, options) => {
       requests.push({ url, options });
       const pathname = new URL(url, 'https://metar.uk').pathname;
       if (pathname === '/answer/api/v1/user/info' && identityGate) await identityGate;
+      if (pathname.endsWith('/question/page') || pathname.endsWith('/tags/page')) {
+        if (publicControl.gate) await publicControl.gate;
+        if (publicControl.fail) return { ok:false, status:503, json:async () => ({data:null}) };
+      }
       if (failure === 'all' || (failure === 'identity' && pathname.endsWith('/user/info'))) return { ok: false, status: 503, json: async () => ({ msg: '中文服务器错误', data: null }) };
       if (pathname.startsWith('/metar/api/admin/pulse/')) {
         if (adminError) return { ok: false, status: adminError, json: async () => ({ error: 'settings_unavailable' }) };
@@ -133,10 +141,12 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
     replaceState(_state, _title, url) { context.location = localLocation(url); },
     pushState(_state, _title, url) { context.location = localLocation(url); },
   };
+  context.MetarLoading = require('../src/loading.js');
   for (const name of ['theme.js', 'adapters.js', 'avatars.js', 'growth.js', 'admin-pulse.js', 'route-policy.js', 'router.js', 'pulse-core.js', 'app.js']) vm.runInContext(script(name), context);
   await new Promise(setImmediate);
   return {
-    i18n, values, document, nodes, requests, operations, redirects,
+    i18n, values, document, nodes, requests, operations, redirects, scrolls,
+    restore() { return windowEvents.get('pageshow')({persisted:true}); },
     async navigate(route) { context.location = localLocation(route); await windowEvents.get('popstate')(); },
     async changeLanguage(value) {
       for (const listener of documentEvents.get('change') || []) listener({ target: { value, matches: () => true } });
@@ -154,6 +164,51 @@ const assertEnglish = (view, route) => {
   assert.doesNotMatch(rendered, /[\u3400-\u9fff]/, route);
   assert.doesNotMatch(view.document.title, /[\u3400-\u9fff]/, route + ' title');
 };
+
+test('历史恢复在请求期间保留公开内容与滚动，失败提示可重试且不清空列表', async () => {
+  const publicControl = {};
+  const view = await shell({content:true, language:'zh_CN', publicControl});
+  const previous = view.nodes.view.innerHTML;
+  const scrollCount = view.scrolls.length;
+  let release;
+  publicControl.gate = new Promise(resolve => { release = resolve; });
+  view.restore();
+  assert.equal(view.nodes.view.innerHTML, previous);
+  assert.equal(view.scrolls.length, scrollCount);
+  assert.match(view.nodes['view-refresh-message'].innerHTML, /正在更新内容/);
+  publicControl.fail = true;
+  release();
+  await new Promise(setImmediate);
+  assert.equal(view.nodes.view.innerHTML, previous);
+  assert.match(view.nodes['view-refresh-message'].innerHTML, /正在显示返回前的内容/);
+  publicControl.fail = false;
+  await view.click('retry');
+  assert.equal(view.nodes['view-refresh-message'], undefined);
+  assert.equal(view.scrolls.length, scrollCount);
+});
+
+test('身份变化、私有页面不保留旧内容，恢复中的迟到响应不覆盖新路由', async () => {
+  const publicControl = {};
+  const view = await shell({content:true, publicControl, user:{id:'7',username:'alice',display_name:'Alice',mail_status:1}});
+  let release;
+  publicControl.gate = new Promise(resolve => { release = resolve; });
+  view.values.set('_a_ltk_', 'new-test-session');
+  view.restore();
+  assert.match(view.nodes.view.innerHTML, /class="page-loading"/);
+  assert.doesNotMatch(view.nodes.view.innerHTML, /discussion-title/);
+  await view.navigate('/knowledge');
+  const newer = view.nodes.view.innerHTML;
+  release();
+  await new Promise(setImmediate);
+  assert.equal(view.nodes.view.innerHTML, newer);
+  assert.equal(view.nodes['view-refresh-message'], undefined);
+  await view.navigate('/me');
+  assert.match(view.nodes.view.innerHTML, /Alice/);
+  view.restore();
+  assert.match(view.nodes.view.innerHTML, /class="page-loading"/);
+  assert.doesNotMatch(view.nodes.view.innerHTML, /Alice/);
+  await new Promise(setImmediate);
+});
 
 test('所有英文页面与访客/已登录/绑定/失败状态不会遗留静态中文', async () => {
   for (const scenario of [
