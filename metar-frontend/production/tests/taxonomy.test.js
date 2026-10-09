@@ -109,3 +109,56 @@ test('directory reflects administrator categories, escapes content and preserves
   answer.request=async()=>{throw new Error('offline');};
   await assert.rejects(taxonomy.directory(answer,new URLSearchParams(),'/questions/ask',false),/offline/);
 });
+
+test('navigation catalog deduplicates reads and isolates session, language and invalidation epochs',async()=>{
+  let token='one',calls=0;
+  const answer={contentEpoch:1,token:()=>token,request:async path=>{
+    calls++;
+    if(path==='/siteinfo')return {secret:'must not retain',site_write:{recommend_tags:[{slug_name:'custom',display_name:'Real category',extra:'private'}]}};
+    if(path.startsWith('/tags?'))return [{slug_name:'ai',display_name:'Actual AI',extra:'private'}];
+    return {list:[{slug_name:'custom'},{slug_name:'ai'},{slug_name:'custom-tag',display_name:'Real tag'}]};
+  }};
+  const [first,second]=await Promise.all([taxonomy.catalog(answer),taxonomy.catalog(answer)]);
+  assert.equal(first,second);assert.equal(calls,3);
+  assert.deepEqual(first.categories,[{slug_name:'custom',display_name:'Real category'}]);
+  assert.deepEqual(first.tags.map(x=>x.slug_name),['ai','custom-tag']);
+  assert.doesNotMatch(JSON.stringify(first),/private|secret|must not retain/);
+  await taxonomy.catalog(answer);assert.equal(calls,3);
+  answer.contentEpoch++;await taxonomy.catalog(answer);assert.equal(calls,6);
+  token='two';await taxonomy.catalog(answer);assert.equal(calls,9);
+  const original=window.MetarI18n;
+  window.MetarI18n={...original,locale:()=> 'en-US'};
+  try {await taxonomy.catalog(answer);assert.equal(calls,12);} finally {window.MetarI18n=original;}
+});
+
+test('failed catalogs are retried, old results cannot overwrite a newer scope, and no seed becomes a live link',async()=>{
+  let fail=true,resolveOld;
+  const answer={contentEpoch:0,request:async path=>{
+    if(fail)throw new Error('offline');
+    if(path==='/siteinfo')return {site_write:{recommend_tags:[]}};
+    return path.startsWith('/tags?')?[]:{list:[]};
+  }};
+  const unavailable=await taxonomy.catalog(answer);
+  assert.equal(unavailable.categoriesUnavailable,true);assert.equal(unavailable.tagsUnavailable,true);
+  assert.doesNotMatch(taxonomy.navigation(unavailable),/href="\/topic\//);
+  fail=false;assert.equal((await taxonomy.catalog(answer)).categoriesUnavailable,false);
+  const delayed={contentEpoch:0,request:path=>path==='/siteinfo'?new Promise(resolve=>{resolveOld=resolve;}):Promise.resolve([])};
+  const old=taxonomy.catalog(delayed);delayed.contentEpoch++;
+  delayed.request=async path=>path==='/siteinfo'?{site_write:{recommend_tags:[{slug_name:'new'}]}}:[];
+  const current=await taxonomy.catalog(delayed);
+  resolveOld({site_write:{recommend_tags:[{slug_name:'old'}]}});await old;
+  assert.equal(await taxonomy.catalog(delayed),current);
+});
+
+test('sidebars keep complete directory links, escape names, and selectors represent one filter including off-page tags',()=>{
+  const data={categories:[{slug_name:'custom',display_name:'<Category>'}],tags:[{slug_name:'ai',display_name:'AI'}]};
+  const nav=taxonomy.navigation(data,new Set(['categories']));
+  assert.match(nav,/data-taxonomy-group="categories"><summary>/);
+  assert.match(nav,/data-taxonomy-group="tags" open/);
+  assert.match(nav,/&lt;Category&gt;/);assert.match(nav,/href="\/topics\?view=tags"/);
+  assert.doesNotMatch(nav,/\/topic\/develop/);
+  const selected=taxonomy.filters(data,'custom');
+  assert.equal((selected.match(/ selected/g)||[]).length,1);assert.match(selected,/value="custom" selected/);
+  const offPage=taxonomy.filters(data,'outside-page');
+  assert.match(offPage,/value="outside-page" selected/);assert.equal((offPage.match(/ selected/g)||[]).length,1);
+});

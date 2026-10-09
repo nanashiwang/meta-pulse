@@ -56,9 +56,53 @@
     return `<nav class="taxonomy-requests" aria-label="${t('申请新类别或标签')}"><a class="btn small" href="${esc(requestURL(askPath,'category',english,feedback?.slug_name))}">${t('申请新类别')}</a><a class="btn small" href="${esc(requestURL(askPath,'tag',english,feedback?.slug_name))}">${t('申请新标签')}</a>${feedback ? `<a data-router href="${topicURL(feedback.slug_name)}" class="btn small">${t('查看运营反馈')}</a>` : ''}</nav>`;
   }
 
-  function categoryCard(tag, preview = false) {
-    const seed = seedFor(tag.slug_name), parent = seedFor(seed?.parent);
-    return `<article class="card taxonomy-category"><div class="taxonomy-category-heading"><span class="taxonomy-dot"></span><h2>${preview ? esc(t(name(tag))) : `<a data-router href="${topicURL(tag.slug_name)}">${esc(name(tag))}</a>`}</h2>${parent ? `<small class="muted">${esc(t(parent.display_name))}</small>` : ''}</div><p>${esc(preview ? t(tag.description) : tag.description || t('浏览这个类别中的讨论。'))}</p>${preview ? `<span class="badge">${t('待管理员启用')}</span>` : `<a data-router class="textlink" href="${topicURL(tag.slug_name)}">${t('浏览讨论')}</a>`}</article>`;
+  const catalogs = new WeakMap();
+  const scope = answer => JSON.stringify([answer.token?.() || '', window.MetarI18n?.locale(), answer.contentEpoch]);
+  const publicTag = tag => ({slug_name:tag.slug_name,display_name:name(tag)});
+  const validTags = list => Array.isArray(list) ? list.filter(tag=>typeof tag?.slug_name === 'string' && tag.slug_name).map(publicTag) : [];
+  const color = slug => [...String(slug)].reduce((hash,char)=>(hash * 31 + char.charCodeAt(0)) >>> 0, 0) % 8;
+  const marker = slug => `<span class="taxonomy-dot taxonomy-color-${color(slug)}" aria-hidden="true"></span>`;
+
+  // Only a public projection lives here; session/locale/epoch changes discard it.
+  function catalog(answer) {
+    const key = scope(answer), previous = catalogs.get(answer);
+    if (previous?.key === key && (previous.pending || previous.expires > Date.now())) return previous.promise;
+    const entry = {key,pending:true,expires:0};
+    entry.promise = Promise.allSettled([
+      answer.request('/siteinfo').then(site=>recommended(site).map(publicTag)),
+      answer.request(`/tags?${new URLSearchParams({tags:tags.map(tag=>tag.slug_name).join(',')})}`).then(validTags),
+      answer.request('/tags/page?page=1&page_size=48&query_cond=popular').then(result=>validTags(result?.list)),
+    ]).then(([categoryResult,commonResult,popularResult])=>{
+      const categoryList = categoryResult.status === 'fulfilled' ? categoryResult.value : [];
+      const categoryNames = new Set(categoryList.map(tag=>tag.slug_name));
+      const common = commonResult.status === 'fulfilled' ? commonResult.value : [];
+      const popular = popularResult.status === 'fulfilled' ? popularResult.value : [];
+      const ordered = [...tags.map(seed=>common.find(tag=>tag.slug_name===seed.slug_name)).filter(Boolean),...popular];
+      const tagList = [...new Map(ordered.filter(tag=>!categoryNames.has(tag.slug_name)).map(tag=>[tag.slug_name,tag])).values()];
+      entry.pending = false;
+      const failed = [categoryResult,commonResult,popularResult].some(result=>result.status === 'rejected');
+      entry.expires = failed ? 0 : Date.now()+15000;
+      return {categories:categoryList,tags:tagList,categoriesUnavailable:categoryResult.status==='rejected',tagsUnavailable:commonResult.status==='rejected' && popularResult.status==='rejected'};
+    });
+    catalogs.set(answer,entry);
+    return entry.promise;
+  }
+
+  function navigation(data = {categories:[],tags:[]}, collapsed = new Set()) {
+    const group = (kind,label,list,url,allLabel) => `<details class="taxonomy-nav-group" data-taxonomy-group="${kind}"${collapsed.has(kind)?'':' open'}><summary>${t(label)}</summary><nav aria-label="${t(label)}">${list.map(tag=>`<a data-router class="nav-item taxonomy-nav-item" href="${topicURL(tag.slug_name)}">${kind==='categories'?marker(tag.slug_name):'<span class="taxonomy-hash" aria-hidden="true">#</span>'}<span>${esc(name(tag))}</span></a>`).join('')}<a data-router data-taxonomy-directory="${kind}" class="nav-item taxonomy-all" href="${url}"><span aria-hidden="true">⋯</span><span>${t(allLabel)}</span></a></nav></details>`;
+    return group('categories','类别',data.categories,'/topics','全部类别') + group('tags','标签',data.tags.slice(0,8),'/topics?view=tags','全部标签');
+  }
+
+  function filters(data, current = '') {
+    const categorySelected = data.categories.some(tag=>tag.slug_name===current);
+    const tagList = [...data.tags];
+    if (current && !categorySelected && !tagList.some(tag=>tag.slug_name===current)) tagList.unshift({slug_name:current});
+    const select = (kind,label,list,selected,unavailable) => `<label class="taxonomy-select"><span class="visually-hidden">${t(label)}</span><select data-action="taxonomy-filter" data-kind="${kind}" aria-label="${t(label)}"><option value="">${t(kind==='categories'?'全部类别':'全部标签')}</option>${list.map(tag=>`<option value="${esc(tag.slug_name)}"${selected===tag.slug_name?' selected':''}>${esc(name(tag))}</option>`).join('')}${unavailable?`<option disabled>${t('暂时无法加载')}</option>`:''}<option value="@directory">${t(kind==='categories'?'浏览全部类别':'浏览全部标签')}</option></select></label>`;
+    return select('categories','按类别浏览',data.categories,categorySelected?current:'',data.categoriesUnavailable) + select('tags','按标签浏览',tagList,categorySelected?'':current,data.tagsUnavailable);
+  }
+
+  function categoryRow(tag, preview = false) {
+    return `<article class="taxonomy-category">${marker(tag.slug_name)}<div class="taxonomy-row-content"><h2>${preview ? esc(t(name(tag))) : `<a data-router href="${topicURL(tag.slug_name)}">${esc(name(tag))}</a>`}</h2><p>${esc(preview ? t(tag.description) : tag.description || t('浏览这个类别中的讨论。'))}</p></div>${preview ? `<span class="badge">${t('待管理员启用')}</span>` : ''}</article>`;
   }
 
   async function directory(answer, query, askPath, english) {
@@ -76,15 +120,15 @@
         } catch (_) { /* A missing description must not hide a configured category. */ }
         return tag;
       }));
-      return toolbar + (!categoryList.length ? `<p class="muted">${t('起步类别待管理员启用，已有帖子和标签仍可正常浏览。')}</p>` : '') + `<div class="taxonomy-grid">${(categoryList.length ? detailed : categories).map(tag=>categoryCard(tag,!categoryList.length)).join('')}</div>`;
+      return toolbar + (!categoryList.length ? `<p class="muted">${t('起步类别待管理员启用，已有帖子和标签仍可正常浏览。')}</p>` : '') + `<div class="taxonomy-list">${(categoryList.length ? detailed : categories).map(tag=>categoryRow(tag,!categoryList.length)).join('')}</div>`;
     }
     const result = await answer.listTags({page,pageSize:48,order:'name'});
     const list = Array.isArray(result?.list) ? result.list : [];
     const categoryNames = new Set(categoryList.map(item=>item.slug_name));
     const totalPages = Math.max(1,Math.ceil((Number(result?.count)||0)/48));
-    const cards = list.map(tag => `<article class="card taxonomy-tag"><div class="between wrap"><h2><a data-router href="${topicURL(tag.slug_name)}">${esc(name(tag))}</a></h2>${categoryNames.has(tag.slug_name)?`<span class="badge green">${t('类别')}</span>`:''}</div><p>${esc(tag.description || t('该话题暂未添加介绍。'))}</p><small class="muted">${esc(window.MetarI18n.countLabel(tag.question_count,'questions'))}</small></article>`).join('');
+    const cards = list.map(tag => `<article class="taxonomy-tag">${categoryNames.has(tag.slug_name)?marker(tag.slug_name):'<span class="taxonomy-hash" aria-hidden="true">#</span>'}<div class="taxonomy-row-content"><h2><a data-router href="${topicURL(tag.slug_name)}">${esc(name(tag))}</a>${categoryNames.has(tag.slug_name)?`<span class="badge">${t('类别')}</span>`:''}</h2><p>${esc(tag.description || t('该话题暂未添加介绍。'))}</p></div><small class="taxonomy-count">${esc(window.MetarI18n.countLabel(tag.question_count,'questions'))}</small></article>`).join('');
     const preview = !list.length && !Number(result?.count) ? `<p class="muted">${t('常用标签待管理员启用。')}</p><div class="taxonomy-seed-tags">${tags.map(tag=>`<span class="badge">${esc(t(tag.display_name))}</span>`).join('')}</div>` : '';
-    return toolbar + preview + `<div class="taxonomy-grid">${cards}</div>` + (totalPages>1 ? `<nav class="prod-pager" aria-label="${t('标签分页')}">${page>1?`<a data-router class="btn small" href="/topics?view=tags&page=${page-1}">${t('上一页')}</a>`:''}<span>${t('第 {page} / {total} 页',{page,total:totalPages})}</span>${page<totalPages?`<a data-router class="btn small" href="/topics?view=tags&page=${page+1}">${t('下一页')}</a>`:''}</nav>` : '');
+    return toolbar + preview + `<div class="taxonomy-list">${cards}</div>` + (totalPages>1 ? `<nav class="prod-pager" aria-label="${t('标签分页')}">${page>1?`<a data-router class="btn small" href="/topics?view=tags&page=${page-1}">${t('上一页')}</a>`:''}<span>${t('第 {page} / {total} 页',{page,total:totalPages})}</span>${page<totalPages?`<a data-router class="btn small" href="/topics?view=tags&page=${page+1}">${t('下一页')}</a>`:''}</nav>` : '');
   }
 
   // Native settings have no compare-and-swap endpoint. Refuse detected drift and
@@ -126,5 +170,5 @@
     return `<section class="card card-pad stack"><div class="flex wrap"><a class="btn" data-router href="/topics">${t('查看类别与标签')}</a><a class="btn" href="/admin/write">${t('打开撰写设置')}</a><a class="btn" href="/tags">${t('管理原生标签')}</a></div><p>${t('初始化会补齐下列类别和常用标签，保留已有标签、介绍与撰写设置。已有推荐标签也作为类别显示。')}</p><div class="taxonomy-seed-tags">${categories.map(item=>`<span class="badge green">${esc(t(item.display_name))}</span>`).join('')}</div><div class="taxonomy-seed-tags">${tags.map(item=>`<span class="badge">${esc(t(item.display_name))}</span>`).join('')}</div><form data-form="taxonomy-init"><label class="taxonomy-confirm"><input type="checkbox" required name="confirmed">${t('我已核对起步目录，并确认没有其他管理员同时修改撰写设置。')}</label><button type="submit" class="btn primary">${t('初始化类别与标签')}</button><p class="muted" role="status" data-taxonomy-status></p></form><details><summary>${t('处理新增申请')}</summary><p>${t('在申请帖回复审核结果。通过后在原生标签页创建标签；新增类别还需加入撰写设置的推荐标签。公告等管理专用标签可在撰写设置中设为保留标签。')}</p><p>${t('类别用于整理内容，可与其他标签一起选择。网盘资源单独筛选，不自动合并到资源荟萃；申请和标签本身不授予 Pulse 权益。')}</p></details></section>`;
   }
 
-  window.MetarTaxonomy = Object.freeze({categories:Object.freeze(categories),tags:Object.freeze(tags),seedFor,topicURL,askURL,requestURL,recommended,directory,initialize,adminPage});
+  window.MetarTaxonomy = Object.freeze({categories:Object.freeze(categories),tags:Object.freeze(tags),seedFor,scope,catalog,navigation,filters,topicURL,askURL,requestURL,recommended,directory,initialize,adminPage});
 })();

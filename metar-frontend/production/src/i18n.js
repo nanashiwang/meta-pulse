@@ -2,6 +2,10 @@
 'use strict';
 (() => {
   const EN = Object.freeze({
+    "按标签浏览": "Browse by tag",
+    "浏览全部类别": "Browse all categories",
+    "浏览全部标签": "Browse all tags",
+    "暂时无法加载": "Temporarily unavailable",
     "类别与标签": "Categories and tags",
     "类别": "Categories",
     "开发调优": "Development",
