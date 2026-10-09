@@ -147,3 +147,9 @@ img[data-metar-appearance="veteran"],img[data-metar-appearance="companion"]{box-
 .identity-status{min-width:0}.identity-status span{min-width:0;overflow:hidden;text-overflow:ellipsis}
 @media(max-width:580px){.header-actions .identity-status{max-width:96px;font-size:11px;padding:7px}}
 @media(max-width:360px){.topbar{padding:0 8px;gap:4px}.topbar .mobile-menu{width:30px}.topbar .searchbox{min-width:30px}.topbar .searchbox input{width:30px}.topbar .searchbox:focus-within input{width:100%}.topbar .header-actions{gap:2px}.topbar .language-select{min-width:60px;max-width:64px}.topbar .header-actions>.btn{padding-left:9px;padding-right:9px}}
+
+.prod-pulse-groups{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:16px}
+.prod-pulse-group{padding:18px;border:1px solid var(--border);border-radius:14px;min-width:0;overflow-wrap:anywhere}
+.prod-pulse-group.is-selected{outline:2px solid var(--green)}
+.prod-pulse-group p{margin:8px 0;font-size:14px}
+.prod-pulse-group details{margin:12px 0}.prod-pulse-group summary{cursor:pointer}

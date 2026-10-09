@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/nanashiwang/meta-pulse/internal/domain/ledger"
+	"github.com/nanashiwang/meta-pulse/internal/domain/period"
 	"github.com/nanashiwang/meta-pulse/internal/ports"
 	mysqlstore "github.com/nanashiwang/meta-pulse/internal/store/mysql"
 	"sync"
@@ -42,7 +43,7 @@ func TestMySQLExperienceDeliveryRecoveryAndReversal(t *testing.T) {
 		t.Fatal(err)
 	}
 	action, _ := NewActionService(unit, ActionConfig{RandomSecret: []byte("experience-integration-random"), RequireVerifiedFunding: true, Now: func() time.Time { return start.Add(time.Hour) }})
-	cmd := ActionCommand{UserID: user, ActionID: key, TriggerType: ActionTriggerType, IdempotencyKey: key}
+	cmd := ActionCommand{ProtocolVersion: 2, Selection: signSelection(action.secret, user, period.Period{ID: p.PeriodID, ConfigVersion: key}, nil, false), UserID: user, ActionID: key, TriggerType: ActionTriggerType, IdempotencyKey: key}
 	results := make([]ActionResult, 100)
 	errs := make([]error, 100)
 	var wg sync.WaitGroup

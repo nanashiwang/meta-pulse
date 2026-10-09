@@ -17,12 +17,13 @@ func TestActionReplaySurvivesClosedAndChangedPeriods(t *testing.T) {
 		t.Run(fmt.Sprintf("legacy=%v", legacy), func(t *testing.T) {
 			store, rewards, idem := setupActionStore()
 			action := newActionService(t, store, rewards, idem)
-			cmd := ActionCommand{UserID: 9, ActionID: "lost-response", TriggerType: ActionTriggerType, IdempotencyKey: "request"}
+			cmd := ActionCommand{ProtocolVersion: 2, Selection: fixtureSelection(), UserID: 9, ActionID: "lost-response", TriggerType: ActionTriggerType, IdempotencyKey: "request"}
 			first, err := action.Execute(context.Background(), cmd)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if legacy {
+				cmd.ProtocolVersion, cmd.Selection = 0, ""
 				// Emulate the old binary's durable request, not just a new scope alias.
 				idem.records = make(map[string]ports.IdempotencyRecord)
 				record, err := idem.GetOrCreateForUpdate(context.Background(), "pulse_action:4:9", cmd.IdempotencyKey, actionPayloadHash(cmd, first.PeriodID, first.ConfigVersion))
@@ -73,11 +74,12 @@ func TestActionLegacyRequestsFailClosed(t *testing.T) {
 		t.Run(scenario, func(t *testing.T) {
 			store, rewards, idem := setupActionStore()
 			action := newActionService(t, store, rewards, idem)
-			cmd := ActionCommand{UserID: 9, ActionID: "old-action", TriggerType: ActionTriggerType, IdempotencyKey: "old-key"}
+			cmd := ActionCommand{ProtocolVersion: 2, Selection: fixtureSelection(), UserID: 9, ActionID: "old-action", TriggerType: ActionTriggerType, IdempotencyKey: "old-key"}
 			first, err := action.Execute(context.Background(), cmd)
 			if err != nil {
 				t.Fatal(err)
 			}
+			cmd.ProtocolVersion, cmd.Selection = 0, ""
 			idem.records = make(map[string]ports.IdempotencyRecord)
 			old, _ := idem.GetOrCreateForUpdate(context.Background(), "pulse_action:4:9", cmd.IdempotencyKey, actionPayloadHash(cmd, first.PeriodID, first.ConfigVersion))
 			if scenario != "incomplete" {
@@ -114,11 +116,12 @@ func TestActionLegacyRequestsFailClosed(t *testing.T) {
 func TestActionPreservesLegacyResponseAfterAliasRecovery(t *testing.T) {
 	store, rewards, idem := setupActionStore()
 	action := newActionService(t, store, rewards, idem)
-	command := ActionCommand{UserID: 9, ActionID: "legacy-action", TriggerType: ActionTriggerType, IdempotencyKey: "original-key"}
+	command := ActionCommand{ProtocolVersion: 2, Selection: fixtureSelection(), UserID: 9, ActionID: "legacy-action", TriggerType: ActionTriggerType, IdempotencyKey: "original-key"}
 	first, err := action.Execute(context.Background(), command)
 	if err != nil {
 		t.Fatal(err)
 	}
+	command.ProtocolVersion, command.Selection = 0, ""
 	idem.records = make(map[string]ports.IdempotencyRecord)
 	old, _ := idem.GetOrCreateForUpdate(context.Background(), "pulse_action:4:9", command.IdempotencyKey, actionPayloadHash(command, first.PeriodID, first.ConfigVersion))
 	if err := saveActionIdempotency(context.Background(), idem, old, first); err != nil {
@@ -140,5 +143,40 @@ func TestActionPreservesLegacyResponseAfterAliasRecovery(t *testing.T) {
 	}
 	if len(rewards.grants) != 1 || len(store.entries) != 1 {
 		t.Fatal("alias recovery changed financial facts")
+	}
+}
+
+func TestActionRestoresPreSelectionStableRequestWithoutNewDefaults(t *testing.T) {
+	store, rewards, idem := setupActionStore()
+	action := newActionService(t, store, rewards, idem)
+	command := ActionCommand{ProtocolVersion: 2, Selection: fixtureSelection(), UserID: 9, ActionID: "pre-selection", TriggerType: ActionTriggerType, IdempotencyKey: "pre-selection-key"}
+	first, err := action.Execute(context.Background(), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Emulate v0.2.36's stable identity format, distinct from the older
+	// period-scoped format already covered by the legacy migration tests.
+	command.ProtocolVersion, command.Selection = 0, ""
+	for key, record := range idem.records {
+		record.PayloadHash = actionRequestHash(command)
+		idem.records[key] = record
+	}
+	action.cfg.DisableNewActions = true
+	action.secret = []byte("rotated")
+	store.periods[0].Status = period.StatusClosed
+	for i := 0; i < 100; i++ {
+		got, err := action.Execute(context.Background(), command)
+		if err != nil || got != first {
+			t.Fatalf("v1 restore: %+v %v", got, err)
+		}
+	}
+	changed := command
+	changed.ProtocolVersion = 2
+	changed.Selection = fixtureSelection()
+	if _, err := action.Execute(context.Background(), changed); !errors.Is(err, ledger.ErrIdempotencyConflict) {
+		t.Fatalf("old request reinterpreted with selection: %v", err)
+	}
+	if len(rewards.grants) != 1 || len(store.entries) != 1 {
+		t.Fatal("legacy replay wrote financial facts")
 	}
 }

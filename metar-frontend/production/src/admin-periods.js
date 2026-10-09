@@ -172,7 +172,7 @@
         <p class="prod-field-help mt16" data-period-message role="status" aria-live="polite">${this.pending ? esc(t("存在待确认的规则保存请求：{key}。请重试原请求。", { key: this.pending.body.key })) : ""}</p>
         <button class="btn primary mt16" type="button" data-action="admin-period-retry" ${this.pending ? "" : "hidden"}>${t("重试原请求")}</button>
         <button class="btn mt16" type="button" data-action="retry">${t("刷新规则列表")}</button>
-        </form></section>`;
+        </form><details class="mt24"><summary>${t("各规则预算（最近 20 组）")}</summary><p class="muted mt8">${t("同一规则的不同资格视图共享预算；以下每个预算只列一次。API 以原始 quota 计，经验以 EXP 计。")}</p>${list.periods.map(p=>`<h3 class="mt16">${esc(p.key)}</h3><p class="muted">${esc(t("查询时间：{time}",{time:p.queried_at ? new Date(p.queried_at).toLocaleString() : '—'}))}</p><div class="prod-pulse-table"><table><thead><tr><th>${t("预算编号")}</th><th>${t("总额")}</th><th>${t("已预留")}</th><th>${t("已结算")}</th><th>${t("可用额")}</th></tr></thead><tbody>${(p.budgets||[]).map(b=>`<tr><td>${esc(b.id)}</td><td>${esc(b.unlimited?t("不限总量"):b.total)}</td><td>${esc(b.reserved)}</td><td>${esc(b.settled)}</td><td>${esc(b.unlimited?t("不限总量"):b.available)}</td></tr>`).join('')}</tbody></table></div>`).join('')}</details></section>`;
     }
     payload(form) {
       const f = new FormData(form);

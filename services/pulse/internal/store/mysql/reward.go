@@ -124,6 +124,21 @@ func (r *rewardRepository) ListDefinitions(ctx context.Context, periodID uint64)
 	return result, nil
 }
 
+func (r *rewardRepository) GetBudget(ctx context.Context, periodID uint64, budgetType string) (ports.RewardBudget, error) {
+	if periodID == 0 || !validMySQLText(budgetType, 64) {
+		return ports.RewardBudget{}, errors.New("invalid reward budget identity")
+	}
+	var model rewardBudgetModel
+	err := r.db.WithContext(ctx).Where("period_id = ? AND budget_type = ?", periodID, budgetType).Take(&model).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ports.RewardBudget{}, ports.ErrNotFound
+	}
+	if err != nil {
+		return ports.RewardBudget{}, fmt.Errorf("find reward budget: %w", err)
+	}
+	return rewardBudgetFromModel(model), nil
+}
+
 func (r *rewardRepository) GetBudgetForUpdate(ctx context.Context, periodID uint64, budgetType string) (ports.RewardBudget, error) {
 	if periodID == 0 || !validMySQLText(budgetType, 64) {
 		return ports.RewardBudget{}, errors.New("invalid reward budget identity")
@@ -532,7 +547,9 @@ func validateIdempotencySave(record ports.IdempotencyRecord) error {
 	if err := validateIdempotencyIdentity(record.Scope, record.Key, record.PayloadHash); err != nil {
 		return err
 	}
-	if record.ResponseStatus == nil || *record.ResponseStatus < 200 || *record.ResponseStatus >= 300 ||
+	refusal := record.ResponseStatus != nil && *record.ResponseStatus == 409 && record.ResourceType == "action_refusal" &&
+		(strings.HasPrefix(record.Scope, "pulse_action_request:") || strings.HasPrefix(record.Scope, "pulse_action_identity:"))
+	if record.ResponseStatus == nil || (!refusal && (*record.ResponseStatus < 200 || *record.ResponseStatus >= 300)) ||
 		len(record.ResponseJSON) == 0 || len(record.ResponseJSON) > maxIdempotencyResponseBytes ||
 		!validMySQLText(record.ResourceType, 64) || !validMySQLText(record.ResourceID, 191) ||
 		(record.ExpiresAt != nil && record.ExpiresAt.IsZero()) {

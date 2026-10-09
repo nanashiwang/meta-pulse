@@ -43,11 +43,13 @@ type ActionConfig struct {
 }
 
 type ActionCommand struct {
-	UserID         uint64
-	ActionID       string
-	TriggerType    string
-	IdempotencyKey string
-	PayloadHash    string
+	ProtocolVersion int
+	Selection       string
+	UserID          uint64
+	ActionID        string
+	TriggerType     string
+	IdempotencyKey  string
+	PayloadHash     string
 }
 
 type ActionResult struct {
@@ -104,6 +106,7 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 		return ActionResult{}, ErrInvalidAction
 	}
 	var result ActionResult
+	var refusal error
 	err := s.unit.Do(ctx, func(repos ports.Repositories) error {
 		if repos.Period == nil || repos.Idempotency == nil || repos.Reward == nil || repos.Ledger == nil || repos.Account == nil || repos.UserPeriod == nil {
 			return errors.New("action repositories are not initialized")
@@ -131,7 +134,22 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 			return fmt.Errorf("%w: action idempotency payload differs", ledger.ErrIdempotencyConflict)
 		}
 		if idempotency.ResponseStatus != nil && len(idempotency.ResponseJSON) > 0 {
-			return json.Unmarshal(idempotency.ResponseJSON, &result)
+			return replayActionResponse(idempotency, &result, &refusal)
+		}
+
+		refuse := func(cause error) error {
+			code := actionRefusalCode(cause)
+			if code == "" {
+				return cause
+			}
+			if err := saveActionRefusal(ctx, repos.Idempotency, actionIdentity, code); err != nil {
+				return err
+			}
+			if err := saveActionRefusal(ctx, repos.Idempotency, idempotency, code); err != nil {
+				return err
+			}
+			refusal = cause
+			return nil
 		}
 
 		// Import old period-scoped requests without rewriting their history. If
@@ -144,6 +162,9 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 			return fmt.Errorf("%w: ambiguous legacy action request", ledger.ErrIdempotencyConflict)
 		}
 		if len(legacy) == 1 {
+			if command.ProtocolVersion != 0 || command.Selection != "" {
+				return fmt.Errorf("%w: legacy selection cannot change", ledger.ErrIdempotencyConflict)
+			}
 			old := legacy[0]
 			if old.ResponseStatus == nil || json.Unmarshal(old.ResponseJSON, &result) != nil ||
 				result.UserID != command.UserID || result.ActionID != command.ActionID || result.GrantID == "" ||
@@ -160,6 +181,15 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 			return saveActionIdempotency(ctx, repos.Idempotency, idempotency, result)
 		}
 		if actionIdentity.ResponseStatus != nil && len(actionIdentity.ResponseJSON) > 0 {
+			if actionIdentity.ResourceType == "action_refusal" {
+				if len(legacy) > 0 {
+					return ledger.ErrIdempotencyConflict
+				}
+				if err := replayActionResponse(actionIdentity, &result, &refusal); err != nil {
+					return err
+				}
+				return saveActionRefusal(ctx, repos.Idempotency, idempotency, actionRefusalCode(refusal))
+			}
 			var cached ActionResult
 			if err := json.Unmarshal(actionIdentity.ResponseJSON, &cached); err != nil {
 				return fmt.Errorf("decode action response: %w", err)
@@ -189,27 +219,29 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 			return saveResult()
 		}
 		if len(grants) == 1 {
+			if command.ProtocolVersion != 0 || command.Selection != "" {
+				return fmt.Errorf("%w: historical selection unavailable", ledger.ErrIdempotencyConflict)
+			}
 			result = actionResultFromGrant(grants[0])
 			return saveResult()
 		}
+		if command.ProtocolVersion != 2 || command.Selection == "" {
+			return refuse(ErrSelectionRequired)
+		}
 		if s.cfg.DisableNewActions {
-			return ErrActionsUnavailable
+			return refuse(ErrActionsUnavailable)
+		}
+		choice, err := verifySelection(s.secret, command.UserID, command.Selection)
+		if err != nil {
+			return refuse(err)
 		}
 		now := s.cfg.Now()
-		activity, err := repos.Period.FindActiveAt(ctx, now)
+		activity, lot, err := selectedTicket(ctx, repos, choice, command.UserID, now)
 		if err != nil {
-			return err
-		}
-
-		var lot *ports.TicketLot
-		if activity.Continuous {
-			activity, lot, err = ticketActionPeriod(ctx, repos, activity, command.UserID, now)
-			if err != nil {
-				return err
-			}
+			return refuse(err)
 		}
 		if s.cfg.RequireVerifiedFunding && (activity.FundingPolicy != period.VerifiedPaidFunding || activity.TicketThresholdMilli <= 0) {
-			return ErrActionsUnavailable
+			return refuse(ErrActionsUnavailable)
 		}
 		definitions, err := repos.Reward.ListDefinitions(ctx, activity.ID)
 		if err != nil {
@@ -234,7 +266,7 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 			return err
 		}
 		if ticketAccount.Balance < 1 {
-			return ErrInsufficientTickets
+			return refuse(ErrInsufficientTickets)
 		}
 
 		// Lock units in a fixed order and stop the whole pool if either budget
@@ -251,24 +283,33 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 				continue
 			}
 			b, err := repos.Reward.GetBudgetForUpdate(ctx, activity.ID, kind)
+			if errors.Is(err, ports.ErrNotFound) {
+				return refuse(ErrBudgetExceeded)
+			}
 			if err != nil {
 				return err
 			}
 			if !b.CanReserve(maxPrize) {
-				return ErrBudgetExceeded
+				return refuse(ErrBudgetExceeded)
 			}
 			budgets[kind] = b
 		}
 		budget := budgets[rewardBudget(definition.RewardType)]
 
 		if err := reserveBudget(&budget, definition.Amount); err != nil {
-			return err
+			return refuse(err)
 		}
 
+		// User/account/budget locks may have waited across a deadline. Recheck
+		// after all of them, immediately before the first financial write.
+		decisionAt := s.cfg.Now()
+		if !activity.Contains(decisionAt) || (lot != nil && (!decisionAt.Before(lot.QuotaExpiresAt)) != choice.ExperienceOnly) {
+			return refuse(ErrSelectionChanged)
+		}
 		grantID := reward.GrantID(activity.ID, command.UserID, command.ActionID)
 		var ticketMetadata []byte
 		if lot != nil {
-			ticketMetadata, _ = json.Marshal(map[string]uint64{"ticket_lot_version": 1, "mint_entry_id": lot.MintEntryID})
+			ticketMetadata, _ = json.Marshal(map[string]any{"ticket_lot_version": 1, "mint_entry_id": lot.MintEntryID, "ticket_lot_id": lot.ID, "selection_version": 2, "experience_only": choice.ExperienceOnly})
 		}
 		spentEntry, err := appendEntry(ctx, repos, ledger.Entry{
 			UserID: command.UserID, PeriodID: activity.ID, AssetType: ledger.AssetTicket,
@@ -304,7 +345,7 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 			TriggerType: command.TriggerType, RewardDefinitionID: definition.ID, RewardType: definition.RewardType,
 			Amount: definition.Amount, TransferableQuota: false, BudgetType: rewardBudget(definition.RewardType), RandomValue: reward.RandomHex(randomBytes),
 			ConfigVersion: activity.ConfigVersion, Status: RewardStatusPending, SourceRef: grantID,
-			Reason: "pulse action", CreatedAt: s.cfg.Now(),
+			Reason: "pulse action", CreatedAt: decisionAt,
 		}
 		persistedGrant, err := repos.Reward.CreateGrant(ctx, grant)
 		if err != nil {
@@ -327,7 +368,7 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 		}
 		if _, err := repos.Reward.CreateOutbox(ctx, ports.SettlementOutbox{
 			RewardGrantID: persistedGrant.ID, Operation: "grant", PayloadHash: canonicalJSONHash(payload),
-			PayloadJSON: payload, Status: outboxStatus, NextAttemptAt: s.cfg.Now(), CreatedAt: s.cfg.Now(),
+			PayloadJSON: payload, Status: outboxStatus, NextAttemptAt: decisionAt, CreatedAt: decisionAt,
 		}); err != nil {
 			return err
 		}
@@ -340,10 +381,22 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 	if err != nil {
 		return ActionResult{}, err
 	}
-	return result, nil
+	return result, refusal
 }
 
 func actionRequestHash(command ActionCommand) string {
+	if command.ProtocolVersion != 0 || command.Selection != "" {
+		payload, _ := json.Marshal(struct {
+			UserID          uint64 `json:"user_id"`
+			ActionID        string `json:"action_id"`
+			TriggerType     string `json:"trigger_type"`
+			ProtocolVersion int    `json:"protocol_version"`
+			Selection       string `json:"selection"`
+		}{command.UserID, command.ActionID, command.TriggerType, command.ProtocolVersion, command.Selection})
+		return canonicalJSONHash(payload)
+	}
+	// Preserve v1 bytes exactly; no new defaults may reinterpret old requests.
+
 	payload, _ := json.Marshal(struct {
 		UserID      uint64 `json:"user_id"`
 		ActionID    string `json:"action_id"`

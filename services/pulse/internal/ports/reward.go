@@ -91,6 +91,7 @@ type RewardHistoryRepository interface {
 
 type RewardRepository interface {
 	ListDefinitions(ctx context.Context, periodID uint64) ([]reward.Definition, error)
+	GetBudget(ctx context.Context, periodID uint64, budgetType string) (RewardBudget, error)
 	GetBudgetForUpdate(ctx context.Context, periodID uint64, budgetType string) (RewardBudget, error)
 	SaveBudget(ctx context.Context, budget RewardBudget) error
 	FindGrantByAction(ctx context.Context, periodID, userID uint64, actionID string) (*RewardGrant, error)

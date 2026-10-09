@@ -288,3 +288,58 @@ func TestCommunityOptionalConfigurationPreservesLocalLogin(t *testing.T) {
 		t.Fatalf("status=%d", w.Code)
 	}
 }
+
+func TestCommunitySelectionContractIsStrict(t *testing.T) {
+	for _, body := range []string{
+		`{"action_id":"a","protocol_version":2,"selection":"signed-snapshot"}`,
+		`{"selection":"signed-snapshot","action_id":"a","protocol_version":2}`,
+		`{"action_id":"a"}`,
+	} {
+		var request communityActionRequest
+		if !decodeCommunityAction([]byte(body), &request) {
+			t.Fatalf("valid request rejected: %s", body)
+		}
+	}
+	for _, body := range []string{
+		`{"action_id":"a","protocol_version":2}`, `{"action_id":"a","selection":"s"}`,
+		`{"action_id":"a","protocol_version":1,"selection":"s"}`,
+		`{"action_id":"a","protocol_version":2,"selection":null}`,
+		`{"action_id":"a","protocol_version":2,"selection":"s","selection":"t"}`,
+		`{"action_id":"a","protocol_version":2,"selection":"s","user_id":42}`,
+		`{"action_id":"a","protocol_version":2,"selection":{"user_id":42}}`,
+	} {
+		var request communityActionRequest
+		if decodeCommunityAction([]byte(body), &request) {
+			t.Fatalf("invalid request accepted: %s", body)
+		}
+	}
+}
+
+func TestCommunityBFFForwardsSelectionAndDefiniteRefusals(t *testing.T) {
+	for _, code := range []string{"selection_changed", "selection_required", "budget_exceeded", "actions_unavailable"} {
+		t.Run(code, func(t *testing.T) {
+			router, _, _ := communityTestRouter(t, func(w http.ResponseWriter, r *http.Request) {
+				var body struct {
+					ActionID        string `json:"action_id"`
+					ProtocolVersion int    `json:"protocol_version"`
+					Selection       string `json:"selection"`
+					TriggerType     string `json:"trigger_type"`
+				}
+				if json.NewDecoder(r.Body).Decode(&body) != nil || body.ProtocolVersion != 2 || body.Selection != "server-snapshot" || body.TriggerType != "pulse" {
+					t.Errorf("selection lost: %+v", body)
+				}
+				w.WriteHeader(409)
+				_, _ = w.Write([]byte(`{"error":"` + code + `"}`))
+			})
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, communityTestRequest(http.MethodPost, "actions", `{"action_id":"a","protocol_version":2,"selection":"server-snapshot"}`))
+			want := code
+			if code == "budget_exceeded" || code == "actions_unavailable" {
+				want = "action_rejected"
+			}
+			if w.Code != 409 || !strings.Contains(w.Body.String(), want) {
+				t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+			}
+		})
+	}
+}

@@ -127,7 +127,7 @@ new-api 在自己的事务内变更用户额度并写 BenefitChangeRecord
   → 受保护的一对一绑定 → 独立 community-bff 签名 → Pulse 本人安全投影
 ```
 
-已实现 summary、rules、rewards 与 actions。周期包含在 summary/rules 中，原动作通过 rewards 的 action_id 精确查询。浏览器只提交 action_id 和 Idempotency-Key；新抽奖默认关闭，关闭后仍可恢复原结果。
+已实现 summary、rules、rewards 与 actions。周期包含在 summary/rules 中，原动作通过 rewards 的 action_id 精确查询。浏览器提交 action_id、Idempotency-Key、v2 协议版本与服务端签发的选择凭据；新抽奖默认关闭，关闭后仍可恢复原结果。
 
 ## 4. 目录职责
 
@@ -519,3 +519,10 @@ M7 内容奖励
 - 真实 MySQL 并发/幂等/上限/撤销回归纳入 CI；本地真实 Answer 验收与线上部署分别记录。
 - 已实现 Pulse 经验奖项独立预算、community-bff 领取/确认、来源撤销和持久重试；额度 Worker 隔离 EXP，已生效奖池不修改。
 - 本地 MySQL 验证 100 次并发抽奖/确认/撤销、超过历史分页窗口领取、确认失败后重试与迟到消息防复活；真实生产升级和新周期启用仍分别验收。
+
+## 规则组隔离与原请求恢复（v0.2.37）
+
+- 扩展既有 rules / actions 与社区 BFF；按不可变规则、预算归属和资格展示所有未用券，组内固定首批，不再全局 FIFO。
+- 选择凭据纳入版本化摘要；跨期限、并发耗尽、同编号换选择拒绝；确定的拒绝真正提交双幂等回执，数据库错误保持不确定语义。
+- 旧协议仅恢复已提交结果；五连抽固定同组同批次。管理员预算分项展示，共享 EXP 预算不重复累计。
+- 发布和本地验收不代表生产上线。部署前整体更新三端、排空旧写请求；每日券、新门槛、概率和经验成长综合方案继续待设计。

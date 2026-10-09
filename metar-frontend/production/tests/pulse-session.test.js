@@ -3,6 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 global.window = global;
 require('../src/adapters.js');
+const choice = {selection_version:2, selection:'server-choice'};
 const { PulseOperation, PulseDrawSession, pulseActions, pulseRewardTier, AdapterError } = window.MetarAdapters;
 function storage() {
   const values = new Map();
@@ -12,22 +13,22 @@ function storage() {
 const reward = action => ({grant_id:'grant-'+action.actionId,action_id:action.actionId,reward_type:'newapi_quota',amount:500000,status:'pending'});
 
 test('five draws persist five distinct identifiers before spending, isolate users and preserve legacy operations', () => {
-  const values = storage(), store = new PulseOperation('a'), operation = store.begin(5);
+  const values = storage(), store = new PulseOperation('a'), operation = store.begin(5, choice);
   assert.equal(pulseActions(operation).length, 5);
   assert.equal(new Set(operation.actions.map(a => a.actionId)).size, 5);
-  assert.deepEqual(store.begin(1), operation);
+  assert.deepEqual(store.begin(1, choice), operation);
   assert.deepEqual(new PulseOperation('a').read(), operation);
   assert.equal(new PulseOperation('b').read(), null);
   assert.doesNotMatch(values.get(store.key), /amount|reward|balance|ticket/);
   store.clear();
-  const single = store.begin();
+  const single = store.begin(1, choice);
   assert.equal(pulseActions(single).length, 1);
-  assert.deepEqual(store.begin(5), single);
+  assert.deepEqual(store.begin(5, choice), single);
 });
 
 test('third response loss is recovered by querying original IDs; five draws spend exactly five times', async () => {
   storage();
-  const store = new PulseOperation('a'), operation = store.begin(5), issued = new Map(), calls = [];
+  const store = new PulseOperation('a'), operation = store.begin(5, choice), issued = new Map(), calls = [];
   let lose = true;
   const client = {
     async act(action) {
@@ -56,7 +57,7 @@ test('third response loss is recovered by querying original IDs; five draws spen
 
 test('unknown result retries the same action and never advances until confirmed', async () => {
   storage();
-  const store = new PulseOperation('a'), operation = store.begin(5), calls = [];
+  const store = new PulseOperation('a'), operation = store.begin(5, choice), calls = [];
   const client = {async act(action) {calls.push(action);throw new AdapterError('offline',{code:'action_pending'});},async rewards(){return {rewards:[]};}};
   const session = new PulseDrawSession(client,store);
   for(let i=0;i<3;i++) await assert.rejects(session.run(store.read(),{known:await session.recover(operation)}));
@@ -67,7 +68,7 @@ test('unknown result retries the same action and never advances until confirmed'
 
 test('navigation stops unsent actions and malformed responses retain the original journal', async () => {
   storage();
-  const store = new PulseOperation('a'), operation = store.begin(5); let active = true, calls = 0;
+  const store = new PulseOperation('a'), operation = store.begin(5, choice); let active = true, calls = 0;
   const client = {async act(action) {calls++;active=false;return reward(action);}};
   let confirmed;
   await assert.rejects(new PulseDrawSession(client,store).run(operation,{canContinue:()=>active,onResult:r=>confirmed=r}),error=>error.code==='action_interrupted');
@@ -79,9 +80,9 @@ test('navigation stops unsent actions and malformed responses retain the origina
 test('corrupt or blocked recovery storage never silently replaces an existing operation', () => {
   const values=storage(), store=new PulseOperation('a');
   values.set(store.key,'{broken');
-  assert.throws(()=>store.begin(5),error=>error.code==='storage_unavailable');
+  assert.throws(()=>store.begin(5, choice),error=>error.code==='storage_unavailable');
   values.clear(); window.sessionStorage.setItem=()=>{throw Error('full')};
-  assert.throws(()=>store.begin(5),error=>error.code==='storage_unavailable');
+  assert.throws(()=>store.begin(5, choice),error=>error.code==='storage_unavailable');
 });
 
 test('five presentation tiers use exact boundaries without changing reward amounts', () => {
@@ -92,4 +93,30 @@ test('five presentation tiers use exact boundaries without changing reward amoun
   assert.equal(pulseRewardTier(quota(1),3),'blue');assert.equal(pulseRewardTier(quota(2),3),'purple');
   assert.equal(pulseRewardTier(quota(Number.MAX_SAFE_INTEGER),Number.MAX_SAFE_INTEGER),'purple');
   assert.equal(pulseRewardTier(quota(10),0),'white');
+});
+
+test('new sessions require a server selection and all five requests preserve it after reload', async () => {
+  storage();
+  const store = new PulseOperation('selection-user');
+  assert.throws(()=>store.begin(),e=>e.code==='selection_required');
+  const operation=store.begin(5,choice);
+  assert.ok(pulseActions(operation).every(a=>a.protocolVersion===2 && a.selection===choice.selection));
+  assert.deepEqual(store.begin(5,{selection_version:2,selection:'another-group'}),operation);
+  const restored=new PulseOperation('selection-user').read();
+  const calls=[];
+  await new PulseDrawSession({act:async a=>{calls.push(a);return {action_id:a.actionId,grant_id:a.actionId,amount:10,reward_type:'community_exp'};}},store).run(restored);
+  assert.ok(calls.every(a=>a.selection===choice.selection));
+});
+
+test('historical saved requests stay v1; mixed-selection saved batches fail closed', () => {
+  const values=storage(),store=new PulseOperation('legacy');
+  const id=crypto.randomUUID();
+  values.set(store.key,JSON.stringify({actionId:id,idempotencyKey:id}));
+  assert.equal(store.read().selection,undefined);
+  assert.equal(store.begin(1,choice).selection,undefined);
+  store.clear();
+  const operation=store.begin(5,choice);
+  operation.actions[1].selection='different-group';
+  values.set(store.key,JSON.stringify(operation));
+  assert.throws(()=>store.read(),e=>e.code==='storage_unavailable');
 });

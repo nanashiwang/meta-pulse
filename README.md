@@ -148,7 +148,7 @@ make deploy-config-test  # 生产 Compose 配置 + API/Worker/Tool 最小权限�
 - 业务指标必须同时检查 `meta_pulse_operations_up` 和最近成功采集时间，不能把未采集/过期数据当作正常。
 - `make test-integration` 必须显式提供专用测试库的 `PULSE_INTEGRATION_DSN`，执行真实 MySQL 事务、100 并发/重放、跨周期和旧版幂等恢复测试；**禁止指向业务数据库**。CI 自动创建隔离 MySQL。
 - `make test-forum-integration` 验证 Answer v1.7.1 表结构、一对一不可变绑定及绑定后内容映射；测试会重建表，schema 名必须以 `_integration`、`-integration`、`_test` 或 `-test` 结尾。
-- 新的开启操作必须使用新的 `action_id` 和 `Idempotency-Key`；响应丢失时复用原值，即使周期已经结束，也返回首次结果。
+- 新的开启操作须先选择规则组，并使用新的 `action_id`、`Idempotency-Key` 和服务端 v2 选择凭据；响应丢失时复用原协议及全部原值，即使期限已过，也恢复首次结果或拒绝回执。
 
 ## 仓库结构
 

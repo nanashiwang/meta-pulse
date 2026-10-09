@@ -73,8 +73,9 @@ func TestMySQLContinuousTicketsAgeReplayAndRuleChanges(t *testing.T) {
 		t.Fatalf("lost remainder/replay: %d/%d", lots, count)
 	}
 	rules := NewRewardRulesService(unit, true)
+	rules.SelectionSecret = []byte("test-only-random")
 	rules.now = func() time.Time { return first.StartsAt.Add(30 * 24 * time.Hour) }
-	before, err := rules.GetForUser(ctx, user)
+	before, err := firstRuleGroup(rules, ctx, user)
 	if err != nil || before.ExperienceOnly || len(before.Rewards) != 2 {
 		t.Fatalf("ticket expired before deadline: %+v %v", before, err)
 	}
@@ -84,7 +85,7 @@ func TestMySQLContinuousTicketsAgeReplayAndRuleChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	paused, _ := NewActionService(unit, ActionConfig{RandomSecret: []byte("test-only-random"), RequireVerifiedFunding: true, Now: rules.now})
-	_, err = paused.Execute(ctx, ActionCommand{UserID: user, ActionID: prefix + "-budget", IdempotencyKey: prefix + "-budget", TriggerType: ActionTriggerType})
+	_, err = paused.Execute(ctx, ActionCommand{ProtocolVersion: 2, Selection: before.Selection, UserID: user, ActionID: prefix + "-budget", IdempotencyKey: prefix + "-budget", TriggerType: ActionTriggerType})
 	if !errors.Is(err, ErrBudgetExceeded) {
 		t.Fatalf("quota budget bypass: %v", err)
 	}
@@ -93,12 +94,12 @@ func TestMySQLContinuousTicketsAgeReplayAndRuleChanges(t *testing.T) {
 		t.Fatalf("budget failure spent tickets: %d %v", unspent, err)
 	}
 	rules.now = func() time.Time { return first.StartsAt.Add(30*24*time.Hour + time.Second) }
-	view, err := rules.GetForUser(ctx, user)
+	view, err := firstRuleGroup(rules, ctx, user)
 	if err != nil || !view.Enabled || !view.ExperienceOnly || len(view.Rewards) != 1 || view.Rewards[0].RewardType != ExperienceRewardType || view.Period.ID != first.PeriodID {
 		t.Fatalf("old ticket rule/expiry: %+v %v", view, err)
 	}
 	action, _ := NewActionService(unit, ActionConfig{RandomSecret: []byte("test-only-random"), RequireVerifiedFunding: true, Now: rules.now})
-	command := ActionCommand{UserID: user, ActionID: prefix + "-draw", IdempotencyKey: prefix + "-draw", TriggerType: ActionTriggerType}
+	command := ActionCommand{ProtocolVersion: 2, Selection: view.Selection, UserID: user, ActionID: prefix + "-draw", IdempotencyKey: prefix + "-draw", TriggerType: ActionTriggerType}
 	var wg sync.WaitGroup
 	results := make([]ActionResult, 100)
 	failures := make([]error, 100)
@@ -118,6 +119,12 @@ func TestMySQLContinuousTicketsAgeReplayAndRuleChanges(t *testing.T) {
 	if remaining != 1 || allocations != 1 {
 		t.Fatalf("double spend: %d/%d", remaining, allocations)
 	}
+	// Explicitly confirm the remaining group before racing its last ticket.
+	remainingGroup, e := firstRuleGroup(rules, ctx, user)
+	if e != nil {
+		t.Fatal(e)
+	}
+	command.Selection = remainingGroup.Selection
 	// Different action IDs racing for the last ticket: exactly one commits.
 	lastErrors := make([]error, 2)
 	for i := 0; i < 2; i++ {
@@ -135,7 +142,7 @@ func TestMySQLContinuousTicketsAgeReplayAndRuleChanges(t *testing.T) {
 	for _, e := range lastErrors {
 		if e == nil {
 			successes++
-		} else if !errors.Is(e, ErrInsufficientTickets) {
+		} else if !errors.Is(e, ErrSelectionChanged) {
 			t.Fatal(e)
 		}
 	}
@@ -194,8 +201,9 @@ func TestMySQLUnlimitedQuotaBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 	rules := NewRewardRulesService(unit, true)
+	rules.SelectionSecret = []byte("test-only-unlimited")
 	rules.now = func() time.Time { return now }
-	if view, e := rules.GetForUser(ctx, user); e != nil || !view.Enabled {
+	if view, e := firstRuleGroup(rules, ctx, user); e != nil || !view.Enabled {
 		t.Fatalf("unlimited rules unavailable: %+v %v", view, e)
 	}
 	secret := []byte("test-only-unlimited")
@@ -228,7 +236,11 @@ func TestMySQLUnlimitedQuotaBudget(t *testing.T) {
 		t.Fatal("no quota test vector")
 	}
 	action, _ := NewActionService(unit, ActionConfig{RandomSecret: secret, RequireVerifiedFunding: true, Now: func() time.Time { return now }})
-	cmd := ActionCommand{UserID: user, ActionID: actionID, IdempotencyKey: actionID, TriggerType: ActionTriggerType}
+	chosen, e := firstRuleGroup(rules, ctx, user)
+	if e != nil {
+		t.Fatal(e)
+	}
+	cmd := ActionCommand{ProtocolVersion: 2, Selection: chosen.Selection, UserID: user, ActionID: actionID, IdempotencyKey: actionID, TriggerType: ActionTriggerType}
 	for i := 0; i < 100; i++ {
 		r, e := action.Execute(ctx, cmd)
 		if e != nil || r.Amount != 100 || r.RewardType != "newapi_quota" {
@@ -255,4 +267,21 @@ func TestMySQLUnlimitedQuotaBudget(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func firstRuleGroup(s *RewardRulesService, ctx context.Context, user uint64) (TicketRuleGroup, error) {
+	view, err := s.GetForUser(ctx, user)
+	if err != nil {
+		return TicketRuleGroup{}, err
+	}
+	if len(view.Groups) == 0 {
+		return TicketRuleGroup{}, errors.New("no group")
+	}
+	chosen := view.Groups[0]
+	for _, g := range view.Groups {
+		if g.Period.ID < chosen.Period.ID {
+			chosen = g
+		}
+	}
+	return chosen, nil
 }

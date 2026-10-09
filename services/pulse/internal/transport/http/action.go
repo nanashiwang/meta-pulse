@@ -34,8 +34,10 @@ func ActionRoute(router *gin.RouterGroup, executor ActionExecutor, auth gin.Hand
 			return
 		}
 		var request struct {
-			ActionID    string `json:"action_id"`
-			TriggerType string `json:"trigger_type"`
+			ProtocolVersion int    `json:"protocol_version"`
+			Selection       string `json:"selection"`
+			ActionID        string `json:"action_id"`
+			TriggerType     string `json:"trigger_type"`
 		}
 		if err := bindStrictJSON(c, &request); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid action payload"})
@@ -47,14 +49,14 @@ func ActionRoute(router *gin.RouterGroup, executor ActionExecutor, auth gin.Hand
 			return
 		}
 		result, err := executor.Execute(c.Request.Context(), service.ActionCommand{
-			UserID: principal.UserID, ActionID: strings.TrimSpace(request.ActionID),
+			ProtocolVersion: request.ProtocolVersion, Selection: request.Selection, UserID: principal.UserID, ActionID: strings.TrimSpace(request.ActionID),
 			TriggerType: triggerType, IdempotencyKey: idempotencyKey,
 		})
 		if err != nil {
 			status := http.StatusInternalServerError
 			switch {
-			case errors.Is(err, service.ErrActionsUnavailable):
-				status = http.StatusServiceUnavailable
+			case errors.Is(err, service.ErrActionsUnavailable), errors.Is(err, service.ErrSelectionRequired), errors.Is(err, service.ErrSelectionChanged):
+				status = http.StatusConflict
 			case errors.Is(err, service.ErrMissingIdempotencyKey), errors.Is(err, service.ErrInvalidAction):
 				status = http.StatusBadRequest
 			case errors.Is(err, service.ErrInsufficientTickets), errors.Is(err, service.ErrBudgetExceeded), errors.Is(err, ledger.ErrIdempotencyConflict):
@@ -62,6 +64,10 @@ func ActionRoute(router *gin.RouterGroup, executor ActionExecutor, auth gin.Hand
 			}
 			code := "action_pending"
 			switch {
+			case errors.Is(err, service.ErrSelectionRequired):
+				code = "selection_required"
+			case errors.Is(err, service.ErrSelectionChanged):
+				code = "selection_changed"
 			case errors.Is(err, service.ErrInsufficientTickets):
 				code = "insufficient_tickets"
 			case errors.Is(err, service.ErrBudgetExceeded):

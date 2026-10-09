@@ -113,3 +113,20 @@ func TestActionRouteRejectsForgedTriggerTypeBeforeExecution(t *testing.T) {
 		})
 	}
 }
+
+func TestActionRoutePreservesV2Selection(t *testing.T) {
+	reader := &actionStub{}
+	router := gin.New()
+	ActionRoute(router.Group("/v1/internal"), reader, func(c *gin.Context) {
+		c.Set(PrincipalContextKey, security.Principal{UserID: 7, Role: "community-bff"})
+		c.Next()
+	})
+	request := httptest.NewRequest(http.MethodPost, "/v1/internal/me/actions", strings.NewReader(`{"action_id":"a2","trigger_type":"pulse","protocol_version":2,"selection":"original-server-choice"}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", "v2-key")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != 201 || reader.command.ProtocolVersion != 2 || reader.command.Selection != "original-server-choice" || reader.command.UserID != 7 {
+		t.Fatalf("selection was changed: %+v / %d", reader.command, response.Code)
+	}
+}

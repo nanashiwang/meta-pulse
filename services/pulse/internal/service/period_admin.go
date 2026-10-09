@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -53,7 +55,19 @@ func (s *PeriodCreateService) CreateFromAdmin(ctx context.Context, request Perio
 	})
 }
 
+type AdminBudgetView struct {
+	ID        string `json:"id"`
+	Kind      string `json:"kind"`
+	Unlimited bool   `json:"unlimited"`
+	Total     string `json:"total"`
+	Reserved  string `json:"reserved"`
+	Settled   string `json:"settled"`
+	Available string `json:"available"`
+}
 type AdminPeriodView struct {
+	Budgets   []AdminBudgetView `json:"budgets"`
+	QueriedAt time.Time         `json:"queried_at"`
+
 	QuotaBudgetUnlimited bool               `json:"quota_budget_unlimited"`
 	Rewards              []PeriodRewardSpec `json:"rewards"`
 	RewardBudget         int64              `json:"reward_budget"`
@@ -94,7 +108,7 @@ func (s *PeriodCreateService) ListForAdmin(ctx context.Context) ([]AdminPeriodVi
 			if err != nil {
 				return err
 			}
-			view := AdminPeriodView{Continuous: activity.Continuous, QuotaValidityDays: activity.QuotaValidityDays, ID: row.ID, Key: row.Key, Status: row.Status, StartsAt: row.StartsAt, EndsAt: row.EndsAt, TicketThresholdMilli: activity.TicketThresholdMilli, Rules: make([]AdminPeriodRule, 0)}
+			view := AdminPeriodView{QueriedAt: s.now(), Budgets: []AdminBudgetView{}, Continuous: activity.Continuous, QuotaValidityDays: activity.QuotaValidityDays, ID: row.ID, Key: row.Key, Status: row.Status, StartsAt: row.StartsAt, EndsAt: row.EndsAt, TicketThresholdMilli: activity.TicketThresholdMilli, Rules: make([]AdminPeriodRule, 0)}
 			for _, rule := range rules {
 				view.Rules = append(view.Rules, AdminPeriodRule{Key: rule.RuleKey, MultiplierBps: rule.MultiplierBps})
 			}
@@ -109,9 +123,16 @@ func (s *PeriodCreateService) ListForAdmin(ctx context.Context) ([]AdminPeriodVi
 					}
 				}
 				for _, kind := range []string{ActionBudgetType, ExperienceRewardType} {
-					b, err := repos.Reward.GetBudgetForUpdate(ctx, row.ID, kind)
+					b, err := repos.Reward.GetBudget(ctx, row.ID, kind)
 					if err != nil && !errors.Is(err, ports.ErrNotFound) {
 						return err
+					}
+					if err == nil {
+						available := ""
+						if !b.Unlimited {
+							available = strconv.FormatInt(b.HardCap-b.ReservedAmount-b.SettledAmount, 10)
+						}
+						view.Budgets = append(view.Budgets, AdminBudgetView{ID: fmt.Sprintf("%d:%s", row.ID, kind), Kind: kind, Unlimited: b.Unlimited, Total: strconv.FormatInt(b.HardCap, 10), Reserved: strconv.FormatInt(b.ReservedAmount, 10), Settled: strconv.FormatInt(b.SettledAmount, 10), Available: available})
 					}
 					if kind == ActionBudgetType {
 						view.RewardBudget = b.HardCap

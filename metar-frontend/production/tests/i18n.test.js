@@ -117,7 +117,10 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
         if (failure === 'pulse') return { ok: false, status: 503, json: async () => ({ error: 'pulse_unavailable' }) };
         let payload;
         if (pathname.endsWith('/summary')) payload = { available_tickets: tickets, current_contribution_milli: 1200500, level: { name: 'Member' } };
-        else if (pathname.endsWith('/rules')) payload = { enabled: true, quota_per_unit: 500000, total_weight: 100, period: { key: 'test-period', ends_at: '2026-10-01T00:00:00Z' }, rewards: [{ name: 'Daily reward', amount: 50000, weight: 100 }], ...pulseRules };
+        else if (pathname.endsWith('/rules')) {
+          const group = {id:'1:false',selection_version:2,selection:'server-choice',ticket_count:tickets,next_lot_remaining:tickets,queried_at:'2026-10-08T00:00:00Z',budgets:[], enabled: true, quota_per_unit: 500000, total_weight: 100, period: {id:1,config_version:'test-rule',key: 'test-period', ends_at: '2026-10-01T00:00:00Z' }, rewards: [{ name: 'Daily reward', amount: 50000, weight: 100 }], ...pulseRules};
+          payload = {selection_version:2,enabled:false,quota_per_unit:500000,groups:pulseRules.groups || [group]};
+        }
         else if (pathname.endsWith('/rewards')) payload = { rewards: new URL(url, 'https://metar.uk').searchParams.has('action_id') ? [] : pulseRewards };
         else if (pathname.endsWith('/actions')) {
           if (actionResult === 'timeout') throw new Error('Lost response');
@@ -152,8 +155,8 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
       for (const listener of documentEvents.get('change') || []) listener({ target: { value, matches: () => true } });
       await new Promise(setImmediate);
     },
-    async click(action) {
-      for (const listener of documentEvents.get('click') || []) listener({ target: { closest: () => ({ dataset: { action } }) } });
+    async click(action, groupId = "1:false") {
+      for (const listener of documentEvents.get('click') || []) listener({ target: { closest: () => ({ dataset: { action, groupId } }) } });
       await new Promise(setImmediate);
     },
     html: () => nodes.app.innerHTML + nodes.view.innerHTML,
@@ -260,7 +263,7 @@ test('Pulse 奖池、状态与失败提示完整翻译，奖项名称和参数�
     { grant_id: 'grant-1', amount: 50000, status: 'settled', created_at: '2026-09-19T00:00:00Z' },
     { grant_id: 'grant-2', amount: 50000, status: 'settlement_dead' },
   ] });
-  await view.navigate('/pulse');
+  await view.navigate('/pulse'); await view.click('pulse-select-group');
   assertEnglish(view, 'real Pulse payload');
   assert.match(view.html(), /Available Pulse tickets: 2/);
   assert.match(view.html(), /0\.1 ⚡️/);
@@ -272,18 +275,18 @@ test('Pulse 奖池、状态与失败提示完整翻译，奖项名称和参数�
   assert.match(view.html(), /0\.1 ⚡️/);
 
   const original = await shell({ user: pulseUser, binding: 'bound', pulseRules: { rewards: [{ name: '未读<script>', amount: 50000, weight: '<b>5</b>' }] } });
-  await original.navigate('/pulse');
+  await original.navigate('/pulse'); await original.click('pulse-select-group');
   assert.match(original.html(), /<strong>未读&lt;script&gt;<\/strong>/);
   assert.match(original.html(), /Probability &lt;b&gt;5&lt;\/b&gt; \/ 100/);
   assert.doesNotMatch(original.html(), /<script>|<b>5<\/b>/);
   for (const unavailable_reason of ['budget_exhausted', 'activity_paused', 'no_active_period', 'funding_verification_required', 'reward_pool_unavailable', 'unknown']) {
     const paused = await shell({ user: pulseUser, binding: 'bound', pulseRules: { enabled: false, unavailable_reason, rewards: [] } });
-    await paused.navigate('/pulse');
+    await paused.navigate('/pulse'); await paused.click('pulse-select-group');
     assertEnglish(paused, unavailable_reason);
     assert.match(paused.html(), /No reward pool is currently available/);
   }
   const unavailable = await shell({ user: pulseUser, binding: 'bound', failure: 'pulse' });
-  await unavailable.navigate('/pulse');
+  await unavailable.navigate('/pulse'); await unavailable.click('pulse-select-group');
   assertEnglish(unavailable, 'Pulse unavailable');
   assert.match(unavailable.html(), /The rewards service is unavailable/);
 });
@@ -296,7 +299,7 @@ test('Pulse 提交结果与原请求恢复提示随切换语言更新，超时�
     ['timeout', 'The result cannot be confirmed yet.', '暂时无法确认本次结果'],
   ]) {
     const view = await shell({ user: pulseUser, binding: 'bound', actionResult });
-    await view.navigate('/pulse');
+    await view.navigate('/pulse'); await view.click('pulse-select-group');
     await view.click('pulse-draw');
     assertEnglish(view, actionResult);
     assert.ok(view.html().includes(english), actionResult);
@@ -315,7 +318,7 @@ test('Pulse 提交结果与原请求恢复提示随切换语言更新，超时�
     assertEnglish(view, actionResult + ' switched back');
   }
   const blocked = await shell({ user: pulseUser, binding: 'bound', storageBlocked: true });
-  await blocked.navigate('/pulse');
+  await blocked.navigate('/pulse'); await blocked.click('pulse-select-group');
   await blocked.click('pulse-draw');
   assertEnglish(blocked, 'blocked storage');
   assert.match(blocked.html(), /Allow site storage/);
@@ -325,16 +328,16 @@ test('Pulse 提交结果与原请求恢复提示随切换语言更新，超时�
 
 test('five-draw fallback submits five unique actions, refuses insufficient tickets and stops on definite rejection', async () => {
   const view=await shell({user:pulseUser,binding:'bound',tickets:5});
-  await view.navigate('/pulse');await view.click('pulse-draw-five');
+  await view.navigate('/pulse'); await view.click('pulse-select-group');await view.click('pulse-draw-five');
   const actions=view.requests.filter(r=>r.url.endsWith('/actions'));
   assert.equal(actions.length,5);
   assert.equal(new Set(actions.map(r=>r.options.headers.get('Idempotency-Key'))).size,5);
   assert.equal(view.operations.size,0);assertEnglish(view,'five draws');
   const insufficient=await shell({user:pulseUser,binding:'bound',tickets:4});
-  await insufficient.navigate('/pulse');await insufficient.click('pulse-draw-five');
+  await insufficient.navigate('/pulse'); await insufficient.click('pulse-select-group');await insufficient.click('pulse-draw-five');
   assert.equal(insufficient.requests.filter(r=>r.url.endsWith('/actions')).length,0);
   const partial=await shell({user:pulseUser,binding:'bound',tickets:5,rejectAt:3});
-  await partial.navigate('/pulse');await partial.click('pulse-draw-five');
+  await partial.navigate('/pulse'); await partial.click('pulse-select-group');await partial.click('pulse-draw-five');
   assert.equal(partial.requests.filter(r=>r.url.endsWith('/actions')).length,3);
   assert.equal(partial.operations.size,0);
   assert.match(partial.html(),/Confirmed rewards are kept/);assertEnglish(partial,'partial draw');
@@ -418,11 +421,11 @@ test('收藏分页使用当前会话用户名和真实页数，后续页仍可�
 
 test('社区经验奖项与到账记录保留 EXP 单位，不按 quota 汇率转换', async()=>{
  const view=await shell({user:pulseUser,binding:'bound',pulseRules:{rewards:[{name:'EXP prize',reward_type:'community_exp',amount:500,weight:100}]},pulseRewards:[{grant_id:'exp1',reward_type:'community_exp',amount:500,status:'settled'}]});
- await view.navigate('/pulse');
- assert.equal((view.html().match(/500 EXP/g)||[]).length,2);
+ await view.navigate('/pulse'); await view.click('pulse-select-group');
+ assert.equal((view.html().match(/500 EXP/g)||[]).length,3);
  assert.doesNotMatch(view.html(),/0\.001 API/);
  await view.changeLanguage('zh_CN');
- assert.equal((view.html().match(/500 EXP/g)||[]).length,2);
+ assert.equal((view.html().match(/500 EXP/g)||[]).length,3);
 });
 
 
@@ -449,4 +452,21 @@ test('身份仍在读取时，权益页等待认证，不提前请求绑定或�
   assert.equal(view.requests.filter(r => /\/metar\/api\/pulse|connector\/user/.test(r.url)).length, 0);
   release(); await navigation;
   assert.ok(view.requests.some(r => r.url.includes('/metar/api/pulse/summary')));
+});
+
+test('explicit group choice isolates paused groups and uses only selected batch capacity', async () => {
+  const group=(id,enabled,count,batch)=>({id,enabled,selection_version:2,selection:'snapshot-'+id,ticket_count:count,next_lot_remaining:batch,queried_at:'2026-10-08T00:00:00Z',unavailable_reason:enabled?'':'budget_exhausted',period:{id:1,config_version:id,ends_at:'2026-11-01T00:00:00Z'},rewards:[{name:'EXP',reward_type:'community_exp',amount:10,weight:1}],total_weight:1,budgets:[{id:'1:community_exp',kind:'community_exp',available:enabled}]});
+  const view=await shell({user:pulseUser,binding:'bound',tickets:100,pulseRules:{groups:[group('old',false,90,90),group('new',true,10,2)]}});
+  await view.navigate('/pulse');
+  await view.click('pulse-draw');
+  assert.equal(view.requests.filter(r=>r.url.endsWith('/actions')).length,0);
+  await view.click('pulse-select-group','old');await view.click('pulse-draw');
+  assert.equal(view.requests.filter(r=>r.url.endsWith('/actions')).length,0);
+  await view.click('pulse-select-group','new');await view.click('pulse-draw-five');
+  assert.equal(view.requests.filter(r=>r.url.endsWith('/actions')).length,0);
+  await view.click('pulse-draw');
+  const calls=view.requests.filter(r=>r.url.endsWith('/actions'));
+  assert.equal(calls.length,1);
+  assert.equal(JSON.parse(calls[0].options.body).selection,'snapshot-new');
+  assertEnglish(view,'selected group');
 });

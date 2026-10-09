@@ -71,17 +71,6 @@ func (r *ticketRepository) Mint(ctx context.Context, lot ports.TicketLot) error 
 	}
 	return r.db.WithContext(ctx).Create(&ticketLotModel{UserID: lot.UserID, PeriodID: lot.PeriodID, MintEntryID: lot.MintEntryID, Issued: lot.Issued, Remaining: lot.Remaining, EarnedAt: lot.EarnedAt.Unix(), QuotaExpiresAt: lot.QuotaExpiresAt.Unix()}).Error
 }
-func (r *ticketRepository) Next(ctx context.Context, userID uint64) (*ports.TicketLot, error) {
-	var m ticketLotModel
-	err := r.db.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id=? AND remaining>0", userID).Order("earned_at,id").Take(&m).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return &ports.TicketLot{ID: m.ID, UserID: m.UserID, PeriodID: m.PeriodID, MintEntryID: m.MintEntryID, Issued: m.Issued, Remaining: m.Remaining, EarnedAt: time.Unix(m.EarnedAt, 0).UTC(), QuotaExpiresAt: time.Unix(m.QuotaExpiresAt, 0).UTC()}, nil
-}
 func (r *ticketRepository) Spend(ctx context.Context, lot ports.TicketLot, entryID uint64) error {
 	if entryID == 0 || lot.Remaining <= 0 {
 		return ports.ErrConflict
@@ -102,4 +91,31 @@ func (r *ticketRepository) Period(ctx context.Context, id uint64) (period.Period
 	var m periodModel
 	err := r.db.WithContext(ctx).Where("id=?", id).Take(&m).Error
 	return m.toDomain(), err
+}
+
+// The user mutex is held by callers before these reads. Aggregate groups, not
+// millions of individual tickets; the preview never reserves a ticket.
+func (r *ticketRepository) Groups(ctx context.Context, userID uint64, now time.Time) ([]ports.TicketGroup, error) {
+	var groups []ports.TicketGroup
+	err := r.db.WithContext(ctx).Raw(`SELECT period_id, (quota_expires_at<=?) AS experience_only, SUM(remaining) AS remaining
+ FROM pulse_ticket_lot WHERE user_id=? AND remaining>0
+ GROUP BY period_id, experience_only ORDER BY period_id, experience_only`, now.Unix(), userID).Scan(&groups).Error
+	return groups, err
+}
+func (r *ticketRepository) NextInGroup(ctx context.Context, userID, periodID uint64, experienceOnly bool, now time.Time) (*ports.TicketLot, error) {
+	var m ticketLotModel
+	q := r.db.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id=? AND period_id=? AND remaining>0", userID, periodID)
+	if experienceOnly {
+		q = q.Where("quota_expires_at<=?", now.Unix())
+	} else {
+		q = q.Where("quota_expires_at>?", now.Unix())
+	}
+	err := q.Order("earned_at,id").Take(&m).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &ports.TicketLot{ID: m.ID, UserID: m.UserID, PeriodID: m.PeriodID, MintEntryID: m.MintEntryID, Issued: m.Issued, Remaining: m.Remaining, EarnedAt: time.Unix(m.EarnedAt, 0).UTC(), QuotaExpiresAt: time.Unix(m.QuotaExpiresAt, 0).UTC()}, nil
 }

@@ -105,6 +105,17 @@ type adminPeriodResult struct {
 	TicketThresholdMilli int64     `json:"ticket_threshold_milli"`
 }
 type adminPeriod struct {
+	QueriedAt time.Time `json:"queried_at"`
+	Budgets   []struct {
+		ID        string `json:"id"`
+		Kind      string `json:"kind"`
+		Unlimited bool   `json:"unlimited"`
+		Total     string `json:"total"`
+		Reserved  string `json:"reserved"`
+		Settled   string `json:"settled"`
+		Available string `json:"available"`
+	} `json:"budgets"`
+
 	QuotaBudgetUnlimited bool `json:"quota_budget_unlimited"`
 	Rewards              []struct {
 		Key        string `json:"key"`

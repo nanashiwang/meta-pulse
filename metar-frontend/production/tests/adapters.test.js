@@ -75,11 +75,11 @@ test('导航状态能区分待回答筛选与话题页', () => {
 });
 
 
-test('抽奖请求仅包含操作编号，超时后保留同一幂等键', async () => {
+test('抽奖请求包含原选择快照，超时后保留同一幂等键', async () => {
   window.sessionStorage = { values: new Map(), getItem(key) { return this.values.get(key) || null; }, setItem(key, value) { this.values.set(key, value); }, removeItem(key) { this.values.delete(key); } };
   const store = new window.MetarAdapters.PulseOperation('user-a');
-  const first = store.begin();
-  assert.deepEqual(store.begin(), first);
+  const first = store.begin(1, {selection_version:2,selection:'server-choice'});
+  assert.deepEqual(store.begin(1, {selection_version:2,selection:'server-choice'}), first);
   let request;
   global.fetch = async (url, options) => { request = { url, options }; throw new Error('lost response'); };
   const pulse = new window.MetarAdapters.PulseAdapter(new window.MetarAdapters.AnswerAdapter({}));
@@ -87,16 +87,16 @@ test('抽奖请求仅包含操作编号，超时后保留同一幂等键', async
   assert.equal(request.url, '/metar/api/pulse/actions');
   assert.equal(request.options.headers.get('X-Metar-Request'), '1');
   assert.equal(request.options.headers.get('Idempotency-Key'), first.idempotencyKey);
-  assert.deepEqual(JSON.parse(request.options.body), { action_id: first.actionId });
+  assert.deepEqual(JSON.parse(request.options.body), { action_id: first.actionId,protocol_version:2,selection:'server-choice' });
   assert.deepEqual(store.read(), first);
   assert.equal(new window.MetarAdapters.PulseOperation('user-b').read(), null);
   store.clear();
-  assert.notEqual(store.begin().actionId, first.actionId);
+  assert.notEqual(store.begin(1, {selection_version:2,selection:'server-choice'}).actionId, first.actionId);
 });
 
 test('站点存储失败时不能发起不可恢复抽奖', () => {
   window.sessionStorage = { getItem() { return null; }, setItem() { throw new Error('blocked'); } };
-  assert.throws(() => new window.MetarAdapters.PulseOperation('user').begin(), (error) => error.code === 'storage_unavailable');
+  assert.throws(() => new window.MetarAdapters.PulseOperation('user').begin(1, {selection_version:2,selection:'server-choice'}), (error) => error.code === 'storage_unavailable');
 });
 
 test('额度仅按配置的整数单位展示，不猜测币种', () => {

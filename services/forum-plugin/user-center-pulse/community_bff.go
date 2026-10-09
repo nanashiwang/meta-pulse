@@ -53,7 +53,24 @@ type communityRewardHistoryItem struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type communityRuleGroup struct {
+	communityRules
+	ID               string `json:"id"`
+	TicketCount      int64  `json:"ticket_count"`
+	NextLotRemaining int64  `json:"next_lot_remaining"`
+	Selection        string `json:"selection"`
+	Budgets          []struct {
+		ID        string `json:"id"`
+		Kind      string `json:"kind"`
+		Available bool   `json:"available"`
+		Unlimited bool   `json:"unlimited"`
+	} `json:"budgets"`
+}
 type communityRules struct {
+	SelectionVersion int                  `json:"selection_version"`
+	QueriedAt        time.Time            `json:"queried_at"`
+	Groups           []communityRuleGroup `json:"groups,omitempty"`
+
 	QuotaValidityDays int        `json:"quota_validity_days"`
 	QuotaExpiresAt    *time.Time `json:"quota_expires_at,omitempty"`
 	ExperienceOnly    bool       `json:"experience_only"`
@@ -126,17 +143,15 @@ func (uc *UserCenter) communityHandler(operation string, session func(*gin.Conte
 				return
 			}
 			data, err := io.ReadAll(io.LimitReader(c.Request.Body, 4097))
-			var payload struct {
-				ActionID string `json:"action_id"`
-			}
-			if err != nil || len(data) > 4096 || !singleActionJSON(data, &payload.ActionID) || !communityRequestID.MatchString(payload.ActionID) {
+			var payload communityActionRequest
+			if err != nil || len(data) > 4096 || !decodeCommunityAction(data, &payload) {
 				communityError(c, http.StatusBadRequest, "invalid_request")
 				return
 			}
 			body, _ = json.Marshal(struct {
-				ActionID    string `json:"action_id"`
+				communityActionRequest
 				TriggerType string `json:"trigger_type"`
-			}{payload.ActionID, "pulse"})
+			}{payload, "pulse"})
 		}
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 		defer cancel()
@@ -174,7 +189,10 @@ func (uc *UserCenter) communityHandler(operation string, session func(*gin.Conte
 				}
 				if decodeCommunityResponse(data, &failure) == nil {
 					switch failure.Error {
-					case "insufficient_tickets", "budget_exceeded", "invalid_action":
+					case "selection_changed", "selection_required":
+						communityError(c, status, failure.Error)
+						return
+					case "insufficient_tickets", "budget_exceeded", "actions_unavailable", "invalid_action":
 						communityError(c, status, "action_rejected")
 						return
 					}
@@ -248,24 +266,27 @@ func communitySameOrigin(r *http.Request, configuredSiteURL string) bool {
 	return err == nil && site.User == nil && (site.Scheme == "https" || site.Scheme == "http") && site.Host != "" && origin.Scheme == site.Scheme && strings.EqualFold(origin.Host, site.Host)
 }
 
-// Decode tokens explicitly: DisallowUnknownFields alone permits duplicate
-// action_id keys, which creates ambiguity between browser, proxy and service.
-func singleActionJSON(data []byte, actionID *string) bool {
-	d := json.NewDecoder(bytes.NewReader(data))
-	token, err := d.Token()
-	if err != nil || token != json.Delim('{') || !d.More() {
+type communityActionRequest struct {
+	ActionID        string `json:"action_id"`
+	ProtocolVersion int    `json:"protocol_version,omitempty"`
+	Selection       string `json:"selection,omitempty"`
+}
+
+func decodeCommunityAction(data []byte, payload *communityActionRequest) bool {
+	fields, ok := adminJSONObject(data)
+	if !ok || (len(fields) != 1 && len(fields) != 3) {
 		return false
 	}
-	key, err := d.Token()
-	if err != nil || key != "action_id" || d.Decode(actionID) != nil || d.More() {
+	if json.Unmarshal(fields["action_id"], &payload.ActionID) != nil || !communityRequestID.MatchString(payload.ActionID) {
 		return false
 	}
-	token, err = d.Token()
-	if err != nil || token != json.Delim('}') {
+	if len(fields) == 1 {
+		return true
+	} // recovery only; Pulse refuses new v1 actions
+	if json.Unmarshal(fields["protocol_version"], &payload.ProtocolVersion) != nil || payload.ProtocolVersion != 2 {
 		return false
 	}
-	var trailing any
-	return errors.Is(d.Decode(&trailing), io.EOF)
+	return json.Unmarshal(fields["selection"], &payload.Selection) == nil && len(payload.Selection) > 0 && len(payload.Selection) <= 1024
 }
 
 func decodeCommunityResponse(data []byte, target any) error {

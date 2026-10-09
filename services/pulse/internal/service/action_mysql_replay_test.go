@@ -51,6 +51,7 @@ func assertMySQLActionPeriodReplay(t *testing.T, db *sql.DB, action *ActionServi
 		t.Fatalf("new period replay: got=%+v err=%v", got, err)
 	}
 
+	command.ProtocolVersion, command.Selection = 0, ""
 	// Emulate a database written by the old binary. Only derived idempotency
 	// indexes change; the original immutable Grant, Outbox and Ledger stay put.
 	mustExec(`DELETE FROM pulse_idempotency WHERE scope IN (?,?)`, fmt.Sprintf("pulse_action_request:%d", command.UserID), fmt.Sprintf("pulse_action_identity:%d", command.UserID))
