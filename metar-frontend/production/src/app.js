@@ -144,8 +144,7 @@
   const external = (path, label, className = '') => `<a href="${esc(path)}" class="${esc(className)}">${label}</a>`;
   const outbound = (url, label, className = '') => url ? `<a href="${esc(url)}" class="${esc(className)}" target="_blank" rel="noopener noreferrer">${label}</a>` : '';
   const badge = (label, className = '') => `<span class="badge ${className}">${label}</span>`;
-  const crumb = (parts = []) => `<nav class="breadcrumb" aria-label="${t("面包屑")}">${link('/latest', t("社区"))}${parts.map(([label, path]) => `<span>/</span>${path ? link(path, esc(label)) : `<span aria-current="page">${esc(label)}</span>`}`).join('')}</nav>`;
-  const heading = (title, description = '', action = '') => `<div class="page-heading"><div><h1>${esc(title)}</h1>${description ? `<p>${esc(description)}</p>` : ''}</div>${action}</div>`;
+  const pageTitle = title => `<h1 class="visually-hidden">${esc(title)}</h1>`;
   const empty = (title, description, action = '', icon = 'inbox') => `<div class="prod-empty">${I(icon)}<h2>${esc(title)}</h2><p>${esc(description)}</p>${action}</div>`;
   const loading = () => window.MetarLoading.render(document.getElementById('metar-loading-template').innerHTML, currentTitle(), route().path, t("正在读取社区实时数据…"), getLanguage() === 'en_US');
   const displayName = (user) => user?.display_name || user?.username || t("社区成员");
@@ -330,7 +329,7 @@
   function renderError(error) {
     const inactive = error instanceof AdapterError && error.code === 'inactive';
     const message = inactive ? t("当前社区账号尚未激活，请先完成邮箱验证。") : errorMessage(error) || t("页面暂时无法加载。");
-    renderView(`${crumb([[t("加载失败")]])}<section class="card prod-error">${I(inactive ? 'shield' : 'server')}<h2>${inactive ? t("账号尚未激活") : t("暂时没有读到社区数据")}</h2><p>${esc(message)}${t(" 社区数据不会由前端猜测或使用缓存数字替代。")}</p><div class="flex wrap prod-center-actions"><button type="button" class="btn primary" data-action="retry">${I('refresh')}${t("重新加载")}</button>${inactive ? external('/users/login?status=inactive', t("重新发送激活邮件"), 'btn') : external('/questions', t("浏览社区话题"), 'btn')}</div></section>${footer()}`);
+    renderView(`<section class="card prod-error">${I(inactive ? 'shield' : 'server')}<h2>${inactive ? t("账号尚未激活") : t("暂时没有读到社区数据")}</h2><p>${esc(message)}${t(" 社区数据不会由前端猜测或使用缓存数字替代。")}</p><div class="flex wrap prod-center-actions"><button type="button" class="btn primary" data-action="retry">${I('refresh')}${t("重新加载")}</button>${inactive ? external('/users/login?status=inactive', t("重新发送激活邮件"), 'btn') : external('/questions', t("浏览社区话题"), 'btn')}</div></section>${footer()}`);
     window.MetarSEO?.update(true);
   }
 
@@ -351,8 +350,8 @@
     const totalPages = Math.max(1, Math.ceil(total / 20));
     const pager = totalPages > 1 ? `<div class="prod-pager">${page > 1 ? link(`${base}?order=${order}&page=${page - 1}`, t("上一页"), 'btn small') : ''}<span>${t("第 {page} / {total} 页", { page: number(page), total: number(totalPages) })}</span>${page < totalPages ? link(`${base}?order=${order}&page=${page + 1}`, t("下一页"), 'btn small') : ''}</div>` : '';
     return `<section class="community-discussions">
-      ${tag ? `<div class="community-heading"><h1>${esc(title)}</h1>${link('/topics', I('flag', 'sm') + t('全部标签'), 'btn small')}</div>` : `<h1 class="visually-hidden">${esc(title)}</h1>`}
-      <div class="discussion-toolbar"><nav class="discussion-tabs" aria-label="${t('话题筛选')}">${tabs}</nav>${external(config.answerAskPath, I('plus', 'sm') + t('新建话题'), 'btn primary')}</div>
+      ${pageTitle(title)}
+      <div class="discussion-toolbar">${tag ? `<span class="badge green prod-current-tag">${I('flag','sm')}${esc(tag)}</span>` : ''}<nav class="discussion-tabs" aria-label="${t('话题筛选')}">${tabs}</nav>${external(config.answerAskPath, I('plus', 'sm') + t('新建话题'), 'btn primary')}</div>
       ${list.length ? discussionList(list) : empty(order === 'unanswered' ? t("暂时没有待回答问题") : t("当前筛选没有内容"), t("可以调整筛选，或发起一个新问题。"), external(config.answerAskPath, t("发起提问"), 'btn primary'), 'chat')}${pager}
     </section>${footer()}`;
   }
@@ -360,30 +359,30 @@
   async function topicsPage() {
     const result = await answer.listTags({ pageSize: 48, order: 'popular' });
     const tags = Array.isArray(result?.list) ? result.list : [];
-    return `${crumb([[t("全部标签")]])}${heading(t("全部标签"), t("从真实社区标签中找到你正在探索的方向。"))}<div class="prod-topic-grid">${tags.length ? tags.map((tag) => `<article class="card prod-topic-card"><div><div class="topic-icon">${I('flag')}</div><h3>${esc(tagName(tag))}</h3><p>${esc(tag.excerpt || tag.description || t("该话题暂未添加介绍。"))}</p></div><div class="between"><span class="muted">${countLabel(tag.question_count, 'questions')}</span>${link(`/topic/${encodeURIComponent(tag.slug_name)}`, t("进入话题 ") + I('arrow', 'sm'), 'textlink')}</div></article>`).join('') : `<section class="card">${empty(t("还没有公开话题"), t("话题将随社区内容逐步建立。"), external(config.answerAskPath, t("发起问题"), 'btn primary'), 'flag')}</section>`}</div>${footer()}`;
+    return `${pageTitle(t("全部标签"))}<div class="prod-topic-grid">${tags.length ? tags.map((tag) => `<article class="card prod-topic-card"><div><div class="topic-icon">${I('flag')}</div><h3>${esc(tagName(tag))}</h3><p>${esc(tag.excerpt || tag.description || t("该话题暂未添加介绍。"))}</p></div><div class="between"><span class="muted">${countLabel(tag.question_count, 'questions')}</span>${link(`/topic/${encodeURIComponent(tag.slug_name)}`, t("进入话题 ") + I('arrow', 'sm'), 'textlink')}</div></article>`).join('') : `<section class="card">${empty(t("还没有公开话题"), t("话题将随社区内容逐步建立。"), external(config.answerAskPath, t("发起问题"), 'btn primary'), 'flag')}</section>`}</div>${footer()}`;
   }
 
   async function searchPage() {
     const query = (route().query.get('q') || '').trim();
     const form = `<form class="prod-search-form" data-form="search"><input type="search" name="q" value="${esc(query)}" maxlength="60" required placeholder="${t("输入问题、模型或接入关键词")}"><button type="submit" class="btn primary">${I('search')}${t("搜索")}</button></form>`;
-    if (!query) return `${crumb([[t("搜索")]])}${heading(t("搜索社区"), t("搜索社区中的问题与回答。"))}${form}<section class="card">${empty(t("输入一个关键词开始搜索"), t("例如：API、Agent、模型评测、错误处理。"), '', 'search')}</section>${footer()}`;
+    if (!query) return `${pageTitle(t("搜索社区"))}${form}<section class="card">${empty(t("输入一个关键词开始搜索"), t("例如：API、Agent、模型评测、错误处理。"), '', 'search')}</section>${footer()}`;
     const result = await answer.search(query);
     const list = Array.isArray(result?.list) ? result.list : [];
-    return `${crumb([[t("搜索")]])}${heading(t("“{query}” 的结果", { query }), t("找到 {count} 条社区内容。", { count: number(result?.count) }))}${form}<section class="card">${list.length ? list.map((item) => { const object = item.object || {}; return `<article class="result-row">${badge(item.object_type === 'answer' ? t("回答") : t("问题"), item.object_type === 'answer' ? '' : 'green')}${external(searchHref(item), `<h3>${esc(object.title || t("社区内容"))}</h3>`)}<p>${esc(object.excerpt || t("该结果暂未提供摘要。"))}</p><small class="muted">${publicAuthor(object.user_info, esc(displayName(object.user_info)))} · ${time(object.created_at)}</small></article>`; }).join('') : empty(t("没有找到相关内容"), t("换一个更具体的关键词，或向社区发起新问题。"), external(config.answerAskPath, t("发起提问"), 'btn primary'), 'search')}</section>${footer()}`;
+    return `${pageTitle(t("“{query}” 的结果", { query }))}${form}<p class="prod-search-count muted">${esc(t("找到 {count} 条社区内容。", { count: number(result?.count) }))}</p><section class="card">${list.length ? list.map((item) => { const object = item.object || {}; return `<article class="result-row">${badge(item.object_type === 'answer' ? t("回答") : t("问题"), item.object_type === 'answer' ? '' : 'green')}${external(searchHref(item), `<h3>${esc(object.title || t("社区内容"))}</h3>`)}<p>${esc(object.excerpt || t("该结果暂未提供摘要。"))}</p><small class="muted">${publicAuthor(object.user_info, esc(displayName(object.user_info)))} · ${time(object.created_at)}</small></article>`; }).join('') : empty(t("没有找到相关内容"), t("换一个更具体的关键词，或向社区发起新问题。"), external(config.answerAskPath, t("发起提问"), 'btn primary'), 'search')}</section>${footer()}`;
   }
 
   function knowledgePage() {
     const articles = knowledge.listArticles();
-    return `${crumb([[t("知识库")]])}${heading(t("知识库"), t("模型评测、接入教程与实践经验。"), external(config.blogBasePath, t("打开完整知识库 ") + I('external', 'sm'), 'btn primary'))}<div class="prod-knowledge-grid">${articles.map((article) => `<a class="card prod-knowledge-card" href="${esc(article.href)}"><div>${badge(esc(article.category), 'green')}<h2 class="mt16">${esc(article.title)}</h2><p>${esc(article.description)}</p></div><span class="textlink">${t("阅读文章 ")}${I('arrow', 'sm')}</span></a>`).join('')}</div><section class="card card-pad mt24"><div class="between wrap"><div><h3>${t("找不到需要的接入说明？")}</h3><p class="muted mt8">${t("可以在社区发起提问，与其他成员一起讨论。")}</p></div>${external(config.answerAskPath, t("向社区提问"), 'btn')}</div></section>${footer()}`;
+    return `${pageTitle(t("知识库"))}<div class="prod-knowledge-grid">${articles.map((article) => `<a class="card prod-knowledge-card" href="${esc(article.href)}"><div>${badge(esc(article.category), 'green')}<h2 class="mt16">${esc(article.title)}</h2><p>${esc(article.description)}</p></div><span class="textlink">${t("阅读文章 ")}${I('arrow', 'sm')}</span></a>`).join('')}</div><section class="card card-pad mt24"><div class="between wrap"><div><h3>${t("找不到需要的接入说明？")}</h3><p class="muted mt8">${t("可以在社区发起提问，与其他成员一起讨论。")}</p></div><div class="flex wrap">${external(config.blogBasePath, t("打开完整知识库 ") + I('external', 'sm'), 'btn primary')}${external(config.answerAskPath, t("向社区提问"), 'btn')}</div></div></section>${footer()}`;
   }
 
   function loginRequired(title, description) {
-    return `${crumb([[title]])}<section class="card prod-login-card">${I('shield', 'lg')}<h1 class="mt16">${esc(title)}</h1><p>${esc(description)}${t(" 社区账号可独立注册，不要求先绑定元衡 API 账号。")}</p><div class="flex wrap">${external(config.answerLoginPath, t("登录社区账号"), 'btn primary')}${external(config.answerRegisterPath, t("独立注册"), 'btn')}${link('/latest', t("先浏览社区"), 'btn ghost')}</div></section>${footer()}`;
+    return `<section class="card prod-login-card">${I('shield', 'lg')}<h1 class="mt16">${esc(title)}</h1><p>${esc(description)}${t(" 社区账号可独立注册，不要求先绑定元衡 API 账号。")}</p><div class="flex wrap">${external(config.answerLoginPath, t("登录社区账号"), 'btn primary')}${external(config.answerRegisterPath, t("独立注册"), 'btn')}${link('/latest', t("先浏览社区"), 'btn ghost')}</div></section>${footer()}`;
   }
 
   function identityUnavailable(title) {
     const reason = errorMessage(identityError) || t("暂时无法确认当前社区登录状态。");
-    return `${crumb([[title]])}<section class="card prod-login-card">${I('server', 'lg')}<h1 class="mt16">${t("身份服务暂不可用")}</h1><p>${esc(reason)}${t(" 这不代表账号已退出，请勿反复登录；仍可继续尝试浏览社区公开内容。")}</p><div class="flex wrap"><button type="button" class="btn primary" data-action="retry-identity">${I('refresh')}${t("重新确认身份")}</button>${link('/latest', t("继续浏览社区"), 'btn ghost')}</div></section>${footer()}`;
+    return `<section class="card prod-login-card">${I('server', 'lg')}<h1 class="mt16">${t("身份服务暂不可用")}</h1><p>${esc(reason)}${t(" 这不代表账号已退出，请勿反复登录；仍可继续尝试浏览社区公开内容。")}</p><div class="flex wrap"><button type="button" class="btn primary" data-action="retry-identity">${I('refresh')}${t("重新确认身份")}</button>${link('/latest', t("继续浏览社区"), 'btn ghost')}</div></section>${footer()}`;
   }
 
   function accountUnavailable(title) {
@@ -391,7 +390,7 @@
     const headingText = inactive ? t("社区账号尚未激活") : t("当前社区账号不可参与操作");
     const description = inactive ? t("请先验证邮箱。可以在登录页面重新发送激活邮件。") : t("请在账号页面查看当前状态，或联系社区管理员。");
     const action = inactive ? external('/users/login?status=inactive', t("重新发送激活邮件"), 'btn primary') : external(config.answerSettingsPath, t("查看账号状态"), 'btn primary');
-    return `${crumb([[title]])}<section class="card prod-login-card">${I('shield', 'lg')}<h1 class="mt16">${headingText}</h1><p>${description}</p><div class="flex wrap">${action}${link('/latest', t("继续浏览社区"), 'btn ghost')}</div></section>${footer()}`;
+    return `<section class="card prod-login-card">${I('shield', 'lg')}<h1 class="mt16">${headingText}</h1><p>${description}</p><div class="flex wrap">${action}${link('/latest', t("继续浏览社区"), 'btn ghost')}</div></section>${footer()}`;
   }
 
   async function profilePage() {
@@ -400,7 +399,7 @@
     const username = currentUser.username;
     const [profile, questions, experience] = await Promise.all([answer.getProfile(username), answer.listPersonalQuestions(username), isActiveUser(currentUser) ? growthView().then(view => view.compact()).catch(() => '') : Promise.resolve('')]);
     const list = Array.isArray(questions?.list) ? questions.list : [];
-    return `${crumb([[t("个人空间")]])}<div class="content-grid"><div class="stack"><section class="card prod-user-card"><div class="between wrap">${avatar(profile, 'large')}<div class="flex wrap">${external(profileHref(username), t("公开主页"), 'btn')}${external(config.answerSettingsPath, I('settings', 'sm') + t("编辑资料"), 'btn')}</div></div><h1 class="mt16">${esc(displayName(profile))}</h1><p class="muted mt8">@${esc(profile.username || username)}${profile.location ? ` · ${esc(profile.location)}` : ''}</p><p class="mt16">${esc(profile.bio || t("这位成员暂未填写个人简介。"))}</p><div class="profile-numbers"><div><strong>${number(questions?.count)}</strong><span>${t("发布问题")}</span></div><div><strong>${number(profile.answer_count)}</strong><span>${t("参与回答")}</span></div><div><strong>${number(profile.rank)}</strong><span>${t("社区声望")}</span></div></div>${currentUser.mail_status === 2 ? `<div class="prod-status error mt16">${I('shield')}<div><strong>${t("邮箱尚未激活")}</strong><p>${t("请先验证邮箱，或在登录页面重新发送激活邮件。")}</p></div></div>` : ''}</section>${experience}<section class="card prod-feed"><div class="section-heading"><h2>${t("最近发布")}</h2><span class="muted">${t("发布记录")}</span></div>${list.length ? list.map((item) => questionRow({ ...item, user_info: profile })).join('') : empty(t("还没有发布问题"), t("从一个具体、可复现的问题开始。"), external(config.answerAskPath, t("发起问题"), 'btn primary'), 'chat')}</section></div><aside class="stack"><section class="card card-pad"><h3>${t("账号快捷入口")}</h3><ul class="mini-list"><li>${link('/me/bookmarks', `<span>${t("我的收藏")}</span>`)}</li><li>${external('/users/notifications/inbox', `<span>${t("通知中心")}</span>`)}</li><li>${link('/settings/binding', `<span>${t("元衡账号绑定")}</span><small>${t("可选")}</small>`)}</li><li>${link('/pulse', `<span>${t("Pulse 权益")}</span><small>${t("绑定后")}</small>`)}</li><li>${external('/users/logout', `<span>${t("退出登录")}</span>`)}</li></ul></section></aside></div>${footer()}`;
+    return `<div class="content-grid"><div class="stack"><section class="card prod-user-card"><div class="between wrap">${avatar(profile, 'large')}<div class="flex wrap">${external(profileHref(username), t("公开主页"), 'btn')}${external(config.answerSettingsPath, I('settings', 'sm') + t("编辑资料"), 'btn')}</div></div><h1 class="mt16">${esc(displayName(profile))}</h1><p class="muted mt8">@${esc(profile.username || username)}${profile.location ? ` · ${esc(profile.location)}` : ''}</p><p class="mt16">${esc(profile.bio || t("这位成员暂未填写个人简介。"))}</p><div class="profile-numbers"><div><strong>${number(questions?.count)}</strong><span>${t("发布问题")}</span></div><div><strong>${number(profile.answer_count)}</strong><span>${t("参与回答")}</span></div><div><strong>${number(profile.rank)}</strong><span>${t("社区声望")}</span></div></div>${currentUser.mail_status === 2 ? `<div class="prod-status error mt16">${I('shield')}<div><strong>${t("邮箱尚未激活")}</strong><p>${t("请先验证邮箱，或在登录页面重新发送激活邮件。")}</p></div></div>` : ''}</section>${experience}<section class="card prod-feed"><div class="section-heading"><h2>${t("最近发布")}</h2><span class="muted">${t("发布记录")}</span></div>${list.length ? list.map((item) => questionRow({ ...item, user_info: profile })).join('') : empty(t("还没有发布问题"), t("从一个具体、可复现的问题开始。"), external(config.answerAskPath, t("发起问题"), 'btn primary'), 'chat')}</section></div><aside class="stack"><section class="card card-pad"><h3>${t("账号快捷入口")}</h3><ul class="mini-list"><li>${link('/me/bookmarks', `<span>${t("我的收藏")}</span>`)}</li><li>${external('/users/notifications/inbox', `<span>${t("通知中心")}</span>`)}</li><li>${link('/settings/binding', `<span>${t("元衡账号绑定")}</span><small>${t("可选")}</small>`)}</li><li>${link('/pulse', `<span>${t("Pulse 权益")}</span><small>${t("绑定后")}</small>`)}</li><li>${external('/users/logout', `<span>${t("退出登录")}</span>`)}</li></ul></section></aside></div>${footer()}`;
   }
 
   async function bookmarksPage() {
@@ -412,7 +411,7 @@
     const totalPages = Math.max(1, Math.ceil((Number(result?.count) || 0) / 20));
     const pager = totalPages > 1 ? `<div class="prod-pager">${page > 1 ? link(`/me/bookmarks?page=${page - 1}`, t("上一页"), 'btn small') : ''}<span>${t("第 {page} / {total} 页", { page: number(page), total: number(totalPages) })}</span>${page < totalPages ? link(`/me/bookmarks?page=${page + 1}`, t("下一页"), 'btn small') : ''}</div>` : '';
     const list = Array.isArray(result?.list) ? result.list : [];
-    return `${crumb([[t("我的收藏")]])}${heading(t("我的收藏"), t("你收藏的话题都在这里。"))}<section class="card prod-feed">${list.length ? list.map(questionRow).join('') : empty(t("还没有收藏内容"), t("在讨论页收藏感兴趣的话题，方便以后继续阅读。"), link('/latest', t("浏览问题"), 'btn primary'), 'bookmark')}</section>${pager}${footer()}`;
+    return `${pageTitle(t("我的收藏"))}<section class="card prod-feed">${list.length ? list.map(questionRow).join('') : empty(t("还没有收藏内容"), t("在讨论页收藏感兴趣的话题，方便以后继续阅读。"), link('/latest', t("浏览问题"), 'btn primary'), 'bookmark')}</section>${pager}${footer()}`;
   }
 
   async function bindingPage() {
@@ -420,10 +419,10 @@
     if (!currentUser) return loginRequired(t("账号绑定"), t("先登录独立社区账号，再自主选择是否连接元衡 API 身份。"));
     if (!isActiveUser(currentUser)) return accountUnavailable(t("账号绑定"));
     const state = await answer.getBindingState();
-    if (state.status === 'unavailable') return `${crumb([[t("账号绑定")]])}${heading(t("账号绑定"), t("社区身份与 API 身份保持独立。"))}<section class="card card-pad"><div class="prod-status error">${I('server')}<div><strong>${t("绑定服务暂不可用")}</strong><p>${t("服务器没有返回 Pulse UserCenter Connector。社区浏览、登录、发帖和回答仍然可用。")}</p></div></div></section>${footer()}`;
+    if (state.status === 'unavailable') return `${pageTitle(t("账号绑定"))}<section class="card card-pad"><div class="prod-status error">${I('server')}<div><strong>${t("绑定服务暂不可用")}</strong><p>${t("服务器没有返回 Pulse UserCenter Connector。社区浏览、登录、发帖和回答仍然可用。")}</p></div></div></section>${footer()}`;
     const connectorPath = safeSameOriginPath(state.connector?.link, config.answerBindingPath);
     const bound = state.status === 'bound';
-    return `${crumb([[t("账号绑定")]])}${heading(t("连接元衡 API 账号"), t("绑定是可选的一对一关系，不会合并两个账号、密码或余额。"))}<section class="card card-pad"><div class="between wrap"><h2>${t("元衡 API 身份")}</h2>${badge(bound ? I('check', 'sm') + t(" 已绑定") : t("未绑定"), bound ? 'green' : '')}</div>${bound ? `<div class="prod-binding-account"><div class="topic-icon">${I('link')}</div><div><strong>${t("已通过可信回调完成绑定")}</strong><p class="muted">${t("服务端已确认一对一关系；页面不会展示外部用户 ID 或任何 API 凭据。")}</p></div>${badge(t("受保护关系"), 'green')}</div><dl class="info-pairs"><dt>${t("社区账号")}</dt><dd>${esc(displayName(currentUser))}</dd><dt>${t("社区身份事实源")}</dt><dd>Apache Answer</dd><dt>${t("API / 资金身份事实源")}</dt><dd>new-api</dd><dt>${t("普通解绑或换绑")}</dt><dd>${t("不开放；纠错需要支持流程与审计")}</dd></dl><div class="flex wrap mt24">${link('/pulse', t("查看 Pulse 状态 ") + I('arrow', 'sm'), 'btn primary')}${link('/support', t("联系支持"), 'btn')}</div>` : `<div class="prod-binding-steps"><div class="prod-binding-step"><span class="number">1</span><strong>${t("确认社区身份")}</strong><p>${t("当前登录：")}${esc(displayName(currentUser))}</p></div><div class="prod-binding-step"><span class="number">2</span><strong>${t("前往元衡授权")}</strong><p>${t("由 Connector、浏览器 flow 和固定 callback 校验 API 身份。")}</p></div><div class="prod-binding-step"><span class="number">3</span><strong>${t("建立一对一关系")}</strong><p>${t("不按同名邮箱静默合并，冲突时拒绝覆盖。")}</p></div></div><div class="prod-status">${I('shield')}<div><strong>${t("开始前请确认")}</strong><p>${t("绑定后不能普通自助解绑或换绑；不会读取 API Key，不会改变社区密码或治理角色。")}</p></div></div><div class="flex wrap mt24">${external(connectorPath, I('link') + t("开始安全绑定"), 'btn primary')}${link('/latest', t("暂不绑定"), 'btn ghost')}</div>`}</section><section class="card card-pad mt24"><h3>${t("身份边界")}</h3><p class="muted mt8">${t("浏览器不能提交可信 user_id。所有回调参数在服务端验签、校验 flow 与 nonce 前都视为不可信输入。")}</p></section>${footer()}`;
+    return `${pageTitle(t("连接元衡 API 账号"))}<section class="card card-pad"><div class="between wrap"><h2>${t("元衡 API 身份")}</h2>${badge(bound ? I('check', 'sm') + t(" 已绑定") : t("未绑定"), bound ? 'green' : '')}</div>${bound ? `<div class="prod-binding-account"><div class="topic-icon">${I('link')}</div><div><strong>${t("已通过可信回调完成绑定")}</strong><p class="muted">${t("服务端已确认一对一关系；页面不会展示外部用户 ID 或任何 API 凭据。")}</p></div>${badge(t("受保护关系"), 'green')}</div><dl class="info-pairs"><dt>${t("社区账号")}</dt><dd>${esc(displayName(currentUser))}</dd><dt>${t("社区身份事实源")}</dt><dd>Apache Answer</dd><dt>${t("API / 资金身份事实源")}</dt><dd>new-api</dd><dt>${t("普通解绑或换绑")}</dt><dd>${t("不开放；纠错需要支持流程与审计")}</dd></dl><div class="flex wrap mt24">${link('/pulse', t("查看 Pulse 状态 ") + I('arrow', 'sm'), 'btn primary')}${link('/support', t("联系支持"), 'btn')}</div>` : `<div class="prod-binding-steps"><div class="prod-binding-step"><span class="number">1</span><strong>${t("确认社区身份")}</strong><p>${t("当前登录：")}${esc(displayName(currentUser))}</p></div><div class="prod-binding-step"><span class="number">2</span><strong>${t("前往元衡授权")}</strong><p>${t("由 Connector、浏览器 flow 和固定 callback 校验 API 身份。")}</p></div><div class="prod-binding-step"><span class="number">3</span><strong>${t("建立一对一关系")}</strong><p>${t("不按同名邮箱静默合并，冲突时拒绝覆盖。")}</p></div></div><div class="prod-status">${I('shield')}<div><strong>${t("开始前请确认")}</strong><p>${t("绑定是可选的一对一关系，不会合并两个账号、密码或余额。")}</p><p>${t("绑定后不能普通自助解绑或换绑；不会读取 API Key，不会改变社区密码或治理角色。")}</p></div></div><div class="flex wrap mt24">${external(connectorPath, I('link') + t("开始安全绑定"), 'btn primary')}${link('/latest', t("暂不绑定"), 'btn ghost')}</div>`}</section><section class="card card-pad mt24"><h3>${t("身份边界")}</h3><p class="muted mt8">${t("浏览器不能提交可信 user_id。所有回调参数在服务端验签、校验 flow 与 nonce 前都视为不可信输入。")}</p></section>${footer()}`;
   }
 
   function loadPulseCore() {
@@ -472,7 +471,7 @@
     if (!isActiveUser(currentUser)) return accountUnavailable(t("Pulse 权益"));
     const userId = currentUser.id;
     const binding = await answer.getBindingState();
-    if (binding.status === 'unbound') return `${crumb([[t("Pulse 权益")]])}${heading(t("Pulse 权益"), t("调用之后的增长与权益系统。"))}<section class="pulse-hero"><div><div class="eyebrow">${t("付费调用回馈计划")}</div><h1>${t("先完成可选账号绑定")}</h1><p>${t("社区账号可以独立使用。只有当你希望查看基于真实付费调用产生的等级、券和回馈时，才需要连接元衡 API 身份。")}</p><div class="actions">${link('/settings/binding', t("了解并开始绑定 ") + I('arrow', 'sm'), 'btn light')}${link('/latest', t("继续浏览社区"), 'btn outline-light')}</div></div>${I('pulse')}</section>${footer()}`;
+    if (binding.status === 'unbound') return `${pageTitle(t("Pulse 权益"))}<section class="pulse-hero"><div><div class="eyebrow">${t("付费调用回馈计划")}</div><h1>${t("先完成可选账号绑定")}</h1><p>${t("社区账号可以独立使用。只有当你希望查看基于真实付费调用产生的等级、券和回馈时，才需要连接元衡 API 身份。")}</p><div class="actions">${link('/settings/binding', t("了解并开始绑定 ") + I('arrow', 'sm'), 'btn light')}${link('/latest', t("继续浏览社区"), 'btn outline-light')}</div></div>${I('pulse')}</section>${footer()}`;
     if (binding.status === 'unavailable') throw new AdapterError(t("绑定状态暂时不可查询，Pulse 页面不会据此猜测身份。"), { code: 'binding_unavailable' });
     const [summary, catalog, history, coreReady] = await Promise.all([pulse.summary(), pulse.rules(), pulse.rewards(), loadPulseCore()]);
     if (sequence !== navigationSequence || currentUser?.id !== userId) return '';
@@ -520,20 +519,20 @@
   }
 
   function supportPage() {
-    return `${crumb([[t("帮助中心")]])}${heading(t("帮助中心"), t("查找账号、绑定和权益相关帮助。"))}<div class="prod-topic-grid"><section class="card prod-topic-card"><div><div class="topic-icon">${I('user')}</div><h3>${t("社区账号与内容")}</h3><p>${t("管理个人资料、登录方式和通知偏好。")}</p></div>${external('/users/settings/profile', t("打开账号设置 ") + I('arrow', 'sm'), 'textlink')}</section><section class="card prod-topic-card"><div><div class="topic-icon">${I('link')}</div><h3>${t("账号绑定纠错")}</h3><p>${t("绑定冲突、误绑核对不提供普通解绑；处理需要确认授权并保留审计。")}</p></div>${link('/settings/binding', t("查看绑定状态 ") + I('arrow', 'sm'), 'textlink')}</section><section class="card prod-topic-card"><div><div class="topic-icon">${I('pulse')}</div><h3>${t("Pulse 奖励状态")}</h3><p>${t("请保留非敏感 Reward Grant ID。不要提交密码、Cookie、API Key 或完整回调 URL。")}</p></div>${link('/pulse', t("查看权益入口 ") + I('arrow', 'sm'), 'textlink')}</section></div>${footer()}`;
+    return `${pageTitle(t("帮助中心"))}<div class="prod-topic-grid"><section class="card prod-topic-card"><div><div class="topic-icon">${I('user')}</div><h3>${t("社区账号与内容")}</h3><p>${t("管理个人资料、登录方式和通知偏好。")}</p></div>${external('/users/settings/profile', t("打开账号设置 ") + I('arrow', 'sm'), 'textlink')}</section><section class="card prod-topic-card"><div><div class="topic-icon">${I('link')}</div><h3>${t("账号绑定纠错")}</h3><p>${t("绑定冲突、误绑核对不提供普通解绑；处理需要确认授权并保留审计。")}</p></div>${link('/settings/binding', t("查看绑定状态 ") + I('arrow', 'sm'), 'textlink')}</section><section class="card prod-topic-card"><div><div class="topic-icon">${I('pulse')}</div><h3>${t("Pulse 奖励状态")}</h3><p>${t("请保留非敏感 Reward Grant ID。不要提交密码、Cookie、API Key 或完整回调 URL。")}</p></div>${link('/pulse', t("查看权益入口 ") + I('arrow', 'sm'), 'textlink')}</section></div>${footer()}`;
   }
 
   async function statusPage() {
     await answer.request('/question/page?page=1&page_size=1&order=active');
-    return `${crumb([[t("服务状态")]])}${heading(t("服务状态"), t("状态来自当前页面对 Answer 公共 API 的即时检查。"))}<section class="card card-pad"><div class="prod-status">${I('check')}<div><strong>${t("社区读取服务正常")}</strong><p>${t("Apache Answer 公共问题接口已返回。此结果不代表 Pulse、new-api、邮件或奖励结算服务均正常。")}</p></div></div><div class="divider"></div><div class="between wrap"><div><h3>${t("更完整的运行状态")}</h3><p class="prod-page-note">${t("只有配置真实监控来源后才显示外部状态页，不使用前端假数据。")}</p></div>${config.statusUrl ? outbound(config.statusUrl, t("打开状态页 ") + I('external', 'sm'), 'btn') : badge(t("状态页未配置"))}</div></section>${footer()}`;
+    return `${pageTitle(t("服务状态"))}<section class="card card-pad"><div class="prod-status">${I('check')}<div><strong>${t("社区读取服务正常")}</strong><p>${t("Apache Answer 公共问题接口已返回。此结果不代表 Pulse、new-api、邮件或奖励结算服务均正常。")}</p></div></div><div class="divider"></div><div class="between wrap"><div><h3>${t("更完整的运行状态")}</h3><p class="prod-page-note">${t("只有配置真实监控来源后才显示外部状态页，不使用前端假数据。")}</p></div>${config.statusUrl ? outbound(config.statusUrl, t("打开状态页 ") + I('external', 'sm'), 'btn') : badge(t("状态页未配置"))}</div></section>${footer()}`;
   }
 
   function guidelinesPage() {
-    return `${crumb([[t("社区规范")]])}${heading(t("社区规范"), t("让真实问题、可验证经验和安全边界成为默认。"))}<section class="card card-pad stack"><div><h2>${t("1. 描述可复现的问题")}</h2><p class="muted mt8">${t("说明目标、环境、已尝试方法和实际结果；不要泄露 API Key、Cookie、支付信息、完整 Prompt/Response 或个人隐私。")}</p></div><div><h2>${t("2. 内容不自动产生权益")}</h2><p class="muted mt8">${t("论坛发帖、回答、点赞不得产生 contribution 或 ticket。内容奖励使用独立资格、预算与人工审核。")}</p></div><div><h2>${t("3. 尊重身份边界")}</h2><p class="muted mt8">${t("社区身份来自 Answer，API 与资金身份来自 new-api。绑定可选、一对一，禁止静默换绑和身份转移。")}</p></div><div><h2>${t("4. 对不确定结果先查询")}</h2><p class="muted mt8">${t("奖励发放中或服务超时时，查询原 Grant 和 source_ref，不重复开启或重新随机。")}</p></div></section>${footer()}`;
+    return `${pageTitle(t("社区规范"))}<section class="card card-pad stack"><div><h2>${t("1. 描述可复现的问题")}</h2><p class="muted mt8">${t("说明目标、环境、已尝试方法和实际结果；不要泄露 API Key、Cookie、支付信息、完整 Prompt/Response 或个人隐私。")}</p></div><div><h2>${t("2. 内容不自动产生权益")}</h2><p class="muted mt8">${t("论坛发帖、回答、点赞不得产生 contribution 或 ticket。内容奖励使用独立资格、预算与人工审核。")}</p></div><div><h2>${t("3. 尊重身份边界")}</h2><p class="muted mt8">${t("社区身份来自 Answer，API 与资金身份来自 new-api。绑定可选、一对一，禁止静默换绑和身份转移。")}</p></div><div><h2>${t("4. 对不确定结果先查询")}</h2><p class="muted mt8">${t("奖励发放中或服务超时时，查询原 Grant 和 source_ref，不重复开启或重新随机。")}</p></div></section>${footer()}`;
   }
 
   function notFoundPage() {
-    return `${crumb([[t("页面不存在")]])}<section class="card">${empty(t("没有找到这个页面"), t("请检查地址，或返回社区继续浏览。"), link('/latest', t("返回发现"), 'btn primary'), 'compass')}</section>${footer()}`;
+    return `<section class="card">${empty(t("没有找到这个页面"), t("请检查地址，或返回社区继续浏览。"), link('/latest', t("返回发现"), 'btn primary'), 'compass')}</section>${footer()}`;
   }
 
   async function resolveView() {
@@ -549,8 +548,8 @@
       if (currentUserState === 'unavailable') return identityUnavailable(title);
       if (!currentUser) return loginRequired(title, t('登录后查看个人资料与发布记录。'));
       if (!isActiveUser(currentUser)) return accountUnavailable(title);
-      if (path === '/admin/growth' && !isCommunityAdministrator(currentUser)) return `${heading(title)}<section class="card">${empty(t('需要管理员权限'), '', link('/latest', t('返回社区'), 'btn'), 'shield')}</section>${footer()}`;
-      return `${crumb([[title]])}${heading(title)}${await growthView().then(view => path === '/admin/growth' ? view.adminPage() : view.page())}${footer()}`;
+      if (path === '/admin/growth' && !isCommunityAdministrator(currentUser)) return `${pageTitle(title)}<section class="card">${empty(t('需要管理员权限'), '', link('/latest', t('返回社区'), 'btn'), 'shield')}</section>${footer()}`;
+      return `${pageTitle(title)}${await growthView().then(view => path === '/admin/growth' ? view.adminPage() : view.page())}${footer()}`;
     }
     if (path === '/me/bookmarks') return bookmarksPage();
     if (path === '/settings/binding') return bindingPage();
@@ -558,8 +557,8 @@
     if (path === '/admin/pulse') {
       if (currentUserState === 'unavailable') return identityUnavailable(t('Pulse 配置'));
       if (!currentUser) return loginRequired(t('Pulse 配置'), t('请使用社区管理员账号登录。'));
-      if (!isCommunityAdministrator(currentUser)) return `${crumb([[t('Pulse 配置')]])}<section class="card">${empty(t('需要管理员权限'), t('仅正常且已激活的社区管理员可管理 Pulse 配置。'), link('/latest', t('返回社区'), 'btn'), 'shield')}</section>${footer()}`;
-      return `${crumb([[t('Pulse 配置')]])}${heading(t('Pulse 配置'), t('管理 METAR 与 new-api 的连接、密钥和抽奖开关。'))}${await adminView().then(view => view.page())}${footer()}`;
+      if (!isCommunityAdministrator(currentUser)) return `<section class="card">${empty(t('需要管理员权限'), t('仅正常且已激活的社区管理员可管理 Pulse 配置。'), link('/latest', t('返回社区'), 'btn'), 'shield')}</section>${footer()}`;
+      return `${pageTitle(t('Pulse 配置'))}${await adminView().then(view => view.page())}${footer()}`;
     }
     if (path === '/support') return supportPage();
     if (path === '/status') return statusPage();

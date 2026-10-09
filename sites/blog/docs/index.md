@@ -3,8 +3,6 @@ layout: home
 
 hero:
   name: METAR 知识库
-  text: 模型评测 · 成本分析 · 接入实践
-  tagline: 用真实调用数据说话
   actions:
     - theme: brand
       text: 模型评测
