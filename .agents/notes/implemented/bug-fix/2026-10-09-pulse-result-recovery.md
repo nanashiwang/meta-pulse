@@ -14,7 +14,7 @@ Status: implemented
 
 ## Existing capabilities and note review
 
-复用 `/pulse`、PulseDrawSession、现有后台发奖与到账轮询；API/BFF 已有异步交付回归。[当前规则笔记](../feature/2026-10-09-pulse-current-reward-rule.md)部分重叠，保留签名选择与明确拒绝规则；[紧凑历史笔记](../simplification/2026-10-09-pulse-compact-history.md)部分重叠，保留折叠状态；[动画笔记](2026-09-29-pulse-skip-charge-retain-reveal.md)无决策冲突，不改演出时长。旧规则组笔记的拒绝与历史恢复继续由当前规则笔记承接，不另改契约。无需新接口、数据库或权限。
+复用 `/pulse`、PulseDrawSession、现有后台发奖与到账轮询；API/BFF 已有异步交付回归。[当前规则笔记](../feature/2026-10-09-pulse-current-reward-rule.md)部分重叠，保留签名选择与明确拒绝规则；[紧凑历史笔记](../simplification/2026-10-09-pulse-compact-history.md)部分重叠，保留记录查看状态；当前弹窗位置见[紧凑工具](../simplification/2026-10-09-pulse-compact-tools.md)；[动画笔记](2026-09-29-pulse-skip-charge-retain-reveal.md)无决策冲突，不改演出时长。旧规则组笔记的拒绝与历史恢复继续由当前规则笔记承接，不另改契约。无需新接口、数据库或权限。
 
 ## Alternatives considered
 

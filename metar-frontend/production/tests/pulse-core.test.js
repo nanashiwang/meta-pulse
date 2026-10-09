@@ -141,10 +141,10 @@ test('the presentation contains no placeholder prize and translates all its visi
 test('five cards keep their own tier, share the strongest burst and escape displayed values', () => {
   const rewards=['white','red','blue','gold','purple'].map(tier=>({tier,type:'newapi_quota',amount:'<img>',unit:'⚡️',status:'pending',pending:true}));
   assert.equal(strongest(rewards),'red');
-  const html=cards({rewards,total:5},s=>s);
+  const html=cards({rewards,total:5});
   assert.equal((html.match(/class="pc-card"/g)||[]).length,5);
   assert.doesNotMatch(html,/<img>/); assert.match(html,/&lt;img&gt;/);
   assert.equal(strongest([{tier:'unknown'}]),'white');
   assert.doesNotMatch(html,/pc-card-foot|data-pending|pending/);
-  assert.equal(cards({rewards:rewards.map(r=>({...r,status:'settled',pending:false})),total:5},s=>s),html,'delivery changes do not change the prize card');
+  assert.equal(cards({rewards:rewards.map(r=>({...r,status:'settled',pending:false})),total:5}),html,'delivery changes do not change the prize card');
 });

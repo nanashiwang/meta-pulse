@@ -273,13 +273,13 @@ test('Pulse 记录入口、状态与失败提示完整翻译，奖励编号安�
   assertEnglish(view, 'real Pulse payload');
   assert.match(view.html(), /Available Pulse tickets: 2/);
   assert.match(view.html(), /0\.1 ⚡️/);
-  assert.match(view.html(), /<details[^>]*data-pulse-history><summary>View reward history<\/summary>/);
+  assert.match(view.html(), /<dialog[^>]*data-pulse-history[^>]*aria-labelledby="pulse-history-title">/);
   assert.doesNotMatch(view.html(), /Current prize pool and rules|Probability \d|Credit chance:/);
   assert.match(view.html(), /Credited/);
   assert.match(view.html(), /Awaiting processing/);
   await view.changeLanguage('zh_CN');
   assert.match(view.html(), /可用脉冲券：2/);
-  assert.match(view.html(), /查看奖励记录/);
+  assert.match(view.html(), /奖励记录/);
   assert.match(view.html(), /0\.1 ⚡️/);
 
   const original = await shell({ user: pulseUser, binding: 'bound', pulseRewards: [{ grant_id: 'grant-"<script>', reward_type: 'community_exp', amount: 4, status: 'settled' }] });
@@ -498,7 +498,7 @@ test('valid and expired tickets retain eligibility and stable selections without
     assert.match(view.html(), experience_only ? /draws experience only/ : /Tickets with valid quota eligibility are used first/);
     await view.changeLanguage('zh_CN');
     assert.doesNotMatch(view.html(), /当前奖池与规则|额度中奖率：|概率 \d|下方显示下一次/);
-    assert.match(view.html(), /查看奖励记录/);
+    assert.match(view.html(), /奖励记录/);
     await view.click('pulse-draw');
     const action = view.requests.find(r => r.url.endsWith('/actions'));
     assert.equal(JSON.parse(action.options.body).selection, 'server-choice-0');

@@ -7,7 +7,6 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[char]));
   const icon = type => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${type === 'community_exp' ? '<path d="m12 2 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1Z"/>' : '<path d="m12 2 8 7-8 13L4 9 8 2Zm0 0L8 9l4 13 4-13-4-7ZM4 9h16"/>'}</svg>`;
   const tiers = ['white', 'blue', 'purple', 'gold', 'red'];
-  const tierLabels = {white:'白光', blue:'蓝光', purple:'紫光', gold:'金光', red:'红光'};
   const tier = value => tiers.includes(value) ? value : 'white';
   const strongest = rewards => tiers[Math.max(0, ...rewards.map(reward => tiers.indexOf(tier(reward.tier))))];
   // All five cards finish inside the existing timeline, including a partial batch.
@@ -24,9 +23,8 @@
       shine: clamp((p - .75) / .18)
     };
   }
-  function cards(result, t) {
-    return result.rewards.map((reward, index) => `<div class="pc-card" data-tier="${tier(reward.tier)}"><span class="pc-card-bloom" aria-hidden="true"></span><div class="pc-reward-inner"><div class="pc-card-content">
-      <div class="pc-reward-label">${esc(t(tierLabels[tier(reward.tier)]))}<span>${result.total > 1 ? String(index + 1).padStart(2,'0') : 'PULSE'}</span></div>
+  function cards(result) {
+    return result.rewards.map(reward => `<div class="pc-card" data-tier="${tier(reward.tier)}"><span class="pc-card-bloom" aria-hidden="true"></span><div class="pc-reward-inner"><div class="pc-card-content">
       <div class="pc-emblem">${icon(reward.type)}</div><div class="pc-value"><span class="pc-amount">${esc(reward.amount)}</span><span class="pc-unit">${esc(reward.unit)}</span></div>
       </div></div><span class="pc-card-light" aria-hidden="true"><span class="pc-light-sigil">${icon(reward.type)}</span></span><span class="pc-card-frame" aria-hidden="true"></span></div>`).join('');
   }
@@ -60,8 +58,8 @@
 
   function markup({ t }) {
     return `<section class="pulse-core" data-pulse-core data-stage="idle" aria-label="${esc(t('脉冲核心'))}">
-      <div class="pc-header"><span class="pc-brand">METAR / PULSE</span><label class="pc-palette-label">${esc(t('光效'))}<select data-core-palette aria-label="${esc(t('选择脉冲光效'))}"><option value="jade">${esc(t('翡翠极光'))}</option><option value="nebula">${esc(t('紫蓝星云'))}</option></select></label></div>
-      <div class="pc-heading"><div class="pc-title"><h1>${esc(t('开启你的脉冲'))}</h1><details class="pc-help"><summary aria-label="${esc(t('Pulse 介绍'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9 8a3 3 0 0 1 6 0c0 2-3 2-3 4m0 4v.5"/></svg></summary><div class="pc-help-panel"><p>${esc(t('经核验的付费调用积累脉冲券，额度奖励发往元衡 API，经验奖励计入社区等级。'))}</p></div></details></div><p class="pc-subtitle">${esc(t('让每一次积累，在这一刻绽放。'))}</p></div>
+      <div class="pc-header"><span class="pc-brand">METAR / PULSE</span><div class="pc-tools"><button type="button" class="pc-link" data-action="pulse-benefits" aria-haspopup="dialog" aria-controls="pulse-benefits">${esc(t('我的权益'))}</button><button type="button" class="pc-link" data-action="pulse-history" aria-haspopup="dialog" aria-controls="pulse-history">${esc(t('奖励记录'))}</button></div></div>
+      <div class="pc-heading"><div class="pc-title"><h1>${esc(t('开启你的脉冲'))}</h1><details class="pc-help"><summary aria-label="${esc(t('抽取规则'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9 8a3 3 0 0 1 6 0c0 2-3 2-3 4m0 4v.5"/></svg></summary><div class="pc-help-panel" tabindex="0"><p>${esc(t('每次消耗 1 张券。额度用于 API 调用，经验用于社区升级，均不可转赠。'))}</p><p>${esc(t('五连抽可合并不同时间获得的券；每次使用最新规则，中断时保留已获得的奖励。'))}</p><p>${esc(t('白光为经验奖励；额度奖励依次为蓝光（小于 0.5 ⚡️）、紫光（0.5 起）、金光（2 起）、红光（10 起）。光效不影响中奖概率。'))}</p></div></details></div><p class="pc-subtitle">${esc(t('让每一次积累，在这一刻绽放。'))}</p></div>
       <div class="pc-stage"><canvas aria-hidden="true"></canvas><div class="pc-horizon" aria-hidden="true"></div><span class="pc-annotation" aria-hidden="true">PULSE CORE</span>
         <div class="pc-reward" aria-hidden="true"></div>
       </div>
@@ -231,7 +229,6 @@
       this.skipInput = root.querySelector('[data-core-skip]');
       this.status = root.querySelector('.pc-state');
       this.reward = root.querySelector('.pc-reward');
-      this.palette = root.querySelector('[data-core-palette]');
       this.refresh = root.querySelector('.pc-refresh');
       this.help = root.querySelector('.pc-help');
       this.onHelpOutside = event => { if (!this.help.contains(event.target)) this.help.open = false; };
@@ -244,16 +241,9 @@
       document.addEventListener('focusin', this.onHelpOutside);
       document.addEventListener('keydown', this.onHelpKey);
       this.motion = window.matchMedia('(prefers-reduced-motion: reduce)');
-      let palette = 'jade';
-      try { if (window.localStorage.getItem('_metar_pulse_palette') === 'nebula') palette = 'nebula'; } catch (_) { /* Visual preference is optional. */ }
       try { this.skipInput.checked = window.localStorage.getItem('_metar_pulse_skip_animation') === '1'; } catch (_) { /* Keep the checkbox usable without storage. */ }
-      root.dataset.palette = this.palette.value = palette;
+      root.dataset.palette = 'jade';
       this.scene = scene(root);
-      this.onPalette = () => {
-        root.dataset.palette = this.palette.value;
-        try { window.localStorage.setItem('_metar_pulse_palette', this.palette.value); } catch (_) { /* Keep this page's selection. */ }
-        this.scene.size();
-      };
       this.onSkip = () => { if (this.timeline) { this.timeline.skipCharge(performance.now()); this.tick(); } };
       this.onFinish = () => { if (this.timeline) { this.timeline.finish(); this.tick(); } };
       this.onSkipPreference = () => {
@@ -262,7 +252,6 @@
       };
       this.onVisibility = () => { if (document.hidden) this.onFinish(); };
       this.onMotion = () => { if (this.motion.matches) this.onFinish(); };
-      this.palette.addEventListener('change', this.onPalette);
       this.skipInput.addEventListener('change', this.onSkipPreference);
       document.addEventListener('visibilitychange', this.onVisibility);
       this.motion.addEventListener('change', this.onMotion);
@@ -277,7 +266,6 @@
       this.fiveButton.disabled = options.busy || options.pending || !options.canDrawFive;
       this.fiveButton.title = !options.canDrawFive && !options.pending && !options.busy ? this.t('五连抽需要至少 5 张可用脉冲券') : '';
       this.refresh.disabled = options.busy;
-      this.palette.disabled = options.busy;
       if (!this.timeline) {
         if (options.result) this.showResult(options.result);
         else this.status.textContent = options.message || options.reason || this.t('一枚核心，等待被点亮');
@@ -293,7 +281,7 @@
       this.root.dataset.tier = ''; this.root.dataset.count = String(total);
       this.reward.innerHTML = ''; this.resultHTML = '';
       this.scene.size();
-      this.button.disabled = this.fiveButton.disabled = this.refresh.disabled = this.palette.disabled = true;
+      this.button.disabled = this.fiveButton.disabled = this.refresh.disabled = true;
       this.button.textContent = this.t('正在开启');
       this.reward.setAttribute('aria-hidden', 'true');
       this.tick();
@@ -312,16 +300,14 @@
     fillResult(result) {
       this.root.dataset.count = String(result.total);
       this.root.dataset.tier = strongest(result.rewards);
-      const html = cards(result, this.t);
+      const html = cards(result);
       if (html !== this.resultHTML) { this.reward.innerHTML = html; this.resultHTML = html; }
       this.scene.size();
     }
     showResult(result) {
       this.fillResult(result); this.root.dataset.stage = 'result'; this.scene.paint(1);
       this.reward.setAttribute('aria-hidden', 'false');
-      this.status.textContent = result.total > 1
-        ? this.t('本次已揭晓 {count} / {total} 份回馈', {count:result.rewards.length,total:result.total})
-        : this.t('本次回馈：{amount} {unit}', result.rewards[0]);
+      this.status.textContent = '';
     }
     tick() {
       cancelAnimationFrame(this.frame); this.frame = 0;
@@ -354,7 +340,6 @@
       document.removeEventListener('click', this.onHelpOutside);
       document.removeEventListener('focusin', this.onHelpOutside);
       document.removeEventListener('keydown', this.onHelpKey);
-      this.palette.removeEventListener('change', this.onPalette);
       this.skipInput.removeEventListener('change', this.onSkipPreference);
       document.removeEventListener('visibilitychange', this.onVisibility);
       this.motion.removeEventListener('change', this.onMotion);

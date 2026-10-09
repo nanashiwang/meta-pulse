@@ -689,6 +689,8 @@
     "⚡️ 表示元衡 API 调用额度，不代表人民币或可提现金额。": "⚡️ represents Meta API usage credits. They do not represent a currency or a withdrawable balance.",
     "奖励记录": "Reward history",
     "查看奖励记录": "View reward history",
+    "我的权益": "My benefits",
+    "关闭窗口": "Close dialog",
     "Pulse 介绍": "About Pulse",
     "奖励": "Reward",
     "到账状态": "Delivery status",
