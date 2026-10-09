@@ -32,4 +32,6 @@ Status: implemented
 
 ## Related notes
 
+[侧向目录与 METAR 命名](2026-10-09-taxonomy-drawer-names.md)取代本篇的常驻分组列表及旧默认命名；现有数据来源、链接、申请与公开缓存约束继续保留。
+
 检索 `类别|侧栏|导航|taxonomy`，既有[类别治理](2026-10-09-community-taxonomy.md)负责来源、初始化和申请，部分重叠并保留；[加载壳层](../bug-fix/2026-10-05-community-loading-shell.md)负责匿名骨架和历史恢复，保留其约束。

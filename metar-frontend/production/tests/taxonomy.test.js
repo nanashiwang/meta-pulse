@@ -150,15 +150,55 @@ test('failed catalogs are retried, old results cannot overwrite a newer scope, a
   assert.equal(await taxonomy.catalog(delayed),current);
 });
 
-test('sidebars keep complete directory links, escape names, and selectors represent one filter including off-page tags',()=>{
-  const data={categories:[{slug_name:'custom',display_name:'<Category>'}],tags:[{slug_name:'ai',display_name:'AI'}]};
-  const nav=taxonomy.navigation(data,new Set(['categories']));
-  assert.match(nav,/data-taxonomy-group="categories"><summary>/);
-  assert.match(nav,/data-taxonomy-group="tags" open/);
-  assert.match(nav,/&lt;Category&gt;/);assert.match(nav,/href="\/topics\?view=tags"/);
-  assert.doesNotMatch(nav,/\/topic\/develop/);
+test('sidebar opens a separate dialog and drawer search preserves escaped names, current selection and complete directory access',()=>{
+  const data={categories:[{slug_name:'custom',display_name:'<Category>'},{slug_name:'develop',display_name:'开发实践'}],tags:[{slug_name:'ai',display_name:'AI 交流'}]};
+  const nav=taxonomy.navigation();
+  assert.equal((nav.match(/aria-haspopup="dialog"/g)||[]).length,2);
+  assert.doesNotMatch(nav,/href="\/topic\/|<details/);
+  const items=taxonomy.drawerItems(data,'categories','category','custom');
+  assert.match(items,/&lt;Category&gt;/);assert.match(items,/aria-current="page"/);
+  assert.doesNotMatch(items,/\/topic\/develop/);
+  assert.match(taxonomy.drawerItems(data,'tags','missing'),/没有匹配的项目/);
+  assert.match(taxonomy.drawerFooter(data,'tags','/questions/ask',false),/href="\/topics\?view=tags"/);
   const selected=taxonomy.filters(data,'custom');
   assert.equal((selected.match(/ selected/g)||[]).length,1);assert.match(selected,/value="custom" selected/);
-  const offPage=taxonomy.filters(data,'outside-page');
-  assert.match(offPage,/value="outside-page" selected/);assert.equal((offPage.match(/ selected/g)||[]).length,1);
+  assert.match(taxonomy.filters(data,'outside-page'),/value="outside-page" selected/);
+});
+
+function renameFixture() {
+  const tags=new Map([...taxonomy.categories,...taxonomy.tags].map((tag,index)=>[tag.slug_name,{...tag,tag_id:String(index+1),status:'available',original_text:'## Keep **this** markdown',question_count:7}]));
+  const writes=[];let clears=0;
+  const user={id:'42',role_id:2,status:'normal',mail_status:1};
+  const answer={getCurrentUser:async()=>clone(user),clearContentCache:()=>clears++,async request(path,options){
+    if(options){
+      assert.equal(path,'/tag');assert.equal(options.method,'PUT');
+      const body=JSON.parse(options.body);writes.push(body);
+      Object.assign(tags.get(body.slug_name),body);
+      if(answer.lose){answer.lose=false;throw new Error('lost response');}
+      return {wait_for_review:false};
+    }
+    return clone(tags.get(new URL(path,'https://test.local').searchParams.get('name')));
+  }};
+  return {answer,tags,writes,user,get clears(){return clears;}};
+}
+test('default renaming preserves tag identity, content associations, source and administrator custom names',async()=>{
+  const f=renameFixture();f.tags.get('develop').display_name='开发调优';f.tags.get('gossip').display_name='搞七捻三';f.tags.get('ai').display_name='Our custom name';
+  await taxonomy.renameDefaults(f.answer);
+  assert.equal(f.writes.length,2);assert.equal(f.tags.get('develop').display_name,'开发实践');assert.equal(f.tags.get('gossip').display_name,'日常交流');assert.equal(f.tags.get('ai').display_name,'Our custom name');
+  assert.equal(f.tags.get('develop').question_count,7);assert.equal(f.writes[0].tag_id,'1');assert.equal(f.writes[0].slug_name,'develop');assert.equal(f.writes[0].original_text,'## Keep **this** markdown');assert.match(f.writes[0].edit_summary,/METAR/);assert.equal(f.clears,1);
+  await taxonomy.renameDefaults(f.answer);assert.equal(f.writes.length,2,'already renamed defaults never write again');
+});
+test('renaming rechecks permissions and source, detects incompatible/readback states, and recovers by reading after lost responses',async()=>{
+  const f=renameFixture();f.tags.get('develop').display_name='开发调优';f.answer.lose=true;
+  await assert.rejects(taxonomy.renameDefaults(f.answer),/lost response/);
+  await taxonomy.renameDefaults(f.answer);assert.equal(f.writes.length,1);
+  for(const patch of [{role_id:1},{mail_status:2},{status:'suspended'}]){
+    const g=renameFixture();Object.assign(g.user,patch);await assert.rejects(taxonomy.renameDefaults(g.answer));assert.equal(g.writes.length,0);
+  }
+  for(const patch of [{original_text:undefined},{tag_id:''},{main_tag_slug_name:'other'},{status:'deleted'}]){
+    const g=renameFixture();Object.assign(g.tags.get('develop'),{display_name:'开发调优'},patch);await assert.rejects(taxonomy.renameDefaults(g.answer));assert.equal(g.writes.length,0);
+  }
+  const g=renameFixture();g.tags.get('develop').display_name='开发调优';const request=g.answer.request;
+  g.answer.request=async(path,options)=>{const result=await request(path,options);if(options)g.tags.get('develop').original_text='Changed elsewhere';return result;};
+  await assert.rejects(taxonomy.renameDefaults(g.answer));assert.equal(g.writes.length,1);assert.equal(g.clears,1);
 });

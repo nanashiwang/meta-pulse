@@ -235,15 +235,15 @@
     </header>`;
   }
 
-  const collapsedTaxonomyGroups = new Set();
-  const taxonomyNodes = new WeakMap();
+  let taxonomyDrawer = null;
+  let navigationCatalog = null;
 
   function sidebar() {
     const { path, query } = route();
     const item = (url, label, icon) => link(url, I(icon) + `<span>${esc(label)}</span>`, `nav-item ${routeMatchesNavigation(path, query.toString(), url) ? 'active' : ''}`);
     return `<aside class="sidebar" id="community-sidebar" aria-label="${t("社区导航")}">
       <div class="nav-group"><div class="nav-label">${t("社区")}</div>${item('/latest', t("全部讨论"), 'chat')}${item('/latest?order=unanswered', t("待回答"), 'target')}${item('/knowledge', t("知识库"), 'book')}</div>
-      <div data-taxonomy-navigation>${taxonomy.navigation(undefined, collapsedTaxonomyGroups)}</div>
+      <div data-taxonomy-navigation>${taxonomy.navigation()}</div>
       <div class="side-bottom">${item('/pulse', t("Pulse 权益"), 'pulse')}${item('/support', t("帮助中心"), 'help')}${item('/status', t("服务状态"), 'server')}<div class="side-footer">${link('/guidelines', t("社区规范"))}${external('/sitemap.xml', t("站点地图"))}</div></div>
     </aside>`;
   }
@@ -257,14 +257,16 @@
     const {path, query} = route();
     for (const node of document.querySelectorAll('.sidebar a[data-router], .mobile-bottom a[data-router], .account-menu a[data-router], .topnav a[data-router]')) {
       const href = node.getAttribute('href');
-      const directory = node.dataset.taxonomyDirectory;
-      const active = directory ? path === '/topics' && (query.get('view') === 'tags' ? 'tags' : 'categories') === directory : node.closest('.topnav') && href === '/latest'
+      const active = node.closest('.topnav') && href === '/latest'
         ? /^\/(?:latest|topics?|question)(?:\/|$)/.test(path)
         : routeMatchesNavigation(path, query.toString(), href);
       node.classList.toggle('active', active);
       if (active) node.setAttribute('aria-current', 'page');
       else node.removeAttribute('aria-current');
     }
+    const tag = path.startsWith('/topic/') ? decodeURIComponent(path.slice(7)) : '';
+    const selectedKind = path === '/topics' ? (query.get('view') === 'tags' ? 'tags' : 'categories') : tag ? (navigationCatalog?.categories.some(item=>item.slug_name===tag) ? 'categories' : 'tags') : '';
+    for (const node of document.querySelectorAll('[data-action="taxonomy-open"]')) node.classList.toggle('active',node.dataset.kind===selectedKind);
     if (path === '/search') {
       const input = document.querySelector('.searchbox input');
       if (input) input.value = query.get('q') || '';
@@ -346,22 +348,59 @@
 
   function enhanceTaxonomy() {
     const node = document.querySelector('[data-taxonomy-filter]');
-    const sidebarNode = document.querySelector('[data-taxonomy-navigation]');
-    if (!node && !sidebarNode) return;
+    if (!node) return;
     const sequence = navigationSequence, key = taxonomy.scope(answer), {path} = route();
     const tag = path.startsWith('/topic/') ? decodeURIComponent(path.slice(7)) : '';
-    if (sidebarNode && taxonomyNodes.get(sidebarNode)?.key !== key) {
-      sidebarNode.innerHTML = taxonomy.navigation(undefined, collapsedTaxonomyGroups);
-      taxonomyNodes.delete(sidebarNode);
-    }
     taxonomy.catalog(answer).then(data => {
       if (key !== taxonomy.scope(answer)) return;
-      if (sidebarNode?.isConnected && taxonomyNodes.get(sidebarNode)?.data !== data) {
-        sidebarNode.innerHTML = taxonomy.navigation(data, collapsedTaxonomyGroups);
-        taxonomyNodes.set(sidebarNode, {key,data});
-        syncNavigation();
-      }
-      if (node?.isConnected && sequence === navigationSequence) node.innerHTML = taxonomy.filters(data, tag);
+      navigationCatalog = data;
+      syncNavigation();
+      if (node.isConnected && sequence === navigationSequence) node.innerHTML = taxonomy.filters(data, tag);
+    });
+  }
+
+  function closeTaxonomy(restore = true) {
+    if (!taxonomyDrawer) return;
+    taxonomyDrawer.restore = restore;
+    taxonomyDrawer.node.close();
+  }
+
+  function openTaxonomy(kind, trigger) {
+    closeTaxonomy(false);
+    if (kind !== 'categories' && kind !== 'tags') return;
+    const node = document.createElement('dialog');
+    node.id = 'taxonomy-drawer'; node.className = 'taxonomy-drawer';
+    node.setAttribute('aria-labelledby','taxonomy-drawer-title');
+    node.innerHTML = taxonomy.drawer(kind);
+    document.body.append(node);
+    const state = {node,trigger,kind,restore:true,data:null,key:taxonomy.scope(answer)};
+    taxonomyDrawer = state;
+    trigger.setAttribute('aria-expanded','true');
+    node.addEventListener('close', () => {
+      if (taxonomyDrawer === state) taxonomyDrawer = null;
+      if (taxonomyDrawer?.trigger !== trigger) trigger.setAttribute('aria-expanded','false');
+      node.remove();
+      if (state.restore && !taxonomyDrawer && trigger.isConnected) trigger.focus({preventScroll:true});
+    });
+    node.addEventListener('click', event => {
+      if (event.target !== node) return;
+      const rect = node.getBoundingClientRect();
+      if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) closeTaxonomy();
+    });
+    const input = node.querySelector('[data-taxonomy-search]');
+    const render = () => {
+      if (taxonomyDrawer !== state || !node.open || state.key !== taxonomy.scope(answer) || !state.data) return;
+      const path = route().path;
+      node.querySelector('[data-taxonomy-options]').innerHTML = taxonomy.drawerItems(state.data,kind,input.value,path.startsWith('/topic/')?decodeURIComponent(path.slice(7)):'');
+    };
+    input.addEventListener('input',render);
+    node.showModal();
+    taxonomy.catalog(answer).then(data => {
+      if (taxonomyDrawer !== state || !node.open || state.key !== taxonomy.scope(answer)) return;
+      state.data = data;
+      navigationCatalog = data;
+      node.querySelector('[data-taxonomy-footer]').innerHTML = taxonomy.drawerFooter(data,kind,config.answerAskPath,getLanguage()==='en_US');
+      render();
     });
   }
 
@@ -807,6 +846,7 @@
     clearTimeout(pulseStatusTimer);
     pulseStatusAttempts = 0;
     pulseHasPendingRewards = false;
+    closeTaxonomy(false);
     closeMobileMenu();
     pulseView?.dispose();
     pulseView = null;
@@ -848,6 +888,8 @@
   }
 
   function initializeIdentity() {
+    closeTaxonomy(false);
+    navigationCatalog = null;
     const sequence = ++identitySequence;
     currentUserState = 'loading'; currentUser = null; identityError = null;
     answer.clearContentCache();
@@ -859,14 +901,6 @@
     });
     return identityReady;
   }
-
-  document.addEventListener('toggle', event => {
-    const group = event.target.dataset?.taxonomyGroup;
-    if (group) {
-      if (event.target.open) collapsedTaxonomyGroups.delete(group);
-      else collapsedTaxonomyGroups.add(group);
-    }
-  }, true);
 
   document.addEventListener('change', (event) => {
     if (event.target.matches?.('[data-action="taxonomy-filter"]')) {
@@ -928,6 +962,13 @@
       event.preventDefault();
       document.getElementById('main')?.focus({ preventScroll: false });
     }
+    if (action === 'taxonomy-open') openTaxonomy(target.dataset.kind, target);
+    if (action === 'taxonomy-close') closeTaxonomy();
+    if (action === 'taxonomy-retry' && taxonomyDrawer) {
+      const {kind,trigger} = taxonomyDrawer;
+      answer.clearContentCache();
+      openTaxonomy(kind,trigger);
+    }
     if (action === 'menu') {
       const opened = document.body.classList.toggle('menu-open');
       document.querySelector('[data-action="menu"]')?.setAttribute('aria-expanded', String(opened));
@@ -949,6 +990,7 @@
       event.preventDefault();
       document.querySelector('.searchbox input')?.focus();
     }
+    if (event.key === 'Escape' && taxonomyDrawer) return;
     if (event.key === 'Escape') { closeMobileMenu(); closeAccountMenu(true); }
   });
 

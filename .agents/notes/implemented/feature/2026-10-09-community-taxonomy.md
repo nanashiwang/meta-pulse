@@ -34,6 +34,8 @@ Answer 推荐标签允许多个，不等价于 Discourse 的严格单类别/子�
 
 ## Related notes
 
+[侧向目录与 METAR 命名](2026-10-09-taxonomy-drawer-names.md)取代本篇的常驻分组列表及旧默认命名；现有数据来源、链接、申请与公开缓存约束继续保留。
+
 [类别与标签导航](2026-10-09-taxonomy-navigation.md)将目录大卡片改为紧凑列表，并增加侧栏分组及并排选择器；本篇继续负责数据来源、初始化和申请治理。
 
 检索 `分类|标签|申请|categor`，命中的[紧凑页面](../../implemented/simplification/2026-10-09-pulse-compact-history.md)与[加载骨架](../../implemented/bug-fix/2026-10-05-community-loading-shell.md)为展示约束，部分重叠并保留；未发现已有类别治理决定。
