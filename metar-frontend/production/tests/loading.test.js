@@ -10,7 +10,8 @@ test('首屏与路由共用骨架，区分列表/网格/私有面板且转义动
   for (const route of ['/', '/latest', '/discover']) assert.equal(layout(route), 'feed');
   for (const route of ['/topic/ai', '/search', '/me/bookmarks']) assert.equal(layout(route), 'list');
   for (const route of ['/topics', '/knowledge']) assert.equal(layout(route), 'grid');
-  for (const route of ['/me', '/admin/pulse', '/settings/binding', '/pulse']) assert.equal(layout(route), 'panel');
+  for (const route of ['/me', '/admin/pulse', '/settings/binding']) assert.equal(layout(route), 'panel');
+  assert.equal(layout('/pulse'), 'pulse');
   const result = render(template, '<img src=x onerror=alert(1)>$&', '/topics', 'Loading…', true);
   assert.match(result, /data-layout="grid"/);
   assert.match(result, /&lt;img src=x onerror=alert\(1\)&gt;\$&amp;/);

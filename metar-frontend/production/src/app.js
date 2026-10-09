@@ -508,8 +508,7 @@
         reason: pending ? t('正在确认上一次抽奖') : !rules.enabled ? t(unavailable[rules.unavailable_reason] || '活动暂不可用') : available === 0 ? t('积累脉冲券后，即可开启下一次回馈') : '',
       };
     }
-    return `${crumb([[t('Pulse 权益')]])}${heading(t('开启脉冲，获得调用回馈'), t('经核验的付费调用积累脉冲券，额度奖励发往元衡 API，经验奖励计入社区等级。'))}
-      ${coreReady ? window.MetarPulseCore.markup({ t }) : ''}
+    return `${coreReady ? window.MetarPulseCore.markup({ t }) : ''}
       <div data-pulse-details>
       <${coreReady ? 'details' : 'section'} class="${coreReady ? 'card mt16 prod-pulse-rules-note' : 'pulse-hero'}">${coreReady ? `<summary>${t('抽取规则')}</summary>` : ''}<div><div class="eyebrow">${coreReady ? '' : esc(rules.period?.continuous ? t('元衡脉冲') : rules.period?.key || t('元衡脉冲'))}</div><h1>${esc(t('可用脉冲券：{count}', { count: number(available) }))}</h1><p>${t('每次消耗 1 张券。额度用于 API 调用，经验用于社区升级，均不可转赠。')}</p><p>${t('五连抽可合并不同时间获得的券；每次使用最新规则，中断时保留已获得的奖励。')}</p><p>${t('白光为经验奖励；额度奖励依次为蓝光（小于 0.5 ⚡️）、紫光（0.5 起）、金光（2 起）、红光（10 起）。光效不影响中奖概率。')}</p>${rules.period?.continuous ? `<p>${t('已有券保留原额度有效期；新设置的有效天数只适用于以后获得的券。')}</p><p>${esc(rules.experience_only ? t('下一张券已超过额度有效期，仅抽取经验。') : t('系统优先使用额度资格有效的券。'))}</p>` : ''}
       ${!rules.enabled ? `<p role="status">${esc(t(unavailable[rules.unavailable_reason] || '活动暂不可用'))}</p>` : ''}

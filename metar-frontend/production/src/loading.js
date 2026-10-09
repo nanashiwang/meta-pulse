@@ -7,6 +7,7 @@
   'use strict';
   const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   function layout(path) {
+    if (path === '/pulse') return 'pulse';
     if (['/', '/latest', '/discover'].includes(path)) return 'feed';
     if (['/search', '/me/bookmarks'].includes(path) || path.startsWith('/topic/')) return 'list';
     return ['/topics', '/knowledge'].includes(path) ? 'grid' : 'panel';

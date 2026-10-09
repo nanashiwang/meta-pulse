@@ -18,9 +18,9 @@
 .page-loading[data-layout="grid"] .loading-content{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;margin-top:24px}
 .page-loading[data-layout="grid"] .loading-item{display:flex;flex-direction:column;align-items:stretch;justify-content:center;border:1px solid var(--border);border-radius:var(--radius);padding:24px;min-height:180px}
 .page-loading[data-layout="grid"] .loading-avatar,.page-loading[data-layout="grid"] .loading-count{display:none}
-.page-loading[data-layout="panel"] .loading-content{border:1px solid var(--border);border-radius:var(--radius);padding:0 24px;margin-top:24px}
-.page-loading[data-layout="panel"] .loading-avatar,.page-loading[data-layout="panel"] .loading-count{display:none}
-.page-loading[data-layout="panel"] .loading-item{display:block}.page-loading[data-layout="panel"] .loading-item:last-child{border-bottom:0}
+.page-loading:is([data-layout="panel"],[data-layout="pulse"]) .loading-content{border:1px solid var(--border);border-radius:var(--radius);padding:0 24px;margin-top:24px}
+.page-loading:is([data-layout="panel"],[data-layout="pulse"]) .loading-avatar,.page-loading:is([data-layout="panel"],[data-layout="pulse"]) .loading-count{display:none}
+.page-loading:is([data-layout="panel"],[data-layout="pulse"]) .loading-item{display:block}.page-loading:is([data-layout="panel"],[data-layout="pulse"]) .loading-item:last-child{border-bottom:0}
 .loading-recovery{padding:16px;border:1px solid var(--border);border-radius:var(--radius);margin:16px 0;color:var(--muted);font-size:13px;background:var(--surface)}
 .loading-recovery p{margin-bottom:12px}.view-refresh-status{position:fixed;right:20px;bottom:20px;z-index:40;background:var(--surface);border:1px solid var(--border);padding:8px 14px;border-radius:8px;font-size:12px;color:var(--muted)}
 .initial-chrome .searchbox input{padding-left:16px}.seo-fallback{padding:24px 0}
@@ -151,3 +151,6 @@ img[data-metar-appearance="veteran"],img[data-metar-appearance="companion"]{box-
 /* Discussion feeds start at the filters, including their initial skeleton. */
 .community-discussions > .visually-hidden + .discussion-toolbar{margin-top:0}
 .page-loading[data-layout="feed"] > .community-heading,.page-loading[data-layout="feed"] > .loading-notice{display:none}
+
+.page-loading[data-layout="pulse"] > .community-heading,.page-loading[data-layout="pulse"] > .loading-notice,.page-loading[data-layout="pulse"] > .loading-toolbar{display:none}
+.page-loading[data-layout="pulse"] .loading-content{margin-top:0}

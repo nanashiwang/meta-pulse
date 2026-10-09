@@ -62,7 +62,7 @@
   function markup({ t }) {
     return `<section class="pulse-core" data-pulse-core data-stage="idle" aria-label="${esc(t('脉冲核心'))}">
       <div class="pc-header"><span class="pc-brand">METAR / PULSE</span><label class="pc-palette-label">${esc(t('光效'))}<select data-core-palette aria-label="${esc(t('选择脉冲光效'))}"><option value="jade">${esc(t('翡翠极光'))}</option><option value="nebula">${esc(t('紫蓝星云'))}</option></select></label></div>
-      <div class="pc-heading"><h2>${esc(t('开启你的脉冲'))}</h2><p class="pc-subtitle">${esc(t('让每一次积累，在这一刻绽放。'))}</p></div>
+      <div class="pc-heading"><div class="pc-title"><h1>${esc(t('开启你的脉冲'))}</h1><details class="pc-help"><summary aria-label="${esc(t('Pulse 介绍'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9 8a3 3 0 0 1 6 0c0 2-3 2-3 4m0 4v.5"/></svg></summary><div class="pc-help-panel"><p>${esc(t('经核验的付费调用积累脉冲券，额度奖励发往元衡 API，经验奖励计入社区等级。'))}</p></div></details></div><p class="pc-subtitle">${esc(t('让每一次积累，在这一刻绽放。'))}</p></div>
       <div class="pc-stage"><canvas aria-hidden="true"></canvas><div class="pc-horizon" aria-hidden="true"></div><span class="pc-annotation" aria-hidden="true">PULSE CORE</span>
         <div class="pc-reward" aria-hidden="true"></div>
       </div>
@@ -234,6 +234,16 @@
       this.reward = root.querySelector('.pc-reward');
       this.palette = root.querySelector('[data-core-palette]');
       this.refresh = root.querySelector('.pc-refresh');
+      this.help = root.querySelector('.pc-help');
+      this.onHelpOutside = event => { if (!this.help.contains(event.target)) this.help.open = false; };
+      this.onHelpKey = event => {
+        if (event.key === 'Escape' && this.help.open) {
+          this.help.open = false; this.help.querySelector('summary').focus();
+        }
+      };
+      document.addEventListener('click', this.onHelpOutside);
+      document.addEventListener('focusin', this.onHelpOutside);
+      document.addEventListener('keydown', this.onHelpKey);
       this.motion = window.matchMedia('(prefers-reduced-motion: reduce)');
       let palette = 'jade';
       try { if (window.localStorage.getItem('_metar_pulse_palette') === 'nebula') palette = 'nebula'; } catch (_) { /* Visual preference is optional. */ }
@@ -343,6 +353,9 @@
       this.dead = true; cancelAnimationFrame(this.frame); this.frame = 0;
       this.resolve?.(false); this.resolve = null;
       this.scene.dispose();
+      document.removeEventListener('click', this.onHelpOutside);
+      document.removeEventListener('focusin', this.onHelpOutside);
+      document.removeEventListener('keydown', this.onHelpKey);
       this.palette.removeEventListener('change', this.onPalette);
       this.skipInput.removeEventListener('change', this.onSkipPreference);
       document.removeEventListener('visibilitychange', this.onVisibility);
