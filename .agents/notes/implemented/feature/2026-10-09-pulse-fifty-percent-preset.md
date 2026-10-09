@@ -31,3 +31,7 @@ Status: implemented
 ## Consequences
 
 固定单券期望不保证固定周支出；每周预算 10000 ⚡️和旧库存消耗须独立管理。本次不添加统一周预算、不发每日券、不写生产配置、不部署生产。
+
+## Display scope update
+
+[紧凑奖励记录入口](../simplification/2026-10-09-pulse-compact-history.md)替代本篇用户奖池概率展示决定；管理员配置与预览、规则查询及执行/恢复语义继续有效。

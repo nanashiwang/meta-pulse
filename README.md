@@ -82,7 +82,7 @@ Meta Pulse 负责 Usage Event、贡献值、脉冲券、长期经济规则快照
 
 正式首页与 `/latest` 使用紧凑讨论列表，支持不带 `#` 的 History 路由；Nginx 按白名单提供深链接，旧 Hash 链接自动转换。`/questions`、`/users/*`、`/answer/api/*` 等路径仍由 Answer 原生 UI/API 负责，因此前端回退不会修改社区数据、会话或权限规则。Pulse 用户权益通过受 Answer 身份保护的社区 BFF 接通总览、奖池、抽奖及奖励记录；默认关闭新抽奖，未完成配置时明确显示不可用状态。后续阶段见 [`docs/METAR_FRONTEND_REFACTOR_PLAN.md`](docs/METAR_FRONTEND_REFACTOR_PLAN.md)。
 
-管理员可在 `/admin/pulse` 显式载入 **50% 额度概率方案**：有效券平均 0.25 ⚡️ 与 2.76 EXP，到期券平均 5.52 EXP。概率按当前配置展示，加载预设不会改动发券、有效期或预算输入；核对保存才生效。参数与预算切换边界见 [管理员配置](docs/METAR_ADMIN_SETTINGS.md)。
+管理员可在 `/admin/pulse` 显式载入 **50% 额度概率方案**：有效券平均 0.25 ⚡️ 与 2.76 EXP，到期券平均 5.52 EXP。管理员预览按当前配置计算概率，加载预设不会改动发券、有效期或预算输入；核对保存才生效。参数与预算切换边界见 [管理员配置](docs/METAR_ADMIN_SETTINGS.md)。
 
 本地验证：
 

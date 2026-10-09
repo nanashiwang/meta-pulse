@@ -257,7 +257,7 @@ test('语言切换重新渲染标题、筛选、ARIA、错误和数值，用户�
 
 const pulseUser = { id: '7', username: 'alice', display_name: 'Alice', mail_status: 1 };
 
-test('Pulse 奖池、状态与失败提示完整翻译，奖项名称和参数保持原文并转义', async () => {
+test('Pulse 记录入口、状态与失败提示完整翻译，奖励编号安全转义', async () => {
   const view = await shell({ user: pulseUser, binding: 'bound', pulseRewards: [
     { grant_id: 'grant-1', amount: 50000, status: 'settled', created_at: '2026-09-19T00:00:00Z' },
     { grant_id: 'grant-2', amount: 50000, status: 'settlement_dead' },
@@ -266,24 +266,25 @@ test('Pulse 奖池、状态与失败提示完整翻译，奖项名称和参数�
   assertEnglish(view, 'real Pulse payload');
   assert.match(view.html(), /Available Pulse tickets: 2/);
   assert.match(view.html(), /0\.1 ⚡️/);
-  assert.match(view.html(), /Probability 100%/);
+  assert.match(view.html(), /<details[^>]*data-pulse-history><summary>View reward history<\/summary>/);
+  assert.doesNotMatch(view.html(), /Current prize pool and rules|Probability \d|Credit chance:/);
   assert.match(view.html(), /Credited/);
   assert.match(view.html(), /Awaiting processing/);
   await view.changeLanguage('zh_CN');
   assert.match(view.html(), /可用脉冲券：2/);
+  assert.match(view.html(), /查看奖励记录/);
   assert.match(view.html(), /0\.1 ⚡️/);
 
-  const original = await shell({ user: pulseUser, binding: 'bound', pulseRules: { rewards: [{ name: '未读<script>', amount: 50000, weight: '<b>5</b>' }] } });
+  const original = await shell({ user: pulseUser, binding: 'bound', pulseRewards: [{ grant_id: 'grant-"<script>', reward_type: 'community_exp', amount: 4, status: 'settled' }] });
   await original.navigate('/pulse');
-  assert.match(original.html(), /<strong>未读&lt;script&gt;<\/strong>/);
-  assert.match(original.html(), /Weight &lt;b&gt;5&lt;\/b&gt; \/ 100/);
-  assert.match(original.html(), /Probability —/);
-  assert.doesNotMatch(original.html(), /<script>|<b>5<\/b>/);
+  assert.match(original.html(), /grant-&quot;&lt;script&gt;/);
+  assert.doesNotMatch(original.html(), /<script>/);
   for (const unavailable_reason of ['budget_exhausted', 'activity_paused', 'no_active_period', 'funding_verification_required', 'reward_pool_unavailable', 'unknown']) {
     const paused = await shell({ user: pulseUser, binding: 'bound', pulseRules: { enabled: false, unavailable_reason, rewards: [] } });
     await paused.navigate('/pulse');
     assertEnglish(paused, unavailable_reason);
-    assert.match(paused.html(), /No reward pool is currently available/);
+    assert.match(paused.html(), /No reward records yet/);
+    assert.doesNotMatch(paused.html(), /Current prize pool and rules/);
   }
   const unavailable = await shell({ user: pulseUser, binding: 'bound', failure: 'pulse' });
   await unavailable.navigate('/pulse');
@@ -422,10 +423,10 @@ test('收藏分页使用当前会话用户名和真实页数，后续页仍可�
 test('社区经验奖项与到账记录保留 EXP 单位，不按 quota 汇率转换', async()=>{
  const view=await shell({user:pulseUser,binding:'bound',pulseRules:{rewards:[{name:'EXP prize',reward_type:'community_exp',amount:500,weight:100}]},pulseRewards:[{grant_id:'exp1',reward_type:'community_exp',amount:500,status:'settled'}]});
  await view.navigate('/pulse');
- assert.equal((view.html().match(/500 EXP/g)||[]).length,2);
+ assert.equal((view.html().match(/500 EXP/g)||[]).length,1);
  assert.doesNotMatch(view.html(),/0\.001 API/);
  await view.changeLanguage('zh_CN');
- assert.equal((view.html().match(/500 EXP/g)||[]).length,2);
+ assert.equal((view.html().match(/500 EXP/g)||[]).length,1);
 });
 
 
@@ -466,20 +467,21 @@ test('unified tickets draw across batches without a group selector', async () =>
   assertEnglish(view,'unified draw');
 });
 
-test('published pool drives percentages; expired tickets normalize EXP without assuming 50%',async()=>{
- const prizes=[{name:'api',reward_type:'newapi_quota',amount:125000,weight:50000},
-  {name:'exp-basic',reward_type:'community_exp',amount:1,weight:28000},
-  {name:'exp-middle',reward_type:'community_exp',amount:4,weight:12000},
-  {name:'exp-high',reward_type:'community_exp',amount:20,weight:10000}];
- const view=await shell({user:pulseUser,binding:'bound',pulseRules:{total_weight:100000,rewards:prizes}});
- await view.navigate('/pulse');
- assert.match(view.html(),/Credit chance: 50% · EXP chance: 50%/);
- for(const pct of ['50%','28%','12%','10%'])assert.ok(view.html().includes('Probability '+pct));
- await view.changeLanguage('zh_CN');assert.match(view.html(),/额度中奖率：50% · 经验中奖率：50%/);
- const expired=await shell({user:pulseUser,binding:'bound',pulseRules:{experience_only:true,total_weight:50000,rewards:prizes.slice(1)}});
- await expired.navigate('/pulse');
- assert.match(expired.html(),/Credit chance: 0% · EXP chance: 100%/);
- for(const pct of ['56%','24%','20%'])assert.ok(expired.html().includes('Probability '+pct));
- const old=await shell({user:pulseUser,binding:'bound',pulseRules:{total_weight:100,rewards:[{name:'api',amount:10,weight:10},{name:'EXP',reward_type:'community_exp',amount:1,weight:90}]}});
- await old.navigate('/pulse');assert.match(old.html(),/Credit chance: 10% · EXP chance: 90%/);
+test('valid and expired tickets retain eligibility and stable selections without displaying the prize pool', async () => {
+  const prizes = [{name:'api',reward_type:'newapi_quota',amount:125000,weight:50000},
+    {name:'exp-basic',reward_type:'community_exp',amount:1,weight:28000},
+    {name:'exp-middle',reward_type:'community_exp',amount:4,weight:12000},
+    {name:'exp-high',reward_type:'community_exp',amount:20,weight:10000}];
+  for (const experience_only of [false, true]) {
+    const view = await shell({user:pulseUser,binding:'bound',pulseRules:{period:{id:1,continuous:true},experience_only,total_weight:experience_only ? 50000 : 100000,rewards:experience_only ? prizes.slice(1) : prizes}});
+    await view.navigate('/pulse');
+    assert.doesNotMatch(view.html(), /Credit chance:|Probability \d|exp-basic|api-participation/);
+    assert.match(view.html(), experience_only ? /draws experience only/ : /Tickets with valid quota eligibility are used first/);
+    await view.changeLanguage('zh_CN');
+    assert.doesNotMatch(view.html(), /当前奖池与规则|额度中奖率：|概率 \d|下方显示下一次/);
+    assert.match(view.html(), /查看奖励记录/);
+    await view.click('pulse-draw');
+    const action = view.requests.find(r => r.url.endsWith('/actions'));
+    assert.equal(JSON.parse(action.options.body).selection, 'server-choice-0');
+  }
 });

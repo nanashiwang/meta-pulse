@@ -1,7 +1,7 @@
 /* METAR production community shell. All community data comes from Apache Answer. */
 'use strict';
 (() => {
-  const { AdapterError, AnswerAdapter, PulseAdminAdapter, isCommunityAdministrator, PulseAdapter, PulseOperation, PulseDrawSession, pulseActions, validPulseResult, pulseRewardTier, formatPulseQuota, formatPulseProbability, pulseRewardStats, KnowledgeAdapter, loadIdentitySnapshot, relativePath, routeMatchesNavigation } = window.MetarAdapters;
+  const { AdapterError, AnswerAdapter, PulseAdminAdapter, isCommunityAdministrator, PulseAdapter, PulseOperation, PulseDrawSession, pulseActions, validPulseResult, pulseRewardTier, formatPulseQuota, KnowledgeAdapter, loadIdentitySnapshot, relativePath, routeMatchesNavigation } = window.MetarAdapters;
   const { markup: avatar, install: installAvatars } = window.MetarAvatars;
   const { t, locale, getLanguage, setLanguage, syncDocument, errorMessage, countLabel } = window.MetarI18n;
   const rawConfig = window.__METAR_RUNTIME_CONFIG__ || {};
@@ -492,19 +492,10 @@
     const unavailable = { selection_required: '请刷新并确认最新抽奖规则', insufficient_tickets:'积累脉冲券后，即可开启下一次回馈', rule_inactive:'当前规则已暂停或结束', budget_exhausted: '当前可用奖励预算已用完', activity_paused: '活动暂未开放', no_active_period: '当前规则尚未准备好', funding_verification_required: '当前权益正在核验', reward_pool_unavailable: '奖池准备中' };
     const available = Number.isSafeInteger(rules.ticket_count) ? rules.ticket_count : 0;
     const canDrawFive = rules.can_draw_five === true && rules.draws?.length === 5;
-    const expDraws = (rules.draws || []).filter(draw => draw.experience_only).length;
-    const budgetText = (rules.budgets || []).map(b => `${b.kind === 'community_exp' ? 'EXP' : 'API'}: ${t(b.available ? '可用' : '暂停')}`).join(' · ');
     const rewards = Array.isArray(history.rewards) ? history.rewards : [];
-    const prizes = Array.isArray(rules.rewards) ? rules.rewards : [];
     const canDraw = rules.enabled === true && available > 0 && !pending && !pulseBusy;
     const rewardAmount = r => r.reward_type === 'community_exp' ? number(r.amount)+' EXP' : formatPulseQuota(r.amount,rules.quota_per_unit,locale());
     const rewardRows = rewards.map((r) => `<tr><td>${esc(rewardAmount(r))}</td><td data-pulse-reward-status="${esc(r.grant_id)}">${esc(t(pulseRewardStates[r.status] || '等待核对'))}</td><td>${esc(r.created_at ? new Date(r.created_at).toLocaleString(locale()) : '—')}</td><td><code>${esc(r.grant_id)}</code></td></tr>`).join('');
-    const prizeRows = prizes.map((r) => `<li><strong>${esc(r.name)}</strong><span>${esc(rewardAmount(r))}</span><span title="${esc(t('权重 {weight} / {total}', {weight:r.weight,total:rules.total_weight}))}">${esc(t('概率 {probability}', {probability:formatPulseProbability(r.weight,rules.total_weight)}))}</span></li>`).join('');
-    let probabilitySummary = '';
-    try {
-      const stats = pulseRewardStats(prizes);
-      if (stats.total === BigInt(rules.total_weight)) probabilitySummary = t('额度中奖率：{quota} · 经验中奖率：{exp}', {quota:formatPulseProbability(stats.quotaWeight,stats.total),exp:formatPulseProbability(stats.expWeight,stats.total)});
-    } catch (_) { /* Invalid or unavailable catalog never claims a probability. */ }
     const last = pulseLastResult?.userId === currentUser.id ? pulseLastResult : null;
     if (last) last.rewards = last.rewards.map(reward => rewards.find(r => r.grant_id === reward.grant_id && validPulseResult(r, reward.action_id)) || reward);
     updatePulseResultMessage(last?.rewards);
@@ -520,14 +511,13 @@
     return `${crumb([[t('Pulse 权益')]])}${heading(t('开启脉冲，获得调用回馈'), t('经核验的付费调用积累脉冲券，额度奖励发往元衡 API，经验奖励计入社区等级。'))}
       ${coreReady ? window.MetarPulseCore.markup({ t }) : ''}
       <div data-pulse-details>
-      <${coreReady ? 'details' : 'section'} class="${coreReady ? 'card mt16 prod-pulse-rules-note' : 'pulse-hero'}">${coreReady ? `<summary>${t('抽取规则')}</summary>` : ''}<div><div class="eyebrow">${coreReady ? '' : esc(rules.period?.continuous ? t('元衡脉冲') : rules.period?.key || t('元衡脉冲'))}</div><h1>${esc(t('可用脉冲券：{count}', { count: number(available) }))}</h1><p>${t('每次消耗 1 张券。额度用于 API 调用，经验用于社区升级，均不可转赠。')}</p><p>${t('五连抽可合并不同时间获得的券；每次使用最新规则，中断时保留已获得的奖励。')}</p><p>${t('白光为经验奖励；额度奖励依次为蓝光（小于 0.5 ⚡️）、紫光（0.5 起）、金光（2 起）、红光（10 起）。光效不影响中奖概率。')}</p>${rules.period?.continuous ? `<p>${t('已有券保留原额度有效期；新设置的有效天数只适用于以后获得的券。')}</p><p>${esc(rules.experience_only ? t('下一张券已超过额度有效期，仅抽取经验。') : t('系统优先使用额度资格有效的券；下方显示下一次适用概率。'))}</p>` : ''}
+      <${coreReady ? 'details' : 'section'} class="${coreReady ? 'card mt16 prod-pulse-rules-note' : 'pulse-hero'}">${coreReady ? `<summary>${t('抽取规则')}</summary>` : ''}<div><div class="eyebrow">${coreReady ? '' : esc(rules.period?.continuous ? t('元衡脉冲') : rules.period?.key || t('元衡脉冲'))}</div><h1>${esc(t('可用脉冲券：{count}', { count: number(available) }))}</h1><p>${t('每次消耗 1 张券。额度用于 API 调用，经验用于社区升级，均不可转赠。')}</p><p>${t('五连抽可合并不同时间获得的券；每次使用最新规则，中断时保留已获得的奖励。')}</p><p>${t('白光为经验奖励；额度奖励依次为蓝光（小于 0.5 ⚡️）、紫光（0.5 起）、金光（2 起）、红光（10 起）。光效不影响中奖概率。')}</p>${rules.period?.continuous ? `<p>${t('已有券保留原额度有效期；新设置的有效天数只适用于以后获得的券。')}</p><p>${esc(rules.experience_only ? t('下一张券已超过额度有效期，仅抽取经验。') : t('系统优先使用额度资格有效的券。'))}</p>` : ''}
       ${!rules.enabled ? `<p role="status">${esc(t(unavailable[rules.unavailable_reason] || '活动暂不可用'))}</p>` : ''}
       ${coreReady ? '' : `<div class="actions"><button type="button" class="btn light" data-action="pulse-draw" ${canDraw ? '' : 'disabled'}>${t(pulseBusy ? '正在处理…' : '开启一次脉冲 · 1 券')}</button><button type="button" class="btn light" data-action="pulse-draw-five" ${canDraw && canDrawFive ? '' : 'disabled'}>${t('五连抽 · 5 券')}</button><button type="button" class="btn outline-light" data-action="retry">${t('刷新奖励状态')}</button></div>`}</div>${coreReady ? '' : I('pulse')}</${coreReady ? 'details' : 'section'}>
       ${pulseMessage && (!coreReady || !['奖励已到账。', '奖励将在后台发放，可继续浏览或开启下一次。'].includes(pulseMessage)) ? `<div class="prod-status mt24" role="status"><p data-pulse-message>${esc(t(pulseMessage))}</p></div>` : ''}
       ${pending ? `<section class="card card-pad mt24" role="status"><h3>${t('正在确认上一次抽奖')}</h3><p class="muted mt8">${t('请先查询原请求。继续处理会沿用同一次抽奖，不会重新扣券或更换结果。')}</p><div class="flex wrap mt16"><button class="btn" data-action="retry">${t('查询原抽奖')}</button><button class="btn primary" data-action="pulse-resume" ${pulseBusy ? 'disabled' : ''}>${t('继续处理原请求')}</button></div></section>` : ''}
       <div class="prod-pulse-stats mt24"><section class="card card-pad"><h3>${t('当前等级')}</h3><p>${esc(summary.level?.name || t('未定级'))}</p></section><section class="card card-pad"><h3>${t('累计贡献')}</h3><p>${esc(Number.isSafeInteger(summary.lifetime_contribution_milli) ? number(summary.lifetime_contribution_milli / 1000) : t('待核对'))}</p></section><section class="card card-pad"><h3>${t('额度奖励资格')}</h3><p>${esc(rules.period?.continuous ? (rules.experience_only ? t('仅经验') : rules.quota_expires_at ? new Date(rules.quota_expires_at).toLocaleString(locale()) : t('从获得券时计算')) : rules.period?.ends_at ? new Date(rules.period.ends_at).toLocaleString(locale()) : '—')}</p></section></div>
-      <section class="card card-pad mt24"><h2>${t('当前奖池与规则')}</h2><p class="muted mt8">${esc(budgetText)}</p><p class="muted mt8">${esc(t('规则 {version}', {version:rules.period?.config_version || '—'}))} · ${esc(t('查询时间：{time}', {time:new Date(rules.queried_at).toLocaleString(locale())}))}</p>${rules.draws?.length === 5 ? `<p class="mt16">${esc(t('本次五连抽：{quota} 张可抽额度与经验，{exp} 张仅抽经验。',{quota:5-expDraws,exp:expDraws}))}</p>` : ''}${probabilitySummary ? `<p class="mt16">${esc(probabilitySummary)}</p>` : ''}${prizeRows ? `<ul class="prod-pulse-prizes">${prizeRows}</ul>` : `<p class="muted mt16">${t('暂无可参与奖池。')}</p>`}${!rules.experience_only && expDraws > 0 ? `<h3 class="mt16">${t('到期券适用概率')}</h3><ul class="prod-pulse-prizes">${(rules.experience_rewards || []).map(r=>`<li><strong>${esc(rewardAmount(r))}</strong><span title="${esc(t('权重 {weight} / {total}', {weight:r.weight,total:rules.experience_total_weight}))}">${esc(t('概率 {probability}', {probability:formatPulseProbability(r.weight,rules.experience_total_weight)}))}</span></li>`).join('')}</ul>` : ''}<p class="muted mt16">${t('所有未用券统一使用最新奖项、概率与预算，原有效期不变。到期券仅按最新经验奖项权重抽取。预算不足不扣券，已中奖结果保留。赠送额度和无法核验资金来源的消费不产生脉冲券。')}</p><p class="muted mt8">${t('⚡️ 表示元衡 API 调用额度，不代表人民币或可提现金额。')}</p></section>
-      <section class="card card-pad mt24"><h2>${t('奖励记录')}</h2><div class="prod-pulse-table"><table><thead><tr><th>${t('奖励')}</th><th>${t('到账状态')}</th><th>${t('时间')}</th><th>${t('奖励编号')}</th></tr></thead><tbody>${rewardRows || `<tr><td colspan="4">${t('暂无奖励记录')}</td></tr>`}</tbody></table></div></section></div>${footer()}`;
+      <details class="card mt24 prod-pulse-history" data-pulse-history><summary>${t('查看奖励记录')}</summary><div class="prod-pulse-table"><table><thead><tr><th>${t('奖励')}</th><th>${t('到账状态')}</th><th>${t('时间')}</th><th>${t('奖励编号')}</th></tr></thead><tbody>${rewardRows || `<tr><td colspan="4">${t('暂无奖励记录')}</td></tr>`}</tbody></table></div></details></div>${footer()}`;
   }
 
   function supportPage() {
@@ -649,6 +639,8 @@
       const previous = document.querySelector('[data-pulse-details]');
       if (!next || !previous) { await navigate(); return; }
 
+      const history = next.querySelector('[data-pulse-history]');
+      if (history) history.open = previous.querySelector('[data-pulse-history]')?.open === true;
       previous.replaceWith(next);
       presentation.update(pulseCoreState);
     } catch (_) {
