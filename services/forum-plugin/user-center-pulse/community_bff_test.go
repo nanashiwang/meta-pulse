@@ -325,14 +325,14 @@ func TestCommunityBFFForwardsSelectionAndDefiniteRefusals(t *testing.T) {
 					Selection       string `json:"selection"`
 					TriggerType     string `json:"trigger_type"`
 				}
-				if json.NewDecoder(r.Body).Decode(&body) != nil || body.ProtocolVersion != 2 || body.Selection != "server-snapshot" || body.TriggerType != "pulse" {
+				if json.NewDecoder(r.Body).Decode(&body) != nil || body.ProtocolVersion != 3 || body.Selection != "server-snapshot" || body.TriggerType != "pulse" {
 					t.Errorf("selection lost: %+v", body)
 				}
 				w.WriteHeader(409)
 				_, _ = w.Write([]byte(`{"error":"` + code + `"}`))
 			})
 			w := httptest.NewRecorder()
-			router.ServeHTTP(w, communityTestRequest(http.MethodPost, "actions", `{"action_id":"a","protocol_version":2,"selection":"server-snapshot"}`))
+			router.ServeHTTP(w, communityTestRequest(http.MethodPost, "actions", `{"action_id":"a","protocol_version":3,"selection":"server-snapshot"}`))
 			want := code
 			if code == "budget_exceeded" || code == "actions_unavailable" {
 				want = "action_rejected"

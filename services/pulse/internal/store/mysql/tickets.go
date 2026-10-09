@@ -93,29 +93,33 @@ func (r *ticketRepository) Period(ctx context.Context, id uint64) (period.Period
 	return m.toDomain(), err
 }
 
-// The user mutex is held by callers before these reads. Aggregate groups, not
-// millions of individual tickets; the preview never reserves a ticket.
-func (r *ticketRepository) Groups(ctx context.Context, userID uint64, now time.Time) ([]ports.TicketGroup, error) {
-	var groups []ports.TicketGroup
-	err := r.db.WithContext(ctx).Raw(`SELECT period_id, (quota_expires_at<=?) AS experience_only, SUM(remaining) AS remaining
- FROM pulse_ticket_lot WHERE user_id=? AND remaining>0
- GROUP BY period_id, experience_only ORDER BY period_id, experience_only`, now.Unix(), userID).Scan(&groups).Error
-	return groups, err
-}
-func (r *ticketRepository) NextInGroup(ctx context.Context, userID, periodID uint64, experienceOnly bool, now time.Time) (*ports.TicketLot, error) {
-	var m ticketLotModel
-	q := r.db.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id=? AND period_id=? AND remaining>0", userID, periodID)
-	if experienceOnly {
-		q = q.Where("quota_expires_at<=?", now.Unix())
-	} else {
-		q = q.Where("quota_expires_at>?", now.Unix())
+// Preview is a bounded, non-reserving read. Five distinct lots suffice for five
+// tickets; multiple tickets may come from the same lot.
+func (r *ticketRepository) PreviewLots(ctx context.Context, userID uint64, now time.Time) ([]ports.TicketLot, error) {
+	var models []ticketLotModel
+	err := r.db.WithContext(ctx).Raw(`SELECT l.* FROM pulse_ticket_lot l
+ JOIN pulse_period p ON p.id=l.period_id
+ JOIN pulse_account a ON a.user_id=l.user_id AND a.period_id=l.period_id AND a.asset_type='ticket'
+ WHERE l.user_id=? AND l.remaining>0 AND a.balance>0 AND p.funding_policy=?
+ ORDER BY (l.quota_expires_at<=?),l.earned_at,l.id LIMIT 5`, userID, period.VerifiedPaidFunding, now.Unix()).Scan(&models).Error
+	result := make([]ports.TicketLot, 0, len(models))
+	for _, m := range models {
+		result = append(result, ticketLotDomain(m))
 	}
-	err := q.Order("earned_at,id").Take(&m).Error
+	return result, err
+}
+func (r *ticketRepository) LotForUpdate(ctx context.Context, id uint64) (*ports.TicketLot, error) {
+	var m ticketLotModel
+	err := r.db.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).Where("id=?", id).Take(&m).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	return &ports.TicketLot{ID: m.ID, UserID: m.UserID, PeriodID: m.PeriodID, MintEntryID: m.MintEntryID, Issued: m.Issued, Remaining: m.Remaining, EarnedAt: time.Unix(m.EarnedAt, 0).UTC(), QuotaExpiresAt: time.Unix(m.QuotaExpiresAt, 0).UTC()}, nil
+	lot := ticketLotDomain(m)
+	return &lot, nil
+}
+func ticketLotDomain(m ticketLotModel) ports.TicketLot {
+	return ports.TicketLot{ID: m.ID, UserID: m.UserID, PeriodID: m.PeriodID, MintEntryID: m.MintEntryID, Issued: m.Issued, Remaining: m.Remaining, EarnedAt: time.Unix(m.EarnedAt, 0).UTC(), QuotaExpiresAt: time.Unix(m.QuotaExpiresAt, 0).UTC()}
 }

@@ -53,23 +53,31 @@ type communityRewardHistoryItem struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-type communityRuleGroup struct {
-	communityRules
-	ID               string `json:"id"`
-	TicketCount      int64  `json:"ticket_count"`
-	NextLotRemaining int64  `json:"next_lot_remaining"`
-	Selection        string `json:"selection"`
-	Budgets          []struct {
+type communityPrize struct {
+	Name       string `json:"name"`
+	RewardType string `json:"reward_type"`
+	Amount     int64  `json:"amount"`
+	Weight     uint64 `json:"weight"`
+}
+type communityRules struct {
+	SelectionVersion int       `json:"selection_version"`
+	QueriedAt        time.Time `json:"queried_at"`
+	TicketCount      int64     `json:"ticket_count"`
+	Selection        string    `json:"selection,omitempty"`
+	Draws            []struct {
+		Selection      string    `json:"selection"`
+		ExperienceOnly bool      `json:"experience_only"`
+		QuotaExpiresAt time.Time `json:"quota_expires_at"`
+	} `json:"draws"`
+	CanDrawFive bool `json:"can_draw_five"`
+	Budgets     []struct {
 		ID        string `json:"id"`
 		Kind      string `json:"kind"`
 		Available bool   `json:"available"`
 		Unlimited bool   `json:"unlimited"`
 	} `json:"budgets"`
-}
-type communityRules struct {
-	SelectionVersion int                  `json:"selection_version"`
-	QueriedAt        time.Time            `json:"queried_at"`
-	Groups           []communityRuleGroup `json:"groups,omitempty"`
+	ExperienceRewards     []communityPrize `json:"experience_rewards"`
+	ExperienceTotalWeight uint64           `json:"experience_total_weight"`
 
 	QuotaValidityDays int        `json:"quota_validity_days"`
 	QuotaExpiresAt    *time.Time `json:"quota_expires_at,omitempty"`
@@ -80,13 +88,8 @@ type communityRules struct {
 	Period            *communityPeriod `json:"period"`
 	TicketCost        int64            `json:"ticket_cost"`
 	QuotaPerUnit      int64            `json:"quota_per_unit"`
-	Rewards           []struct {
-		Name       string `json:"name"`
-		RewardType string `json:"reward_type"`
-		Amount     int64  `json:"amount"`
-		Weight     uint64 `json:"weight"`
-	} `json:"rewards"`
-	TotalWeight uint64 `json:"total_weight"`
+	Rewards           []communityPrize `json:"rewards"`
+	TotalWeight       uint64           `json:"total_weight"`
 }
 
 // The router group is supplied only by Answer's MustAuthAndAccountAvailable
@@ -283,7 +286,7 @@ func decodeCommunityAction(data []byte, payload *communityActionRequest) bool {
 	if len(fields) == 1 {
 		return true
 	} // recovery only; Pulse refuses new v1 actions
-	if json.Unmarshal(fields["protocol_version"], &payload.ProtocolVersion) != nil || payload.ProtocolVersion != 2 {
+	if json.Unmarshal(fields["protocol_version"], &payload.ProtocolVersion) != nil || (payload.ProtocolVersion != 2 && payload.ProtocolVersion != 3) {
 		return false
 	}
 	return json.Unmarshal(fields["selection"], &payload.Selection) == nil && len(payload.Selection) > 0 && len(payload.Selection) <= 1024

@@ -151,9 +151,10 @@ func adminPeriodsProjection(method string, data []byte) (any, error) {
 		return result, nil
 	}
 	var result struct {
-		UnlimitedQuotaSupported bool          `json:"unlimited_quota_supported"`
-		ContinuousSupported     bool          `json:"continuous_supported"`
-		Periods                 []adminPeriod `json:"periods"`
+		CurrentRewardRuleSupported bool          `json:"current_reward_rule_supported"`
+		UnlimitedQuotaSupported    bool          `json:"unlimited_quota_supported"`
+		ContinuousSupported        bool          `json:"continuous_supported"`
+		Periods                    []adminPeriod `json:"periods"`
 	}
 	if decodeCommunityResponse(data, &result) != nil || result.Periods == nil || len(result.Periods) > 20 {
 		return nil, invalid

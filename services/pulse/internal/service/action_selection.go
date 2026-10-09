@@ -24,6 +24,7 @@ var (
 // binds the opaque snapshot to the authenticated principal; amounts stay in DB.
 type ticketSelection struct {
 	PeriodID       uint64 `json:"period_id"`
+	SourcePeriodID uint64 `json:"source_period_id"`
 	ConfigVersion  string `json:"config_version"`
 	LotID          uint64 `json:"lot_id"`
 	ExperienceOnly bool   `json:"experience_only"`
@@ -31,16 +32,20 @@ type ticketSelection struct {
 
 func selectionMAC(secret []byte, userID uint64, payload string) []byte {
 	h := hmac.New(sha256.New, secret)
-	fmt.Fprintf(h, "pulse-ticket-selection:v2:%d:%s", userID, payload)
+	fmt.Fprintf(h, "pulse-ticket-selection:v3:%d:%s", userID, payload)
 	return h.Sum(nil)
 }
-func signSelection(secret []byte, userID uint64, p period.Period, lot *ports.TicketLot, experienceOnly bool) string {
+func signSelection(secret []byte, userID uint64, p period.Period, lot *ports.TicketLot, experienceOnly bool, sourcePeriodID ...uint64) string {
 	if len(secret) == 0 {
 		return ""
 	}
-	choice := ticketSelection{PeriodID: p.ID, ConfigVersion: p.ConfigVersion, ExperienceOnly: experienceOnly}
+	choice := ticketSelection{PeriodID: p.ID, SourcePeriodID: p.ID, ConfigVersion: p.ConfigVersion, ExperienceOnly: experienceOnly}
 	if lot != nil {
 		choice.LotID = lot.ID
+		choice.SourcePeriodID = lot.PeriodID
+	}
+	if len(sourcePeriodID) > 0 {
+		choice.SourcePeriodID = sourcePeriodID[0]
 	}
 	raw, _ := json.Marshal(choice)
 	payload := base64.RawURLEncoding.EncodeToString(raw)
@@ -57,39 +62,59 @@ func verifySelection(secret []byte, userID uint64, token string) (ticketSelectio
 		return choice, ErrSelectionChanged
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(parts[0])
-	if err != nil || json.Unmarshal(raw, &choice) != nil || choice.PeriodID == 0 || choice.ConfigVersion == "" {
+	if err != nil || json.Unmarshal(raw, &choice) != nil || choice.PeriodID == 0 || choice.SourcePeriodID == 0 || choice.ConfigVersion == "" {
 		return choice, ErrSelectionChanged
 	}
 	return choice, nil
 }
-func selectedTicket(ctx context.Context, repos ports.Repositories, choice ticketSelection, userID uint64, now time.Time) (period.Period, *ports.TicketLot, error) {
+
+// Serialize new rule publication and new draws, without rewriting frozen rules.
+func lockRewardRule(ctx context.Context, repo ports.IdempotencyRepository) error {
+	_, err := repo.GetOrCreateForUpdate(ctx, "period_create_lock", "global", "447cc9dbdc73a33ea5be9cef405e81ef56c4e23b9202238aee120a0078c2fb2a")
+	return err
+}
+func selectedTicket(ctx context.Context, repos ports.Repositories, choice ticketSelection, userID uint64, now time.Time) (period.Period, period.Period, *ports.TicketLot, error) {
+	var current, source period.Period
+	fail := func(err error) (period.Period, period.Period, *ports.TicketLot, error) {
+		return current, source, nil, err
+	}
 	if repos.Tickets == nil {
-		return period.Period{}, nil, errors.New("ticket repository unavailable")
+		return fail(errors.New("ticket repository unavailable"))
 	}
-	if err := repos.Tickets.LockUser(ctx, userID); err != nil {
-		return period.Period{}, nil, err
+	var err error
+	// This is a current read: earlier legacy-recovery queries may already have
+	// established a repeatable-read snapshot before the publication mutex.
+	current, err = repos.Period.FindActiveAtCurrent(ctx, now)
+	if errors.Is(err, period.ErrNoActivePeriod) {
+		return fail(ErrSelectionChanged)
 	}
-	p, err := repos.Tickets.Period(ctx, choice.PeriodID)
 	if err != nil {
-		return p, nil, err
+		return fail(err)
 	}
-	if p.ConfigVersion != choice.ConfigVersion || p.Status != period.StatusActive || !p.Contains(now) {
-		return p, nil, ErrSelectionChanged
+	if current.ID != choice.PeriodID || current.ConfigVersion != choice.ConfigVersion {
+		return fail(ErrSelectionChanged)
 	}
-	if !p.Continuous {
-		if choice.LotID != 0 || choice.ExperienceOnly {
-			return p, nil, ErrSelectionChanged
+	if err = repos.Tickets.LockUser(ctx, userID); err != nil {
+		return fail(err)
+	}
+	source, err = repos.Tickets.Period(ctx, choice.SourcePeriodID)
+	if err != nil {
+		return fail(err)
+	}
+	if !source.Continuous {
+		if choice.LotID != 0 || choice.ExperienceOnly || source.Status != period.StatusActive || !source.Contains(now) {
+			return fail(ErrSelectionChanged)
 		}
-		return p, nil, nil
+		return current, source, nil, nil
 	}
-	lot, err := repos.Tickets.NextInGroup(ctx, userID, p.ID, choice.ExperienceOnly, now)
+	lot, err := repos.Tickets.LotForUpdate(ctx, choice.LotID)
 	if err != nil {
-		return p, nil, err
+		return fail(err)
 	}
-	if lot == nil || lot.ID != choice.LotID {
-		return p, nil, ErrSelectionChanged
+	if lot == nil || lot.UserID != userID || lot.PeriodID != source.ID || lot.Remaining <= 0 || (!now.Before(lot.QuotaExpiresAt)) != choice.ExperienceOnly {
+		return fail(ErrSelectionChanged)
 	}
-	return p, lot, nil
+	return current, source, lot, nil
 }
 
 // Store only final business refusals before ANY financial write. Returning nil

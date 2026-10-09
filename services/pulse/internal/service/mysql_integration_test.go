@@ -101,7 +101,7 @@ VALUES (?, ?, 'ticket', 'ticket_mint', 1, 1, 'integration', ?, ?, ?, 'integratio
 	if err != nil {
 		t.Fatalf("create action service: %v", err)
 	}
-	command := ActionCommand{ProtocolVersion: 2, Selection: signSelection(action.secret, userID, period.Period{ID: periodID, ConfigVersion: "integration-v1"}, nil, false), UserID: userID, ActionID: "integration-action", TriggerType: ActionTriggerType, IdempotencyKey: "integration-idempotency"}
+	command := ActionCommand{ProtocolVersion: 3, Selection: signSelection(action.secret, userID, period.Period{ID: periodID, ConfigVersion: "integration-v1"}, nil, false), UserID: userID, ActionID: "integration-action", TriggerType: ActionTriggerType, IdempotencyKey: "integration-idempotency"}
 
 	const callers = 100
 	results := make([]ActionResult, callers)

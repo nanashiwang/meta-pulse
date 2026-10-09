@@ -14,7 +14,7 @@ import (
 	mysqlstore "github.com/nanashiwang/meta-pulse/internal/store/mysql"
 )
 
-func TestMySQLTicketGroupsRefusalsAndStaleSelection(t *testing.T) {
+func TestMySQLCurrentRuleAcrossTicketSourcesAndReplay(t *testing.T) {
 	database, db := openMySQLIntegration(t)
 	unit, _ := mysqlstore.NewUnitOfWork(database)
 	ctx := context.Background()
@@ -45,6 +45,8 @@ func TestMySQLTicketGroupsRefusalsAndStaleSelection(t *testing.T) {
 	now = base.Add(20 * 24 * time.Hour)
 	request.Key = key + "-new"
 	request.ExpectedPeriodID = old.PeriodID
+	request.QuotaValidityDays = 60
+	request.Rewards = []PeriodRewardSpec{{Key: "quota", Amount: 20, Weight: 1}, {Key: "exp", RewardType: ExperienceRewardType, Amount: 30, Weight: 3}}
 	fresh, e := creator.CreateFromAdmin(ctx, request, "test", request.Key)
 	if e != nil {
 		t.Fatal(e)
@@ -60,85 +62,173 @@ func TestMySQLTicketGroupsRefusalsAndStaleSelection(t *testing.T) {
 	rules := NewRewardRulesService(unit, true)
 	rules.SelectionSecret = secret
 	rules.now = func() time.Time { return now }
-	catalog, e := rules.GetForUser(ctx, user)
-	if e != nil || len(catalog.Groups) != 3 || catalog.Enabled {
-		t.Fatalf("groups: %+v %v", catalog, e)
-	}
-	find := func(id uint64, exp bool) TicketRuleGroup {
-		t.Helper()
-		catalog, e := rules.GetForUser(ctx, user)
-		if e != nil {
-			t.Fatal(e)
-		}
-		for _, g := range catalog.Groups {
-			if g.Period.ID == id && g.ExperienceOnly == exp {
-				return g
-			}
-		}
-		t.Fatalf("group missing: %d/%t", id, exp)
-		return TicketRuleGroup{}
-	}
-	oldMixed, oldExp, newMixed := find(old.PeriodID, false), find(old.PeriodID, true), find(fresh.PeriodID, false)
-	if oldMixed.Enabled || oldExp.Enabled || !newMixed.Enabled || oldMixed.TotalWeight != 2 || oldExp.TotalWeight != 1 || oldMixed.TicketCount != 2 || oldExp.TicketCount != 2 || newMixed.TicketCount != 3 || newMixed.NextLotRemaining != 2 {
-		t.Fatal("incorrect group/odds/capacity")
-	}
-	if oldMixed.Budgets[1].ID != oldExp.Budgets[0].ID {
-		t.Fatal("EXP budget duplicated by eligibility view")
+
+	view, e := rules.GetForUser(ctx, user)
+	if e != nil || !view.Enabled || !view.CanDrawFive || len(view.Draws) != 5 || view.TicketCount != 7 || view.Period.ID != fresh.PeriodID || view.TotalWeight != 4 {
+		t.Fatalf("unified view: %+v %v", view, e)
 	}
 	action, _ := NewActionService(unit, ActionConfig{RandomSecret: secret, RequireVerifiedFunding: true, Now: func() time.Time { return now }})
 	command := func(id, selection string) ActionCommand {
-		return ActionCommand{ProtocolVersion: 2, Selection: selection, UserID: user, ActionID: key + id, IdempotencyKey: key + id, TriggerType: ActionTriggerType}
+		return ActionCommand{ProtocolVersion: 3, Selection: selection, UserID: user, ActionID: key + id, IdempotencyKey: key + id, TriggerType: ActionTriggerType}
 	}
-	refused := command("-refusal", oldMixed.Selection)
+	// A wait crossing the original deadline still rejects before financial writes.
+	clockCalls := 0
+	boundary, _ := NewActionService(unit, ActionConfig{RandomSecret: secret, Now: func() time.Time {
+		clockCalls++
+		if clockCalls == 1 {
+			return now
+		}
+		return view.Draws[0].QuotaExpiresAt
+	}})
+	if _, e = boundary.Execute(ctx, command("-boundary", view.Selection)); !errors.Is(e, ErrSelectionChanged) {
+		t.Fatalf("deadline: %v", e)
+	}
+	foreign := command("-foreign", view.Selection)
+	foreign.UserID++
+	if _, e = action.Execute(ctx, foreign); !errors.Is(e, ErrSelectionChanged) {
+		t.Fatalf("foreign: %v", e)
+	}
+	if _, e = action.Execute(ctx, command("-tamper", view.Selection+"a")); !errors.Is(e, ErrSelectionChanged) {
+		t.Fatalf("tamper: %v", e)
+	}
+	for _, version := range []int{0, 2} {
+		legacy := command(fmt.Sprintf("-unsubmitted-v%d", version), view.Selection)
+		legacy.ProtocolVersion = version
+		if version == 0 {
+			legacy.Selection = ""
+		}
+		if _, e = action.Execute(ctx, legacy); !errors.Is(e, ErrSelectionRequired) {
+			t.Fatalf("legacy reinterpreted: %v", e)
+		}
+	}
+	// One five-draw plan spans two source rules and three issuance lots, all at
+	// the latest odds. Exhausted old budgets must never block these old tickets.
+	var first ActionResult
+	firstCmd := command("-draw-0", view.Draws[0].Selection)
+	sourceIDs := map[uint64]bool{}
+	for i, draw := range view.Draws {
+		choice, err := verifySelection(secret, user, draw.Selection)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sourceIDs[choice.SourcePeriodID] = true
+		got, err := action.Execute(ctx, command(fmt.Sprintf("-draw-%d", i), draw.Selection))
+		if err != nil || got.PeriodID != fresh.PeriodID || (got.Amount != 20 && got.Amount != 30) {
+			t.Fatalf("latest rule draw: %+v %v", got, err)
+		}
+		if i == 0 {
+			first = got
+		}
+	}
+	if len(sourceIDs) != 2 {
+		t.Fatal("five draw did not span source rules")
+	}
+	var oldReserved, newReserved int64
+	db.QueryRow("SELECT SUM(reserved_amount) FROM pulse_reward_budget WHERE period_id=?", old.PeriodID).Scan(&oldReserved)
+	db.QueryRow("SELECT SUM(reserved_amount) FROM pulse_reward_budget WHERE period_id=?", fresh.PeriodID).Scan(&newReserved)
+	if oldReserved != 0 || newReserved < 100 {
+		t.Fatalf("budget ownership %d/%d", oldReserved, newReserved)
+	}
+	// New 60-day settings cannot revive tickets originally issued for 30 days.
+	expired, e := rules.GetForUser(ctx, user)
+	if e != nil || !expired.ExperienceOnly || expired.TicketCount != 2 || len(expired.Rewards) != 1 || expired.Rewards[0].Amount != 30 || !expired.QuotaExpiresAt.Equal(base.Add(30*24*time.Hour)) {
+		t.Fatalf("original validity: %+v %v", expired, e)
+	}
+	changed := firstCmd
+	changed.Selection = expired.Selection
+	if _, e = action.Execute(ctx, changed); !errors.Is(e, ledger.ErrIdempotencyConflict) {
+		t.Fatalf("selection fingerprint %v", e)
+	}
+	changed = firstCmd
+	changed.ProtocolVersion = 2
+	if _, e = action.Execute(ctx, changed); !errors.Is(e, ledger.ErrIdempotencyConflict) {
+		t.Fatalf("protocol fingerprint %v", e)
+	}
+	// Publishing a rule invalidates an unsubmitted preview, not committed results.
+	now = now.Add(time.Second)
+	request.Key = key + "-third"
+	request.ExpectedPeriodID = fresh.PeriodID
+	request.Rewards[1].Amount = 40
+	// Pause after legacy reads established a snapshot, before the publication
+	// mutex. The creator commits while this request is in flight.
+	ready, resume := make(chan struct{}), make(chan struct{})
+	gated, _ := NewActionService(gatedRuleUnit{unit, ready, resume}, ActionConfig{RandomSecret: secret, Now: func() time.Time { return now }})
+	inFlight := make(chan error, 1)
+	go func() { _, err := gated.Execute(ctx, command("-in-flight", expired.Selection)); inFlight <- err }()
+	select {
+	case <-ready:
+	case <-time.After(5 * time.Second):
+		t.Fatal("action did not reach rule mutex")
+	}
+	newest, e := creator.CreateFromAdmin(ctx, request, "test", request.Key)
+	if e != nil {
+		t.Fatal(e)
+	}
+	close(resume)
+	if err := <-inFlight; !errors.Is(err, ErrSelectionChanged) {
+		t.Fatalf("stale transaction snapshot used old rule: %v", err)
+	}
+	t.Cleanup(func() { db.Exec("DELETE FROM pulse_period WHERE id=?", newest.PeriodID) })
+	stale := command("-stale", expired.Selection)
+	if _, e = action.Execute(ctx, stale); !errors.Is(e, ErrSelectionChanged) {
+		t.Fatalf("stale current rule: %v", e)
+	}
+	action.secret = []byte("rotated")
+	action.cfg.DisableNewActions = true
+	for i := 0; i < 100; i++ {
+		got, err := action.Execute(ctx, firstCmd)
+		if err != nil || got != first {
+			t.Fatalf("committed replay: %+v %v", got, err)
+		}
+	}
+	action.secret = secret
+	action.cfg.DisableNewActions = false
+	current, e := rules.GetForUser(ctx, user)
+	if e != nil || current.Rewards[0].Amount != 40 {
+		t.Fatalf("latest EXP: %+v %v", current, e)
+	}
+	if _, e = db.Exec("UPDATE pulse_reward_budget SET settled_amount=hard_cap WHERE period_id=? AND budget_type='community_exp'", newest.PeriodID); e != nil {
+		t.Fatal(e)
+	}
+	refused := command("-budget", current.Selection)
 	if _, e = action.Execute(ctx, refused); !errors.Is(e, ErrBudgetExceeded) {
-		t.Fatalf("old budget: %v", e)
+		t.Fatalf("new budget limit: %v", e)
 	}
 	var receipts int
-	if e = db.QueryRow("SELECT COUNT(*) FROM pulse_idempotency WHERE scope IN (?,?) AND resource_type='action_refusal' AND response_status=409", fmt.Sprintf("pulse_action_identity:%d", user), fmt.Sprintf("pulse_action_request:%d", user)).Scan(&receipts); e != nil || receipts != 2 {
-		t.Fatalf("refusal not committed: %d %v", receipts, e)
+	db.QueryRow("SELECT COUNT(*) FROM pulse_idempotency WHERE scope IN (?,?) AND idempotency_key=? AND resource_type='action_refusal' AND response_status=409", fmt.Sprintf("pulse_action_identity:%d", user), fmt.Sprintf("pulse_action_request:%d", user), refused.ActionID).Scan(&receipts)
+	if receipts != 2 {
+		t.Fatalf("refusals not committed: %d", receipts)
 	}
-	// A new group is usable while the old one is still paused.
-	newCmd := command("-new-draw", newMixed.Selection)
-	first, e := action.Execute(ctx, newCmd)
-	if e != nil || first.PeriodID != fresh.PeriodID {
-		t.Fatalf("old group blocked new: %+v %v", first, e)
-	}
-	changed := newCmd
-	changed.Selection = oldExp.Selection
-	if _, e = action.Execute(ctx, changed); !errors.Is(e, ledger.ErrIdempotencyConflict) {
-		t.Fatalf("changed selection: %v", e)
-	}
-	changed = newCmd
-	changed.ProtocolVersion = 0
-	changed.Selection = ""
-	if _, e = action.Execute(ctx, changed); !errors.Is(e, ledger.ErrIdempotencyConflict) {
-		t.Fatalf("downgrade fingerprint: %v", e)
-	}
-	// Fixtures may replenish counters; immutable limits and rules stay untouched.
-	if _, e = db.Exec("UPDATE pulse_reward_budget SET settled_amount=0 WHERE period_id=? AND budget_type='community_exp'", old.PeriodID); e != nil {
+	if _, e = db.Exec("UPDATE pulse_reward_budget SET settled_amount=0 WHERE period_id=? AND budget_type='community_exp'", newest.PeriodID); e != nil {
 		t.Fatal(e)
 	}
 	for i := 0; i < 100; i++ {
 		retry := refused
-		if i > 0 {
-			retry.IdempotencyKey = fmt.Sprintf("%s-alias-%d", key, i)
-		}
+		retry.IdempotencyKey = fmt.Sprintf("%s-budget-alias-%d", key, i)
 		if _, e = action.Execute(ctx, retry); !errors.Is(e, ErrBudgetExceeded) {
-			t.Fatalf("refusal changed after recovery: %v", e)
+			t.Fatalf("refusal replay: %v", e)
 		}
 	}
-	if _, e = action.Execute(ctx, command("-reconfirmed", oldMixed.Selection)); e != nil {
+	rollbackErr := errors.New("simulated commit failure")
+	broken, _ := NewActionService(rollbackSelectionUnit{unit, rollbackErr}, ActionConfig{RandomSecret: secret, DisableNewActions: true})
+	rollbackCmd := command("-rollback", current.Selection)
+	if _, e = broken.Execute(ctx, rollbackCmd); !errors.Is(e, rollbackErr) {
 		t.Fatal(e)
 	}
-	// Two actions race for the final ticket of the selected batch. A later batch
-	// in the SAME group must not be silently selected by the losing request.
+	db.QueryRow("SELECT COUNT(*) FROM pulse_idempotency WHERE scope=? AND idempotency_key=?", fmt.Sprintf("pulse_action_identity:%d", user), rollbackCmd.ActionID).Scan(&receipts)
+	if receipts != 0 {
+		t.Fatal("refusal survived rollback")
+	}
+	if _, e = action.Execute(ctx, rollbackCmd); e != nil {
+		t.Fatal(e)
+	}
 	var wg sync.WaitGroup
 	failures := make([]error, 2)
 	for i := range failures {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			_, failures[i] = action.Execute(ctx, command(fmt.Sprintf("-race-%d", i), newMixed.Selection))
+			_, failures[i] = action.Execute(ctx, command(fmt.Sprintf("-race-%d", i), current.Selection))
 		}(i)
 	}
 	wg.Wait()
@@ -151,76 +241,38 @@ func TestMySQLTicketGroupsRefusalsAndStaleSelection(t *testing.T) {
 		}
 	}
 	if successes != 1 {
-		t.Fatalf("batch race: %v", failures)
+		t.Fatalf("last ticket race: %v", failures)
 	}
-	after := find(fresh.PeriodID, false)
-	if after.TicketCount != 1 || after.Selection == newMixed.Selection {
-		t.Fatal("later batch not exposed as a new choice")
-	}
-	// Lock waits can cross a deadline after the initial validation.
-	clockCalls := 0
-	boundaryAction, _ := NewActionService(unit, ActionConfig{RandomSecret: secret, Now: func() time.Time {
-		clockCalls++
-		if clockCalls == 1 {
-			return now
-		}
-		return *after.QuotaExpiresAt
-	}})
-	if _, e = boundaryAction.Execute(ctx, command("-wait-crossed-expiry", after.Selection)); !errors.Is(e, ErrSelectionChanged) {
-		t.Fatalf("lock wait crossed expiry: %v", e)
-	}
-	// Authentication and integrity must be checked even for a structurally valid token.
-	foreign := command("-foreign", after.Selection)
-	foreign.UserID++
-	if _, e = action.Execute(ctx, foreign); !errors.Is(e, ErrSelectionChanged) {
-		t.Fatalf("foreign selection: %v", e)
-	}
-	tampered := command("-tampered", after.Selection+"a")
-	if _, e = action.Execute(ctx, tampered); !errors.Is(e, ErrSelectionChanged) {
-		t.Fatalf("tampered selection: %v", e)
-	}
-	legacy := command("-legacy-unsubmitted", "")
-	legacy.ProtocolVersion = 0
-	if _, e = action.Execute(ctx, legacy); !errors.Is(e, ErrSelectionRequired) {
-		t.Fatalf("legacy guessed a choice: %v", e)
-	}
-	// A mixed preview cannot turn into an EXP request, even at the exact deadline.
-	now = *after.QuotaExpiresAt
-	expiry := command("-expiry", after.Selection)
-	if _, e = action.Execute(ctx, expiry); !errors.Is(e, ErrSelectionChanged) {
-		t.Fatalf("expiry silently switched mode: %v", e)
-	}
-	action.secret = []byte("rotated-root")
-	action.cfg.DisableNewActions = true
-	for i := 0; i < 100; i++ {
-		got, err := action.Execute(ctx, newCmd)
-		if err != nil || got != first {
-			t.Fatalf("response loss recovery: %+v %v", got, err)
-		}
-	}
-	// A transaction rollback must not produce a persistent no-charge receipt.
-	action.secret = secret
-	action.cfg.DisableNewActions = false
-	expired := find(fresh.PeriodID, true)
-	rollbackErr := errors.New("simulated commit failure")
-	broken, _ := NewActionService(rollbackSelectionUnit{unit, rollbackErr}, ActionConfig{RandomSecret: secret, DisableNewActions: true})
-	rollbackCmd := command("-rollback", expired.Selection)
-	if _, e = broken.Execute(ctx, rollbackCmd); !errors.Is(e, rollbackErr) {
-		t.Fatal(e)
-	}
-	if e = db.QueryRow("SELECT COUNT(*) FROM pulse_idempotency WHERE scope=? AND idempotency_key=?", fmt.Sprintf("pulse_action_identity:%d", user), rollbackCmd.ActionID).Scan(&receipts); e != nil || receipts != 0 {
-		t.Fatalf("rolled back refusal remained: %d %v", receipts, e)
-	}
-	if _, e = action.Execute(ctx, rollbackCmd); e != nil {
-		t.Fatalf("rollback was cached as refusal: %v", e)
-	}
-	// Cross-check ledger, allocations and immutable grants after all failures.
 	var grants, spends, allocations int
 	db.QueryRow("SELECT COUNT(*) FROM pulse_reward_grant WHERE user_id=?", user).Scan(&grants)
 	db.QueryRow("SELECT COUNT(*) FROM pulse_ledger_entry WHERE user_id=? AND operation='ticket_spend'", user).Scan(&spends)
 	db.QueryRow("SELECT COUNT(*) FROM pulse_ticket_allocation a JOIN pulse_ticket_lot l ON l.id=a.lot_id WHERE l.user_id=?", user).Scan(&allocations)
-	if grants != 4 || spends != grants || allocations != grants {
-		t.Fatalf("facts diverged: %d/%d/%d", grants, spends, allocations)
+	if grants != 7 || spends != grants || allocations != grants {
+		t.Fatalf("facts diverged %d/%d/%d", grants, spends, allocations)
+	}
+	// The old ticket account is still debited under its origin, so rebuilding
+	// accounts from immutable ledger entries remains exact after cross-rule draws.
+	if e = unit.Do(ctx, func(r ports.Repositories) error {
+		accounts, err := r.Account.ListForUser(ctx, user)
+		if err != nil {
+			return err
+		}
+		for _, a := range accounts {
+			entries, err := r.Ledger.ListAccountEntries(ctx, user, a.PeriodID, a.AssetType)
+			if err != nil {
+				return err
+			}
+			rebuilt, err := ledger.Rebuild(ledger.Account{UserID: user, PeriodID: a.PeriodID, AssetType: a.AssetType}, entries)
+			if err != nil {
+				return err
+			}
+			if rebuilt.Balance != a.Balance {
+				t.Fatal("account/ledger mismatch")
+			}
+		}
+		return nil
+	}); e != nil {
+		t.Fatal(e)
 	}
 }
 
@@ -236,4 +288,34 @@ func (u rollbackSelectionUnit) Do(ctx context.Context, fn func(ports.Repositorie
 		}
 		return u.failure
 	})
+}
+
+// Gate only the rule mutex; business reads and writes remain real MySQL calls.
+type gatedRuleUnit struct {
+	ports.UnitOfWork
+	ready, resume chan struct{}
+}
+
+func (u gatedRuleUnit) Do(ctx context.Context, fn func(ports.Repositories) error) error {
+	return u.UnitOfWork.Do(ctx, func(r ports.Repositories) error {
+		r.Idempotency = gatedRuleIdempotency{r.Idempotency, u.ready, u.resume}
+		return fn(r)
+	})
+}
+
+type gatedRuleIdempotency struct {
+	ports.IdempotencyRepository
+	ready, resume chan struct{}
+}
+
+func (r gatedRuleIdempotency) GetOrCreateForUpdate(ctx context.Context, scope, key, hash string) (ports.IdempotencyRecord, error) {
+	if scope == "period_create_lock" {
+		close(r.ready)
+		select {
+		case <-r.resume:
+		case <-ctx.Done():
+			return ports.IdempotencyRecord{}, ctx.Err()
+		}
+	}
+	return r.IdempotencyRepository.GetOrCreateForUpdate(ctx, scope, key, hash)
 }

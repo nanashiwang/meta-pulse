@@ -14,7 +14,7 @@ import (
 func TestPausedActionsReplayCommittedResultButRejectNew(t *testing.T) {
 	store, rewards, idem := setupActionStore()
 	s := newActionService(t, store, rewards, idem)
-	command := ActionCommand{ProtocolVersion: 2, Selection: fixtureSelection(), UserID: 9, ActionID: "original", TriggerType: "pulse", IdempotencyKey: "key"}
+	command := ActionCommand{ProtocolVersion: 3, Selection: fixtureSelection(), UserID: 9, ActionID: "original", TriggerType: "pulse", IdempotencyKey: "key"}
 	first, err := s.Execute(context.Background(), command)
 	if err != nil {
 		t.Fatal(err)
@@ -39,7 +39,7 @@ func TestLegacyTicketsCannotEnterVerifiedRewardPeriod(t *testing.T) {
 	store, rewards, idem := setupActionStore()
 	s := newActionService(t, store, rewards, idem)
 	s.cfg.RequireVerifiedFunding = true
-	command := ActionCommand{ProtocolVersion: 2, Selection: fixtureSelection(), UserID: 9, ActionID: "new", TriggerType: "pulse", IdempotencyKey: "new"}
+	command := ActionCommand{ProtocolVersion: 3, Selection: fixtureSelection(), UserID: 9, ActionID: "new", TriggerType: "pulse", IdempotencyKey: "new"}
 	if _, err := s.Execute(context.Background(), command); !errors.Is(err, ErrActionsUnavailable) {
 		t.Fatalf("err=%v", err)
 	}
@@ -58,7 +58,7 @@ func TestBudgetStopsWholePoolWithoutChangingProbabilities(t *testing.T) {
 	s := newActionService(t, store, rewards, idem)
 	rewards.definitions = append(rewards.definitions, reward.Definition{ID: 3, RewardKey: "large", RewardType: "quota", Amount: 101, Weight: 1, ConfigVersion: "v1", Enabled: true})
 	for i := 0; i < 100; i++ {
-		_, err := s.Execute(context.Background(), ActionCommand{ProtocolVersion: 2, Selection: fixtureSelection(), UserID: 9, ActionID: "attempt", TriggerType: "pulse", IdempotencyKey: "attempt"})
+		_, err := s.Execute(context.Background(), ActionCommand{ProtocolVersion: 3, Selection: fixtureSelection(), UserID: 9, ActionID: "attempt", TriggerType: "pulse", IdempotencyKey: "attempt"})
 		if !errors.Is(err, ErrBudgetExceeded) {
 			t.Fatalf("err=%v", err)
 		}

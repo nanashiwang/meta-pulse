@@ -237,13 +237,25 @@ func (r *cursorRepository) Save(ctx context.Context, cursor ports.Cursor) error 
 }
 
 func (r *periodRepository) FindActiveAt(ctx context.Context, at time.Time) (period.Period, error) {
+	return r.findActiveAt(ctx, at, false)
+}
+
+func (r *periodRepository) FindActiveAtCurrent(ctx context.Context, at time.Time) (period.Period, error) {
+	return r.findActiveAt(ctx, at, true)
+}
+
+func (r *periodRepository) findActiveAt(ctx context.Context, at time.Time, current bool) (period.Period, error) {
 	var models []periodModel
 	location, locationErr := time.LoadLocation("Asia/Shanghai")
 	if locationErr != nil {
 		location = time.FixedZone("CST", 8*60*60)
 	}
 	queryAt := at.In(location)
-	if err := r.db.WithContext(ctx).Where("status = ? AND starts_at <= ? AND ends_at > ?", period.StatusActive, queryAt, queryAt).Order("id ASC").Find(&models).Error; err != nil {
+	query := r.db.WithContext(ctx)
+	if current {
+		query = query.Clauses(clause.Locking{Strength: "SHARE"})
+	}
+	if err := query.Where("status = ? AND starts_at <= ? AND ends_at > ?", period.StatusActive, queryAt, queryAt).Order("id ASC").Find(&models).Error; err != nil {
 		return period.Period{}, fmt.Errorf("find active period: %w", err)
 	}
 	periods := make([]period.Period, len(models))

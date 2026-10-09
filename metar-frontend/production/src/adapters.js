@@ -184,10 +184,10 @@
       try {
         const value = JSON.parse(window.sessionStorage.getItem(this.key) || 'null');
         const valid = item => item && /^[a-f0-9-]{36}$/.test(item.actionId) && item.actionId === item.idempotencyKey
-          && ((item.protocolVersion === undefined && item.selection === undefined) || (item.protocolVersion === 2 && typeof item.selection === 'string' && item.selection.length > 0 && item.selection.length <= 1024));
+          && ((item.protocolVersion === undefined && item.selection === undefined) || ([2,3].includes(item.protocolVersion) && typeof item.selection === 'string' && item.selection.length > 0 && item.selection.length <= 1024));
         if (value === null) return null;
-        if (valid(value) && (!value.actions || ([1, 5].includes(value.actions.length) && value.actions.every(item => valid(item) && item.selection === value.selection && item.protocolVersion === value.protocolVersion)
-          && value.actions[0].actionId === value.actionId && new Set(value.actions.map(item => item.actionId)).size === value.actions.length))) return value;
+        if (valid(value) && (!value.actions || ([1, 5].includes(value.actions.length) && value.actions.every(item => valid(item) && item.protocolVersion === value.protocolVersion && (value.protocolVersion === 3 || item.selection === value.selection))
+          && value.actions[0].selection === value.selection && value.actions[0].actionId === value.actionId && new Set(value.actions.map(item => item.actionId)).size === value.actions.length))) return value;
         throw new Error('Invalid saved operation');
       } catch (_) { throw new AdapterError('无法读取原抽奖请求，请恢复站点存储后重试', { code: 'storage_unavailable' }); }
     }
@@ -195,8 +195,9 @@
       const previous = this.read();
       if (previous) return previous;
       if (![1, 5].includes(count)) throw new AdapterError('invalid draw count', { code: 'invalid_request' });
-      if (choice?.selection_version !== 2 || typeof choice.selection !== 'string' || !choice.selection || choice.selection.length > 1024) throw new AdapterError('select ticket group', {code:'selection_required'});
-      const actions = Array.from({length: count}, () => { const id = window.crypto.randomUUID(); return { actionId: id, idempotencyKey: id, protocolVersion: 2, selection: choice.selection }; });
+      const selections = choice?.draws?.slice(0, count);
+      if (choice?.selection_version !== 3 || !Array.isArray(selections) || selections.length !== count || selections.some(draw => typeof draw.selection !== 'string' || !draw.selection || draw.selection.length > 1024)) throw new AdapterError('refresh current reward rules', {code:'selection_required'});
+      const actions = selections.map(draw => { const id = window.crypto.randomUUID(); return {actionId:id,idempotencyKey:id,protocolVersion:3,selection:draw.selection}; });
       const value = count === 1 ? actions[0] : { ...actions[0], actions };
       try { window.sessionStorage.setItem(this.key, JSON.stringify(value)); }
       catch (_) { throw new AdapterError('无法保存本次请求，请允许站点存储后重试', { code: 'storage_unavailable' }); }
@@ -280,7 +281,7 @@
       try {
         const response = await fetch(`/metar/api/pulse/${path}`, {
           method: options.operation ? 'POST' : 'GET', headers, credentials: 'same-origin', redirect: 'error', signal: controller.signal,
-          ...(options.operation ? { body: JSON.stringify({ action_id: options.operation.actionId, ...(options.operation.protocolVersion === 2 ? {protocol_version: 2, selection: options.operation.selection} : {}) }) } : {}),
+          ...(options.operation ? { body: JSON.stringify({ action_id: options.operation.actionId, ...([2,3].includes(options.operation.protocolVersion) ? {protocol_version: options.operation.protocolVersion, selection: options.operation.selection} : {}) }) } : {}),
         });
         let payload;
         try { payload = await response.json(); } catch (_) { throw new AdapterError('暂时无法确认奖励状态，请查询原请求', { code: options.operation ? 'action_pending' : 'invalid_response' }); }

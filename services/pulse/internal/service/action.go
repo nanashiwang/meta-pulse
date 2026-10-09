@@ -225,7 +225,7 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 			result = actionResultFromGrant(grants[0])
 			return saveResult()
 		}
-		if command.ProtocolVersion != 2 || command.Selection == "" {
+		if command.ProtocolVersion != 3 || command.Selection == "" {
 			return refuse(ErrSelectionRequired)
 		}
 		if s.cfg.DisableNewActions {
@@ -235,12 +235,15 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 		if err != nil {
 			return refuse(err)
 		}
+		if err := lockRewardRule(ctx, repos.Idempotency); err != nil {
+			return err
+		}
 		now := s.cfg.Now()
-		activity, lot, err := selectedTicket(ctx, repos, choice, command.UserID, now)
+		activity, source, lot, err := selectedTicket(ctx, repos, choice, command.UserID, now)
 		if err != nil {
 			return refuse(err)
 		}
-		if s.cfg.RequireVerifiedFunding && (activity.FundingPolicy != period.VerifiedPaidFunding || activity.TicketThresholdMilli <= 0) {
+		if s.cfg.RequireVerifiedFunding && (activity.FundingPolicy != period.VerifiedPaidFunding || activity.TicketThresholdMilli <= 0 || source.FundingPolicy != period.VerifiedPaidFunding || source.TicketThresholdMilli <= 0) {
 			return refuse(ErrActionsUnavailable)
 		}
 		definitions, err := repos.Reward.ListDefinitions(ctx, activity.ID)
@@ -261,7 +264,7 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 		if err != nil {
 			return err
 		}
-		ticketAccount, err := repos.Account.GetOrCreateForUpdate(ctx, command.UserID, activity.ID, ledger.AssetTicket)
+		ticketAccount, err := repos.Account.GetOrCreateForUpdate(ctx, command.UserID, source.ID, ledger.AssetTicket)
 		if err != nil {
 			return err
 		}
@@ -303,16 +306,19 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 		// User/account/budget locks may have waited across a deadline. Recheck
 		// after all of them, immediately before the first financial write.
 		decisionAt := s.cfg.Now()
-		if !activity.Contains(decisionAt) || (lot != nil && (!decisionAt.Before(lot.QuotaExpiresAt)) != choice.ExperienceOnly) {
+		if !activity.Contains(decisionAt) || (!source.Continuous && !source.Contains(decisionAt)) || (lot != nil && (!decisionAt.Before(lot.QuotaExpiresAt)) != choice.ExperienceOnly) {
 			return refuse(ErrSelectionChanged)
 		}
 		grantID := reward.GrantID(activity.ID, command.UserID, command.ActionID)
-		var ticketMetadata []byte
+		metadata := map[string]any{"selection_version": 3, "reward_period_id": activity.ID, "reward_config_version": activity.ConfigVersion, "experience_only": choice.ExperienceOnly}
 		if lot != nil {
-			ticketMetadata, _ = json.Marshal(map[string]any{"ticket_lot_version": 1, "mint_entry_id": lot.MintEntryID, "ticket_lot_id": lot.ID, "selection_version": 2, "experience_only": choice.ExperienceOnly})
+			metadata["ticket_lot_version"] = 1
+			metadata["mint_entry_id"] = lot.MintEntryID
+			metadata["ticket_lot_id"] = lot.ID
 		}
+		ticketMetadata, _ := json.Marshal(metadata)
 		spentEntry, err := appendEntry(ctx, repos, ledger.Entry{
-			UserID: command.UserID, PeriodID: activity.ID, AssetType: ledger.AssetTicket,
+			UserID: command.UserID, PeriodID: source.ID, AssetType: ledger.AssetTicket,
 			Operation: ledger.OperationTicketSpend, Amount: -1, SourceType: "pulse_action",
 			SourceRef: command.ActionID, IdempotencyKey: "ticket-spend:" + grantID,
 			PayloadHash: payloadHash, Reason: "pulse action", MetadataJSON: ticketMetadata,
@@ -328,7 +334,7 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 				return err
 			}
 		}
-		stat, err := repos.UserPeriod.GetOrCreateForUpdate(ctx, command.UserID, activity.ID)
+		stat, err := repos.UserPeriod.GetOrCreateForUpdate(ctx, command.UserID, source.ID)
 		if err != nil {
 			return err
 		}
@@ -465,7 +471,7 @@ func actionResultFromGrant(grant ports.RewardGrant) ActionResult {
 	return ActionResult{GrantID: grant.GrantID, PeriodID: grant.PeriodID, UserID: grant.UserID, ActionID: grant.ActionID, RewardType: grant.RewardType, Amount: grant.Amount, RandomValue: grant.RandomValue, ConfigVersion: grant.ConfigVersion, Status: grant.Status, TransferableQuota: false}
 }
 
-// Expired tickets use the experience sub-pool recorded when they were minted.
+// Expired tickets use the experience sub-pool of the current reward rule.
 func experienceOnly(definitions []reward.Definition) []reward.Definition {
 	result := make([]reward.Definition, 0, len(definitions))
 	for _, d := range definitions {

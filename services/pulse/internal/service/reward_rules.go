@@ -33,18 +33,21 @@ type RuleBudgetStatus struct {
 	Available bool   `json:"available"`
 	Unlimited bool   `json:"unlimited"`
 }
-type TicketRuleGroup struct {
-	RewardRules
-	ID               string             `json:"id"`
-	TicketCount      int64              `json:"ticket_count"`
-	NextLotRemaining int64              `json:"next_lot_remaining"`
-	Selection        string             `json:"selection"`
-	Budgets          []RuleBudgetStatus `json:"budgets"`
+type DrawChoice struct {
+	Selection      string    `json:"selection"`
+	ExperienceOnly bool      `json:"experience_only"`
+	QuotaExpiresAt time.Time `json:"quota_expires_at"`
 }
 type RewardRules struct {
-	SelectionVersion int               `json:"selection_version"`
-	QueriedAt        time.Time         `json:"queried_at"`
-	Groups           []TicketRuleGroup `json:"groups,omitempty"`
+	SelectionVersion      int                `json:"selection_version"`
+	QueriedAt             time.Time          `json:"queried_at"`
+	TicketCount           int64              `json:"ticket_count"`
+	Selection             string             `json:"selection,omitempty"`
+	Draws                 []DrawChoice       `json:"draws"`
+	CanDrawFive           bool               `json:"can_draw_five"`
+	Budgets               []RuleBudgetStatus `json:"budgets"`
+	ExperienceRewards     []PublicReward     `json:"experience_rewards"`
+	ExperienceTotalWeight uint64             `json:"experience_total_weight"`
 
 	QuotaValidityDays int        `json:"quota_validity_days"`
 	QuotaExpiresAt    *time.Time `json:"quota_expires_at,omitempty"`
@@ -77,101 +80,148 @@ func (s *RewardRulesService) GetForUser(ctx context.Context, userID uint64) (Rew
 }
 func (s *RewardRulesService) get(ctx context.Context, userID uint64) (RewardRules, error) {
 	now := s.now()
-	result := RewardRules{SelectionVersion: 2, QueriedAt: now, QuotaPerUnit: s.QuotaPerUnit, TicketCost: 1, Rewards: []PublicReward{}, UnavailableReason: "selection_required"}
+	result := RewardRules{SelectionVersion: 3, QueriedAt: now, QuotaPerUnit: s.QuotaPerUnit, TicketCost: 1, Rewards: []PublicReward{}, UnavailableReason: "no_active_period"}
 	err := s.unit.Do(ctx, func(repos ports.Repositories) error {
 		if repos.Period == nil || repos.Reward == nil {
 			return errors.New("reward repositories unavailable")
 		}
+		current, err := repos.Period.FindActiveAt(ctx, now)
+		if errors.Is(err, period.ErrNoActivePeriod) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		result, result.Budgets, err = s.ruleView(ctx, repos, current, nil, now)
+		if err != nil {
+			return err
+		}
 		if userID == 0 {
-			p, err := repos.Period.FindActiveAt(ctx, now)
-			if errors.Is(err, period.ErrNoActivePeriod) {
-				result.UnavailableReason = "no_active_period"
-				return nil
-			}
-			if err != nil {
-				return err
-			}
-			view, _, err := s.ruleView(ctx, repos, p, nil, now)
-			result = view
-			// A generic rules read cannot authorize a draw without a personal choice.
 			result.Enabled = false
 			result.UnavailableReason = "selection_required"
-			return err
+			return nil
 		}
 		if repos.Tickets == nil || repos.Account == nil {
 			return errors.New("ticket repositories unavailable")
 		}
-		if err := repos.Tickets.LockUser(ctx, userID); err != nil {
-			return err
-		}
-		groups, err := repos.Tickets.Groups(ctx, userID, now)
-		if err != nil {
-			return err
-		}
+		// All preview reads share the same DB snapshot. No ticket or budget is reserved.
 		accounts, err := repos.Account.ListForUser(ctx, userID)
 		if err != nil {
 			return err
 		}
-		periods := map[uint64]period.Period{}
-		for _, a := range accounts {
-			if a.AssetType != ledger.AssetTicket || a.Balance <= 0 {
+		type candidate struct {
+			source          period.Period
+			lot             *ports.TicketLot
+			remaining       int64
+			earned, expires time.Time
+		}
+		candidates := []candidate{}
+		sources := map[uint64]period.Period{}
+		var total int64
+		for _, account := range accounts {
+			if account.AssetType != ledger.AssetTicket || account.Balance <= 0 {
 				continue
 			}
-			p, err := repos.Tickets.Period(ctx, a.PeriodID)
+			source, err := repos.Tickets.Period(ctx, account.PeriodID)
 			if err != nil {
 				return err
 			}
-			periods[p.ID] = p
-			if !p.Continuous {
-				groups = append(groups, ports.TicketGroup{PeriodID: p.ID, Remaining: a.Balance})
+			if source.FundingPolicy != period.VerifiedPaidFunding || source.TicketThresholdMilli <= 0 {
+				continue
+			}
+			if !source.Continuous && (source.Status != period.StatusActive || !source.Contains(now)) {
+				continue
+			}
+			if account.Balance > (1<<53)-1-total {
+				return errors.New("public ticket balance overflow")
+			}
+			total += account.Balance
+			sources[source.ID] = source
+			if !source.Continuous {
+				candidates = append(candidates, candidate{source: source, remaining: account.Balance, earned: source.StartsAt, expires: source.EndsAt})
 			}
 		}
-		sort.Slice(groups, func(i, j int) bool {
-			if groups[i].PeriodID != groups[j].PeriodID {
-				return groups[i].PeriodID > groups[j].PeriodID
-			}
-			return !groups[i].ExperienceOnly && groups[j].ExperienceOnly
-		})
-		for _, g := range groups {
-			if g.Remaining <= 0 || g.Remaining > (1<<53)-1 {
-				return errors.New("invalid ticket group balance")
-			}
-			p, ok := periods[g.PeriodID]
+		lots, err := repos.Tickets.PreviewLots(ctx, userID, now)
+		if err != nil {
+			return err
+		}
+		for i := range lots {
+			lot := &lots[i]
+			source, ok := sources[lot.PeriodID]
 			if !ok {
-				return errors.New("ticket group account missing")
+				return errors.New("ticket source account missing")
 			}
-			var lot *ports.TicketLot
-			if p.Continuous {
-				lot, err = repos.Tickets.NextInGroup(ctx, userID, p.ID, g.ExperienceOnly, now)
-				if err != nil {
-					return err
-				}
-				if lot == nil {
-					return errors.New("ticket group changed during read")
-				}
+			candidates = append(candidates, candidate{source: source, lot: lot, remaining: lot.Remaining, earned: lot.EarnedAt, expires: lot.QuotaExpiresAt})
+		}
+		sort.Slice(candidates, func(i, j int) bool {
+			a, b := candidates[i], candidates[j]
+			ae, be := !now.Before(a.expires), !now.Before(b.expires)
+			if ae != be {
+				return !ae
 			}
-			view, budgets, err := s.ruleView(ctx, repos, p, lot, now)
+			if !a.earned.Equal(b.earned) {
+				return a.earned.Before(b.earned)
+			}
+			if a.source.ID != b.source.ID {
+				return a.source.ID < b.source.ID
+			}
+			if a.lot != nil && b.lot != nil {
+				return a.lot.ID < b.lot.ID
+			}
+			return false
+		})
+		draws := []DrawChoice{}
+		for _, c := range candidates {
+			exp := !now.Before(c.expires)
+			token := signSelection(s.SelectionSecret, userID, current, c.lot, exp, c.source.ID)
+			for n := int64(0); n < c.remaining && len(draws) < 5; n++ {
+				draws = append(draws, DrawChoice{Selection: token, ExperienceOnly: exp, QuotaExpiresAt: c.expires})
+			}
+			if len(draws) == 5 {
+				break
+			}
+		}
+		if len(draws) > 0 {
+			// The first choice controls single-draw odds; the EXP table also describes
+			// any expired choices later in the five-draw plan.
+			viewLot := &ports.TicketLot{QuotaExpiresAt: draws[0].QuotaExpiresAt}
+			result, result.Budgets, err = s.ruleView(ctx, repos, current, viewLot, now)
 			if err != nil {
 				return err
 			}
-			remaining := g.Remaining
-			if lot != nil {
-				remaining = lot.Remaining
+			result.QuotaExpiresAt = &draws[0].QuotaExpiresAt
+			result.Selection = draws[0].Selection
+		}
+		expired := &ports.TicketLot{QuotaExpiresAt: now}
+		expView, _, err := s.ruleView(ctx, repos, current, expired, now)
+		if err != nil {
+			return err
+		}
+		result.ExperienceRewards = expView.Rewards
+		result.ExperienceTotalWeight = expView.TotalWeight
+		result.TicketCount = total
+		result.Draws = draws
+		result.CanDrawFive = result.Enabled && len(draws) == 5
+		for _, draw := range draws {
+			if draw.ExperienceOnly && !expView.Enabled {
+				result.CanDrawFive = false
 			}
-			group := TicketRuleGroup{RewardRules: view, ID: fmt.Sprintf("%d:%t", p.ID, g.ExperienceOnly), TicketCount: g.Remaining, NextLotRemaining: remaining, Budgets: budgets}
-			group.Selection = signSelection(s.SelectionSecret, userID, p, lot, g.ExperienceOnly)
-			if group.Selection == "" {
-				group.Enabled = false
-				group.UnavailableReason = "selection_required"
-			}
-			result.Groups = append(result.Groups, group)
+		}
+		if len(draws) == 0 {
+			result.Enabled = false
+			result.UnavailableReason = "insufficient_tickets"
+		}
+		if len(s.SelectionSecret) == 0 {
+			result.Enabled = false
+			result.CanDrawFive = false
+			result.UnavailableReason = "selection_required"
 		}
 		return nil
 	})
 	return result, err
 }
 func (s *RewardRulesService) ruleView(ctx context.Context, repos ports.Repositories, p period.Period, lot *ports.TicketLot, now time.Time) (RewardRules, []RuleBudgetStatus, error) {
-	result := RewardRules{SelectionVersion: 2, QueriedAt: now, QuotaPerUnit: s.QuotaPerUnit, TicketCost: 1, Rewards: []PublicReward{}, UnavailableReason: "activity_paused", QuotaValidityDays: p.QuotaValidityDays}
+	result := RewardRules{SelectionVersion: 3, QueriedAt: now, QuotaPerUnit: s.QuotaPerUnit, TicketCost: 1, Rewards: []PublicReward{}, UnavailableReason: "activity_paused", QuotaValidityDays: p.QuotaValidityDays}
 	budgets := []RuleBudgetStatus{}
 	if lot != nil {
 		result.QuotaExpiresAt = &lot.QuotaExpiresAt

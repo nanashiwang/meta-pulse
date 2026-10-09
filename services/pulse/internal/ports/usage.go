@@ -46,6 +46,7 @@ type CursorRepository interface {
 
 type PeriodRepository interface {
 	FindActiveAt(ctx context.Context, at time.Time) (period.Period, error)
+	FindActiveAtCurrent(ctx context.Context, at time.Time) (period.Period, error)
 }
 
 type EconomicsRepository interface {

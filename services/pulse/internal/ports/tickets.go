@@ -18,18 +18,12 @@ type TicketLot struct {
 	QuotaExpiresAt time.Time
 }
 
-type TicketGroup struct {
-	PeriodID       uint64
-	ExperienceOnly bool
-	Remaining      int64
-}
-
 type TicketRepository interface {
 	LockUser(context.Context, uint64) error
 	PendingContribution(context.Context, uint64) (int64, error)
 	Mint(context.Context, TicketLot) error
-	Groups(context.Context, uint64, time.Time) ([]TicketGroup, error)
-	NextInGroup(context.Context, uint64, uint64, bool, time.Time) (*TicketLot, error)
+	PreviewLots(context.Context, uint64, time.Time) ([]TicketLot, error)
+	LotForUpdate(context.Context, uint64) (*TicketLot, error)
 	Spend(context.Context, TicketLot, uint64) error
 	Period(context.Context, uint64) (period.Period, error)
 }

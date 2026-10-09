@@ -132,7 +132,7 @@ func (s *PeriodCreateService) Create(ctx context.Context, command PeriodCreateCo
 		}
 		// Serialize all CLI and web creations before checking intervals. The
 		// permanent row is only a transaction mutex, never an accounting fact.
-		if _, err := repos.Idempotency.GetOrCreateForUpdate(ctx, "period_create_lock", "global", "447cc9dbdc73a33ea5be9cef405e81ef56c4e23b9202238aee120a0078c2fb2a"); err != nil {
+		if err := lockRewardRule(ctx, repos.Idempotency); err != nil {
 			return err
 		}
 		var replay ports.IdempotencyRecord

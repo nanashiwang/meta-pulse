@@ -63,7 +63,7 @@ test('legacy list endpoint without continuous capability cannot enable the edito
  const html=await h.view.page();assert.match(html,/奖励配置暂不可用/);assert.doesNotMatch(html,/data-form="admin-period"/);
 });
 test('new backend displays continuous form with a thirty-day default',async()=>{
- const h=harness();h.context.fetch=async()=>({ok:true,status:200,json:async()=>({periods:[],continuous_supported:true,unlimited_quota_supported:true})});
+ const h=harness();h.context.fetch=async()=>({ok:true,status:200,json:async()=>({periods:[],continuous_supported:true,current_reward_rule_supported:true,unlimited_quota_supported:true})});
  const html=await h.view.page();assert.match(html,/name="quota_validity_days"[^>]*value="30"/);assert.doesNotMatch(html,/name="starts_at"/);
 });
 test('experience pool uses EXP budget independently and rejects accidental quota conversion',()=>{

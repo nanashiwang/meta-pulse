@@ -43,7 +43,7 @@ func TestMySQLExperienceDeliveryRecoveryAndReversal(t *testing.T) {
 		t.Fatal(err)
 	}
 	action, _ := NewActionService(unit, ActionConfig{RandomSecret: []byte("experience-integration-random"), RequireVerifiedFunding: true, Now: func() time.Time { return start.Add(time.Hour) }})
-	cmd := ActionCommand{ProtocolVersion: 2, Selection: signSelection(action.secret, user, period.Period{ID: p.PeriodID, ConfigVersion: key}, nil, false), UserID: user, ActionID: key, TriggerType: ActionTriggerType, IdempotencyKey: key}
+	cmd := ActionCommand{ProtocolVersion: 3, Selection: signSelection(action.secret, user, period.Period{ID: p.PeriodID, ConfigVersion: key}, nil, false), UserID: user, ActionID: key, TriggerType: ActionTriggerType, IdempotencyKey: key}
 	results := make([]ActionResult, 100)
 	errs := make([]error, 100)
 	var wg sync.WaitGroup

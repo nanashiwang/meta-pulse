@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 global.window = global;
 require('../src/adapters.js');
-const choice = {selection_version:2, selection:'server-choice'};
+const choice = {selection_version:3, draws:Array.from({length:5},(_,i)=>({selection:'server-choice-'+i}))};
 const { PulseOperation, PulseDrawSession, pulseActions, pulseRewardTier, AdapterError } = window.MetarAdapters;
 function storage() {
   const values = new Map();
@@ -95,20 +95,20 @@ test('five presentation tiers use exact boundaries without changing reward amoun
   assert.equal(pulseRewardTier(quota(10),0),'white');
 });
 
-test('new sessions require a server selection and all five requests preserve it after reload', async () => {
+test('new sessions preserve each of five cross-batch selections after reload', async () => {
   storage();
   const store = new PulseOperation('selection-user');
   assert.throws(()=>store.begin(),e=>e.code==='selection_required');
   const operation=store.begin(5,choice);
-  assert.ok(pulseActions(operation).every(a=>a.protocolVersion===2 && a.selection===choice.selection));
+  assert.ok(pulseActions(operation).every(a=>a.protocolVersion===3 && a.selection===choice.draws[pulseActions(operation).indexOf(a)].selection));
   assert.deepEqual(store.begin(5,{selection_version:2,selection:'another-group'}),operation);
   const restored=new PulseOperation('selection-user').read();
   const calls=[];
   await new PulseDrawSession({act:async a=>{calls.push(a);return {action_id:a.actionId,grant_id:a.actionId,amount:10,reward_type:'community_exp'};}},store).run(restored);
-  assert.ok(calls.every(a=>a.selection===choice.selection));
+  assert.ok(calls.every((a,i)=>a.selection===choice.draws[i].selection));
 });
 
-test('historical saved requests stay v1; mixed-selection saved batches fail closed', () => {
+test('historical saved requests stay v1; mixed protocol saved batches fail closed', () => {
   const values=storage(),store=new PulseOperation('legacy');
   const id=crypto.randomUUID();
   values.set(store.key,JSON.stringify({actionId:id,idempotencyKey:id}));
@@ -116,7 +116,7 @@ test('historical saved requests stay v1; mixed-selection saved batches fail clos
   assert.equal(store.begin(1,choice).selection,undefined);
   store.clear();
   const operation=store.begin(5,choice);
-  operation.actions[1].selection='different-group';
+  operation.actions[1].protocolVersion=2;
   values.set(store.key,JSON.stringify(operation));
   assert.throws(()=>store.read(),e=>e.code==='storage_unavailable');
 });

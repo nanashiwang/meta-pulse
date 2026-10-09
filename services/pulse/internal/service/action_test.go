@@ -195,7 +195,7 @@ func setupActionStore() (*memoryLedgerStore, *memoryRewardStore, *memoryIdempote
 func TestActionReplay100TimesHasOneTicketGrantAndRandom(t *testing.T) {
 	store, rewardStore, idem := setupActionStore()
 	action := newActionService(t, store, rewardStore, idem)
-	command := ActionCommand{ProtocolVersion: 2, Selection: fixtureSelection(), UserID: 9, ActionID: "action-1", TriggerType: "pulse", IdempotencyKey: "idem-1"}
+	command := ActionCommand{ProtocolVersion: 3, Selection: fixtureSelection(), UserID: 9, ActionID: "action-1", TriggerType: "pulse", IdempotencyKey: "idem-1"}
 	var first ActionResult
 	for i := 0; i < 100; i++ {
 		result, err := action.Execute(context.Background(), command)
@@ -222,10 +222,10 @@ func TestActionReplay100TimesHasOneTicketGrantAndRandom(t *testing.T) {
 func TestActionSameIdempotencyKeyDifferentPayloadConflicts(t *testing.T) {
 	store, rewardStore, idem := setupActionStore()
 	action := newActionService(t, store, rewardStore, idem)
-	if _, err := action.Execute(context.Background(), ActionCommand{ProtocolVersion: 2, Selection: fixtureSelection(), UserID: 9, ActionID: "one", TriggerType: "pulse", IdempotencyKey: "same"}); err != nil {
+	if _, err := action.Execute(context.Background(), ActionCommand{ProtocolVersion: 3, Selection: fixtureSelection(), UserID: 9, ActionID: "one", TriggerType: "pulse", IdempotencyKey: "same"}); err != nil {
 		t.Fatal(err)
 	}
-	_, err := action.Execute(context.Background(), ActionCommand{ProtocolVersion: 2, Selection: fixtureSelection(), UserID: 9, ActionID: "two", TriggerType: "pulse", IdempotencyKey: "same"})
+	_, err := action.Execute(context.Background(), ActionCommand{ProtocolVersion: 3, Selection: fixtureSelection(), UserID: 9, ActionID: "two", TriggerType: "pulse", IdempotencyKey: "same"})
 	if err == nil || !strings.Contains(err.Error(), ledger.ErrIdempotencyConflict.Error()) {
 		t.Fatalf("err=%v", err)
 	}
@@ -237,11 +237,11 @@ func TestActionSameIdempotencyKeyDifferentPayloadConflicts(t *testing.T) {
 func TestActionDifferentIdempotencyKeySameActionDoesNotSpendAgain(t *testing.T) {
 	store, rewardStore, idem := setupActionStore()
 	action := newActionService(t, store, rewardStore, idem)
-	first, err := action.Execute(context.Background(), ActionCommand{ProtocolVersion: 2, Selection: fixtureSelection(), UserID: 9, ActionID: "one", TriggerType: "pulse", IdempotencyKey: "first"})
+	first, err := action.Execute(context.Background(), ActionCommand{ProtocolVersion: 3, Selection: fixtureSelection(), UserID: 9, ActionID: "one", TriggerType: "pulse", IdempotencyKey: "first"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := action.Execute(context.Background(), ActionCommand{ProtocolVersion: 2, Selection: fixtureSelection(), UserID: 9, ActionID: "one", TriggerType: "pulse", IdempotencyKey: "second"})
+	second, err := action.Execute(context.Background(), ActionCommand{ProtocolVersion: 3, Selection: fixtureSelection(), UserID: 9, ActionID: "one", TriggerType: "pulse", IdempotencyKey: "second"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +255,7 @@ func TestActionRequiresTicketAndBudget(t *testing.T) {
 	store, rewardStore, idem := setupActionStore()
 	store.accounts[accountKey(9, 4, ledger.AssetTicket)] = ledger.Account{ID: 1, UserID: 9, PeriodID: 4, AssetType: ledger.AssetTicket, Balance: 0}
 	action := newActionService(t, store, rewardStore, idem)
-	_, err := action.Execute(context.Background(), ActionCommand{ProtocolVersion: 2, Selection: fixtureSelection(), UserID: 9, ActionID: "no-ticket", TriggerType: "pulse", IdempotencyKey: "one"})
+	_, err := action.Execute(context.Background(), ActionCommand{ProtocolVersion: 3, Selection: fixtureSelection(), UserID: 9, ActionID: "no-ticket", TriggerType: "pulse", IdempotencyKey: "one"})
 	if !errors.Is(err, ErrInsufficientTickets) || len(rewardStore.grants) != 0 || len(store.entries) != 0 {
 		t.Fatalf("err=%v grants=%d entries=%d", err, len(rewardStore.grants), len(store.entries))
 	}
@@ -271,7 +271,7 @@ func TestConcurrentActionsCannotSpendSameTicketOrBudget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	command := ActionCommand{ProtocolVersion: 2, Selection: fixtureSelection(), UserID: 9, ActionID: "concurrent", TriggerType: "pulse", IdempotencyKey: "concurrent"}
+	command := ActionCommand{ProtocolVersion: 3, Selection: fixtureSelection(), UserID: 9, ActionID: "concurrent", TriggerType: "pulse", IdempotencyKey: "concurrent"}
 	results := make(chan ActionResult, 16)
 	errs := make(chan error, 16)
 	for i := 0; i < 16; i++ {
@@ -344,7 +344,7 @@ func TestActionFailsClosedForInvalidRewardTable(t *testing.T) {
 			// skipped, which would change the configured probability table.
 			rewards.definitions = append(rewards.definitions, tt.definition)
 			action := newActionService(t, store, rewards, idem)
-			_, err := action.Execute(context.Background(), ActionCommand{ProtocolVersion: 2, Selection: fixtureSelection(), UserID: 9, ActionID: "invalid-table", TriggerType: "pulse", IdempotencyKey: "invalid-table"})
+			_, err := action.Execute(context.Background(), ActionCommand{ProtocolVersion: 3, Selection: fixtureSelection(), UserID: 9, ActionID: "invalid-table", TriggerType: "pulse", IdempotencyKey: "invalid-table"})
 			if err == nil {
 				t.Fatal("invalid reward table was accepted")
 			}
@@ -390,7 +390,7 @@ func TestExperienceUsesIndependentBudgetAndShadowDelivery(t *testing.T) {
 		rewards.budgets[budgetKey(4, ExperienceRewardType)] = ports.RewardBudget{ID: 4, PeriodID: 4, BudgetType: ExperienceRewardType, HardCap: 10}
 		action := newActionService(t, store, rewards, idem)
 		action.cfg.ShadowMode = shadow
-		if _, err := action.Execute(context.Background(), ActionCommand{ProtocolVersion: 2, Selection: fixtureSelection(), UserID: 9, ActionID: "exp", TriggerType: "pulse", IdempotencyKey: "exp"}); err != nil {
+		if _, err := action.Execute(context.Background(), ActionCommand{ProtocolVersion: 3, Selection: fixtureSelection(), UserID: 9, ActionID: "exp", TriggerType: "pulse", IdempotencyKey: "exp"}); err != nil {
 			t.Fatal(err)
 		}
 		if rewards.budgets[budgetKey(4, ActionBudgetType)].ReservedAmount != 0 || rewards.budgets[budgetKey(4, ExperienceRewardType)].ReservedAmount != 10 {
@@ -414,7 +414,7 @@ func TestMixedPoolStopsBeforeSpendingIfEitherBudgetIsInsufficient(t *testing.T) 
 		b.HardCap = 0
 		rewards.budgets[budgetKey(4, exhausted)] = b
 		action := newActionService(t, store, rewards, idem)
-		if _, err := action.Execute(context.Background(), ActionCommand{ProtocolVersion: 2, Selection: fixtureSelection(), UserID: 9, ActionID: "mixed", TriggerType: "pulse", IdempotencyKey: "mixed"}); !errors.Is(err, ErrBudgetExceeded) {
+		if _, err := action.Execute(context.Background(), ActionCommand{ProtocolVersion: 3, Selection: fixtureSelection(), UserID: 9, ActionID: "mixed", TriggerType: "pulse", IdempotencyKey: "mixed"}); !errors.Is(err, ErrBudgetExceeded) {
 			t.Fatal(err)
 		}
 		if len(store.entries) != 0 || len(rewards.grants) != 0 {

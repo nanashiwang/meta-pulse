@@ -222,6 +222,10 @@ func (r memoryCursorRepo) Save(ctx context.Context, c ports.Cursor) error {
 
 type memoryPeriodRepo struct{ store *memoryLedgerStore }
 
+func (r memoryPeriodRepo) FindActiveAtCurrent(ctx context.Context, at time.Time) (period.Period, error) {
+	return r.FindActiveAt(ctx, at)
+}
+
 func (r memoryPeriodRepo) FindActiveAt(ctx context.Context, at time.Time) (period.Period, error) {
 	return r.store.FindPeriod(ctx, at)
 }

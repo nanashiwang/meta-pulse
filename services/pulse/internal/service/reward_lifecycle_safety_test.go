@@ -17,7 +17,7 @@ func TestReversedActionReplayCannotSpendOrGrantAgain(t *testing.T) {
 	rewards.definitions[0].RewardType = "newapi_quota"
 	action := newActionService(t, store, rewards, idem)
 	action.cfg.ShadowMode = false
-	command := ActionCommand{ProtocolVersion: 2, Selection: fixtureSelection(), UserID: 9, ActionID: "one-action", TriggerType: "pulse", IdempotencyKey: "original-key"}
+	command := ActionCommand{ProtocolVersion: 3, Selection: fixtureSelection(), UserID: 9, ActionID: "one-action", TriggerType: "pulse", IdempotencyKey: "original-key"}
 	first, err := action.Execute(ctx, command)
 	if err != nil {
 		t.Fatal(err)

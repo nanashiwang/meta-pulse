@@ -2,6 +2,22 @@
 'use strict';
 (() => {
   const EN = Object.freeze({
+    "保存后，所有未用券统一使用最新奖项、概率和预算；已有券的额度有效期不变，未成券贡献继续累计。": "After saving, all unused tickets use the latest prizes, odds and budget. Existing quota deadlines stay unchanged, and unconverted contribution carries forward.",
+    "统一抽奖规则": "Unified draw rules",
+    "每次独立抽取，中奖不减少奖项权重。至少设置一个经验奖项。所有未用券使用新预算，旧奖励继续由原预算结算；保存不会开启抽奖。": "Each draw is independent. Keep at least one EXP prize. All unused tickets use the new budget; existing rewards settle against their original budget. Saving does not enable draws.",
+    "我已确认新奖项、概率和预算适用于所有未用券；已有券原有效期保持不变。": "I confirm that the new prizes, odds and budget apply to all unused tickets. Existing ticket deadlines stay unchanged.",
+    "保存统一规则": "Save unified rules",
+    "新抽奖仅使用当前规则预算；历史预算保留已中奖奖励的预留与结算，不与新预算相加。API 以原始 quota 计，经验以 EXP 计。": "New draws use only the current rule budget. Historical budgets retain reservations and settlements for existing rewards and are not added to the new budget. API amounts are in raw quota; experience is in EXP.",
+    "请刷新并确认最新抽奖规则": "Refresh and confirm the latest draw rules",
+    "当前规则已暂停或结束": "The current rules are paused or have ended",
+    "五连抽可合并不同时间获得的券；每次使用最新规则，中断时保留已获得的奖励。": "Draw five can combine tickets earned at different times. Each draw uses the latest rules; confirmed rewards are kept if interrupted.",
+    "已有券保留原额度有效期；新设置的有效天数只适用于以后获得的券。": "Existing tickets keep their original quota deadlines. New validity settings apply only to tickets earned afterward.",
+    "系统优先使用额度资格有效的券；下方显示下一次适用概率。": "Tickets with valid quota eligibility are used first. The odds below apply to the next draw.",
+    "所有未用券统一使用最新奖项、概率与预算，原有效期不变。到期券仅按最新经验奖项权重抽取。预算不足不扣券，已中奖结果保留。赠送额度和无法核验资金来源的消费不产生脉冲券。": "All unused tickets use the latest prizes, odds and budget while keeping their original deadlines. Expired tickets use the latest EXP prize weights. Insufficient budgets do not spend tickets; confirmed rewards are kept. Gifted quota and unverified usage do not earn tickets.",
+    "本次五连抽：{quota} 张可抽额度与经验，{exp} 张仅抽经验。": "This draw of five: {quota} tickets for quota and EXP, {exp} for EXP only.",
+    "到期券适用概率": "Odds for expired tickets",
+    "本次未扣券，规则或券状态已变化，请刷新并确认最新概率。": "No ticket was spent. The rules or ticket status changed; refresh and confirm the latest odds.",
+
 "各规则预算（最近 20 组）":"Rule budgets (latest 20)",
 "同一规则的不同资格视图共享预算；以下每个预算只列一次。API 以原始 quota 计，经验以 EXP 计。":"Eligibility views of the same rule share budgets. Each budget is listed once, in raw quota or EXP units.",
 "预算编号":"Budget ID",
