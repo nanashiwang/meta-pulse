@@ -2,6 +2,7 @@
 "use strict";
 (() => {
   const t = (...args) => window.MetarI18n.t(...args);
+  const { formatPulseQuota, formatPulseRatio, formatPulseProbability, pulseRewardStats } = window.MetarAdapters;
   const esc = (v) =>
     String(v ?? "").replace(
       /[&<>"']/g,
@@ -20,20 +21,21 @@
     });
   const storageKey = "metar-continuous-rules-pending-v1";
   const recommendedExpRewards = [
-    { key: "exp-basic", reward_type: "community_exp", amount: 10, weight: 60000 },
-    { key: "exp-middle", reward_type: "community_exp", amount: 25, weight: 20000 },
-    { key: "exp-high", reward_type: "community_exp", amount: 100, weight: 9400 },
+    { key: "exp-basic", reward_type: "community_exp", amount: 1, weight: 28000 },
+    { key: "exp-middle", reward_type: "community_exp", amount: 4, weight: 12000 },
+    { key: "exp-high", reward_type: "community_exp", amount: 20, weight: 10000 },
   ];
   function recommendedRewards(quotaPerUnit) {
     const unit = Number(quotaPerUnit);
     if (!Number.isSafeInteger(unit) || unit <= 0 || unit % 4 !== 0) return null;
+    if (BigInt(unit) * 25n > BigInt(Number.MAX_SAFE_INTEGER)) return null;
     const quarter = unit / 4;
     return [
-      { key: "api-participation", amount: quarter, weight: 8000 },
-      { key: "api-third", amount: quarter * 2, weight: 2000 },
-      { key: "api-second", amount: quarter * 8, weight: 500 },
-      { key: "api-first", amount: quarter * 40, weight: 100 },
-      ...recommendedExpRewards,
+      { key: "api-participation", amount: quarter, weight: 44000 },
+      { key: "api-third", amount: unit, weight: 5000 },
+      { key: "api-second", amount: unit * 5, weight: 800 },
+      { key: "api-first", amount: unit * 25, weight: 200 },
+      ...recommendedExpRewards.map(r => ({...r})),
     ];
   }
   function fixed(value, digits, max = 9007199254740991n) {
@@ -163,10 +165,10 @@
           <label>${t("每张脉冲券所需贡献度")}<input name="threshold" type="number" min="0.001" step="0.001" required value="${this.current?.ticket_threshold_milli ? esc(format(this.current.ticket_threshold_milli,3)) : "5"}" placeholder="5"><span class="prod-field-help">${t("未成券贡献度持续累计，按产券时门槛转换；最多支持 3 位小数。推荐方案为每 5 contribution 产 1 张券。")}</span></label>
         </div>
         <h3 class="mt24">${t("统一抽奖规则")}</h3><p class="prod-field-help">${t("每次独立抽取，中奖不减少奖项权重。至少设置一个经验奖项。所有未用券使用新预算，旧奖励继续由原预算结算；保存不会开启抽奖。")}</p>
-        <label class="prod-check mt16"><input name="unlimited_quota" type="checkbox" checked> ${t("不限制额度奖励总量")}</label><p class="prod-field-help">${t("通过奖项和权重控制平均成本；实际支出会波动，不保证固定总额。经验预算仍单独生效。")}</p><label class="prod-admin-field mt16">${t("额度奖池预算（整数 quota）")}<input name="reward_budget" value="0" inputmode="numeric" pattern="0|[1-9][0-9]*"><span class="prod-field-help">${t("不限制总量时忽略此项；取消勾选后填写额度上限。")}</span></label><label class="prod-admin-field mt16">${t("经验奖池预算（整数 EXP）")}<input name="experience_budget" required value="${this.current?.rewards?.some(r => r.reward_type === 'community_exp') ? (this.current.experience_budget || 0) : 100000}" inputmode="numeric" pattern="0|[1-9][0-9]*"></label>
-        <div data-period-prizes>${initialRewards.map(rewardRow).join('')}</div><button class="btn mt16" type="button" data-action="admin-period-add">${t("添加奖项")}</button><button class="btn mt16" type="button" data-action="admin-period-preset">${t("载入 1% 多级奖池方案")}</button><p class="prod-field-help">${t("推荐方案：⚡️ 额度中奖概率 10.6%，⚡️ 额度平均成本为每张券 0.05 ⚡️；四档额度奖励按当前 quota_per_unit 自动换算。")}</p>
+        <label class="prod-check mt16"><input name="unlimited_quota" type="checkbox" ${(!this.current || this.current.quota_budget_unlimited) ? "checked" : ""}> ${t("不限制额度奖励总量")}</label><p class="prod-field-help">${t("通过奖项和权重控制平均成本；实际支出会波动，不保证固定总额。经验预算仍单独生效。")}</p><label class="prod-admin-field mt16">${t("额度奖池预算（整数 quota）")}<input name="reward_budget" value="${(!this.current || this.current.quota_budget_unlimited) ? "0" : ""}" inputmode="numeric" pattern="0|[1-9][0-9]*"><span class="prod-field-help">${t("不限制总量时忽略此项；取消勾选后填写额度上限。")}</span></label><label class="prod-admin-field mt16">${t("经验奖池预算（整数 EXP）")}<input name="experience_budget" required value="${this.current ? "" : 100000}" inputmode="numeric" pattern="0|[1-9][0-9]*"></label>
+        <p class="prod-field-help">${t("已有规则的有限预算不自动复制。请核对本期已发放和已预留数量，再填写新预算；当前余额快照不代表预算已转移。")}</p><div data-period-prizes>${initialRewards.map(rewardRow).join('')}</div><button class="btn mt16" type="button" data-action="admin-period-add">${t("添加奖项")}</button><button class="btn mt16" type="button" data-action="admin-period-preset">${t("载入 50% 额度概率方案")}</button><p class="prod-field-help">${t("推荐方案：额度中奖率 50%，每券期望 0.25 ⚡️ 与 2.76 EXP；到期券平均 5.52 EXP。额度奖项按当前换算比例生成。")}</p>
         <p class="prod-field-help mt16">${t("奖项概率 = 该奖项权重 ÷ 所有奖项权重之和。到期券仅在经验奖项之间按权重抽取。")}</p>
-        <button class="btn mt16" type="button" data-action="admin-period-expectation">${t("计算期望额度")}</button><p class="prod-field-help mt8" data-period-expectation role="status"></p><label class="prod-admin-field mt24">${t("修改原因")}<textarea name="reason" required minlength="3" maxlength="500" rows="2"></textarea></label>
+        <button class="btn mt16" type="button" data-action="admin-period-expectation">${t("预览概率与期望")}</button><div class="prod-field-help mt8" data-period-expectation role="status"></div><label class="prod-admin-field mt24">${t("修改原因")}<textarea name="reason" required minlength="3" maxlength="500" rows="2"></textarea></label>
         <label class="prod-check mt16"><input name="confirm" type="checkbox" required> ${t("我已确认新奖项、概率和预算适用于所有未用券；已有券原有效期保持不变。")}</label>
         <button type="submit" class="btn primary mt24">${t("保存统一规则")}</button></fieldset>
         <p class="prod-field-help mt16" data-period-message role="status" aria-live="polite">${this.pending ? esc(t("存在待确认的规则保存请求：{key}。请重试原请求。", { key: this.pending.body.key })) : ""}</p>
@@ -267,7 +269,7 @@
         this.persist();
         if (epoch !== this.epoch) return;
         message.textContent = t(
-          "规则 {key} 已保存，对后续调用生效。请刷新规则列表查看。",
+          "规则 {key} 已保存，所有未用券使用新奖项与预算，原有效期不变。请刷新规则列表查看。",
           { key: result.period_key },
         );
         form.reset();
@@ -298,29 +300,24 @@
         target.setAttribute("aria-expanded", String(!form.hidden));
         return;
       }
+      if (this.pending && action !== "admin-period-retry") return;
       if (action === "admin-period-expectation") {
         const node = form.querySelector("[data-period-expectation]");
         try {
-          const rows = [...form.querySelectorAll(".prod-period-prize")].map(row => ({amount: integer(row.querySelector('[name="prize_amount"]').value), weight: integer(row.querySelector('[name="prize_weight"]').value), type: row.querySelector('[name="prize_type"]').value}));
-          const value = quotaExpectation(rows);
-          node.textContent = t("有效期内单次期望额度：{value} quota；这是平均值，并非单次或累计支出上限。", {value});
+          const rows = [...form.querySelectorAll(".prod-period-prize")].map(row => ({amount: integer(row.querySelector('[name="prize_amount"]').value), weight: integer(row.querySelector('[name="prize_weight"]').value), reward_type: row.querySelector('[name="prize_type"]').value}));
+          node.innerHTML = rewardPreview(rows, this.quotaPerUnit);
         } catch (_) { node.textContent = t("请先填写所有奖项的有效数量和权重。"); }
         return;
       }
       if (action === "admin-period-preset") {
         const rewards = recommendedRewards(this.quotaPerUnit);
         if (!rewards) {
-          form.querySelector("[data-period-expectation]").textContent = t("当前 quota_per_unit 不能精确换算 0.25 ⚡️，请先将其设置为 4 的倍数。");
+          form.querySelector("[data-period-expectation]").textContent = t("当前额度换算比例无法精确生成安全的整数奖项，请核对 quota_per_unit（须为 4 的倍数且不能过大）。");
           return;
         }
-        form.querySelector('[name="multiplier"]').value = "1";
-        form.querySelector('[name="threshold"]').value = "5";
-        form.querySelector('[name="quota_validity_days"]').value = "30";
-        form.querySelector('[name="experience_budget"]').value = "100000";
-        form.querySelector('[name="unlimited_quota"]').checked = true;
         form.querySelector('[data-period-prizes]').innerHTML = rewards.map(rewardRow).join('');
-        form.querySelector('[name="reason"]').value = t("采用收入 1% 的多级奖池方案：每 5 contribution 产 1 张券，⚡️ 额度中奖概率 10.6%。");
-        form.querySelector("[data-period-expectation]").textContent = t("已载入推荐方案，请核对 quota_per_unit、经验预算和管理原因后保存。");
+        form.querySelector('[name="reason"]').value = t("采用 50% 额度概率方案：每券期望 0.25 ⚡️，经验奖励为 1 / 4 / 20 EXP。");
+        form.querySelector("[data-period-expectation]").innerHTML = `<p>${t("已载入奖项；发券门槛、倍率、有效期和预算设置保持原值。核对后保存才会生效。")}</p>${rewardPreview(rewards, this.quotaPerUnit)}`;
         return;
       }
       if (action === "admin-period-retry") return this.submit(form, true);
@@ -352,5 +349,15 @@
     const scaled = numerator * 10000n / denominator;
     return `${numerator}/${denominator} ≈ ${scaled / 10000n}.${String(scaled % 10000n).padStart(4, '0')}`;
   }
-  window.MetarPeriodAdmin = Object.freeze({ View, fixed, format, quotaExpectation, recommendedRewards });
+  function rewardPreview(rows, quotaPerUnit) {
+    const s = pulseRewardStats(rows);
+    const validUnit = Number.isSafeInteger(quotaPerUnit) && quotaPerUnit > 0;
+    const quota = formatPulseRatio(s.quotaAmount, s.total * (validUnit ? BigInt(quotaPerUnit) : 1n)) + (validUnit ? ' ⚡️' : ' quota');
+    const amount = r => r.reward_type === 'community_exp' ? r.amount + ' EXP' : formatPulseQuota(r.amount, quotaPerUnit, window.MetarI18n.locale());
+    return `<p class="mt16">${esc(t('额度中奖率：{quota} · 经验中奖率：{exp}', {quota:formatPulseProbability(s.quotaWeight,s.total),exp:formatPulseProbability(s.expWeight,s.total)}))}</p>
+      <div class="prod-pulse-table"><table><thead><tr><th>${t('奖励')}</th><th>${t('有效券概率')}</th><th>${t('到期券概率')}</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(amount(r))}</td><td>${esc(formatPulseProbability(r.weight,s.total))}</td><td>${r.reward_type === 'community_exp' ? esc(formatPulseProbability(r.weight,s.expWeight)) : '—'}</td></tr>`).join('')}</tbody></table></div>
+      <p>${esc(t('有效券每抽期望：{quota}，{exp} EXP。到期券每抽期望：{expired} EXP。', {quota,exp:formatPulseRatio(s.expAmount,s.total),expired:formatPulseRatio(s.expAmount,s.expWeight)}))}</p>
+      <p>${t('期望是大量抽奖的平均值，不是保底，也不保证每周总支出；总成本仍取决于券量与预算。')}</p>`;
+  }
+  window.MetarPeriodAdmin = Object.freeze({ View, fixed, format, quotaExpectation, recommendedRewards, rewardPreview });
 })();

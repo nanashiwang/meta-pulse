@@ -264,6 +264,36 @@
     return `${approximate}${n / d}${tail ? `.${tail}` : ''} ⚡️`;
   }
 
+  // Display-only rational arithmetic. Never feed rounded percentages into a draw.
+  function formatPulseRatio(n, d) {
+    if (typeof n !== 'bigint' || typeof d !== 'bigint' || n < 0n || d <= 0n) return '—';
+    const scale = 10000n, scaled = n * scale / d;
+    if (n > 0n && scaled === 0n) return '<0.0001';
+    const tail = String(scaled % scale).padStart(4, '0').replace(/0+$/, '');
+    return `${n * scale % d ? '≈' : ''}${scaled / scale}${tail ? '.' + tail : ''}`;
+  }
+  function formatPulseProbability(weight, total) {
+    if (![weight, total].every(v => typeof v === 'bigint' || Number.isSafeInteger(v))) return '—';
+    const n = BigInt(weight), d = BigInt(total);
+    if (n < 0n || n > d || d <= 0n) return '—';
+    return formatPulseRatio(n * 100n, d) + '%';
+  }
+  function pulseRewardStats(rows) {
+    const stats = { total: 0n, quotaWeight: 0n, expWeight: 0n, quotaAmount: 0n, expAmount: 0n };
+    if (!rows.length) throw new Error('empty reward pool');
+    for (const row of rows) {
+      if (![row.amount, row.weight].every(v => Number.isSafeInteger(v) && v > 0)) throw new Error('invalid reward');
+      const type = row.reward_type || 'newapi_quota';
+      if (!['newapi_quota', 'community_exp'].includes(type)) throw new Error('invalid reward type');
+      const weight = BigInt(row.weight), amount = BigInt(row.amount);
+      stats.total += weight;
+      if (type === 'community_exp') { stats.expWeight += weight; stats.expAmount += amount * weight; }
+      else { stats.quotaWeight += weight; stats.quotaAmount += amount * weight; }
+    }
+    if (stats.total > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('reward weight overflow');
+    return stats;
+  }
+
   class PulseAdapter {
     constructor(answer) { this.answer = answer; }
     async request(path, options = {}) {
@@ -396,5 +426,5 @@
     }
   }
 
-  window.MetarAdapters = Object.freeze({ AdapterError, AnswerAdapter, PulseAdminAdapter, PULSE_ADMIN_SECRET_KEYS, isCommunityAdministrator, PulseAdapter, PulseOperation, PulseDrawSession, pulseActions, validPulseResult, pulseRewardTier, formatPulseQuota, KnowledgeAdapter, loadIdentitySnapshot, relativePath, routeMatchesNavigation });
+  window.MetarAdapters = Object.freeze({ AdapterError, AnswerAdapter, PulseAdminAdapter, PULSE_ADMIN_SECRET_KEYS, isCommunityAdministrator, PulseAdapter, PulseOperation, PulseDrawSession, pulseActions, validPulseResult, pulseRewardTier, formatPulseQuota, formatPulseRatio, formatPulseProbability, pulseRewardStats, KnowledgeAdapter, loadIdentitySnapshot, relativePath, routeMatchesNavigation });
 })();

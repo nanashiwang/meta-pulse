@@ -88,16 +88,58 @@ test('quota expectation includes experience weight and avoids unsafe products',(
  assert.match(context.MetarPeriodAdmin.quotaExpectation([{type:'newapi_quota',amount:Number.MAX_SAFE_INTEGER,weight:Number.MAX_SAFE_INTEGER}]),/9007199254740991\.0000$/);
 });
 
-test('recommended 1% pool has 10.6% API odds and 0.05 API-unit expectation',()=>{
+test('50% pool preserves the approved 0.25-unit expectation across quota conversion rates',()=>{
  const {context}=harness();
- const rows=context.MetarPeriodAdmin.recommendedRewards(500000);
- assert.equal(rows.length,7);
- const api=rows.filter(r=>!r.reward_type);
- assert.equal(api.reduce((n,r)=>n+r.weight,0),10600);
- const total=rows.reduce((n,r)=>n+r.weight,0);
- const expected=api.reduce((n,r)=>n+BigInt(r.amount)*BigInt(r.weight),0n);
- assert.equal(total,100000);
- assert.equal(expected/BigInt(total),25000n);
- assert.equal(api.map(r=>r.amount).join(','),'125000,250000,1000000,5000000');
- assert.equal(context.MetarPeriodAdmin.recommendedRewards(3),null);
+ const {recommendedRewards,rewardPreview}=context.MetarPeriodAdmin;
+ for (const unit of [100000,500000,4]) {
+  const rows=recommendedRewards(unit);
+  assert.equal(rows.length,7);
+  assert.equal(rows.map(r=>r.weight).join(','),'44000,5000,800,200,28000,12000,10000');
+  assert.equal(rows.slice(0,4).map(r=>r.amount).join(','),[unit/4,unit,unit*5,unit*25].join(','));
+  assert.equal(rows.slice(4).map(r=>r.amount).join(','),'1,4,20');
+  const stats=context.MetarAdapters.pulseRewardStats(rows);
+  assert.equal(stats.total,100000n);assert.equal(stats.quotaWeight,50000n);
+  assert.equal(stats.quotaAmount*4n,BigInt(unit)*stats.total);
+  assert.equal(stats.expAmount*100n,276n*stats.total);
+  assert.equal(stats.expAmount*100n,552n*stats.expWeight);
+  const html=rewardPreview(rows,unit);
+  for(const v of ['44%','5%','0.8%','0.2%','28%','12%','10%','56%','24%','20%','0.25 ⚡️','2.76 EXP','5.52 EXP']) assert.ok(html.includes(v),v);
+ }
+ for(const unit of [0,-4,3,1.5,Number.MAX_SAFE_INTEGER-3]) assert.equal(recommendedRewards(unit),null);
+ // Mutating a returned form must not change the next preset.
+ recommendedRewards(4)[4].amount=999;
+ assert.equal(recommendedRewards(4)[4].amount,1);
+});
+test('loading the pool changes only prizes and reason, preserving budgets, issuance and pending requests',()=>{
+ const h=harness();
+ const original={multiplier:'1.23',threshold:'900',quota_validity_days:'60',experience_budget:'987',reward_budget:'345'};
+ for(const [key,value] of Object.entries(original))h.form.querySelector(`[name="${key}"]`).value=value;
+ h.form.querySelector('[name="unlimited_quota"]').checked=false;
+ h.view.action('admin-period-preset');
+ for(const [key,value] of Object.entries(original))assert.equal(h.form.querySelector(`[name="${key}"]`).value,value);
+ assert.equal(h.form.querySelector('[name="unlimited_quota"]').checked,false);
+ assert.match(h.form.querySelector('[data-period-prizes]').innerHTML,/value="44000"/);
+ assert.match(h.form.querySelector('[data-period-expectation]').innerHTML,/2.76 EXP/);
+ assert.equal(h.view.pending,null);assert.equal(h.storage.size,0);
+ const html=h.form.querySelector('[data-period-prizes]').innerHTML;
+ h.view.pending={key:'original',body:{rewards:[]}};
+ h.view.quotaPerUnit=4;h.view.action('admin-period-preset');
+ assert.equal(h.form.querySelector('[data-period-prizes]').innerHTML,html);
+});
+test('existing finite rules keep their cap mode and require explicit new budgets instead of refilling history',async()=>{
+ const h=harness();
+ h.context.fetch=async()=>({ok:true,status:200,json:async()=>({continuous_supported:true,current_reward_rule_supported:true,unlimited_quota_supported:true,periods:[{id:1,key:'old-rule',rules:[],ticket_threshold_milli:5000,status:'active',continuous:true,starts_at:'2020-01-01',ends_at:'2099-01-01',quota_budget_unlimited:false,reward_budget:10000,experience_budget:20000,rewards:[{key:'old',amount:10,weight:1,reward_type:'community_exp'}]}]})});
+ const html=await h.view.page();
+ assert.doesNotMatch(html,/name="unlimited_quota"[^>]*checked/);
+ assert.match(html,/name="reward_budget" value=""/);
+ assert.match(html,/name="experience_budget" required value=""/);
+ assert.match(html,/value="old"/);assert.doesNotMatch(html,/value="api-participation"/);
+});
+test('approved preset payload preserves integer amounts and weights when submitted',()=>{
+ const h=harness();h.form.inputs.unlimited_quota='on';
+ const rows=h.context.MetarPeriodAdmin.recommendedRewards(100000);
+ h.form.querySelectorAll=()=>rows.map(r=>({querySelector:s=>({value:String(s.includes('prize_type')?(r.reward_type||'newapi_quota'):s.includes('prize_key')?r.key:s.includes('prize_amount')?r.amount:r.weight)})}));
+ const payload=h.view.payload(h.form);
+ assert.deepEqual(JSON.parse(JSON.stringify(payload.rewards)),JSON.parse(JSON.stringify(rows)));
+ assert.equal(payload.multiplier_bps,12345);assert.equal(payload.quota_validity_days,30);
 });

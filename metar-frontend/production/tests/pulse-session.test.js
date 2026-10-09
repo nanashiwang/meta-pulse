@@ -120,3 +120,15 @@ test('historical saved requests stay v1; mixed protocol saved batches fail close
   values.set(store.key,JSON.stringify(operation));
   assert.throws(()=>store.read(),e=>e.code==='storage_unavailable');
 });
+
+test('probability display uses exact integer ratios and never rounds tiny nonzero odds to zero', () => {
+ const {formatPulseProbability: pct, pulseRewardStats: stats}=window.MetarAdapters;
+ assert.equal(pct(44000,100000),'44%');assert.equal(pct(800,100000),'0.8%');
+ assert.equal(pct(28000,50000),'56%');assert.equal(pct(12000,50000),'24%');
+ assert.equal(pct(1,3),'≈33.3333%');assert.equal(pct(1,Number.MAX_SAFE_INTEGER),'<0.0001%');
+ for(const [a,b] of [[1,0],[-1,2],[3,2],['<b>',2],[1,NaN]]) assert.equal(pct(a,b),'—');
+ const large=stats([{amount:Number.MAX_SAFE_INTEGER,weight:Number.MAX_SAFE_INTEGER}]);
+ assert.equal(large.quotaAmount,BigInt(Number.MAX_SAFE_INTEGER)**2n);
+ assert.throws(()=>stats([{amount:1,weight:Number.MAX_SAFE_INTEGER},{amount:1,weight:1}]));
+ assert.throws(()=>stats([{amount:1,weight:1,reward_type:'unknown'}]));
+});
