@@ -3,7 +3,7 @@
   const origin = 'https://metar.uk';
   function policy(pathname, search = '') {
     const path = pathname.replace(/\/$/, '') || '/';
-    const privatePage = /^\/(?:me|settings|pulse|admin|search|publish|login|register|forgot|status)(?:\/|$)/.test(path);
+    const privatePage = /^\/(?:me|settings|pulse|admin|chat|search|publish|login|register|forgot|status)(?:\/|$)/.test(path);
     let canonical = path === '/discover' ? '/latest' : path;
     const question = path.match(/^\/question\/([a-zA-Z0-9]+)$/);
     if (question) canonical = '/questions/' + question[1];

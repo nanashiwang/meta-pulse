@@ -2,6 +2,7 @@
 export function accountLinks(user, english = false, canReview = false) {
   const item = (href, zh, en, icon) => ({ href, label: english ? en : zh, icon });
   const groups = [{ label: english ? 'My space' : '我的空间', items: [
+    item('/chat', '聊天', 'Chat', 'chat-dots'),
     item('/me', '个人空间', 'My space', 'person'),
     item('/me/growth', '社区成长', 'Community growth', 'stars'),
     item('/me/bookmarks', '我的收藏', 'Bookmarks', 'bookmark'),
@@ -12,6 +13,7 @@ export function accountLinks(user, english = false, canReview = false) {
   if (user?.role_id === 2 && user.mail_status === 1 && user.status === 'normal') {
     management.push(item('/admin/pulse', 'Pulse 配置', 'Pulse settings', 'sliders'));
     management.push(item('/admin/growth', '成长管理', 'Growth settings', 'stars'));
+    management.push(item('/admin/chat', '聊天举报', 'Chat reports', 'chat-dots'));
     management.push(item('/admin/taxonomy', '类别管理', 'Category settings', 'tags'));
     management.push(item('/admin/dashboard', '社区管理', 'Community admin', 'gear'));
     management.push(item('/admin/pulse_user_center', '社区连接配置', 'Community connections', 'link-45deg'));

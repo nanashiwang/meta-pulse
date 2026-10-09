@@ -140,6 +140,13 @@ jobs:
         run: |
           docker exec "$MYSQL_CONTAINER" sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot -e "CREATE DATABASE community_growth_test;"'
           make test-growth-integration
+      - name: Private chat membership, replay and moderation regressions
+        env:
+          MYSQL_CONTAINER: ${{ job.services.mysql.id }}
+          CHAT_INTEGRATION_DSN: root:pulse_ci_test_only@tcp(127.0.0.1:3306)/community_chat_test?parseTime=true
+        run: |
+          docker exec "$MYSQL_CONTAINER" sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot -e "CREATE DATABASE community_chat_test;"'
+          make test-chat-integration
 
   recovery-integration:
     name: Isolated backup, MySQL 8.4 restore and encrypted readback

@@ -1,5 +1,5 @@
 .PHONY: help fmt vet test build build-pulse build-forum build-blog build-community test-community \
-        run-api run-worker migrate-up migrate-status up down deploy-install deploy-update deploy-test deploy-config-test test-integration test-forum-integration test-growth-integration clean
+        run-api run-worker migrate-up migrate-status up down deploy-install deploy-update deploy-test deploy-config-test test-integration test-forum-integration test-growth-integration test-chat-integration clean
 
 # The repo root is not a Go module, so `./...` does not resolve across the
 # workspace. Every Go target lists module paths explicitly.
@@ -59,6 +59,11 @@ test-growth-integration:
 	@test -n "$$GROWTH_INTEGRATION_DSN" || { echo "请设置以 _test 结尾的专用经验测试库" >&2; exit 1; }
 	go test -count=1 -race ./services/forum-plugin/user-center-pulse/growth -run TestMySQL -timeout 5m
 	FORUM_GROWTH_INTEGRATION_DSN="$$GROWTH_INTEGRATION_DSN" go test -count=1 -race ./services/forum-plugin/user-center-pulse -run TestMySQLExperienceSync -timeout 5m
+
+# Chat tests must use their own disposable Answer-like schema.
+test-chat-integration:
+	@test -n "$$CHAT_INTEGRATION_DSN" || { echo "请设置以 _chat_test 结尾的专用聊天测试库" >&2; exit 1; }
+	go test -count=1 -race ./services/forum-plugin/user-center-pulse/chat -run TestMySQL -timeout 5m
 
 build: build-pulse build-blog build-community
 

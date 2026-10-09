@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { policy } = require('../src/seo.js');
 
 test('private account, notification and reward routes never get indexed', () => {
-  for (const path of ['/me', '/me/bookmarks', '/me/notifications', '/settings/binding', '/pulse', '/admin/pulse', '/search', '/publish', '/login', '/register', '/forgot', '/status']) {
+  for (const path of ['/chat', '/admin/chat', '/me', '/me/bookmarks', '/me/notifications', '/settings/binding', '/pulse', '/admin/pulse', '/search', '/publish', '/login', '/register', '/forgot', '/status']) {
     assert.equal(policy(path).robots, 'noindex, nofollow', path);
     assert.equal(policy(path).canonical, '', path);
   }

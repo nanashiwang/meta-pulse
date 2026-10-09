@@ -205,3 +205,5 @@ METAR 管理员可在 `/admin/pulse` 配置额度换算、抽奖开关、影子�
 仍需完成的外部验收包括真实 LOG_DB 样本与只读权限、Provider 成本快照、new-api Benefit 实际到账与密钥轮换、社区正式域名、Answer 初始化/邮件发送、跨实例 Redis flow/nonce 和生产灰度。明细见 [实施计划第 8 节](docs/IMPLEMENTATION_PLAN.md#8-当前未冒充完成的外部验收)。
 
 实现不得改变 `docs/ARCHITECTURE.md` 定义的系统边界、事实源和工程红线，以及 `docs/COMMUNITY.md` 定义的社区层边界。里程碑、出口标准和外部验收清单见 `docs/IMPLEMENTATION_PLAN.md`。
+
+社区现已支持 [私聊与群组](docs/COMMUNITY.md#社区私聊与群组v0252)：顶部聊天入口、群邀请、未读、撤回及举报，使用 Answer 社区账号，无需绑定 API。消息随 Answer 数据库备份；部署条件与首版范围见社区文档。

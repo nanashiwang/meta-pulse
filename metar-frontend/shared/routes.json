@@ -1,5 +1,37 @@
 {
-  "pages": ["latest", "discover", "topics", "knowledge", "search", "me", "me/bookmarks", "me/growth", "me/notifications", "settings/binding", "pulse", "admin/pulse", "admin/growth", "admin/taxonomy", "publish", "login", "register", "forgot", "support", "status", "guidelines"],
-  "detailPrefixes": ["question", "topic"],
-  "legacyAliases": {"/discover": "/latest", "/questions": "/latest", "/bookmarks": "/me/bookmarks", "/notifications": "/me/notifications"}
+  "pages": [
+    "latest",
+    "discover",
+    "topics",
+    "knowledge",
+    "search",
+    "me",
+    "me/bookmarks",
+    "me/growth",
+    "me/notifications",
+    "settings/binding",
+    "pulse",
+    "admin/pulse",
+    "admin/growth",
+    "admin/taxonomy",
+    "publish",
+    "login",
+    "register",
+    "forgot",
+    "support",
+    "status",
+    "guidelines",
+    "chat",
+    "admin/chat"
+  ],
+  "detailPrefixes": [
+    "question",
+    "topic"
+  ],
+  "legacyAliases": {
+    "/discover": "/latest",
+    "/questions": "/latest",
+    "/bookmarks": "/me/bookmarks",
+    "/notifications": "/me/notifications"
+  }
 }

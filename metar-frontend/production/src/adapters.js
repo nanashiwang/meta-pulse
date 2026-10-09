@@ -80,7 +80,7 @@
         if (!response.ok) {
           const type = payload?.data?.type || '';
           const code = response.status === 401 ? 'unauthorized' : type === 'inactive' ? 'inactive' : `http_${response.status}`;
-          throw new AdapterError(payload?.msg || `${t("社区服务返回 ")}${response.status}`, { status: response.status, code, details: payload?.data });
+          throw new AdapterError(payload?.msg || `${t("社区服务返回 ")}${response.status}`, { status: response.status, code, details: payload?.data || (payload?.error ? {error:payload.error} : null) });
         }
         if (!payload || typeof payload !== 'object' || !Object.prototype.hasOwnProperty.call(payload, 'data')) {
           throw new AdapterError(t("社区服务返回了无法识别的数据"), { code: 'invalid_response' });

@@ -25,7 +25,8 @@
   const taxonomy = window.MetarTaxonomy;
   let taxonomyBusy = false;
   const pulse = new PulseAdapter(answer);
-  let growth = null, pulseAdmin = null;
+  let growth = null, pulseAdmin = null, chatView = null, chatModeration = null;
+  let chatUnreadTimer = 0, chatUnreadBusy = false;
   const featureScripts = new Map();
   function loadFeatureScript(name, globalName) {
     if (window[globalName]) return Promise.resolve();
@@ -202,7 +203,7 @@
     const path = route().path;
     if (path.startsWith('/question/')) return t("问题详情");
     if (path.startsWith('/topic/')) return t("话题");
-    return ({ '/latest': t("最新话题"), '/topics': t("类别与标签"), '/admin/taxonomy': t('类别管理'), '/knowledge': t("知识库"), '/search': t("搜索"), '/me': t("个人空间"), '/me/bookmarks': t("我的收藏"), '/me/growth': t('社区成长'), '/admin/growth': t('成长管理'), '/me/notifications': t("通知中心"), '/settings/binding': t("账号绑定"), '/pulse': t("Pulse 权益"), '/admin/pulse': t("Pulse 配置"), '/publish': t("发布内容"), '/login': t("登录"), '/register': t("注册"), '/forgot': t("找回密码"), '/status': t("服务状态"), '/support': t("帮助中心"), '/guidelines': t("社区规范") })[path] || t("METAR 社区");
+    return ({ '/chat': t('聊天'), '/admin/chat': t('聊天举报'), '/latest': t("最新话题"), '/topics': t("类别与标签"), '/admin/taxonomy': t('类别管理'), '/knowledge': t("知识库"), '/search': t("搜索"), '/me': t("个人空间"), '/me/bookmarks': t("我的收藏"), '/me/growth': t('社区成长'), '/admin/growth': t('成长管理'), '/me/notifications': t("通知中心"), '/settings/binding': t("账号绑定"), '/pulse': t("Pulse 权益"), '/admin/pulse': t("Pulse 配置"), '/publish': t("发布内容"), '/login': t("登录"), '/register': t("注册"), '/forgot': t("找回密码"), '/status': t("服务状态"), '/support': t("帮助中心"), '/guidelines': t("社区规范") })[path] || t("METAR 社区");
   }
 
   function languageControl() {
@@ -214,8 +215,8 @@
     const item = (url, label, icon) => link(url, I(icon) + `<span>${esc(label)}</span>`, `account-menu-link ${routeMatchesNavigation(path, query.toString(), url) ? 'active' : ''}`);
     return `<details class="account-menu"><summary class="icon-btn" aria-label="${t('账号菜单')}">${avatar(currentUser)}</summary><nav class="account-menu-panel" aria-label="${t('账号菜单')}">
       <div class="account-menu-profile">${avatar(currentUser)}<div><strong>${esc(displayName(currentUser))}</strong><span class="account-menu-level" data-account-level></span></div></div>
-      <div class="account-menu-group"><div class="account-menu-label">${t("我的空间")}</div>${item('/me', t("个人空间"), 'user')}${item('/me/growth', t('社区成长'), 'target')}${item('/me/bookmarks', t("我的收藏"), 'bookmark')}${item('/settings/binding', t("账号绑定"), 'link')}${external(config.answerSettingsPath, I('settings') + `<span>${t("账号设置")}</span>`, 'account-menu-link')}</div>
-      ${currentUserState === 'ready' && isCommunityAdministrator(currentUser) ? `<div class="account-menu-group"><div class="account-menu-label">${t('管理')}</div>${item('/admin/pulse', t('Pulse 配置'), 'settings')}${item('/admin/growth', t('成长管理'), 'target')}${item('/admin/taxonomy', t('类别管理'), 'flag')}${external('/admin/dashboard', I('shield') + `<span>${t('社区管理')}</span>`, 'account-menu-link')}${external('/admin/pulse_user_center', I('link') + `<span>${t('社区连接配置')}</span>`, 'account-menu-link')}</div>` : ''}
+      <div class="account-menu-group"><div class="account-menu-label">${t("我的空间")}</div>${item('/chat', t('聊天'), 'chat')}${item('/me', t("个人空间"), 'user')}${item('/me/growth', t('社区成长'), 'target')}${item('/me/bookmarks', t("我的收藏"), 'bookmark')}${item('/settings/binding', t("账号绑定"), 'link')}${external(config.answerSettingsPath, I('settings') + `<span>${t("账号设置")}</span>`, 'account-menu-link')}</div>
+      ${currentUserState === 'ready' && isCommunityAdministrator(currentUser) ? `<div class="account-menu-group"><div class="account-menu-label">${t('管理')}</div>${item('/admin/pulse', t('Pulse 配置'), 'settings')}${item('/admin/growth', t('成长管理'), 'target')}${item('/admin/taxonomy', t('类别管理'), 'flag')}${item('/admin/chat', t('聊天举报'), 'chat')}${external('/admin/dashboard', I('shield') + `<span>${t('社区管理')}</span>`, 'account-menu-link')}${external('/admin/pulse_user_center', I('link') + `<span>${t('社区连接配置')}</span>`, 'account-menu-link')}</div>` : ''}
       <div class="account-menu-group">${external('/users/logout', I('external') + `<span>${t('退出登录')}</span>`, 'account-menu-link')}</div>
     </nav></details>`;
   }
@@ -231,7 +232,7 @@
       ${link('/latest', LOGO + `<span class="brand-word">${esc(config.siteName.toLowerCase())}</span>`, 'brand')}
       <nav class="topnav" aria-label="${t("主导航")}">${link('/latest', t("社区"), active('/latest') || active('/question') || active('/topic') || active('/topics') ? 'active' : '')}${link('/knowledge', t("知识库"), active('/knowledge') ? 'active' : '')}${link('/pulse', 'Pulse', active('/pulse') ? 'active' : '')}${outbound(config.consoleUrl, t("开发者"))}</nav>
       <form class="searchbox" data-form="search" role="search">${I('search')}<input type="search" name="q" aria-label="${t("搜索社区")}" placeholder="${t("搜索真实问题与回答…")}" value="${path === '/search' ? esc(route().query.get('q') || '') : ''}" autocomplete="off"><kbd>⌘ K</kbd></form>
-      <div class="header-actions">${languageControl()}<button type="button" class="icon-btn theme-btn" data-action="theme" aria-label="${document.documentElement.dataset.theme === 'dark' ? t("切换到浅色主题") : t("切换到深色主题")}">${I(document.documentElement.dataset.theme === 'dark' ? 'sun' : 'moon')}</button>${currentUserState === 'loading' ? `<span class="identity-loading" role="status">${t("正在确认身份…")}</span>` : identityUnavailableState ? link('/me', I('server', 'sm') + `<span>${t("身份服务暂不可用")}</span>`, 'btn ghost identity-status') : logged ? (activeUser ? external('/users/notifications/inbox', I('bell') + `<span class="visually-hidden">${t("通知中心")}</span><span class="account-unread-dot" data-account-unread hidden></span>`, 'icon-btn account-notifications') + external(config.answerAskPath, I('plus') + `<span class="publish-label">${t("发布")}</span>`, 'btn primary') : external('/users/login?status=inactive', t("激活账号"), 'btn primary')) + accountMenu() : external(config.answerLoginPath, t("登录"), 'btn ghost') + external(config.answerRegisterPath, t("加入社区"), 'btn primary guest-register')}</div>
+      <div class="header-actions">${languageControl()}<button type="button" class="icon-btn theme-btn" data-action="theme" aria-label="${document.documentElement.dataset.theme === 'dark' ? t("切换到浅色主题") : t("切换到深色主题")}">${I(document.documentElement.dataset.theme === 'dark' ? 'sun' : 'moon')}</button>${currentUserState === 'loading' ? `<span class="identity-loading" role="status">${t("正在确认身份…")}</span>` : identityUnavailableState ? link('/me', I('server', 'sm') + `<span>${t("身份服务暂不可用")}</span>`, 'btn ghost identity-status') : logged ? (activeUser ? external('/users/notifications/inbox', I('bell') + `<span class="visually-hidden">${t("通知中心")}</span><span class="account-unread-dot" data-account-unread hidden></span>`, 'icon-btn account-notifications') + link('/chat', I('chat') + `<span class="publish-label" aria-hidden="true">${t('聊天')}</span><span class="visually-hidden">${t('聊天')}</span><span class="chat-unread" data-chat-unread hidden></span>`, 'btn header-chat') : external('/users/login?status=inactive', t("激活账号"), 'btn primary')) + accountMenu() : external(config.answerLoginPath, t("登录"), 'btn ghost') + external(config.answerRegisterPath, t("加入社区"), 'btn primary guest-register')}</div>
     </header>`;
   }
 
@@ -283,6 +284,7 @@
     if (next && draft !== undefined) { next.value = draft; if (focused) next.focus({preventScroll:true}); }
     extrasUpdatedAt = 0;
     refreshAccountExtras();
+    refreshChatUnread();
     syncNavigation();
     enhanceTaxonomy();
   }
@@ -308,6 +310,8 @@
     const view = document.getElementById('view');
     if (view) view.innerHTML = html;
     enhanceTaxonomy();
+    const chatRoot = document.querySelector('[data-chat-root]');
+    if (chatRoot && chatView) chatView.mount(chatRoot, route().query.get('room') || '');
     const core = document.querySelector('[data-pulse-core]');
     if (core && window.MetarPulseCore && pulseCoreState) {
       pulseView = new window.MetarPulseCore.View(core, { t });
@@ -612,7 +616,21 @@
 
   async function resolveView() {
     const { path } = route();
-    if (/^\/(?:me|settings|admin|pulse)(?:\/|$)/.test(path)) await identityReady;
+    if (/^\/(?:me|settings|admin|pulse|chat)(?:\/|$)/.test(path)) await identityReady;
+    if (path === '/chat' || path === '/admin/chat') {
+      const title = t(path === '/chat' ? '聊天' : '聊天举报');
+      if (currentUserState === 'unavailable') return identityUnavailable(title);
+      if (!currentUser) return loginRequired(title, t('登录社区账号后开始聊天，无需绑定 API 账号。'));
+      if (!isActiveUser(currentUser)) return accountUnavailable(title);
+      if (path === '/admin/chat' && !isCommunityAdministrator(currentUser)) return empty(t('需要管理员权限'), '', link('/latest', t('返回社区'), 'btn'), 'shield');
+      await loadFeatureScript('chat', 'MetarChat');
+      if (path === '/admin/chat') {
+        chatModeration = new window.MetarChat.Moderation(answer, new AnswerAdapter({answerApiBase:'/answer/admin/api'}));
+        return await chatModeration.page(route().query.get('before') || '');
+      }
+      if (!chatView || chatView.user !== String(currentUser.id)) chatView = new window.MetarChat.View(answer, new AnswerAdapter({answerApiBase:'/answer/admin/api'}), currentUser);
+      return chatView.shell();
+    }
     if (path === '/latest') return questionsPage();
     if (path === '/topics') return topicsPage();
     if (path === '/admin/taxonomy') {
@@ -817,6 +835,24 @@
     }
   }
 
+  async function refreshChatUnread() {
+    clearTimeout(chatUnreadTimer);
+    if (chatUnreadBusy || document.hidden || currentUserState !== 'ready' || !isActiveUser(currentUser)) return;
+    const user = currentUser, token = answer.token();
+    chatUnreadBusy = true;
+    try {
+      const data = await answer.request('/metar/chat/summary');
+      if (currentUser !== user || answer.token() !== token) return;
+      document.querySelectorAll('[data-chat-unread]').forEach(node => {
+        const count = Number(data.unread) + Number(data.invites);
+        node.hidden = !count; node.textContent = count > 99 ? '99+' : String(count);
+      });
+    } catch (_) { /* Chat availability never blocks community navigation. */ }
+    finally { chatUnreadBusy = false; if (!document.hidden) chatUnreadTimer = setTimeout(refreshChatUnread, 30000); }
+  }
+  document.addEventListener('visibilitychange', () => { clearTimeout(chatUnreadTimer); if (!document.hidden) refreshChatUnread(); });
+  window.addEventListener('pagehide', () => { clearTimeout(chatUnreadTimer); chatView?.dispose(); });
+
   function closeMobileMenu() {
     document.body.classList.remove('menu-open');
     document.querySelector('[data-action="menu"]')?.setAttribute('aria-expanded', 'false');
@@ -837,6 +873,7 @@
   async function navigate({restore = null, preservePublicView = false} = {}) {
     const destination = nativeDestination(location, config);
     if (destination) { location.replace(destination); return; }
+    chatView?.dispose();
     const sequence = ++navigationSequence;
     const key = location.pathname + location.search;
     const session = answer.token();
@@ -932,6 +969,17 @@
       }).then(() => { status.textContent = t('类别与标签已保存并重新读取核实。'); }).catch(error => {
         status.textContent = `${errorMessage(error)} ${t('已完成的条目会保留；重新初始化会先查询现状，不会覆盖已有介绍。')}`;
       }).finally(() => { taxonomyBusy = false; button.disabled = false; });
+      return;
+    }
+    const chatReview = event.target.closest('[data-chat-review]');
+    if (chatReview) {
+      event.preventDefault();
+      if (chatReview.dataset.busy === '1') return;
+      chatReview.dataset.busy = '1';
+      chatReview.querySelectorAll('button').forEach(b => b.disabled = true);
+      chatModeration?.submit(chatReview, event.submitter?.value).catch(error => {
+        chatReview.querySelector('[role="status"]').textContent = window.MetarChat.errorText(error);
+      }).finally(() => { chatReview.dataset.busy = ''; chatReview.querySelectorAll('button').forEach(b => b.disabled = false); });
       return;
     }
     const growthForm = event.target.closest('form[data-growth-form]');
