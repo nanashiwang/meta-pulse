@@ -351,8 +351,7 @@
     const totalPages = Math.max(1, Math.ceil(total / 20));
     const pager = totalPages > 1 ? `<div class="prod-pager">${page > 1 ? link(`${base}?order=${order}&page=${page - 1}`, t("上一页"), 'btn small') : ''}<span>${t("第 {page} / {total} 页", { page: number(page), total: number(totalPages) })}</span>${page < totalPages ? link(`${base}?order=${order}&page=${page + 1}`, t("下一页"), 'btn small') : ''}</div>` : '';
     return `<section class="community-discussions">
-      <div class="community-heading"><div><span class="eyebrow">METAR COMMUNITY</span><h1>${esc(title)}</h1></div>${link('/topics', I('flag', 'sm') + t('全部标签'), 'btn small')}</div>
-      <div class="community-notice">${t('分享经验，认真提问，一起把 AI 用好。')}${link('/guidelines', t('社区规范'), 'textlink')}</div>
+      ${tag ? `<div class="community-heading"><h1>${esc(title)}</h1>${link('/topics', I('flag', 'sm') + t('全部标签'), 'btn small')}</div>` : `<h1 class="visually-hidden">${esc(title)}</h1>`}
       <div class="discussion-toolbar"><nav class="discussion-tabs" aria-label="${t('话题筛选')}">${tabs}</nav>${external(config.answerAskPath, I('plus', 'sm') + t('新建话题'), 'btn primary')}</div>
       ${list.length ? discussionList(list) : empty(order === 'unanswered' ? t("暂时没有待回答问题") : t("当前筛选没有内容"), t("可以调整筛选，或发起一个新问题。"), external(config.answerAskPath, t("发起提问"), 'btn primary'), 'chat')}${pager}
     </section>${footer()}`;

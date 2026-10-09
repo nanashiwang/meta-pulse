@@ -20,7 +20,7 @@ def build_seo(output, shell, site_name="METAR"):
                   "/topics": ("全部标签", "All tags"), "/knowledge": ("知识库", "Knowledge"),
                   "/support": ("帮助中心", "Help center"), "/guidelines": ("社区规范", "Guidelines")}
         title, english = titles.get(route, ("正在加载…", "Loading…"))
-        layout = "list" if route in ("/", "/latest") else "grid" if route in ("/topics", "/knowledge") else "panel"
+        layout = "feed" if route in ("/", "/latest") else "grid" if route in ("/topics", "/knowledge") else "panel"
         view = (view_template.replace("__METAR_LOADING_LAYOUT__", layout)
                 .replace("__METAR_LOADING_TITLE__", html.escape(title))
                 .replace("__METAR_LOADING_LABEL__", "正在读取社区实时数据…")
