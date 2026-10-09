@@ -152,3 +152,21 @@ img[data-metar-appearance="veteran"],img[data-metar-appearance="companion"]{box-
 
 .prod-current-tag{max-width:min(45%,240px);overflow-wrap:anywhere;white-space:normal;flex-shrink:0}.discussion-toolbar .prod-current-tag + .discussion-tabs{flex:1}.prod-search-count{font-size:13px;margin:0 0 12px}
 @media(max-width:580px){.discussion-toolbar .prod-current-tag + .discussion-tabs{flex-basis:100%}}
+.taxonomy-toolbar { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
+.taxonomy-requests { max-width:560px; min-width:0; }
+.taxonomy-requests summary { cursor:pointer; padding:10px 0; font-weight:600; }
+.taxonomy-requests p { margin:8px 0 12px; color:var(--muted); line-height:1.65; }
+.taxonomy-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+.taxonomy-category,.taxonomy-tag { padding:20px; min-width:0; overflow-wrap:anywhere; }
+.taxonomy-category-heading { display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+.taxonomy-category h2,.taxonomy-tag h2 { font-size:16px; margin:0; }
+.taxonomy-category p,.taxonomy-tag p { color:var(--muted); font-size:13px; line-height:1.65; margin:12px 0; }
+.taxonomy-dot { width:8px; height:8px; border-radius:3px; background:var(--accent); flex-shrink:0; }
+.taxonomy-seed-tags { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
+.taxonomy-confirm { display:flex; align-items:flex-start; gap:8px; line-height:1.6; margin:12px 0; }
+.taxonomy-confirm input { margin-top:5px; flex-shrink:0; }
+.taxonomy-filter { display:flex; gap:8px; flex-wrap:wrap; align-items:center; padding:0 0 12px; }
+.taxonomy-filter select { max-width:100%; min-width:0; border:1px solid var(--border); border-radius:8px; padding:7px 10px; color:var(--text); background:var(--surface); }
+.taxonomy-category-badge { font-weight:600; border-inline-start:3px solid var(--accent); }
+@media(max-width:1000px) { .taxonomy-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:540px) { .taxonomy-grid { grid-template-columns:minmax(0,1fr); } .taxonomy-toolbar .discussion-tabs { width:100%; } .taxonomy-category,.taxonomy-tag { padding:16px; } }

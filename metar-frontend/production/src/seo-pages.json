@@ -10,9 +10,9 @@
     "body": "<h1>最新讨论</h1><p>浏览公开问题与回答，交流 AI 模型和 API 使用经验。</p><a href=\"/questions\">查看实时问题列表</a>"
   },
   "/topics": {
-    "title": "话题标签｜METAR 元衡社区",
-    "description": "按话题浏览 METAR 社区的公开讨论。",
-    "body": "<h1>话题标签</h1><p>从社区标签中找到正在探索的方向。</p><a href=\"/tags\">浏览全部公开标签与问题</a>"
+    "title": "类别与标签｜METAR 元衡社区",
+    "description": "按类别和标签浏览 METAR 社区，申请新增讨论方向。",
+    "body": "<h1>类别与标签</h1><p>按类别浏览讨论，用标签查找相同主题。成员可以发帖申请新增类别或标签。</p><a href=\"/tags\">浏览全部公开标签与问题</a>"
   },
   "/knowledge": {
     "title": "技术知识库｜METAR 元衡社区",

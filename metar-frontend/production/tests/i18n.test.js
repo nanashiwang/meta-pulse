@@ -51,7 +51,7 @@ test('参数文案和数量在两种语言下保持完整语序', () => {
 
 test('app、适配器、头像中的显式中文界面词条都有英文翻译', () => {
   const { i18n } = languageContext('en_US');
-  for (const name of ['app.js', 'admin-periods.js', 'admin-pulse.js', 'adapters.js', 'avatars.js', 'pulse-core.js']) {
+  for (const name of ['app.js', 'admin-periods.js', 'admin-pulse.js', 'adapters.js', 'taxonomy.js', 'avatars.js', 'pulse-core.js']) {
     for (const match of script(name).matchAll(/\bt\(\s*(["'])([^"'\n]+)\1/g)) {
       const key = match[2];
       if (/[\u3400-\u9fff]/.test(key)) assert.notEqual(i18n.t(key), key, `${name}: ${key}`);
@@ -130,6 +130,7 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
       }
       let data = { count: 0, list: [] };
       if (pathname === '/answer/api/v1/user/info') data = user;
+      else if (pathname.endsWith('/siteinfo')) data = {site_write:{recommend_tags:[]}};
       else if (pathname.endsWith('/personal/user/info')) data = { ...user, bio: content ? '元衡账号绑定' : '' };
       else if (pathname.endsWith('/question/info')) data = question;
       else if (pathname.endsWith('/personal/collection/page')) data = { count: bookmarkCount, list: bookmarkCount ? [question] : [] };
@@ -144,7 +145,7 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
     pushState(_state, _title, url) { context.location = localLocation(url); },
   };
   context.MetarLoading = require('../src/loading.js');
-  for (const name of ['theme.js', 'adapters.js', 'avatars.js', 'growth.js', 'admin-pulse.js', 'route-policy.js', 'router.js', 'pulse-core.js', 'app.js']) {
+  for (const name of ['theme.js', 'adapters.js', 'taxonomy.js', 'avatars.js', 'growth.js', 'admin-pulse.js', 'route-policy.js', 'router.js', 'pulse-core.js', 'app.js']) {
     vm.runInContext(script(name), context);
     if(name==='adapters.js') {
       const Session=context.MetarAdapters.PulseDrawSession;
@@ -157,7 +158,7 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
     restore() { return windowEvents.get('pageshow')({persisted:true}); },
     async navigate(route) { context.location = localLocation(route); await windowEvents.get('popstate')(); },
     async changeLanguage(value) {
-      for (const listener of documentEvents.get('change') || []) listener({ target: { value, matches: () => true } });
+      for (const listener of documentEvents.get('change') || []) listener({ target: { value, matches: selector => selector === '[data-action="language"]' } });
       await new Promise(setImmediate);
     },
     async click(action, groupId = "1:false") {

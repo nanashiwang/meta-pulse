@@ -6,7 +6,7 @@ export function notificationGroups(nativeNav, english = false) {
     { label: english ? 'Community' : '社区', items: [
       item('/latest', '全部讨论', 'All discussions', 'chat-square-text'),
       item('/latest?order=unanswered', '待回答', 'Unanswered', 'question-circle'),
-      item('/topics', '全部标签', 'All tags', 'tags'),
+      item('/topics', '类别与标签', 'Categories and tags', 'tags'),
       item('/knowledge', '知识库', 'Knowledge', 'book'),
     ] },
   ];

@@ -17,7 +17,7 @@ def build_seo(output, shell, site_name="METAR"):
 
     def initial_document(document, route="", body=""):
         titles = {"/": ("最新话题", "Latest topics"), "/latest": ("最新话题", "Latest topics"),
-                  "/topics": ("全部标签", "All tags"), "/knowledge": ("知识库", "Knowledge"),
+                  "/topics": ("类别与标签", "Categories and tags"), "/knowledge": ("知识库", "Knowledge"),
                   "/support": ("帮助中心", "Help center"), "/guidelines": ("社区规范", "Guidelines")}
         title, english = titles.get(route, ("正在加载…", "Loading…"))
         layout = "feed" if route in ("/", "/latest") else "grid" if route in ("/topics", "/knowledge") else "panel"

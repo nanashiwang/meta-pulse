@@ -22,6 +22,8 @@
   });
 
   const answer = new AnswerAdapter(config);
+  const taxonomy = window.MetarTaxonomy;
+  let taxonomyBusy = false;
   const pulse = new PulseAdapter(answer);
   let growth = null, pulseAdmin = null;
   const featureScripts = new Map();
@@ -179,7 +181,7 @@
     return `<article class="discussion-row">
       <div class="discussion-main">
         ${external(questionHref(question.id || question.question_id), `<h3>${question.pin === 2 ? I('flag', 'sm') + `<span class="visually-hidden">${t("置顶")} </span>` : ''}${esc(question.title)}</h3>`, 'discussion-title')}
-        <div class="discussion-meta">${question.accepted_answer_id ? badge(I('check', 'sm') + t("已解决"), 'green') : ''}${tags.slice(0, 3).map((tag) => link(`/topic/${encodeURIComponent(tag.slug_name || tagName(tag))}`, esc(tagName(tag)), 'badge')).join('')}${publicAuthor(author, esc(displayName(author)), 'discussion-author')}</div>
+        <div class="discussion-meta">${question.accepted_answer_id ? badge(I('check', 'sm') + t("已解决"), 'green') : ''}${[...tags.filter(tag=>tag.recommend), ...tags.filter(tag=>!tag.recommend).slice(0,3)].map((tag) => link(`/topic/${encodeURIComponent(tag.slug_name || tagName(tag))}`, esc(tagName(tag)), tag.recommend ? 'badge taxonomy-category-badge' : 'badge')).join('')}${publicAuthor(author, esc(displayName(author)), 'discussion-author')}</div>
       </div>
       <div class="discussion-people" aria-label="${t('最近参与者')}">${publicAuthor(operator, avatar(operator))}</div>
       <div class="discussion-count"><span class="visually-hidden">${t('回复')} </span>${number(question.answer_count)}</div>
@@ -200,7 +202,7 @@
     const path = route().path;
     if (path.startsWith('/question/')) return t("问题详情");
     if (path.startsWith('/topic/')) return t("话题");
-    return ({ '/latest': t("最新话题"), '/topics': t("全部标签"), '/knowledge': t("知识库"), '/search': t("搜索"), '/me': t("个人空间"), '/me/bookmarks': t("我的收藏"), '/me/growth': t('社区成长'), '/admin/growth': t('成长管理'), '/me/notifications': t("通知中心"), '/settings/binding': t("账号绑定"), '/pulse': t("Pulse 权益"), '/admin/pulse': t("Pulse 配置"), '/publish': t("发布内容"), '/login': t("登录"), '/register': t("注册"), '/forgot': t("找回密码"), '/status': t("服务状态"), '/support': t("帮助中心"), '/guidelines': t("社区规范") })[path] || t("METAR 社区");
+    return ({ '/latest': t("最新话题"), '/topics': t("类别与标签"), '/admin/taxonomy': t('类别管理'), '/knowledge': t("知识库"), '/search': t("搜索"), '/me': t("个人空间"), '/me/bookmarks': t("我的收藏"), '/me/growth': t('社区成长'), '/admin/growth': t('成长管理'), '/me/notifications': t("通知中心"), '/settings/binding': t("账号绑定"), '/pulse': t("Pulse 权益"), '/admin/pulse': t("Pulse 配置"), '/publish': t("发布内容"), '/login': t("登录"), '/register': t("注册"), '/forgot': t("找回密码"), '/status': t("服务状态"), '/support': t("帮助中心"), '/guidelines': t("社区规范") })[path] || t("METAR 社区");
   }
 
   function languageControl() {
@@ -213,7 +215,7 @@
     return `<details class="account-menu"><summary class="icon-btn" aria-label="${t('账号菜单')}">${avatar(currentUser)}</summary><nav class="account-menu-panel" aria-label="${t('账号菜单')}">
       <div class="account-menu-profile">${avatar(currentUser)}<div><strong>${esc(displayName(currentUser))}</strong><span class="account-menu-level" data-account-level></span></div></div>
       <div class="account-menu-group"><div class="account-menu-label">${t("我的空间")}</div>${item('/me', t("个人空间"), 'user')}${item('/me/growth', t('社区成长'), 'target')}${item('/me/bookmarks', t("我的收藏"), 'bookmark')}${item('/settings/binding', t("账号绑定"), 'link')}${external(config.answerSettingsPath, I('settings') + `<span>${t("账号设置")}</span>`, 'account-menu-link')}</div>
-      ${currentUserState === 'ready' && isCommunityAdministrator(currentUser) ? `<div class="account-menu-group"><div class="account-menu-label">${t('管理')}</div>${item('/admin/pulse', t('Pulse 配置'), 'settings')}${item('/admin/growth', t('成长管理'), 'target')}${external('/admin/dashboard', I('shield') + `<span>${t('社区管理')}</span>`, 'account-menu-link')}${external('/admin/pulse_user_center', I('link') + `<span>${t('社区连接配置')}</span>`, 'account-menu-link')}</div>` : ''}
+      ${currentUserState === 'ready' && isCommunityAdministrator(currentUser) ? `<div class="account-menu-group"><div class="account-menu-label">${t('管理')}</div>${item('/admin/pulse', t('Pulse 配置'), 'settings')}${item('/admin/growth', t('成长管理'), 'target')}${item('/admin/taxonomy', t('类别管理'), 'flag')}${external('/admin/dashboard', I('shield') + `<span>${t('社区管理')}</span>`, 'account-menu-link')}${external('/admin/pulse_user_center', I('link') + `<span>${t('社区连接配置')}</span>`, 'account-menu-link')}</div>` : ''}
       <div class="account-menu-group">${external('/users/logout', I('external') + `<span>${t('退出登录')}</span>`, 'account-menu-link')}</div>
     </nav></details>`;
   }
@@ -237,14 +239,14 @@
     const { path, query } = route();
     const item = (url, label, icon) => link(url, I(icon) + `<span>${esc(label)}</span>`, `nav-item ${routeMatchesNavigation(path, query.toString(), url) ? 'active' : ''}`);
     return `<aside class="sidebar" id="community-sidebar" aria-label="${t("社区导航")}">
-      <div class="nav-group"><div class="nav-label">${t("社区")}</div>${item('/latest', t("全部讨论"), 'chat')}${item('/latest?order=unanswered', t("待回答"), 'target')}${item('/topics', t("全部标签"), 'flag')}${item('/knowledge', t("知识库"), 'book')}</div>
+      <div class="nav-group"><div class="nav-label">${t("社区")}</div>${item('/latest', t("全部讨论"), 'chat')}${item('/latest?order=unanswered', t("待回答"), 'target')}${item('/topics', t("类别与标签"), 'flag')}${item('/knowledge', t("知识库"), 'book')}</div>
       <div class="side-bottom">${item('/pulse', t("Pulse 权益"), 'pulse')}${item('/support', t("帮助中心"), 'help')}${item('/status', t("服务状态"), 'server')}<div class="side-footer">${link('/guidelines', t("社区规范"))}${external('/sitemap.xml', t("站点地图"))}</div></div>
     </aside>`;
   }
 
   function mobileBottom() {
     const { path, query } = route();
-    return `<nav class="mobile-bottom" aria-label="${t("移动端主导航")}">${[['/latest', t("话题"), 'chat'], ['/topics', t("标签"), 'flag'], ['/knowledge', t("知识库"), 'book'], ['/pulse', 'Pulse', 'pulse'], ['/me', t("我的"), 'user']].map(([url, label, icon]) => link(url, I(icon) + label, routeMatchesNavigation(path, query.toString(), url) ? 'active' : '')).join('')}</nav>`;
+    return `<nav class="mobile-bottom" aria-label="${t("移动端主导航")}">${[['/latest', t("话题"), 'chat'], ['/topics', t("类别"), 'flag'], ['/knowledge', t("知识库"), 'book'], ['/pulse', 'Pulse', 'pulse'], ['/me', t("我的"), 'user']].map(([url, label, icon]) => link(url, I(icon) + label, routeMatchesNavigation(path, query.toString(), url) ? 'active' : '')).join('')}</nav>`;
   }
 
   function syncNavigation() {
@@ -297,6 +299,7 @@
   function renderView(html, {focus = true} = {}) {
     const view = document.getElementById('view');
     if (view) view.innerHTML = html;
+    enhanceCategoryFilter();
     const core = document.querySelector('[data-pulse-core]');
     if (core && window.MetarPulseCore && pulseCoreState) {
       pulseView = new window.MetarPulseCore.View(core, { t });
@@ -335,6 +338,23 @@
 
   const questionOrders = () => ({ active: t("最近活跃"), newest: t("最新发布"), hot: t("热门"), score: t("高赞"), unanswered: t("待回答") });
 
+  function enhanceCategoryFilter() {
+    const node = document.querySelector('[data-taxonomy-filter]');
+    if (!node) return;
+    const sequence = navigationSequence, {path} = route();
+    const tag = path.startsWith('/topic/') ? decodeURIComponent(path.slice(7)) : '';
+    answer.request('/siteinfo').then(site => {
+      const categories = taxonomy.recommended(site);
+      if (!node.isConnected || sequence !== navigationSequence) return;
+      node.innerHTML = `<label class="visually-hidden" for="category-filter">${t('按类别浏览')}</label><select id="category-filter" data-action="category-filter"><option value="">${t('全部类别')}</option>${categories.map(item=>`<option value="${esc(item.slug_name)}"${tag===item.slug_name?' selected':''}>${esc(tagName(item))}</option>`).join('')}</select>${link('/topics?view=tags', t('全部标签'), 'btn small')}`;
+      const selected = categories.find(item=>item.slug_name===tag);
+      const badge = document.querySelector('.prod-current-tag');
+      if (selected && badge) badge.textContent = tagName(selected);
+    }).catch(() => {
+      if (node.isConnected && sequence === navigationSequence) node.innerHTML += `<span class="muted">${t('类别暂不可用，讨论仍可浏览。')}</span>`;
+    });
+  }
+
   async function questionsPage(tag = '') {
     const { query } = route();
     const requested = query.get('order') || 'active';
@@ -342,24 +362,24 @@
     const order = Object.prototype.hasOwnProperty.call(orders, requested) ? requested : 'active';
     const page = Math.max(1, Number.parseInt(query.get('page') || '1', 10) || 1);
     const result = await answer.listQuestions({ page, pageSize: 20, order, tag });
+    const filter = `<div class="taxonomy-filter" data-taxonomy-filter>${link('/topics', t('全部类别'), 'btn small')}${link('/topics?view=tags', t('全部标签'), 'btn small')}</div>`;
     const list = Array.isArray(result?.list) ? result.list : [];
     const total = Number(result?.count) || 0;
     const base = tag ? `/topic/${encodeURIComponent(tag)}` : '/latest';
     const title = tag || t("最新话题");
+    const askPath = tag ? taxonomy.askURL(config.answerAskPath, tag) : config.answerAskPath;
     const tabs = Object.entries(orders).map(([value, label]) => link(`${base}?order=${value}`, `<span${order === value ? ' aria-current="page"' : ''}>${esc(label)}</span>`, `discussion-tab ${order === value ? 'active' : ''}`)).join('');
     const totalPages = Math.max(1, Math.ceil(total / 20));
     const pager = totalPages > 1 ? `<div class="prod-pager">${page > 1 ? link(`${base}?order=${order}&page=${page - 1}`, t("上一页"), 'btn small') : ''}<span>${t("第 {page} / {total} 页", { page: number(page), total: number(totalPages) })}</span>${page < totalPages ? link(`${base}?order=${order}&page=${page + 1}`, t("下一页"), 'btn small') : ''}</div>` : '';
     return `<section class="community-discussions">
-      ${pageTitle(title)}
-      <div class="discussion-toolbar">${tag ? `<span class="badge green prod-current-tag">${I('flag','sm')}${esc(tag)}</span>` : ''}<nav class="discussion-tabs" aria-label="${t('话题筛选')}">${tabs}</nav>${external(config.answerAskPath, I('plus', 'sm') + t('新建话题'), 'btn primary')}</div>
-      ${list.length ? discussionList(list) : empty(order === 'unanswered' ? t("暂时没有待回答问题") : t("当前筛选没有内容"), t("可以调整筛选，或发起一个新问题。"), external(config.answerAskPath, t("发起提问"), 'btn primary'), 'chat')}${pager}
+      ${pageTitle(title)}${filter}
+      <div class="discussion-toolbar">${tag ? `<span class="badge green prod-current-tag">${I('flag','sm')}${esc(title)}</span>` : ''}<nav class="discussion-tabs" aria-label="${t('话题筛选')}">${tabs}</nav>${external(askPath, I('plus', 'sm') + t('新建话题'), 'btn primary')}</div>
+      ${list.length ? discussionList(list) : empty(order === 'unanswered' ? t("暂时没有待回答问题") : t("当前筛选没有内容"), t("可以调整筛选，或发起一个新问题。"), external(askPath, t("发起提问"), 'btn primary'), 'chat')}${pager}
     </section>${footer()}`;
   }
 
   async function topicsPage() {
-    const result = await answer.listTags({ pageSize: 48, order: 'popular' });
-    const tags = Array.isArray(result?.list) ? result.list : [];
-    return `${pageTitle(t("全部标签"))}<div class="prod-topic-grid">${tags.length ? tags.map((tag) => `<article class="card prod-topic-card"><div><div class="topic-icon">${I('flag')}</div><h3>${esc(tagName(tag))}</h3><p>${esc(tag.excerpt || tag.description || t("该话题暂未添加介绍。"))}</p></div><div class="between"><span class="muted">${countLabel(tag.question_count, 'questions')}</span>${link(`/topic/${encodeURIComponent(tag.slug_name)}`, t("进入话题 ") + I('arrow', 'sm'), 'textlink')}</div></article>`).join('') : `<section class="card">${empty(t("还没有公开话题"), t("话题将随社区内容逐步建立。"), external(config.answerAskPath, t("发起问题"), 'btn primary'), 'flag')}</section>`}</div>${footer()}`;
+    return `${pageTitle(t('类别与标签'))}${await taxonomy.directory(answer, route().query, config.answerAskPath, getLanguage() === 'en_US')}${footer()}`;
   }
 
   async function searchPage() {
@@ -543,6 +563,13 @@
     if (/^\/(?:me|settings|admin|pulse)(?:\/|$)/.test(path)) await identityReady;
     if (path === '/latest') return questionsPage();
     if (path === '/topics') return topicsPage();
+    if (path === '/admin/taxonomy') {
+      const title = t('类别管理');
+      if (currentUserState === 'unavailable') return identityUnavailable(title);
+      if (!currentUser) return loginRequired(title, t('请使用社区管理员账号登录。'));
+      if (!isCommunityAdministrator(currentUser)) return `<section class="card">${empty(t('需要管理员权限'), '', link('/latest', t('返回社区'), 'btn'), 'shield')}</section>${footer()}`;
+      return `${pageTitle(title)}${taxonomy.adminPage()}${footer()}`;
+    }
     if (path === '/knowledge') return knowledgePage();
     if (path === '/search') return searchPage();
     if (path === '/me') return profilePage();
@@ -833,12 +860,33 @@
   }
 
   document.addEventListener('change', (event) => {
+    if (event.target.matches?.('[data-action="category-filter"]')) {
+      const {query} = route();
+      const base = event.target.value ? taxonomy.topicURL(event.target.value) : '/latest';
+      const order = query.get('order') || 'active';
+      if (router.go(`${base}?${new URLSearchParams({order})}`)) navigate();
+      return;
+    }
     if (!event.target.matches?.('[data-action="language"]')) return;
     if (!setLanguage(event.target.value)) return;
     navigate().then(() => document.querySelector('[data-action="language"]')?.focus());
   });
 
   document.addEventListener('submit', (event) => {
+    const taxonomyForm = event.target.closest('form[data-form="taxonomy-init"]');
+    if (taxonomyForm) {
+      event.preventDefault();
+      if (taxonomyBusy || !isCommunityAdministrator(currentUser) || !taxonomyForm.reportValidity()) return;
+      taxonomyBusy = true;
+      const button = taxonomyForm.querySelector('button'), status = taxonomyForm.querySelector('[data-taxonomy-status]');
+      button.disabled = true;
+      taxonomy.initialize(answer, new AnswerAdapter({answerApiBase:'/answer/admin/api'}), name => {
+        status.textContent = t('正在核对：{name}', {name});
+      }).then(() => { status.textContent = t('类别与标签已保存并重新读取核实。'); }).catch(error => {
+        status.textContent = `${errorMessage(error)} ${t('已完成的条目会保留；重新初始化会先查询现状，不会覆盖已有介绍。')}`;
+      }).finally(() => { taxonomyBusy = false; button.disabled = false; });
+      return;
+    }
     const growthForm = event.target.closest('form[data-growth-form]');
     if (growthForm) { event.preventDefault(); growth?.submit(growthForm, navigate); return; }
     const periodForm = event.target.closest('form[data-form="admin-period"]');
