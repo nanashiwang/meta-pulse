@@ -28,7 +28,6 @@
     return result.rewards.map((reward, index) => `<div class="pc-card" data-tier="${tier(reward.tier)}"><span class="pc-card-bloom" aria-hidden="true"></span><div class="pc-reward-inner"><div class="pc-card-content">
       <div class="pc-reward-label">${esc(t(tierLabels[tier(reward.tier)]))}<span>${result.total > 1 ? String(index + 1).padStart(2,'0') : 'PULSE'}</span></div>
       <div class="pc-emblem">${icon(reward.type)}</div><div class="pc-value"><span class="pc-amount">${esc(reward.amount)}</span><span class="pc-unit">${esc(reward.unit)}</span></div>
-      <div class="pc-divider"></div><div class="pc-card-foot" data-pending="${Boolean(reward.pending)}">${esc(reward.status)}</div>
       </div></div><span class="pc-card-light" aria-hidden="true"><span class="pc-light-sigil">${icon(reward.type)}</span></span><span class="pc-card-frame" aria-hidden="true"></span></div>`).join('');
   }
 
@@ -67,7 +66,7 @@
         <div class="pc-reward" aria-hidden="true"></div>
       </div>
       <div class="pc-bottom"><p class="pc-state" role="status" aria-live="polite" aria-atomic="true"></p><div class="pc-controls"><p class="pc-tickets"></p><div class="pc-actions"><button type="button" class="pc-primary" data-action="pulse-draw" disabled>${esc(t('开启一次脉冲 · 1 券'))}</button><button type="button" class="pc-primary pc-five" data-action="pulse-draw-five" disabled>${esc(t('五连抽 · 5 券'))}</button></div></div></div>
-      <div class="pc-footer"><label class="pc-skip" title="${esc(t('保留闪光与翻牌'))}"><input type="checkbox" data-core-skip>${esc(t('跳过蓄能'))}</label><button type="button" class="pc-refresh" data-action="pulse-refresh">${esc(t('刷新奖励状态'))}</button></div>
+      <div class="pc-footer"><label class="pc-skip" title="${esc(t('保留闪光与翻牌'))}"><input type="checkbox" data-core-skip>${esc(t('跳过蓄能'))}</label><button type="button" class="pc-refresh" data-action="pulse-refresh">${esc(t('刷新权益'))}</button></div>
     </section>`;
   }
 
@@ -322,8 +321,7 @@
       this.reward.setAttribute('aria-hidden', 'false');
       this.status.textContent = result.total > 1
         ? this.t('本次已揭晓 {count} / {total} 份回馈', {count:result.rewards.length,total:result.total})
-        : this.t('本次回馈：{amount} {unit} · {status}', result.rewards[0]);
-      if (result.rewards.some(reward => reward.pending)) this.status.textContent += ' · ' + this.t('奖励后台发放中。');
+        : this.t('本次回馈：{amount} {unit}', result.rewards[0]);
     }
     tick() {
       cancelAnimationFrame(this.frame); this.frame = 0;

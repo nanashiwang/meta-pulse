@@ -301,8 +301,8 @@ test('Pulse 记录入口、状态与失败提示完整翻译，奖励编号安�
 
 test('Pulse 提交结果与原请求恢复提示随切换语言更新，超时不换操作编号', async () => {
   for (const [actionResult, english, chinese] of [
-    ['settled', 'Your reward has been credited.', '奖励已到账。'],
-    ['pending', 'Your reward is being delivered in the background', '奖励将在后台发放'],
+    ['settled', 'Your draw is complete.', '本次抽奖已完成。'],
+    ['pending', 'Your draw is complete.', '本次抽奖已完成。'],
     ['action_rejected', 'No ticket was spent.', '本次未扣券'],
     ['timeout', 'Some results are still unconfirmed.', '本轮还有结果未确认'],
   ]) {
@@ -355,7 +355,7 @@ test('all five pending rewards unlock a new round before any reward settles', as
   const view=await shell({user:pulseUser,binding:'bound',tickets:20,actionResult:'pending'});
   await view.navigate('/pulse');await view.click('pulse-draw-five');
   assert.equal(view.operations.size,0);
-  assert.match(view.html(),/Your reward is being delivered in the background/);
+  assert.match(view.html(),/Your draw is complete/);
   await view.click('pulse-draw-five');
   const calls=view.requests.filter(r=>r.url.endsWith('/actions'));
   assert.equal(calls.length,10);

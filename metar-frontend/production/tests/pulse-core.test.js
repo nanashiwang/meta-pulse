@@ -145,4 +145,6 @@ test('five cards keep their own tier, share the strongest burst and escape displ
   assert.equal((html.match(/class="pc-card"/g)||[]).length,5);
   assert.doesNotMatch(html,/<img>/); assert.match(html,/&lt;img&gt;/);
   assert.equal(strongest([{tier:'unknown'}]),'white');
+  assert.doesNotMatch(html,/pc-card-foot|data-pending|pending/);
+  assert.equal(cards({rewards:rewards.map(r=>({...r,status:'settled',pending:false})),total:5},s=>s),html,'delivery changes do not change the prize card');
 });
