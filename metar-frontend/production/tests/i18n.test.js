@@ -144,7 +144,13 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
     pushState(_state, _title, url) { context.location = localLocation(url); },
   };
   context.MetarLoading = require('../src/loading.js');
-  for (const name of ['theme.js', 'adapters.js', 'avatars.js', 'growth.js', 'admin-pulse.js', 'route-policy.js', 'router.js', 'pulse-core.js', 'app.js']) vm.runInContext(script(name), context);
+  for (const name of ['theme.js', 'adapters.js', 'avatars.js', 'growth.js', 'admin-pulse.js', 'route-policy.js', 'router.js', 'pulse-core.js', 'app.js']) {
+    vm.runInContext(script(name), context);
+    if(name==='adapters.js') {
+      const Session=context.MetarAdapters.PulseDrawSession;
+      context.MetarAdapters={...context.MetarAdapters,PulseDrawSession:class extends Session {constructor(client,store){super(client,store,{wait:async()=>{}});}}};
+    }
+  }
   await new Promise(setImmediate);
   return {
     i18n, values, document, nodes, requests, operations, redirects, scrolls,
@@ -297,7 +303,7 @@ test('Pulse 提交结果与原请求恢复提示随切换语言更新，超时�
     ['settled', 'Your reward has been credited.', '奖励已到账。'],
     ['pending', 'Your reward is being delivered in the background', '奖励将在后台发放'],
     ['action_rejected', 'No ticket was spent.', '本次未扣券'],
-    ['timeout', 'The result cannot be confirmed yet.', '暂时无法确认本次结果'],
+    ['timeout', 'Some results are still unconfirmed.', '本轮还有结果未确认'],
   ]) {
     const view = await shell({ user: pulseUser, binding: 'bound', actionResult });
     await view.navigate('/pulse');
@@ -309,9 +315,9 @@ test('Pulse 提交结果与原请求恢复提示随切换语言更新，超时�
       assert.match(view.html(), /Check original draw/);
       await view.click('pulse-resume');
       const actions = view.requests.filter(({ url }) => url.endsWith('/actions'));
-      assert.equal(actions.length, 2);
-      assert.equal(actions[0].options.body, actions[1].options.body);
-      assert.equal(actions[0].options.headers.get('Idempotency-Key'), actions[1].options.headers.get('Idempotency-Key'));
+      assert.equal(actions.length, 6);
+      assert.ok(actions.every(action=>action.options.body===actions[0].options.body));
+      assert.ok(actions.every(action=>action.options.headers.get('Idempotency-Key')===actions[0].options.headers.get('Idempotency-Key')));
     }
     await view.changeLanguage('zh_CN');
     assert.ok(view.html().includes(chinese), actionResult + ' language switch');
@@ -342,6 +348,18 @@ test('five-draw fallback submits five unique actions, refuses insufficient ticke
   assert.equal(partial.requests.filter(r=>r.url.endsWith('/actions')).length,3);
   assert.equal(partial.operations.size,0);
   assert.match(partial.html(),/Confirmed rewards are kept/);assertEnglish(partial,'partial draw');
+});
+
+test('all five pending rewards unlock a new round before any reward settles', async () => {
+  const view=await shell({user:pulseUser,binding:'bound',tickets:20,actionResult:'pending'});
+  await view.navigate('/pulse');await view.click('pulse-draw-five');
+  assert.equal(view.operations.size,0);
+  assert.match(view.html(),/Your reward is being delivered in the background/);
+  await view.click('pulse-draw-five');
+  const calls=view.requests.filter(r=>r.url.endsWith('/actions'));
+  assert.equal(calls.length,10);
+  assert.equal(new Set(calls.map(r=>JSON.parse(r.options.body).action_id)).size,10);
+  assert.equal(view.operations.size,0);
 });
 
 test('Pulse 管理入口仅对 Answer 正常激活管理员显示，版主和伪造 is_admin 无权展示', async () => {

@@ -219,23 +219,54 @@
   // A five-draw session is five ordinary actions, each with its original key.
   // Persist identifiers before the first POST; never persist or invent outcomes.
   class PulseDrawSession {
-    constructor(client, store) { this.client = client; this.store = store; }
+    constructor(client, store, { wait = ms => new Promise(resolve => window.setTimeout(resolve, ms)) } = {}) {
+      this.client = client; this.store = store; this.wait = wait;
+    }
+    async lookup(action) {
+      const history = await this.client.rewards(action.actionId);
+      if (!Array.isArray(history?.rewards)) throw new AdapterError('unconfirmed history', {code:'pulse_unavailable'});
+      const matches = history.rewards.filter(result => validPulseResult(result, action.actionId));
+      if (matches.length > 1) throw new AdapterError('duplicate grant', {code:'action_conflict'});
+      // A malformed matching record is not proof that no draw was committed.
+      if (!matches.length && history.rewards.length) throw new AdapterError('unconfirmed history', {code:'pulse_unavailable'});
+      return matches[0];
+    }
     async recover(operation) {
-      const results = (await Promise.all(pulseActions(operation).map(async action => {
-        const history = await this.client.rewards(action.actionId);
-        return Array.isArray(history.rewards) ? history.rewards.find(result => validPulseResult(result, action.actionId)) : null;
-      }))).filter(Boolean);
+      const results = (await Promise.all(pulseActions(operation).map(action => this.lookup(action)))).filter(Boolean);
       if (new Set(results.map(result => result.grant_id)).size !== results.length) throw new AdapterError('duplicate grant', {code:'action_pending'});
       return results;
+    }
+    async resolve(action, canContinue) {
+      let failure;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const active = () => { if (!canContinue()) throw new AdapterError('draw interrupted', {code:'action_interrupted'}); };
+        active();
+        if (attempt) { await this.wait(attempt === 1 ? 300 : 1000); active(); }
+        try {
+          // An uncertain POST may have committed. Query before retrying the
+          // exact same key and selection; a failed query never means not found.
+          if (attempt) {
+            const recovered = await this.lookup(action);
+            active();
+            if (recovered) return recovered;
+          }
+          active();
+          const result = await this.client.act(action);
+          if (!validPulseResult(result, action.actionId)) throw new AdapterError('unconfirmed result', {code:'action_pending'});
+          return result; // pending settlement is already a confirmed prize.
+        } catch (error) {
+          if (!['action_pending', 'pulse_unavailable', 'rate_limited'].includes(error.code)) throw error;
+          failure = error;
+        }
+      }
+      throw failure;
     }
     async run(operation, { known = [], onResult = () => {}, canContinue = () => true } = {}) {
       const results = [], actions = pulseActions(operation);
       for (const action of actions) {
         let result = known.find(item => validPulseResult(item, action.actionId));
         if (!result) {
-          if (!canContinue()) throw new AdapterError('draw interrupted', {code:'action_interrupted'});
-          result = await this.client.act(action);
-          if (!validPulseResult(result, action.actionId)) throw new AdapterError('unconfirmed result', {code:'action_pending'});
+          result = await this.resolve(action, canContinue);
         }
         if (results.some(item => item.grant_id === result.grant_id)) throw new AdapterError('duplicate grant', {code:'action_pending'});
         results.push(result);

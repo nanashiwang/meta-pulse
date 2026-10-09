@@ -26,44 +26,101 @@ test('five draws persist five distinct identifiers before spending, isolate user
   assert.deepEqual(store.begin(5, choice), single);
 });
 
-test('third response loss is recovered by querying original IDs; five draws spend exactly five times', async () => {
+const immediate = {wait:async()=>{}};
+
+test('a lost third response automatically recovers its pending Grant and finishes all five without awaiting settlement', async () => {
   storage();
-  const store = new PulseOperation('a'), operation = store.begin(5, choice), issued = new Map(), calls = [];
-  let lose = true;
+  const store = new PulseOperation('a'), operation = store.begin(5, choice), issued = new Map(), calls = [], queries = [];
   const client = {
     async act(action) {
-      calls.push(action.actionId);
+      calls.push(action);
       assert.equal(store.read().actions.length, 5);
       const result = issued.get(action.actionId) || reward(action); issued.set(action.actionId, result);
-      if (calls.length === 3 && lose) throw new AdapterError('lost response', {code:'action_pending'});
+      if (calls.length === 3) throw new AdapterError('lost response', {code:'action_pending'});
       return result;
     },
-    async rewards(id) { return {rewards: issued.has(id) ? [issued.get(id)] : []}; },
+    async rewards(id) { queries.push(id); return {rewards: issued.has(id) ? [issued.get(id)] : []}; },
   };
-  let confirmed = [];
-  await assert.rejects(new PulseDrawSession(client,store).run(operation,{onResult:results=>confirmed=results}), error=>error.code==='action_pending');
-  assert.equal(confirmed.length, 2);
-  assert.equal(calls.length, 3);
-  lose = false;
-  const reloadedStore = new PulseOperation('a'), restored = reloadedStore.read(), session = new PulseDrawSession(client,reloadedStore);
-  const known = await session.recover(restored);
-  assert.equal(known.length, 3);
-  assert.equal(calls.length, 3, 'read-only recovery cannot spend tickets');
-  const results = await session.run(restored,{known});
-  assert.equal(results.length,5); assert.equal(calls.length,5); assert.equal(issued.size,5);
-  assert.equal(reloadedStore.read(),null);
+  const progress=[];
+  const results=await new PulseDrawSession(client,store,immediate).run(operation,{onResult:r=>progress.push(r.length)});
+  assert.deepEqual(progress,[1,2,3,4,5]);
+  assert.equal(calls.length,5); assert.equal(issued.size,5);
+  assert.deepEqual(queries,[operation.actions[2].actionId]);
+  assert.ok(results.every(r=>r.status==='pending'));
+  assert.equal(store.read(),null,'pending delivery is not an unfinished draw');
   assert.deepEqual(results.map(r=>r.action_id),operation.actions.map(a=>a.actionId));
+  assert.notDeepEqual(store.begin(5,choice),operation,'next round can start while every reward is pending');
 });
 
-test('unknown result retries the same action and never advances until confirmed', async () => {
+test('fourth request rejected by a temporary 503 is queried then retried with the original selection and key', async () => {
   storage();
-  const store = new PulseOperation('a'), operation = store.begin(5, choice), calls = [];
-  const client = {async act(action) {calls.push(action);throw new AdapterError('offline',{code:'action_pending'});},async rewards(){return {rewards:[]};}};
-  const session = new PulseDrawSession(client,store);
-  for(let i=0;i<3;i++) await assert.rejects(session.run(store.read(),{known:await session.recover(operation)}));
-  assert.equal(calls.length,3);
-  assert.ok(calls.every(action=>action.actionId===operation.actions[0].actionId && action.idempotencyKey===operation.actions[0].idempotencyKey));
+  const store=new PulseOperation('a'), operation=store.begin(5,choice), calls=[], issued=new Map(), events=[], delays=[];
+  const client={
+    async act(action){
+      calls.push(action); events.push('post:'+action.actionId);
+      if(calls.length===4) throw new AdapterError('503',{code:'pulse_unavailable'});
+      const result=issued.get(action.actionId)||reward(action); issued.set(action.actionId,result); return result;
+    },
+    async rewards(id){events.push('query:'+id);return {rewards:issued.has(id)?[issued.get(id)]:[]};},
+  };
+  const results=await new PulseDrawSession(client,store,{wait:async ms=>delays.push(ms)}).run(operation);
+  assert.equal(results.length,5);assert.equal(issued.size,5);assert.equal(calls.length,6);
+  assert.deepEqual(calls[3],calls[4]);
+  assert.deepEqual(events.slice(3,6),['post:','query:','post:'].map(s=>s+operation.actions[3].actionId));
+  assert.deepEqual(delays,[300]);assert.equal(store.read(),null);
+});
+
+test('persistent uncertainty has bounded retries and retains the same operation for read-only reload recovery', async () => {
+  storage();
+  const store=new PulseOperation('a'), operation=store.begin(5,choice), calls=[], issued=new Map(), delays=[];
+  let offline=true;
+  const client={
+    async act(action){calls.push(action);if(offline)throw new AdapterError('offline',{code:'action_pending'});const r=reward(action);issued.set(action.actionId,r);return r;},
+    async rewards(id){return {rewards:issued.has(id)?[issued.get(id)]:[]};},
+  };
+  const session=new PulseDrawSession(client,store,{wait:async ms=>delays.push(ms)});
+  await assert.rejects(session.run(operation),e=>e.code==='action_pending');
+  assert.equal(calls.length,3);assert.deepEqual(delays,[300,1000]);
+  assert.ok(calls.every(a=>JSON.stringify(a)===JSON.stringify(operation.actions[0])));
   assert.deepEqual(store.read(),operation);
+  offline=false;
+  issued.set(operation.actions[0].actionId,reward(operation.actions[0])); // delayed committed result becomes readable
+  const restored=new PulseOperation('a'), recovery=new PulseDrawSession(client,restored,immediate);
+  const known=await recovery.recover(restored.read());
+  assert.equal(known.length,1);assert.equal(calls.length,3,'reload only queries');
+  const results=await recovery.run(restored.read(),{known});
+  assert.equal(results.length,5);assert.equal(issued.size,5);assert.equal(calls.length,7);assert.equal(restored.read(),null);
+});
+
+test('failed, malformed or conflicting history never authorizes another POST', async () => {
+  for(const response of [null,{}, {rewards:[{action_id:'wrong'}]}, {rewards:'invalid'}, 'offline', 'duplicate']){
+    storage();const store=new PulseOperation('a'),operation=store.begin(5,choice);let posts=0,queries=0;
+    const client={
+      async act(){posts++;throw new AdapterError('lost',{code:'action_pending'});},
+      async rewards(){queries++;if(response==='offline')throw new AdapterError('503',{code:'pulse_unavailable'});if(response==='duplicate')return {rewards:[reward(operation.actions[0]),reward(operation.actions[0])]};return response;},
+    };
+    await assert.rejects(new PulseDrawSession(client,store,immediate).run(operation));
+    assert.equal(posts,1);assert.equal(queries,response==='duplicate'?1:2);assert.deepEqual(store.read(),operation);
+  }
+});
+
+test('definite refusals, auth errors and conflicts stop immediately without retrying or advancing', async () => {
+  for(const code of ['action_rejected','selection_changed','selection_required','auth_required','action_conflict']){
+    storage();const store=new PulseOperation('a'),operation=store.begin(5,choice);let posts=0;
+    const client={async act(){posts++;throw new AdapterError(code,{code});},async rewards(){assert.fail('terminal errors must not enter auto recovery');}};
+    await assert.rejects(new PulseDrawSession(client,store,immediate).run(operation),e=>e.code===code);
+    assert.equal(posts,1);assert.deepEqual(store.read(),operation);
+  }
+});
+
+test('navigation during a recovery wait or query stops unsubmitted actions', async () => {
+  for(const stopAt of ['wait','query']){
+    storage();const store=new PulseOperation('a'),operation=store.begin(5,choice);let active=true,posts=0,queries=0;
+    const client={async act(){posts++;throw new AdapterError('lost',{code:'action_pending'});},async rewards(){queries++;active=false;return {rewards:[]};}};
+    const session=new PulseDrawSession(client,store,{wait:async()=>{if(stopAt==='wait')active=false;}});
+    await assert.rejects(session.run(operation,{canContinue:()=>active}),e=>e.code==='action_interrupted');
+    assert.equal(posts,1);assert.equal(queries,stopAt==='query'?1:0);assert.deepEqual(store.read(),operation);
+  }
 });
 
 test('navigation stops unsent actions and malformed responses retain the original journal', async () => {
@@ -71,9 +128,9 @@ test('navigation stops unsent actions and malformed responses retain the origina
   const store = new PulseOperation('a'), operation = store.begin(5, choice); let active = true, calls = 0;
   const client = {async act(action) {calls++;active=false;return reward(action);}};
   let confirmed;
-  await assert.rejects(new PulseDrawSession(client,store).run(operation,{canContinue:()=>active,onResult:r=>confirmed=r}),error=>error.code==='action_interrupted');
+  await assert.rejects(new PulseDrawSession(client,store,immediate).run(operation,{canContinue:()=>active,onResult:r=>confirmed=r}),error=>error.code==='action_interrupted');
   assert.equal(calls,1);assert.equal(confirmed.length,1);assert.deepEqual(store.read(),operation);
-  await assert.rejects(new PulseDrawSession({async act(){return {...reward(operation.actions[0]),action_id:'wrong'};}},store).run(operation),error=>error.code==='action_pending');
+  await assert.rejects(new PulseDrawSession({async act(){return {...reward(operation.actions[0]),action_id:'wrong'};},async rewards(){return {rewards:[{action_id:'wrong'}]};}},store,immediate).run(operation),error=>error.code==='pulse_unavailable');
   assert.deepEqual(store.read(),operation);
 });
 

@@ -274,7 +274,7 @@
       this.root.querySelector('.pc-tickets').textContent = this.t('可用脉冲券：{count}', {count: options.tickets});
       this.button.dataset.action = options.pending ? 'pulse-resume' : 'pulse-draw';
       this.button.disabled = options.busy || (!options.pending && !options.canDraw);
-      this.button.textContent = this.t(options.busy ? '正在处理…' : options.pending ? '继续处理原请求' : '开启一次脉冲 · 1 券');
+      this.button.textContent = this.t(options.busy ? '正在处理…' : options.pending ? '继续完成本轮抽奖' : '开启一次脉冲 · 1 券');
       this.fiveButton.disabled = options.busy || options.pending || !options.canDrawFive;
       this.fiveButton.title = !options.canDrawFive && !options.pending && !options.busy ? this.t('五连抽需要至少 5 张可用脉冲券') : '';
       this.refresh.disabled = options.busy;
