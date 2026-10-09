@@ -64,3 +64,29 @@ test("private reads never use the public content cache and query values are enco
     errorText({ status: 500 }),
   );
 });
+
+test("closed group owners and members can leave without destructive group controls", () => {
+  const { View } = require("../src/chat.js");
+  for (const user of ["2", "3"]) {
+    const view = new View({}, {}, { id: user });
+    view.room = {
+      id: "12",
+      kind: "group",
+      title: "closed",
+      owner_id: "2",
+      closed: true,
+      members: [],
+    };
+    let content;
+    view.dialog = (_, body) => {
+      content = body;
+    };
+    view.members();
+    assert.ok(content.includes('data-chat="confirm-leave"'));
+    assert.ok(!content.includes('data-chat="confirm-close"'));
+    assert.ok(!content.includes('data-chat="invite"'));
+    view.confirm("leave");
+    assert.ok(content.includes("无法再次查看其聊天记录"));
+    assert.deepEqual(view.confirmCommand, { op: "leave", room_id: "12" });
+  }
+});

@@ -382,3 +382,52 @@ func TestMySQLCapacityAndInvitationRejection(t *testing.T) {
 		t.Fatalf("blocks hidden beyond UI limit: %d", len(b))
 	}
 }
+
+func TestMySQLClosedGroupReleasesInvitesAndAllowsExit(t *testing.T) {
+	s := fixture(t)
+	ctx := context.Background()
+	g := run(t, s, "2", "closing-group-create", Command{Op: "group", Title: "关闭测试", Members: []string{"3", "4"}})
+	run(t, s, "3", "closing-group-accept", Command{Op: "accept", RoomID: g.RoomID})
+	run(t, s, "2", "closing-group-send", Command{Op: "send", RoomID: g.RoomID, Body: "保留历史"})
+	run(t, s, "2", "closing-group-close", Command{Op: "close", RoomID: g.RoomID})
+	var state string
+	must(t, s.DB.QueryRow(`SELECT state FROM metar_chat_member WHERE room_id=? AND user_id=4`, g.RoomID).Scan(&state))
+	if state != "left" {
+		t.Fatalf("closed invite kept capacity: %s", state)
+	}
+	inbox, e := s.Inbox(ctx, "4", "")
+	must(t, e)
+	if inbox.Invites != 0 || len(inbox.Rooms) != 0 {
+		t.Fatal(inbox)
+	}
+	if _, e = s.Execute(ctx, "4", "closed-invite-accept", Command{Op: "accept", RoomID: g.RoomID}); !errors.Is(e, ErrForbidden) {
+		t.Fatal(e)
+	}
+	h, e := s.History(ctx, "3", g.RoomID, 0, 0)
+	must(t, e)
+	if len(h.Messages) != 1 || !h.Room.Closed {
+		t.Fatal(h)
+	}
+	if _, e = s.Execute(ctx, "3", "closed-group-no-send", Command{Op: "send", RoomID: g.RoomID, Body: "no"}); !errors.Is(e, ErrInvalid) {
+		t.Fatal(e)
+	}
+	run(t, s, "2", "closed-owner-exit", Command{Op: "leave", RoomID: g.RoomID})
+	if _, e = s.History(ctx, "2", g.RoomID, 0, 0); !errors.Is(e, ErrForbidden) {
+		t.Fatal(e)
+	}
+	if _, e = s.History(ctx, "3", g.RoomID, 0, 0); e != nil {
+		t.Fatal("other member lost retained history", e)
+	}
+	run(t, s, "3", "closed-member-exit", Command{Op: "leave", RoomID: g.RoomID})
+	if _, e = s.History(ctx, "3", g.RoomID, 0, 0); !errors.Is(e, ErrForbidden) {
+		t.Fatal(e)
+	}
+	// Legacy closed invitations also do not consume invisible capacity.
+	for i := 1000; i < 1100; i++ {
+		_, e = s.DB.Exec(`INSERT INTO metar_chat_room(id,kind,title,owner_id,updated_at,closed) VALUES(?,'group','legacy',2,0,1)`, i)
+		must(t, e)
+		_, e = s.DB.Exec(`INSERT INTO metar_chat_member(room_id,user_id,state) VALUES(?,4,'invited')`, i)
+		must(t, e)
+	}
+	run(t, s, "2", "invite-after-old-closed", Command{Op: "group", Title: "可继续邀请", Members: []string{"4"}})
+}

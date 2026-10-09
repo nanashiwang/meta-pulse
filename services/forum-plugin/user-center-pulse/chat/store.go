@@ -80,7 +80,7 @@ func capacity(ctx context.Context, tx *sql.Tx, user string) error {
 		return err
 	}
 	var n int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM metar_chat_member WHERE user_id=? AND state IN ('active','invited')`, user).Scan(&n); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM metar_chat_member m JOIN metar_chat_room r ON r.id=m.room_id WHERE m.user_id=? AND (m.state='active' OR (m.state='invited' AND r.closed=0))`, user).Scan(&n); err != nil {
 		return err
 	}
 	if n >= 100 {
@@ -337,7 +337,7 @@ func (s *Store) apply(ctx context.Context, tx *sql.Tx, user string, c Command, n
 		}
 		_, err = tx.ExecContext(ctx, `INSERT IGNORE INTO metar_chat_report(room_id,seq,reporter_id,sender_id,body,reason,created_at) VALUES(?,?,?,?,?,?,?)`, r.ID, c.Seq, user, author, body, c.Reason, now)
 	case "rename", "invite", "remove", "transfer", "close", "leave":
-		if r.Kind != "group" || r.Closed {
+		if r.Kind != "group" || (r.Closed && c.Op != "leave") {
 			return out, ErrForbidden
 		}
 		if c.Op != "leave" && r.OwnerID != user {
@@ -368,9 +368,12 @@ func (s *Store) apply(ctx context.Context, tx *sql.Tx, user string, c Command, n
 				_, err = tx.ExecContext(ctx, `UPDATE metar_chat_room SET owner_id=? WHERE id=?`, c.Target, r.ID)
 			}
 		case "close":
-			_, err = tx.ExecContext(ctx, `UPDATE metar_chat_room SET closed=1 WHERE id=?`, r.ID)
+			if _, err = tx.ExecContext(ctx, `UPDATE metar_chat_room SET closed=1 WHERE id=?`, r.ID); err == nil {
+				// Closing and cancelling pending invitations are one transaction.
+				_, err = tx.ExecContext(ctx, `UPDATE metar_chat_member SET state='left',unread_count=0 WHERE room_id=? AND state='invited'`, r.ID)
+			}
 		case "leave":
-			if r.OwnerID == user {
+			if r.OwnerID == user && !r.Closed {
 				return out, ErrConflict
 			}
 			_, err = tx.ExecContext(ctx, `UPDATE metar_chat_member SET state='left' WHERE room_id=? AND user_id=?`, r.ID, user)

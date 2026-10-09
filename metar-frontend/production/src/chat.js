@@ -522,7 +522,7 @@
           : t("群组管理", "Group details"),
         r.kind === "direct"
           ? `<p>${esc(title(r))}</p><button class="btn" type="button" data-chat="block" data-person="${esc(r.peer.id)}">${t("屏蔽此成员", "Block member")}</button><p class="muted">${t("屏蔽后双方不能继续私聊或互发群邀请；已共同加入的群组不受影响。", "Blocks stop private messages and invitations in both directions. Existing shared groups are unaffected.")}</p>`
-          : `${owner && !r.closed ? `<form data-chat-form="rename"><label>${t("群名称", "Group name")}<input name="title" value="${esc(r.title)}" maxlength="80" required></label><button class="btn small">${t("保存群名称", "Save group name")}</button></form><button class="btn small" type="button" data-chat="invite">${t("邀请成员", "Invite members")}</button>` : ""}<ul class="chat-member-list">${r.members.map((m) => `<li><span><strong>${esc(name(m))}</strong><small>@${esc(m.username)} ${m.id === r.owner_id ? t("群主", "Owner") : m.state === "invited" ? t("待接受", "Invited") : ""}</small></span>${owner && !r.closed && m.id !== this.user ? `<span><button class="btn small" data-chat="confirm-remove" data-person="${esc(m.id)}">${t("移出", "Remove")}</button>${m.state === "active" ? `<button class="btn small" data-chat="confirm-transfer" data-person="${esc(m.id)}">${t("转让", "Make owner")}</button>` : ""}</span>` : ""}</li>`).join("")}</ul>${!r.closed ? `<button class="btn" type="button" data-chat="${owner ? "confirm-close" : "confirm-leave"}">${owner ? t("解散群组", "Close group") : t("退出群组", "Leave group")}</button>` : ""}`,
+          : `${owner && !r.closed ? `<form data-chat-form="rename"><label>${t("群名称", "Group name")}<input name="title" value="${esc(r.title)}" maxlength="80" required></label><button class="btn small">${t("保存群名称", "Save group name")}</button></form><button class="btn small" type="button" data-chat="invite">${t("邀请成员", "Invite members")}</button>` : ""}<ul class="chat-member-list">${r.members.map((m) => `<li><span><strong>${esc(name(m))}</strong><small>@${esc(m.username)} ${m.id === r.owner_id ? t("群主", "Owner") : m.state === "invited" ? t("待接受", "Invited") : ""}</small></span>${owner && !r.closed && m.id !== this.user ? `<span><button class="btn small" data-chat="confirm-remove" data-person="${esc(m.id)}">${t("移出", "Remove")}</button>${m.state === "active" ? `<button class="btn small" data-chat="confirm-transfer" data-person="${esc(m.id)}">${t("转让", "Make owner")}</button>` : ""}</span>` : ""}</li>`).join("")}</ul><button class="btn" type="button" data-chat="${owner && !r.closed ? "confirm-close" : "confirm-leave"}">${owner && !r.closed ? t("解散群组", "Close group") : t("退出群组", "Leave group")}</button>`,
       );
     }
     confirm(op, target = "") {
@@ -539,7 +539,7 @@
       };
       this.dialog(
         labels[op],
-        `<p>${op === "close" ? t("解散后不能再发消息，现有成员仍可查看历史记录。", "Members can still read history, but no one can send new messages.") : op === "transfer" ? t("转让后，你将成为普通成员。", "You will become an ordinary member.") : t("离开后将无法查看群消息，重新受邀加入后只能看到新的消息。", "After leaving, message access ends; rejoining starts a new history boundary.")}</p><button class="btn primary" type="button" data-chat="confirmed">${t("确认", "Confirm")}</button>`,
+        `<p>${op === "close" ? t("解散后不能再发消息，现有成员仍可查看历史记录。", "Members can still read history, but no one can send new messages.") : op === "transfer" ? t("转让后，你将成为普通成员。", "You will become an ordinary member.") : this.room.closed ? t("退出后将不再显示此群，也无法再次查看其聊天记录。", "Leaving hides this closed group and permanently ends your access to its history.") : t("离开后将无法查看群消息，重新受邀加入后只能看到新的消息。", "After leaving, message access ends; rejoining starts a new history boundary.")}</p><button class="btn primary" type="button" data-chat="confirmed">${t("确认", "Confirm")}</button>`,
       );
     }
     async action(command, { close = true } = {}) {
@@ -560,7 +560,12 @@
         if (this.room?.id === command.room_id) {
           this.room = null;
           this.root.classList.remove("chat-has-room");
-          this.root.querySelector("[data-chat-pane]").innerHTML = "";
+          this.messages = [];
+          this.drafts.delete(command.room_id);
+          this.pending.delete(command.room_id);
+          this.root.querySelector("[data-chat-pane]").innerHTML =
+            `<div class="chat-welcome"><h2>${t("已离开会话", "Conversation left")}</h2><p>${t("选择其他会话，或发起新的交流。", "Choose another conversation or start a new one.")}</p></div>`;
+          history.replaceState(history.state, "", "/chat");
         }
       } else if (result.room_id) await this.open(result.room_id);
       return result;
