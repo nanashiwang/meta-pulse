@@ -33,7 +33,6 @@
     "已完成的条目会保留；重新初始化会先查询现状，不会覆盖已有介绍。": "Completed items are kept. Reinitializing checks existing data first and preserves descriptions.",
     "暂时无法读取类别设置，请重试。": "Unable to load category settings. Please retry.",
     "申请新类别或标签": "Request a category or tag",
-    "先查看已有目录，再用申请模板说明用途。继续后进入发帖编辑器，发布才算提交；管理员在原帖回复结果。": "Check the directory first, then explain the need in a request template. Continue to the editor and publish to submit. An administrator will reply in your topic.",
     "申请新类别": "Request a category",
     "申请新标签": "Request a tag",
     "查看运营反馈": "View feedback",

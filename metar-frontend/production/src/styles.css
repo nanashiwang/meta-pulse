@@ -152,10 +152,9 @@ img[data-metar-appearance="veteran"],img[data-metar-appearance="companion"]{box-
 
 .prod-current-tag{max-width:min(45%,240px);overflow-wrap:anywhere;white-space:normal;flex-shrink:0}.discussion-toolbar .prod-current-tag + .discussion-tabs{flex:1}.prod-search-count{font-size:13px;margin:0 0 12px}
 @media(max-width:580px){.discussion-toolbar .prod-current-tag + .discussion-tabs{flex-basis:100%}}
-.taxonomy-toolbar { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
-.taxonomy-requests { max-width:560px; min-width:0; }
-.taxonomy-requests summary { cursor:pointer; padding:10px 0; font-weight:600; }
-.taxonomy-requests p { margin:8px 0 12px; color:var(--muted); line-height:1.65; }
+.taxonomy-toolbar { display:flex; align-items:center; justify-content:space-between; gap:8px 12px; flex-wrap:wrap; margin-bottom:12px; }
+.taxonomy-toolbar .discussion-tabs { order:0; }
+.taxonomy-requests { display:flex; align-items:center; flex-wrap:wrap; gap:8px; min-width:0; }
 .taxonomy-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
 .taxonomy-category,.taxonomy-tag { padding:20px; min-width:0; overflow-wrap:anywhere; }
 .taxonomy-category-heading { display:flex; align-items:center; gap:9px; flex-wrap:wrap; }

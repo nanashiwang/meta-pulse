@@ -53,7 +53,7 @@
 
   function requests(askPath, categoryList, english) {
     const feedback = categoryList.find(item => item.slug_name === 'feedback' || item.display_name === '运营反馈');
-    return `<details class="taxonomy-requests"><summary>${t('申请新类别或标签')}</summary><p>${t('先查看已有目录，再用申请模板说明用途。继续后进入发帖编辑器，发布才算提交；管理员在原帖回复结果。')}</p><div class="flex wrap"><a class="btn small" href="${esc(requestURL(askPath,'category',english,feedback?.slug_name))}">${t('申请新类别')}</a><a class="btn small" href="${esc(requestURL(askPath,'tag',english,feedback?.slug_name))}">${t('申请新标签')}</a>${feedback ? `<a data-router href="${topicURL(feedback.slug_name)}" class="btn small">${t('查看运营反馈')}</a>` : ''}</div></details>`;
+    return `<nav class="taxonomy-requests" aria-label="${t('申请新类别或标签')}"><a class="btn small" href="${esc(requestURL(askPath,'category',english,feedback?.slug_name))}">${t('申请新类别')}</a><a class="btn small" href="${esc(requestURL(askPath,'tag',english,feedback?.slug_name))}">${t('申请新标签')}</a>${feedback ? `<a data-router href="${topicURL(feedback.slug_name)}" class="btn small">${t('查看运营反馈')}</a>` : ''}</nav>`;
   }
 
   function categoryCard(tag, preview = false) {
