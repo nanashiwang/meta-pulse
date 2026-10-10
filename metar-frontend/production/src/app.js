@@ -91,6 +91,7 @@
   let extrasUpdatedAt = 0;
 
   const ICONS = {
+    globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a17 17 0 0 1 0 18 17 17 0 0 1 0-18Z"/>',
     search: '<circle cx="10.8" cy="10.8" r="6.6"/><path d="m16 16 4.2 4.2"/>',
     compass: '<circle cx="12" cy="12" r="9"/><path d="m15.7 8.3-2.2 5.2-5.2 2.2 2.2-5.2z"/>',
     chat: '<path d="M20 11.5a8 8 0 0 1-8 8H4l1.6-4A8 8 0 1 1 20 11.5Z"/><path d="M8 10h8m-8 4h5"/>',
@@ -207,7 +208,7 @@
   }
 
   function languageControl() {
-    return `<select class="language-select" data-action="language" aria-label="${t('界面语言')}"><option value="zh_CN"${getLanguage() === 'zh_CN' ? ' selected' : ''}>中文</option><option value="en_US"${getLanguage() === 'en_US' ? ' selected' : ''}>English</option></select>`;
+    return `<span class="icon-btn language-control" title="${t('界面语言')}">${I('globe')}<select class="language-select" data-action="language" aria-label="${t('界面语言')}"><option value="zh_CN"${getLanguage() === 'zh_CN' ? ' selected' : ''}>中文</option><option value="en_US"${getLanguage() === 'en_US' ? ' selected' : ''}>English</option></select></span>`;
   }
 
   function accountMenu() {
@@ -232,7 +233,7 @@
       ${link('/latest', LOGO + `<span class="brand-word">${esc(config.siteName.toLowerCase())}</span>`, 'brand')}
       <nav class="topnav" aria-label="${t("主导航")}">${link('/latest', t("社区"), active('/latest') || active('/question') || active('/topic') || active('/topics') ? 'active' : '')}${link('/knowledge', t("知识库"), active('/knowledge') ? 'active' : '')}${link('/pulse', 'Pulse', active('/pulse') ? 'active' : '')}${outbound(config.consoleUrl, t("开发者"))}</nav>
       <form class="searchbox" data-form="search" role="search">${I('search')}<input type="search" name="q" aria-label="${t("搜索社区")}" placeholder="${t("搜索真实问题与回答…")}" value="${path === '/search' ? esc(route().query.get('q') || '') : ''}" autocomplete="off"><kbd>⌘ K</kbd></form>
-      <div class="header-actions">${languageControl()}<button type="button" class="icon-btn theme-btn" data-action="theme" aria-label="${document.documentElement.dataset.theme === 'dark' ? t("切换到浅色主题") : t("切换到深色主题")}">${I(document.documentElement.dataset.theme === 'dark' ? 'sun' : 'moon')}</button>${currentUserState === 'loading' ? `<span class="identity-loading" role="status">${t("正在确认身份…")}</span>` : identityUnavailableState ? link('/me', I('server', 'sm') + `<span>${t("身份服务暂不可用")}</span>`, 'btn ghost identity-status') : logged ? (activeUser ? external('/users/notifications/inbox', I('bell') + `<span class="visually-hidden">${t("通知中心")}</span><span class="account-unread-dot" data-account-unread hidden></span>`, 'icon-btn account-notifications') + link('/chat', I('chat') + `<span class="publish-label" aria-hidden="true">${t('聊天')}</span><span class="visually-hidden">${t('聊天')}</span><span class="chat-unread" data-chat-unread hidden></span>`, 'btn header-chat') : external('/users/login?status=inactive', t("激活账号"), 'btn primary')) + accountMenu() : external(config.answerLoginPath, t("登录"), 'btn ghost') + external(config.answerRegisterPath, t("加入社区"), 'btn primary guest-register')}</div>
+      <div class="header-actions">${languageControl()}<button type="button" class="icon-btn theme-btn" data-action="theme" aria-label="${document.documentElement.dataset.theme === 'dark' ? t("切换到浅色主题") : t("切换到深色主题")}">${I(document.documentElement.dataset.theme === 'dark' ? 'sun' : 'moon')}</button>${currentUserState === 'loading' ? `<span class="identity-loading" role="status">${t("正在确认身份…")}</span>` : identityUnavailableState ? link('/me', I('server', 'sm') + `<span>${t("身份服务暂不可用")}</span>`, 'btn ghost identity-status') : logged ? (activeUser ? external('/users/notifications/inbox', I('bell') + `<span class="visually-hidden">${t("通知中心")}</span><span class="account-unread-dot" data-account-unread hidden></span>`, 'icon-btn account-notifications') + `<a href="${esc(window.MetarRouter.href('/chat'))}" data-router class="icon-btn header-chat" title="${t('聊天')}">${I('chat')}<span class="visually-hidden">${t('聊天')}</span><span class="chat-unread" data-chat-unread hidden></span></a>` : external('/users/login?status=inactive', t("激活账号"), 'btn primary')) + accountMenu() : external(config.answerLoginPath, t("登录"), 'btn ghost') + external(config.answerRegisterPath, t("加入社区"), 'btn primary guest-register')}</div>
     </header>`;
   }
 
