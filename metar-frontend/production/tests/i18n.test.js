@@ -265,6 +265,23 @@ test('语言切换重新渲染标题、筛选、ARIA、错误和数值，用户�
 
 const pulseUser = { id: '7', username: 'alice', display_name: 'Alice', mail_status: 1 };
 
+test('Pulse recent preview is limited to five own grants while the dialog retains all records', async () => {
+  const rewards = Array.from({length:7}, (_, index) => ({grant_id:`own-grant-${index}`, reward_type:index ? 'community_exp' : 'newapi_quota', amount:index ? 25 : 625000, status:'pending', created_at:'2026-10-15T00:00:00Z'}));
+  const view = await shell({user:pulseUser, binding:'bound', pulseRewards:rewards});
+  await view.navigate('/pulse');
+  const recent = view.html().match(/<tbody data-pulse-recent-rows>([\s\S]*?)<\/tbody>/)[1];
+  const full = view.html().match(/<tbody data-pulse-history-rows>([\s\S]*?)<\/tbody>/)[1];
+  assert.equal((recent.match(/<tr>/g) || []).length, 5);
+  assert.equal((full.match(/<tr>/g) || []).length, 7);
+  assert.match(recent, /1\.25 <small>⚡️<\/small>/);
+  assert.match(recent, /25 <small>EXP<\/small>/);
+  assert.doesNotMatch(recent, /own-grant-[56]/);
+  const emptyView = await shell({user:pulseUser, binding:'bound'});
+  await emptyView.navigate('/pulse');
+  assert.match(emptyView.html(), /No rewards yet/);
+  assert.doesNotMatch(emptyView.html(), /data-pulse-reward-status=/);
+});
+
 test('Pulse 记录入口、状态与失败提示完整翻译，奖励编号安全转义', async () => {
   const view = await shell({ user: pulseUser, binding: 'bound', pulseRewards: [
     { grant_id: 'grant-1', amount: 50000, status: 'settled', created_at: '2026-09-19T00:00:00Z' },

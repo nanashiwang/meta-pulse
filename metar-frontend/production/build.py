@@ -107,6 +107,7 @@ def build(output: Path, config_path: Path) -> None:
     (assets / "app.js").write_text(sources["app"], encoding="utf-8")
     (assets / "pulse-core.js").write_text(sources["pulse-core"], encoding="utf-8")
     shutil.copyfile(ROOT / "src/pulse-core.css", assets / "pulse-core.css")
+    shutil.copyfile(ROOT / "src/images/pulse-gift-hero.webp", assets / "pulse-gift-hero.webp")
     (assets / "favicon.svg").write_text(sources["favicon"], encoding="utf-8")
     build_seo(output, sources["index"], config["siteName"])
     runtime = "window.__METAR_RUNTIME_CONFIG__ = Object.freeze(" + json.dumps(config, ensure_ascii=False, separators=(",", ":")) + ");\n"

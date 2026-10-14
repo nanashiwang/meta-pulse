@@ -2,6 +2,21 @@
 'use strict';
 (() => {
   const EN = Object.freeze({
+    "开启你的脉冲时刻": "Your Pulse moment starts here",
+    "我的脉冲券：{count}": "My Pulse tickets: {count}",
+    "抽一次（消耗 1 张）": "Draw once (1 ticket)",
+    "五连抽（消耗 5 张）": "Draw five (5 tickets)",
+    "我的抽奖记录": "My recent rewards",
+    "我的脉冲权益": "My Pulse benefits",
+    "查看全部记录": "View all rewards",
+    "查看权益详情": "View benefit details",
+    "获得奖励": "Reward received",
+    "尚无抽奖记录": "No rewards yet",
+    "开启脉冲后，你的奖励会显示在这里。": "Your rewards will appear here after your first draw.",
+    "API 额度": "API credits",
+    "用于社区升级": "For your community level",
+    "用于 API 调用": "For API usage",
+
 "切换失败，仍显示原来的列表。":"Switch failed. The previous list is still shown.",
 "重试切换":"Retry switch",
 "正在加载新列表…":"Loading the new list…",

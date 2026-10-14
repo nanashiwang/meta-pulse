@@ -58,12 +58,12 @@
 
   function markup({ t }) {
     return `<section class="pulse-core" data-pulse-core data-stage="idle" aria-label="${esc(t('脉冲核心'))}">
-      <div class="pc-header"><span class="pc-brand">METAR / PULSE</span><div class="pc-tools"><button type="button" class="pc-link" data-action="pulse-benefits" aria-haspopup="dialog" aria-controls="pulse-benefits">${esc(t('我的权益'))}</button><button type="button" class="pc-link" data-action="pulse-history" aria-haspopup="dialog" aria-controls="pulse-history">${esc(t('奖励记录'))}</button></div></div>
-      <div class="pc-heading"><div class="pc-title"><h1>${esc(t('开启你的脉冲'))}</h1><details class="pc-help"><summary aria-label="${esc(t('抽取规则'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9 8a3 3 0 0 1 6 0c0 2-3 2-3 4m0 4v.5"/></svg></summary><div class="pc-help-panel" tabindex="0"><p>${esc(t('每次消耗 1 张券。额度用于 API 调用，经验用于社区升级，均不可转赠。'))}</p><p>${esc(t('五连抽可合并不同时间获得的券；每次使用最新规则，中断时保留已获得的奖励。'))}</p><p>${esc(t('白光为经验奖励；额度奖励依次为蓝光（小于 0.5 ⚡️）、紫光（0.5 起）、金光（2 起）、红光（10 起）。光效不影响中奖概率。'))}</p></div></details></div><p class="pc-subtitle">${esc(t('让每一次积累，在这一刻绽放。'))}</p></div>
+      <div class="pc-header"><span class="pc-brand">METAR / PULSE</span><button type="button" class="pc-wallet" data-action="pulse-benefits" aria-haspopup="dialog" aria-controls="pulse-benefits" title="${esc(t('我的权益'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 7h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4V7Z"/><path d="m6 7 1-4 13 3M9 10v6m6-6v6"/></svg><span class="pc-tickets"></span><span aria-hidden="true">›</span></button></div>
+      <div class="pc-heading"><div class="pc-title"><h1>${esc(t('开启你的脉冲时刻'))}<span class="pc-title-spark" aria-hidden="true">ϟ</span></h1><details class="pc-help"><summary aria-label="${esc(t('抽取规则'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9 8a3 3 0 0 1 6 0c0 2-3 2-3 4m0 4v.5"/></svg></summary><div class="pc-help-panel" tabindex="0"><p>${esc(t('每次消耗 1 张券。额度用于 API 调用，经验用于社区升级，均不可转赠。'))}</p><p>${esc(t('五连抽可合并不同时间获得的券；每次使用最新规则，中断时保留已获得的奖励。'))}</p><p>${esc(t('白光为经验奖励；额度奖励依次为蓝光（小于 0.5 ⚡️）、紫光（0.5 起）、金光（2 起）、红光（10 起）。光效不影响中奖概率。'))}</p></div></details></div><p class="pc-subtitle">${esc(t('让每一次积累，在这一刻绽放。'))}</p></div>
       <div class="pc-stage"><canvas aria-hidden="true"></canvas><div class="pc-horizon" aria-hidden="true"></div><span class="pc-annotation" aria-hidden="true">PULSE CORE</span>
         <div class="pc-reward" aria-hidden="true"></div>
       </div>
-      <div class="pc-bottom"><p class="pc-state" role="status" aria-live="polite" aria-atomic="true"></p><div class="pc-controls"><p class="pc-tickets"></p><div class="pc-actions"><button type="button" class="pc-primary" data-action="pulse-draw" disabled>${esc(t('开启一次脉冲 · 1 券'))}</button><button type="button" class="pc-primary pc-five" data-action="pulse-draw-five" disabled>${esc(t('五连抽 · 5 券'))}</button></div></div></div>
+      <div class="pc-bottom"><p class="pc-state" role="status" aria-live="polite" aria-atomic="true"></p><div class="pc-controls"><div class="pc-actions"><button type="button" class="pc-primary" data-action="pulse-draw" disabled>${esc(t('抽一次（消耗 1 张）'))}</button><button type="button" class="pc-primary pc-five" data-action="pulse-draw-five" disabled>${esc(t('五连抽（消耗 5 张）'))}</button></div></div></div>
       <div class="pc-footer"><label class="pc-skip" title="${esc(t('保留闪光与翻牌'))}"><input type="checkbox" data-core-skip>${esc(t('跳过蓄能'))}</label><button type="button" class="pc-refresh" data-action="pulse-refresh">${esc(t('刷新权益'))}</button></div>
     </section>`;
   }
@@ -259,10 +259,10 @@
     update(options) {
       if (this.dead) return;
       this.options = options;
-      this.root.querySelector('.pc-tickets').textContent = this.t('可用脉冲券：{count}', {count: options.tickets});
+      this.root.querySelector('.pc-tickets').textContent = this.t('我的脉冲券：{count}', {count: options.tickets});
       this.button.dataset.action = options.pending ? 'pulse-resume' : 'pulse-draw';
       this.button.disabled = options.busy || (!options.pending && !options.canDraw);
-      this.button.textContent = this.t(options.busy ? '正在处理…' : options.pending ? '继续完成本轮抽奖' : '开启一次脉冲 · 1 券');
+      this.button.textContent = this.t(options.busy ? '正在处理…' : options.pending ? '继续完成本轮抽奖' : '抽一次（消耗 1 张）');
       this.fiveButton.disabled = options.busy || options.pending || !options.canDrawFive;
       this.fiveButton.title = !options.canDrawFive && !options.pending && !options.busy ? this.t('五连抽需要至少 5 张可用脉冲券') : '';
       this.refresh.disabled = options.busy;

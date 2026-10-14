@@ -583,6 +583,14 @@
     return rewards.map(r => `<tr><td>${esc(amount(r))}</td><td data-pulse-reward-status="${esc(r.grant_id)}">${esc(t(pulseRewardStates[r.status] || '等待核对'))}</td><td>${esc(r.created_at ? new Date(r.created_at).toLocaleString(locale()) : '—')}</td><td><code>${esc(r.grant_id)}</code></td></tr>`).join('') || `<tr><td colspan="4">${t('暂无奖励记录')}</td></tr>`;
   }
 
+  function pulseRecentRows(rewards, perUnit) {
+    if (!rewards.length) return `<tr><td colspan="3" class="prod-pulse-recent-empty"><strong>${t('尚无抽奖记录')}</strong><span>${t('开启脉冲后，你的奖励会显示在这里。')}</span></td></tr>`;
+    return rewards.slice(0, 5).map(reward => {
+      const display = pulseResultDisplay(reward, perUnit);
+      return `<tr><td><time datetime="${esc(reward.created_at)}" title="${esc(new Date(reward.created_at).toLocaleString(locale()))}">${esc(new Date(reward.created_at).toLocaleString(locale(), {month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'}))}</time></td><td><span class="prod-pulse-recent-reward" data-tier="${esc(display.tier)}"><span aria-hidden="true">${display.type === 'community_exp' ? '☆' : '♢'}</span><strong>${esc(display.amount)} <small>${esc(display.unit)}</small></strong></span></td><td><span data-pulse-reward-status="${esc(reward.grant_id)}">${esc(t(pulseRewardStates[reward.status] || '等待核对'))}</span></td></tr>`;
+    }).join('');
+  }
+
   async function pulsePage({ deferHistory = false } = {}) {
     const sequence = navigationSequence;
     if (currentUserState === 'unavailable') return identityUnavailable(t("Pulse 权益"));
@@ -633,6 +641,10 @@
       ${coreReady && !rules.enabled ? `<p class="prod-page-note" role="status">${esc(t(unavailable[rules.unavailable_reason] || '活动暂不可用'))}</p>` : ''}
       ${pulseMessage && (!coreReady || pulseMessage !== '本次抽奖已完成。') ? `<div class="prod-status mt24" role="status"><p data-pulse-message>${esc(t(pulseMessage))}</p></div>` : ''}
       ${pending ? `<section class="card card-pad mt24" role="status"><h3>${t('正在确认本轮抽奖结果')}</h3><p class="muted mt8">${t('本轮尚有结果未确认。继续后会恢复原抽奖；已完成的次数不重复扣券，尚未执行的次数每次消耗 1 张券。')}</p><div class="flex wrap mt16"><button class="btn" data-action="retry">${t('查询原抽奖')}</button><button class="btn primary" data-action="pulse-resume" ${pulseBusy ? 'disabled' : ''}>${t('继续完成本轮抽奖')}</button></div></section>` : ''}
+      </div>
+      <div class="prod-pulse-overview">
+        <section class="prod-pulse-panel prod-pulse-recent" aria-labelledby="pulse-recent-title"><header><h2 id="pulse-recent-title">${I('clock')} ${t('我的抽奖记录')}</h2><button type="button" class="prod-pulse-link" data-action="pulse-history" aria-haspopup="dialog" aria-controls="pulse-history">${t('查看全部记录')} <span aria-hidden="true">→</span></button></header><p data-pulse-history-error role="status" class="prod-page-note" hidden></p><div class="prod-pulse-recent-table"><table><thead><tr><th>${t('时间')}</th><th>${t('获得奖励')}</th><th>${t('到账状态')}</th></tr></thead><tbody data-pulse-recent-rows>${pulseRecentRows(rewards, rules.quota_per_unit)}</tbody></table></div></section>
+        <section class="prod-pulse-panel prod-pulse-benefit-preview" aria-labelledby="pulse-benefit-preview-title"><header><h2 id="pulse-benefit-preview-title">${I('pulse')} ${t('我的脉冲权益')}</h2><button type="button" class="prod-pulse-link" data-action="pulse-benefits" aria-haspopup="dialog" aria-controls="pulse-benefits">${t('查看权益详情')} <span aria-hidden="true">→</span></button></header><div data-pulse-benefits-preview>${benefits}</div><div class="prod-pulse-reward-uses"><div><span aria-hidden="true">☆</span><p><strong>${t('社区经验')}</strong><small>${t('用于社区升级')}</small></p></div><div><span aria-hidden="true">ϟ</span><p><strong>${t('API 额度')}</strong><small>${t('用于 API 调用')}</small></p></div></div></section>
       </div>
       <dialog id="pulse-benefits" class="prod-pulse-dialog prod-pulse-benefits-dialog" aria-labelledby="pulse-benefits-title">${dialogHeader('pulse-benefits', '我的权益')}<div data-pulse-benefits-body>${benefits}</div></dialog>
       <dialog id="pulse-history" class="prod-pulse-dialog" data-pulse-history aria-labelledby="pulse-history-title">${dialogHeader('pulse-history', '奖励记录')}<p data-pulse-history-error role="status" class="prod-page-note" hidden></p><div class="prod-pulse-table" tabindex="0" role="region" aria-label="${t('奖励记录')}"><table><thead><tr><th>${t('奖励')}</th><th>${t('到账状态')}</th><th>${t('时间')}</th><th>${t('奖励编号')}</th></tr></thead><tbody data-pulse-history-rows>${pulseHistoryRows(rewards, rules.quota_per_unit)}</tbody></table></div></dialog>${footer()}`;
@@ -797,6 +809,9 @@
       const benefits = template.content.querySelector('[data-pulse-benefits-body]');
       const previousBenefits = document.querySelector('[data-pulse-benefits-body]');
       if (benefits && previousBenefits) previousBenefits.replaceChildren(...benefits.childNodes);
+      const benefitPreview = template.content.querySelector('[data-pulse-benefits-preview]');
+      const previousPreview = document.querySelector('[data-pulse-benefits-preview]');
+      if (benefitPreview && previousPreview) previousPreview.replaceChildren(...benefitPreview.childNodes);
       previous.replaceWith(next);
       presentation.update(pulseCoreState);
     } catch (_) {
@@ -833,8 +848,9 @@
       const rewards = history.rewards;
       const rows = document.querySelector('[data-pulse-history-rows]');
       if (rows) rows.innerHTML = pulseHistoryRows(rewards, pulseCoreState?.quotaPerUnit);
-      const historyError = document.querySelector('[data-pulse-history-error]');
-      if (historyError) { historyError.hidden = true; historyError.textContent = ''; }
+      const recent = document.querySelector('[data-pulse-recent-rows]');
+      if (recent) recent.innerHTML = pulseRecentRows(rewards, pulseCoreState?.quotaPerUnit);
+      document.querySelectorAll('[data-pulse-history-error]').forEach(historyError => { historyError.hidden = true; historyError.textContent = ''; });
       const last = pulseLastResult?.userId === userId ? pulseLastResult : null;
       if (last) {
         last.rewards = last.rewards.map(reward => rewards.find(item => item.grant_id === reward.grant_id && validPulseResult(item, reward.action_id)) || reward);
@@ -850,8 +866,7 @@
       // Retain the last confirmed rows; do not turn a failed read into an empty
       // history or block another draw whose rules have already been checked.
       if (sequence === navigationSequence && epoch === pulseStatusEpoch && userId === currentUser?.id) {
-        const historyError = document.querySelector('[data-pulse-history-error]');
-        if (historyError) { historyError.hidden = false; historyError.textContent = t('到账状态暂时无法更新，已确认的奖励保留，不影响继续抽奖。'); }
+        document.querySelectorAll('[data-pulse-history-error]').forEach(historyError => { historyError.hidden = false; historyError.textContent = t('到账状态暂时无法更新，已确认的奖励保留，不影响继续抽奖。'); });
       }
     }
     finally { if (sequence === navigationSequence && epoch === pulseStatusEpoch) schedulePulseStatus(); }

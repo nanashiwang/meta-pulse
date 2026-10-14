@@ -68,7 +68,7 @@ class ProductionBuildTest(unittest.TestCase):
             info = json.loads((output / "BUILD_INFO.json").read_text(encoding="utf-8"))
             self.assertEqual("production", info["kind"])
             self.assertFalse(info["mockData"])
-            combined = "\n".join(path.read_text(encoding="utf-8") for path in output.rglob("*") if path.is_file())
+            combined = "\n".join(path.read_text(encoding="utf-8") for path in output.rglob("*") if path.is_file() and path.suffix != ".webp")
             for marker in ("SEED_POSTS", "CANDIDATES", "演示身份", "未发送到线上", "X-Pulse-Signature", "New-Api-User"):
                 self.assertNotIn(marker, combined)
             self.assertIn("/answer/api/v1", (output / "runtime-config.js").read_text(encoding="utf-8"))
