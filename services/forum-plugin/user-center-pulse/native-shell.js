@@ -14,7 +14,6 @@ export function installNativeShell(language, host = window) {
   nav.className = 'metar-primary-nav';
   const links = [
     ['/latest', '社区', 'Community'],
-    ['/knowledge', '知识库', 'Knowledge'],
     ['/pulse', 'Pulse', 'Pulse'],
   ].map(([href, zh, en]) => {
     const link = doc.createElement('a');

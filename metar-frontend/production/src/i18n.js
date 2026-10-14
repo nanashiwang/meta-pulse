@@ -2,6 +2,11 @@
 'use strict';
 (() => {
   const EN = Object.freeze({
+"我的草稿":"My drafts",
+"我的消息":"My messages",
+"近期活动":"Community events",
+"活动管理":"Manage events",
+"请先登录社区账号。":"Please sign in with your community account.",
 "聊天": "Chat",
 "聊天举报": "Chat reports",
 "登录社区账号后开始聊天，无需绑定 API 账号。": "Sign in with your community account to chat. No API account binding is needed.",

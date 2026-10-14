@@ -1,3 +1,5 @@
+import './drafts-store.js';
+import storageExpires from '@/utils/storageWithExpires';
 import './growth-presentation.js';
 import i18n from '@/i18n/init';
 import { loggedUserInfoStore, userCenterStore } from '@/stores';
@@ -61,3 +63,19 @@ export default {
   info: { slug_name: 'pulse_user_center', type: 'render' },
   component: () => null,
 };
+
+// Account-scoped drafts retain Answer's native editor and publish cleanup.
+(window as any).MetarDrafts.install(storageExpires, {
+  getUser: () => loggedUserInfoStore.getState().user,
+  get storage() { return window.localStorage; },
+  url: () => window.location.href,
+  error: () => {
+    let notice = document.getElementById('metar-draft-error');
+    if (!notice) {
+      notice = document.createElement('div');
+      notice.id = 'metar-draft-error'; notice.setAttribute('role', 'alert');
+      notice.className = 'alert alert-warning'; document.body.prepend(notice);
+    }
+    notice.textContent = i18n.language === 'en_US' ? 'Draft could not be saved. Keep this page open and copy your text before leaving; check storage space or edits in another tab.' : '草稿未能保存。请保留本页并复制正文，再检查存储空间或其他标签页的编辑。';
+  },
+});

@@ -22,7 +22,10 @@
     "status",
     "guidelines",
     "chat",
-    "admin/chat"
+    "admin/chat",
+    "me/drafts",
+    "events",
+    "admin/events"
   ],
   "detailPrefixes": [
     "question",

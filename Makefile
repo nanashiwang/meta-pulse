@@ -123,3 +123,8 @@ deploy-update:
 
 clean:
 	rm -rf bin sites/blog/docs/.vitepress/dist
+
+.PHONY: test-events-integration
+test-events-integration:
+	@test -n "$$EVENTS_INTEGRATION_DSN" || { echo "请设置以 _events_test 结尾的专用活动测试库" >&2; exit 1; }
+	go test -count=1 -race ./services/forum-plugin/user-center-pulse/events -run TestMySQL -timeout 5m

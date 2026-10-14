@@ -4,12 +4,13 @@ import { notificationGroups } from './notification-navigation.js';
 import { accountLinks } from './account-menu.js';
 const navigation = (...paths) => ({ querySelector: (selector) => paths.some(path => selector === `a[href="${path}"]`) });
 
-test('左侧仅保留内容与帮助栏目，个人与管理入口归头像菜单', () => {
+test('左侧同步社区与成员入口，不恢复已撤下栏目', () => {
   for (const english of [false, true]) {
     const items = notificationGroups(navigation('/admin', '/review'), english).flatMap(g => g.items);
     assert.ok(items.some(i => i.href === '/latest'));
-    assert.ok(items.some(i => i.href === '/knowledge'));
-    assert.ok(items.every(i => !/^\/(me|users|admin|settings|review)(\/|$)/.test(i.href)));
+    for (const path of ['/me/drafts','/chat','/events']) assert.ok(items.some(i => i.href === path));
+    assert.ok(items.every(i => !['/knowledge','/support','/status'].includes(i.href)));
+    assert.ok(items.every(i => !/^\/(users|admin|settings|review)(\/|$)/.test(i.href)));
   }
 });
 
@@ -18,7 +19,7 @@ test('头像管理入口仅正常激活管理员可见，审核权限独立', ()
     assert.ok(accountLinks(user).flatMap(g => g.items).every(i => !i.href.startsWith('/admin')));
   }
   const admin = accountLinks({role_id: 2, status: 'normal', mail_status: 1}).flatMap(g => g.items);
-  assert.equal(admin.filter(i => i.href.startsWith('/admin')).length, 6);
+  assert.equal(admin.filter(i => i.href.startsWith('/admin')).length, 7);
   assert.ok(admin.some(i => i.href === '/admin/taxonomy'));
   assert.ok(admin.some(i => i.href === '/admin/chat'));
   assert.ok(accountLinks({role_id:1}).flatMap(g=>g.items).some(i=>i.href==='/chat'));

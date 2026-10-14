@@ -148,6 +148,14 @@ jobs:
           docker exec "$MYSQL_CONTAINER" sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot -e "CREATE DATABASE community_chat_test;"'
           make test-chat-integration
 
+      - name: Community event capacity, replay and permissions
+        env:
+          MYSQL_CONTAINER: ${{ job.services.mysql.id }}
+          EVENTS_INTEGRATION_DSN: root:pulse_ci_test_only@tcp(127.0.0.1:3306)/community_events_test?parseTime=true
+        run: |
+          docker exec "$MYSQL_CONTAINER" sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot -e "CREATE DATABASE community_events_test;"'
+          make test-events-integration
+
   recovery-integration:
     name: Isolated backup, MySQL 8.4 restore and encrypted readback
     runs-on: ubuntu-latest

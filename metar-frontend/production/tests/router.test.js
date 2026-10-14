@@ -71,7 +71,7 @@ test('Nginx 深链接范围与浏览器一致，Answer 原生路径不被静态�
   const config = fs.readFileSync(path.resolve(__dirname, '../../..', 'deploy/nginx/meta-pulse.conf'), 'utf8');
   const pattern = config.match(/location ~ (\^\/\(\?:latest[^\n]+) \{/)[1];
   const gateway = new RegExp(pattern);
-  const shellPaths = ['/', '/latest', '/topics', '/topic/support', '/question/42', '/search', '/knowledge', '/me', '/me/bookmarks', '/me/notifications', '/settings/binding', '/admin/pulse', '/pulse', '/login', '/register', '/forgot', '/publish', '/support', '/status', '/guidelines'];
+  const shellPaths = ['/me/drafts', '/events', '/admin/events', '/chat', '/admin/chat', '/', '/latest', '/topics', '/topic/support', '/question/42', '/search', '/knowledge', '/me', '/me/bookmarks', '/me/notifications', '/settings/binding', '/admin/pulse', '/pulse', '/login', '/register', '/forgot', '/publish', '/support', '/status', '/guidelines'];
   for (const route of shellPaths) {
     assert.equal(owns(route), true, route);
     assert.equal(route === '/' || gateway.test(route), true, route);

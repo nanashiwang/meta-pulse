@@ -7,13 +7,13 @@ export function notificationGroups(nativeNav, english = false) {
       item('/latest', '全部讨论', 'All discussions', 'chat-square-text'),
       item('/latest?order=unanswered', '待回答', 'Unanswered', 'question-circle'),
       item('/topics', '类别与标签', 'Categories and tags', 'tags'),
-      item('/knowledge', '知识库', 'Knowledge', 'book'),
+      item('/me/drafts', '我的草稿', 'My drafts', 'pencil-square'),
+      item('/chat', '我的消息', 'My messages', 'inbox'),
+      item('/events', '近期活动', 'Community events', 'calendar-event'),
     ] },
   ];
   groups.push({ label: '', items: [
     item('/pulse', 'Pulse 权益', 'Pulse benefits', 'activity'),
-    item('/support', '帮助中心', 'Help center', 'question-circle'),
-    item('/status', '服务状态', 'Service status', 'hdd-stack'),
     item('/guidelines', '社区规范', 'Community guidelines', 'shield-check'),
     item('/sitemap.xml', '站点地图', 'Sitemap', 'diagram-3'),
   ] });

@@ -17,6 +17,7 @@ import (
 	"github.com/apache/answer/plugin"
 	"github.com/gin-gonic/gin"
 	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/chat"
+	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/events"
 	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/growth"
 	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/i18n"
 	"github.com/segmentfault/pacman/log"
@@ -49,6 +50,8 @@ type UserCenter struct {
 	runtimeMu         sync.RWMutex
 	chatMu            sync.Mutex
 	chatStore         *chat.Store
+	eventMu           sync.Mutex
+	eventStore        *events.Store
 	growthMu          sync.Mutex
 	growthStore       *growth.Store
 	Config            *Config
@@ -354,17 +357,22 @@ func (uc *UserCenter) AfterLogin(externalID, _ string) {
 	log.Debugf("pulse-bound forum user %s logged in", externalID)
 }
 
-func (uc *UserCenter) RegisterUnAuthRouter(r *gin.RouterGroup) { uc.registerPublicExperience(r) }
+func (uc *UserCenter) RegisterUnAuthRouter(r *gin.RouterGroup) {
+	uc.registerPublicExperience(r)
+	r.GET("/metar/events", uc.eventHandler("list", nil, false, plugin.SiteURL))
+}
 func (uc *UserCenter) RegisterAuthUserRouter(r *gin.RouterGroup) {
 	uc.registerCommunityRoutes(r, answerSessionUserID, plugin.SiteURL)
 	uc.registerExperience(r, answerSessionUserID, false, plugin.SiteURL)
 	uc.registerChat(r, answerSessionUserID, false, plugin.SiteURL)
+	uc.registerEvents(r, answerSessionUserID, false, plugin.SiteURL)
 }
 
 func (uc *UserCenter) RegisterAuthAdminRouter(r *gin.RouterGroup) {
 	uc.registerAdminSettingsRoutes(r, answerAdminSessionUserID, plugin.SiteURL)
 	uc.registerExperience(r, answerAdminSessionUserID, true, plugin.SiteURL)
 	uc.registerChat(r, answerAdminSessionUserID, true, plugin.SiteURL)
+	uc.registerEvents(r, answerAdminSessionUserID, true, plugin.SiteURL)
 	r.GET("/pulse/health", func(ctx *gin.Context) {
 		config := uc.configSnapshot()
 		ctx.JSON(http.StatusOK, gin.H{"pulse_base_url": config.PulseBaseURL})

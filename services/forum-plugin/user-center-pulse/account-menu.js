@@ -14,6 +14,7 @@ export function accountLinks(user, english = false, canReview = false) {
     management.push(item('/admin/pulse', 'Pulse 配置', 'Pulse settings', 'sliders'));
     management.push(item('/admin/growth', '成长管理', 'Growth settings', 'stars'));
     management.push(item('/admin/chat', '聊天举报', 'Chat reports', 'chat-dots'));
+    management.push(item('/admin/events', '活动管理', 'Manage events', 'calendar-event'));
     management.push(item('/admin/taxonomy', '类别管理', 'Category settings', 'tags'));
     management.push(item('/admin/dashboard', '社区管理', 'Community admin', 'gear'));
     management.push(item('/admin/pulse_user_center', '社区连接配置', 'Community connections', 'link-45deg'));
