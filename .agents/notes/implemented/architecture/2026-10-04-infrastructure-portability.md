@@ -43,7 +43,7 @@ Answer YAML 主连接仍是其事实源。`forum-config check` 在启动和迁�
 
 更新备份补齐 Answer `/data`，数据库缺失或停止不再跳过。独立 `metar backup` 恢复集包括两个逻辑 dump、配置、附件和两份私钥，以清单校验并复用更新锁。quiesced 模式暂停原本运行的三个应用，finally 启动同一批现有容器；不重建，也不改变原本停止的状态。在线逐库备份不承诺跨库一致。
 
-外部备份显式提供同目标账号，不能降低 TLS。保留 routines/events/triggers，去掉 tablespace 和 GTID 元数据依赖。恢复只在无网络的一次性 MySQL 中执行，重建锁定 DEFINER 并核对 Pulse 余额/版本和 EXP 余额；合成演练不冒充完整生产恢复。
+外部备份显式提供同目标账号，不能降低 TLS。保留 routines/events/triggers，去掉 tablespace 和 GTID 元数据依赖。恢复只在无网络的一次性 MySQL 中执行，重建锁定 DEFINER 并核对 Pulse 余额/版本和 EXP 余额；合成演练不冒充完整生产恢复。正式实例就绪探测与安全诊断见[恢复演练启动修复](../bug-fix/2026-10-15-restore-drill-readiness.md)，避免把初始化临时实例当作可恢复目标。
 
 restic 上传后实际回读并校验，任一步失败则任务失败。本地默认保留三个完整成功恢复集，保护当前、失败、未知、固定及不安全目录。远端保留独立管理，不自动 forget。用户已明确“暂时没有，先完善工具与演练”，因此真实异地目标和定时器均未启用，没有承诺分钟级 RPO。
 

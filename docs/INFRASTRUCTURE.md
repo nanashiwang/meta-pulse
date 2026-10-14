@@ -68,6 +68,8 @@ metar backup restore-drill /opt/meta-pulse/.data/recovery-sets/生成的目录 -
 
 恢复工具仅创建**无网络的一次性 MySQL 容器**，不连接生产库、不运行应用、不发奖或发邮件。它恢复 SQL、重建隔离环境的锁定 DEFINER 账号，核对 Pulse ledger/account 与社区 EXP 余额，并验证附件与私钥文件。此单实例演练要求两套 schema 名称不同；若两个外部实例使用相同 schema 名称，需要分别隔离恢复，工具会明确拒绝合并。它不等于完整生产恢复：还需确认原生页面、实际密钥解密、绑定保护、触发器权限，以及与 new-api 的 Benefit Query/Reconcile。用户历史奖励的 source_ref 不得更换，已到账额度不会随 Pulse 快照一起回退。
 
+恢复演练在容器内通过 `127.0.0.1:3306` 的认证 TCP 查询等待正式 MySQL；初始化时 socket 可用的临时实例不算就绪。就绪等待最多 90 秒，单次探测最多 5 秒；建库、导入和对账使用相同连接方式，保持 `--network none` 且不发布端口。仅就绪查询重试，恢复 SQL 失败立即终止并清理一次性容器。错误保留固定阶段、退出码和 MySQL 数字错误码，不输出原始 SQL、凭据或数据库内容；不要通过盲目重试导入来掩盖失败。
+
 备份客户端默认使用 MySQL 8.4，支持 8.0/8.4 的逻辑备份；使用 `--no-tablespaces`、`--set-gtid-purged=OFF`，保留 routines/events/triggers。外部备份账号需具备目标库读取及这些对象的必要权限；托管服务对 DEFINER/触发器可能额外限制，需在演练中验收。该工具不把 raw 数据卷复制当作在线数据库备份。
 
 ## 加密仓库与定时执行

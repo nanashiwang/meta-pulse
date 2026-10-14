@@ -23,10 +23,19 @@ COMPOSE = ['bash', str(ROOT/'deploy/compose.sh')]
 
 class Failure(Exception): pass
 
-def run(args, **kw):
-    result = subprocess.run(args, capture_output=True, **kw)
+def run(args, *, operation=None, **kw):
+    label = operation or 'command failed: '+Path(args[0]).name
+    try:
+        result = subprocess.run(args, capture_output=True, **kw)
+    except subprocess.TimeoutExpired:
+        raise Failure(label+' timed out (details suppressed to protect credentials)') from None
     if result.returncode:
-        raise Failure('command failed: '+Path(args[0]).name+' (details suppressed to protect credentials)')
+        # Only copy a structured numeric code, never raw SQL, output or args.
+        stderr = result.stderr or b''
+        if isinstance(stderr, bytes): stderr = stderr.decode(errors='replace')
+        code = re.search(r'^ERROR ([0-9]{4}) \([0-9A-Z]{5}\)(?: at line [0-9]+)?:', stderr, re.M)
+        detail = '; MySQL error '+code.group(1) if operation and code else ''
+        raise Failure(label+' (exit '+str(result.returncode)+detail+'; details suppressed to protect credentials)')
     return result.stdout
 
 def compose(*args): return run(COMPOSE+list(args)).decode().strip()
@@ -220,6 +229,25 @@ def offsite(root, config):
         verify(Path(tmp)/root.name)
     return snapshot
 
+def drill_mysql(name, args, phase, **kw):
+    # The image's temporary initialization server accepts socket connections but
+    # runs with --skip-networking. All restore work must use the final server.
+    command = 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql --protocol=TCP --host=127.0.0.1 --port=3306 --connect-timeout=2 -uroot "$@"'
+    return run(['docker','exec','-i',name,'sh','-c',command,'sh',*args],
+               operation='isolated MySQL '+phase,**kw)
+
+def wait_for_drill_mysql(name, timeout=90):
+    deadline = time.monotonic()+timeout
+    last_error = 'no successful authenticated TCP query'
+    while (remaining := deadline-time.monotonic()) > 0:
+        try:
+            drill_mysql(name,['-N','-e','SELECT 1'],'readiness',timeout=min(5,remaining))
+            return
+        except Failure as error:
+            last_error = str(error)
+        time.sleep(min(1,max(0,deadline-time.monotonic())))
+    raise Failure('isolated MySQL readiness deadline exceeded; '+last_error)
+
 def drill(root, image):
     manifest=verify(root)
     if manifest['consistency']!='quiesced': raise Failure('full recovery drill requires a quiesced recovery set')
@@ -228,27 +256,24 @@ def drill(root, image):
     name='metar-restore-drill-'+secrets.token_hex(6)
     started=time.monotonic()
     # No network and no production mounts. Only MySQL is run: no Benefit or mail.
-    run(['docker','run','-d','--name',name,'--network','none','-e','MYSQL_ROOT_PASSWORD=isolated_drill_only',image,'--log-bin-trust-function-creators=1'])
-    def sql(statement):
-        return run(['docker','exec',name,'sh','-c','MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot -N -e "$1"','sh',statement]).decode()
+    run(['docker','run','-d','--name',name,'--network','none','-e','MYSQL_ROOT_PASSWORD=isolated_drill_only',image,'--log-bin-trust-function-creators=1'],operation='isolated MySQL container start')
+    def sql(statement, phase):
+        return drill_mysql(name,['-N','-e',statement],phase).decode()
     try:
-        for _ in range(90):
-            try: sql('SELECT 1');break
-            except Failure: time.sleep(1)
-        else: raise Failure('isolated MySQL did not become ready')
+        wait_for_drill_mysql(name)
         for which,db in manifest['databases'].items():
             if which not in ('pulse','forum') or not re.fullmatch(r'[\w-]+',db): raise Failure('invalid database in manifest')
-            sql('CREATE DATABASE `'+db+'` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci')
+            sql('CREATE DATABASE `'+db+'` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci',which+' schema creation')
             with (root/(which+'.sql')).open('rb') as f:
-                run(['docker','exec','-i',name,'sh','-c','MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot "$1"','sh',db],stdin=f)
-            counts=sql("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='"+db+"'").strip()
+                drill_mysql(name,[db],which+' SQL import',stdin=f)
+            counts=sql("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='"+db+"'",which+' table inventory').strip()
             if int(counts)==0: raise Failure('restored database is empty')
             # Recreate definer accounts only inside the disposable isolated instance.
-            definers=sql("SELECT DISTINCT DEFINER FROM information_schema.triggers WHERE trigger_schema='"+db+"'").splitlines()
+            definers=sql("SELECT DISTINCT DEFINER FROM information_schema.triggers WHERE trigger_schema='"+db+"'",which+' trigger inventory').splitlines()
             for definer in definers:
                 user,host=definer.rsplit('@',1)
                 ident="'"+user.replace('\\','\\\\').replace("'","''")+"'@'"+host.replace('\\','\\\\').replace("'","''")+"'"
-                sql('CREATE USER IF NOT EXISTS '+ident+' ACCOUNT LOCK; GRANT ALL ON `'+db+'`.* TO '+ident)
+                sql('CREATE USER IF NOT EXISTS '+ident+' ACCOUNT LOCK; GRANT ALL ON `'+db+'`.* TO '+ident,which+' trigger definer restore')
             if which=='pulse':
                 query='''SELECT COUNT(*) FROM (
 SELECT a.user_id FROM pulse_account a LEFT JOIN
@@ -256,16 +281,16 @@ SELECT a.user_id FROM pulse_account a LEFT JOIN
 USING(user_id,period_id,asset_type) WHERE a.balance<>COALESCE(l.balance,0) OR a.version<>COALESCE(l.version,0)
 UNION ALL SELECT l.user_id FROM pulse_ledger_entry l LEFT JOIN pulse_account a USING(user_id,period_id,asset_type) WHERE a.id IS NULL
 ) mismatches'''
-                mismatch=sql('USE `'+db+'`; '+query).strip()
+                mismatch=sql('USE `'+db+'`; '+query,'pulse ledger reconciliation').strip()
                 if int(mismatch)!=0: raise Failure('Pulse ledger/account reconciliation failed in restored snapshot')
             else:
-                exists=sql("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='"+db+"' AND table_name='metar_exp_account'").strip()
+                exists=sql("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='"+db+"' AND table_name='metar_exp_account'",'forum experience inventory').strip()
                 if int(exists):
-                    mismatch=sql('USE `'+db+'''`; SELECT COUNT(*) FROM metar_exp_account a LEFT JOIN (SELECT user_id,SUM(delta) balance FROM metar_exp_ledger GROUP BY user_id) l USING(user_id) WHERE a.balance<>COALESCE(l.balance,0)''').strip()
+                    mismatch=sql('USE `'+db+'''`; SELECT COUNT(*) FROM metar_exp_account a LEFT JOIN (SELECT user_id,SUM(delta) balance FROM metar_exp_ledger GROUP BY user_id) l USING(user_id) WHERE a.balance<>COALESCE(l.balance,0)''','forum experience reconciliation').strip()
                     if int(mismatch)!=0: raise Failure('Forum experience reconciliation failed in restored snapshot')
             print(which+': restored '+counts+' tables and reconciled accounts')
         print('SQL restore, local account reconciliation and artifact checks passed in %.1fs; external Benefit reconciliation is still required' % (time.monotonic()-started))
-    finally: run(['docker','rm','-fv',name])
+    finally: run(['docker','rm','-fv',name],operation='isolated MySQL container cleanup')
 
 def prune_local(current, keep):
     if keep == 0: return

@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import traceback
 import unittest
 from unittest.mock import patch
 ROOT=Path(__file__).resolve().parents[1]
@@ -78,6 +79,60 @@ class BackupTests(unittest.TestCase):
  def test_online_backup_not_reported_as_consistent_restore(self):
   with patch.object(b,'verify',return_value={'consistency':'online-per-database'}):
    with self.assertRaises(b.Failure):b.drill(Path('/unused'),'mysql:8.4')
+ def test_restore_waits_past_temporary_socket_server(self):
+  state={'probes':0,'writes':0}
+  def subprocess_run(args,**kwargs):
+   command=args[args.index('-c')+1]
+   if args[-1]=='SELECT 1':
+    state['probes']+=1
+    # Temporary init server answers sockets, but never accepts TCP.
+    code=1 if '--protocol=TCP' in command and state['probes']==1 else 0
+    return subprocess.CompletedProcess(args,code,b'1\n' if not code else b'',b"ERROR 2003 (HY000): secret endpoint")
+   self.assertGreaterEqual(state['probes'],2,'restore reached temporary initialization server')
+   self.assertIn('--protocol=TCP',command)
+   state['writes']+=1
+   return subprocess.CompletedProcess(args,0,b'',b'')
+  with patch.object(b.subprocess,'run',side_effect=subprocess_run),patch.object(b.time,'sleep'):
+   b.wait_for_drill_mysql('fixture')
+   b.drill_mysql('fixture',['-e','CREATE DATABASE fixture'],'pulse schema creation')
+  self.assertEqual(state['writes'],1)
+ def test_restore_timeout_cleans_container_without_writes(self):
+  with patch.object(b,'verify',return_value={'consistency':'quiesced','databases':{'pulse':'pulse','forum':'forum'}}),patch.object(b,'run') as run,patch.object(b,'wait_for_drill_mysql',side_effect=b.Failure('readiness deadline exceeded')):
+   with self.assertRaisesRegex(b.Failure,'readiness deadline'):b.drill(Path('/unused'),'mysql:8.4')
+  self.assertEqual([c.args[0][:2] for c in run.call_args_list],[['docker','run'],['docker','rm']])
+ def test_restore_does_not_retry_partially_applied_import(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   root=Path(tmp);self.fixture(root)
+   def mysql(name,args,phase,**kw):
+    if phase=='pulse SQL import':raise b.Failure('isolated MySQL pulse SQL import failed')
+    return b''
+   with patch.object(b,'run') as run,patch.object(b,'wait_for_drill_mysql'),patch.object(b,'drill_mysql',side_effect=mysql) as query:
+    with self.assertRaisesRegex(b.Failure,'pulse SQL import'):b.drill(root,'mysql:8.4')
+   self.assertEqual([c.args[2] for c in query.call_args_list],['pulse schema creation','pulse SQL import'])
+   self.assertEqual(run.call_args_list[-1].args[0][:2],['docker','rm'])
+ def test_readiness_deadline_bounds_hung_probes(self):
+  now=[0]
+  def sleep(seconds):now[0]+=seconds
+  with patch.object(b.time,'monotonic',side_effect=lambda:now[0]),patch.object(b.time,'sleep',side_effect=sleep),patch.object(b,'drill_mysql',side_effect=b.Failure('readiness timed out')) as query:
+   with self.assertRaisesRegex(b.Failure,'readiness deadline exceeded'):b.wait_for_drill_mysql('fixture',timeout=2)
+  self.assertEqual(query.call_count,2)
+  self.assertEqual([c.kwargs['timeout'] for c in query.call_args_list],[2,1])
+ def test_mysql_diagnostics_retain_phase_and_code_without_secrets(self):
+  raw=b"ERROR 1064 (42000) at line 7: private SQL password=DO_NOT_PRINT"
+  with patch.object(b.subprocess,'run',return_value=subprocess.CompletedProcess([],1,b'PRIVATE_ROWS',raw)):
+   with self.assertRaisesRegex(b.Failure,'pulse SQL import.*exit 1; MySQL error 1064') as err:
+    b.drill_mysql('private-name',['secret_db'],'pulse SQL import')
+  for secret in ('DO_NOT_PRINT','PRIVATE_ROWS','secret_db','private-name','private SQL'):
+   self.assertNotIn(secret,str(err.exception))
+ def test_timeout_diagnostics_hide_exception_command_and_output(self):
+  error=subprocess.TimeoutExpired(['docker','SECRET_ARG'],3,output=b'SECRET_ROWS',stderr=b'SECRET_ERROR')
+  with patch.object(b.subprocess,'run',side_effect=error):
+   try:b.drill_mysql('fixture',['-e','SELECT 1'],'readiness',timeout=3)
+   except b.Failure:
+    diagnostic=traceback.format_exc()
+   else:self.fail('timeout must fail')
+  self.assertIn('isolated MySQL readiness timed out',diagnostic)
+  for secret in ('SECRET_ARG','SECRET_ROWS','SECRET_ERROR'):self.assertNotIn(secret,diagnostic)
 
 class ComposeTests(unittest.TestCase):
  @unittest.skipUnless(os.environ.get('METAR_TEST_COMPOSE')=='1','set METAR_TEST_COMPOSE=1 for real Compose rendering')

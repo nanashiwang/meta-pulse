@@ -42,7 +42,22 @@ class RecoveryRoundTrip(unittest.TestCase):
      with b.lock():snapshot=b.create(True)
      self.assertEqual(b.verify(snapshot)['consistency'],'quiesced')
      self.assertEqual(set(cp('ps','--status','running','--services').splitlines()),{'mysql','forum-mysql','redis','pulse-api','pulse-worker','forum'})
-     b.drill(snapshot,'mysql:8.4')
+     # Keep the official temporary socket-only init server alive long enough
+     # for the old SELECT 1 probe to misidentify it as ready on every run.
+     real_run=b.run;checked_schemas=[]
+     def delayed_init_run(args,**kwargs):
+      if args[:2]==['docker','run']:
+       args=[*args[:-2],'--entrypoint','sh',args[-2],'-c',
+        'printf "sleep 4\\n" > /docker-entrypoint-initdb.d/pause.sh; exec /usr/local/bin/docker-entrypoint.sh mysqld "$@"',
+        'sh',args[-1]]
+      if args[:2]==['docker','exec'] and args[-1].startswith('CREATE DATABASE '):
+       name=args[3] if args[2]=='-i' else args[2]
+       port=real_run(['docker','exec',name,'sh','-c','MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot -N -e "SELECT @@port"']).strip()
+       self.assertEqual(port,b'3306','restore must not start on the temporary port-0 server')
+       checked_schemas.append(args[-1])
+      return real_run(args,**kwargs)
+     with patch.object(b,'run',side_effect=delayed_init_run):b.drill(snapshot,'mysql:8.4')
+     self.assertEqual(len(checked_schemas),2)
      # Existing isolated DBs now stand in for separately managed endpoints.
      # No local root secrets in deployment settings; backup uses explicit users.
      for service,db in [('mysql','meta_pulse'),('forum-mysql','meta_pulse_forum')]:
