@@ -949,6 +949,7 @@
     navigationCatalog = null;
     const sequence = ++identitySequence;
     currentUserState = 'loading'; currentUser = null; identityError = null;
+    document.querySelectorAll('[data-chat-unread]').forEach(node => { node.hidden = true; node.textContent = ''; });
     answer.clearContentCache();
     identityReady = loadIdentitySnapshot(() => answer.getCurrentUser()).then(snapshot => {
       if (sequence !== identitySequence) return;
