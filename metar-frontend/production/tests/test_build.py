@@ -82,6 +82,8 @@ class ProductionBuildTest(unittest.TestCase):
             self.assertTrue((output / "assets/router.js").is_file())
             self.assertTrue((output / "assets/route-policy.js").is_file())
             self.assertTrue((output / "assets/theme.js").is_file())
+            self.assertTrue((output / "assets/sidebar.js").is_file())
+            self.assertLess(index.index("/metar-assets/sidebar.js"), index.index("/metar-assets/app.css"))
             self.assertTrue((output / "assets/pulse-core.js").is_file())
             self.assertTrue((output / "assets/pulse-core.css").is_file())
             self.assertNotIn("/metar-assets/pulse-core.js", index)
@@ -113,7 +115,9 @@ class ProductionBuildTest(unittest.TestCase):
         self.assertNotIn("navigate", theme_line)
         self.assertIn('data-action="retry-identity"', source)
         self.assertIn("currentUserState === 'unavailable'", source)
-        self.assertIn("setAttribute('aria-expanded', 'false')", source)
+        self.assertIn("MetarSidebar?.closeMobile()", source)
+        sidebar = (ROOT / "src/sidebar.js").read_text(encoding="utf-8")
+        self.assertIn("setAttribute('aria-expanded', String(state.expanded))", sidebar)
         self.assertNotIn("behavior: 'instant'", source)
 
     def test_runtime_config_has_no_secret_fields(self):

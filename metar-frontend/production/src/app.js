@@ -259,6 +259,7 @@
   }
 
   function syncNavigation() {
+    window.MetarSidebar?.sync();
     const {path, query} = route();
     for (const node of document.querySelectorAll('.sidebar a[data-router], .mobile-bottom a[data-router], .account-menu a[data-router], .topnav a[data-router]')) {
       const href = node.getAttribute('href');
@@ -873,8 +874,7 @@
   window.addEventListener('pagehide', () => { clearTimeout(chatUnreadTimer); chatView?.dispose(); });
 
   function closeMobileMenu() {
-    document.body.classList.remove('menu-open');
-    document.querySelector('[data-action="menu"]')?.setAttribute('aria-expanded', 'false');
+    window.MetarSidebar?.closeMobile();
   }
 
   function refreshMessage(failed = false) {
@@ -1039,8 +1039,7 @@
       openTaxonomy(kind,trigger);
     }
     if (action === 'menu') {
-      const opened = document.body.classList.toggle('menu-open');
-      document.querySelector('[data-action="menu"]')?.setAttribute('aria-expanded', String(opened));
+      closeTaxonomy(false);
     }
     if (action === 'theme') setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
     if (action === 'retry') { answer.clearContentCache(); navigate({preservePublicView:true}); }
