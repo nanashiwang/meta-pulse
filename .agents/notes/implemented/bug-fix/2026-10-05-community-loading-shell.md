@@ -36,3 +36,5 @@ Status: implemented
 - `make build-community`、`python3 deploy/nginx/test-seo.py`：构建与隔离 Nginx 的真人/爬虫 SEO、canonical、私有 noindex、404 和压缩检查通过。
 - 本地真实浏览器使用合成 API 数据，覆盖 11 个入口、主脚本延迟、慢接口、详情后退、公开页恢复与失败、私有身份失效、320/390px、中英文、深浅主题、脚本失败和无脚本回退。82 项断言通过；脚本失败提示另在手机首屏复核。截图保存在忽略目录 `output/playwright/loading-shell-*.png`，不含线上身份数据。
 - 笔记由 `bash .agents/verify-notes.sh` 检查。发布和生产部署分别验证；本轮未部署生产，真实线上刷新后的终态不作为本地验收结论。
+
+2026-10-15：[讨论列表切换](2026-10-15-discussion-switch.md)接管筛选与分页的过渡展示，扩展为新列表加载成功后一起更新内容和高亮；首次加载、其他页面类型、身份/语言隔离和同 URL 历史恢复仍遵循本篇边界。

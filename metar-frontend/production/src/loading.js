@@ -1,4 +1,4 @@
-/* Anonymous first paint and public-document restoration only. No data cache. */
+/* First paint, public-document restoration and committed discussion views. No data cache. */
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -17,6 +17,14 @@
   }
   function canRetain(path, key, previousKey, language, previousLanguage, sameSession) {
     return sameSession && isPublic(path) && key === previousKey && language === previousLanguage;
+  }
+  function discussionList(key) {
+    if (typeof key !== 'string' || !key.startsWith('/')) return false;
+    const path = key.split('?')[0];
+    return ['/', '/latest'].includes(path) || /^\/topic\/[^/]+$/.test(path);
+  }
+  function canSwitchList(key, previousKey, language, previousLanguage, sameSession) {
+    return sameSession && language === previousLanguage && discussionList(key) && discussionList(previousKey);
   }
   function render(template, title, path, label, english = false) {
     // Only static, explicitly marked text is localized; never page/user content.
@@ -54,5 +62,5 @@
       if (event.target?.tagName === 'SCRIPT') recover();
     }, true);
   }
-  return { layout, isPublic, canRetain, render, install };
+  return { layout, isPublic, canRetain, canSwitchList, render, install };
 });

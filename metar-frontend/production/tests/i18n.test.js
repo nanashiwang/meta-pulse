@@ -105,8 +105,9 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
       const pathname = new URL(url, 'https://metar.uk').pathname;
       if (pathname === '/answer/api/v1/user/info' && identityGate) await identityGate;
       if (pathname.endsWith('/question/page') || pathname.endsWith('/tags/page')) {
+        if (publicControl.before) await publicControl.before(url);
         if (publicControl.gate) await publicControl.gate;
-        if (publicControl.fail) return { ok:false, status:503, json:async () => ({data:null}) };
+        if (publicControl.fail || publicControl.failStatus) return { ok:false, status:publicControl.failStatus || 503, json:async () => ({data:null}) };
       }
       if (failure === 'all' || (failure === 'identity' && pathname.endsWith('/user/info'))) return { ok: false, status: 503, json: async () => ({ msg: '中文服务器错误', data: null }) };
       if (pathname.startsWith('/metar/api/admin/pulse/')) {
@@ -136,7 +137,7 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
       else if (pathname.endsWith('/personal/collection/page')) data = { count: bookmarkCount, list: bookmarkCount ? [question] : [] };
       else if (pathname.endsWith('/connector/user/info')) data = binding === 'unavailable' ? [] : [{ link: '/answer/api/v1/connector/login/pulse_user_center', binding: binding === 'bound' }];
       else if (pathname.endsWith('/personal/question/page')) data = { count: 1, list: [{ question_id: question.id, title: question.title }] };
-      else if (content && pathname.endsWith('/question/page')) data = { count: 1, list: [question] };
+      else if (content && pathname.endsWith('/question/page')) data = publicControl.empty ? {count:0,list:[]} : { count: 1, list: [question] };
       return { ok: true, status: 200, json: async () => ({ data }) };
     },
   });
@@ -503,4 +504,64 @@ test('valid and expired tickets retain eligibility and stable selections without
     const action = view.requests.find(r => r.url.endsWith('/actions'));
     assert.equal(JSON.parse(action.options.body).selection, 'server-choice-0');
   }
+});
+
+
+test('discussion sorting preserves the committed view and scroll until the new list is ready', async () => {
+  const publicControl = {};
+  const view = await shell({content:true,language:'zh_CN',publicControl});
+  const previous=view.nodes.view.innerHTML,scrollCount=view.scrolls.length;
+  let release;publicControl.gate=new Promise(resolve=>{release=resolve});
+  const pending=view.navigate('/latest?order=hot');
+  assert.equal(view.nodes.view.innerHTML,previous);
+  assert.equal(view.scrolls.length,scrollCount);
+  assert.equal(view.nodes.app.attributes['aria-busy'],'true');
+  release();await pending;
+  assert.match(view.nodes.view.innerHTML,/href="\/latest\?order=hot" data-router class="discussion-tab active"/);
+  assert.equal(view.nodes['view-refresh-message'],undefined);
+  assert.equal(view.scrolls.length,scrollCount+1);
+});
+
+test('failed list switches preserve old content and title, then retry the requested target',async()=>{
+  const publicControl={};const view=await shell({content:true,language:'zh_CN',publicControl});
+  const previous=view.nodes.view.innerHTML,title=view.document.title;
+  publicControl.fail=true;await view.navigate('/topic/ai?order=hot');
+  assert.equal(view.nodes.view.innerHTML,previous);assert.equal(view.document.title,title);
+  assert.match(view.nodes['view-refresh-message'].innerHTML,/切换失败，仍显示原来的列表/);
+  publicControl.fail=false;await view.click('retry');
+  assert.match(view.nodes.view.innerHTML,/href="\/topic\/ai\?order=hot" data-router class="discussion-tab active"/);
+  assert.equal(view.nodes['view-refresh-message'],undefined);assert.equal(view.document.title,'话题 · METAR');
+});
+
+test('rapid list switches only commit the latest request, including when leaving for a private page',async()=>{
+  let releaseHot,releaseUnanswered;
+  const hot=new Promise(r=>{releaseHot=r}),unanswered=new Promise(r=>{releaseUnanswered=r});
+  const publicControl={before:url=>{const order=new URL(url,'https://metar.uk').searchParams.get('order');return order==='hot'?hot:order==='unanswered'?unanswered:undefined}};
+  const view=await shell({content:true,publicControl});
+  const slow=view.navigate('/latest?order=hot');
+  await view.navigate('/latest?order=score');const committed=view.nodes.view.innerHTML;
+  assert.match(committed,/order=score" data-router class="discussion-tab active"/);
+  releaseHot();await slow;assert.equal(view.nodes.view.innerHTML,committed);
+  const leaving=view.navigate('/latest?order=unanswered');
+  await view.navigate('/pulse');const privateView=view.nodes.view.innerHTML;
+  assert.doesNotMatch(privateView,/discussion-title/);
+  releaseUnanswered();await leaving;assert.equal(view.nodes.view.innerHTML,privateView);
+});
+
+test('a denied list request clears the old public view instead of retaining revoked access',async()=>{
+  const publicControl={};const view=await shell({content:true,publicControl});
+  assert.match(view.nodes.view.innerHTML,/discussion-title/);
+  publicControl.failStatus=403;await view.navigate('/latest?order=hot');
+  assert.doesNotMatch(view.nodes.view.innerHTML,/discussion-title/);
+  assert.equal(view.nodes['view-refresh-message'],undefined);
+});
+
+
+test('a successful empty list replaces old rows with the explicit empty state',async()=>{
+  const publicControl={};const view=await shell({content:true,language:'zh_CN',publicControl});
+  publicControl.empty=true;await view.navigate('/latest?order=hot');
+  assert.doesNotMatch(view.nodes.view.innerHTML,/discussion-title|page-loading/);
+  assert.match(view.nodes.view.innerHTML,/当前筛选没有内容/);
+  assert.match(view.nodes.view.innerHTML,/order=hot" data-router class="discussion-tab active"/);
+  assert.equal(view.nodes.app.attributes['aria-busy'],'false');
 });

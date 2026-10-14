@@ -88,6 +88,12 @@
   let identityReady = Promise.resolve(), identitySequence = 0;
   let shellReady = false, shellLanguage = '';
   let renderedKey = null, renderedLanguage = '', renderedSession = '';
+  let pendingListTransition = null, navigationNoticeTimer = null;
+  function presentedRoute() {
+    if (!pendingListTransition) return route();
+    const url = new URL(pendingListTransition.source, location.origin);
+    return {path:url.pathname === '/' ? '/latest' : url.pathname, query:url.searchParams};
+  }
   let extrasUpdatedAt = 0;
 
   const ICONS = {
@@ -241,7 +247,7 @@
   }
 
   let taxonomyDrawer = null;
-  let navigationCatalog = null;
+  let navigationCatalog = null, navigationCatalogScope = null;
   const taxonomyInlineMarkup = new WeakMap();
   function updateTaxonomyInline(node, html) {
     if (taxonomyInlineMarkup.get(node) === html) return;
@@ -271,7 +277,7 @@
 
   function syncNavigation() {
     window.MetarSidebar?.sync();
-    const {path, query} = route();
+    const {path, query} = presentedRoute();
     for (const node of document.querySelectorAll('.sidebar a[data-router], .mobile-bottom a[data-router], .account-menu a[data-router], .topnav a[data-router]')) {
       const href = node.getAttribute('href');
       const active = node.dataset.taxonomyDirectory
@@ -320,13 +326,17 @@
     }
     syncNavigation();
     app.setAttribute('aria-busy', 'true');
-    document.title = `${currentTitle()} · ${config.siteName}`;
-    window.MetarSEO?.update();
+    if (!pendingListTransition) {
+      document.title = `${currentTitle()} · ${config.siteName}`;
+      window.MetarSEO?.update();
+    }
   }
 
   function renderView(html, {focus = true} = {}) {
     const view = document.getElementById('view');
     if (view) view.innerHTML = html;
+    document.title = `${currentTitle()} · ${config.siteName}`;
+    syncNavigation();
     enhanceTaxonomy();
     if (['/me/drafts', '/events', '/admin/events'].includes(route().path)) memberView?.mount(view);
     const chatRoot = document.querySelector('[data-chat-root]');
@@ -373,13 +383,14 @@
     const node = document.querySelector('[data-taxonomy-filter]');
     const navigation = document.querySelector('[data-taxonomy-navigation]');
     if (!node && !navigation) return;
-    const sequence = navigationSequence, key = taxonomy.scope(answer), {path} = route();
+    const sequence = navigationSequence, key = taxonomy.scope(answer), {path} = presentedRoute();
     const tag = path.startsWith('/topic/') ? decodeURIComponent(path.slice(7)) : '';
     taxonomy.catalog(answer).then(data => {
       if (key !== taxonomy.scope(answer)) return;
       navigationCatalog = data;
+      navigationCatalogScope = key;
       if (navigation?.isConnected) {
-        const currentPath = route().path;
+        const currentPath = presentedRoute().path;
         const current = currentPath.startsWith('/topic/') ? decodeURIComponent(currentPath.slice(7)) : '';
         for (const area of navigation.querySelectorAll('[data-taxonomy-inline]')) {
           const html = taxonomy.inlineItems(data, area.dataset.taxonomyInline, current);
@@ -422,7 +433,7 @@
     const input = node.querySelector('[data-taxonomy-search]');
     const render = () => {
       if (taxonomyDrawer !== state || !node.open || state.key !== taxonomy.scope(answer) || !state.data) return;
-      const path = route().path;
+      const path = presentedRoute().path;
       node.querySelector('[data-taxonomy-options]').innerHTML = taxonomy.drawerItems(state.data,kind,input.value,path.startsWith('/topic/')?decodeURIComponent(path.slice(7)):'');
     };
     input.addEventListener('input',render);
@@ -431,6 +442,7 @@
       if (taxonomyDrawer !== state || !node.open || state.key !== taxonomy.scope(answer)) return;
       state.data = data;
       navigationCatalog = data;
+      navigationCatalogScope = state.key;
       node.querySelector('[data-taxonomy-footer]').innerHTML = taxonomy.drawerFooter(data,kind,config.answerAskPath,getLanguage()==='en_US');
       render();
     });
@@ -443,7 +455,8 @@
     const order = Object.prototype.hasOwnProperty.call(orders, requested) ? requested : 'active';
     const page = Math.max(1, Number.parseInt(query.get('page') || '1', 10) || 1);
     const result = await answer.listQuestions({ page, pageSize: 20, order, tag });
-    const filter = `<div class="taxonomy-filter" data-taxonomy-filter>${link('/topics', t('类别'), 'btn small')}${link('/topics?view=tags', t('标签'), 'btn small')}${tag ? `<span class="badge prod-current-tag">${esc(tag)}</span>` : ''}</div>`;
+    const catalog = navigationCatalogScope === taxonomy.scope(answer) ? navigationCatalog : null;
+    const filter = `<div class="taxonomy-filter" data-taxonomy-filter>${catalog ? taxonomy.filters(catalog, tag) : link('/topics', t('类别'), 'btn small') + link('/topics?view=tags', t('标签'), 'btn small') + (tag ? `<span class="badge prod-current-tag">${esc(tag)}</span>` : '')}</div>`;
     const list = Array.isArray(result?.list) ? result.list : [];
     const total = Number(result?.count) || 0;
     const base = tag ? `/topic/${encodeURIComponent(tag)}` : '/latest';
@@ -899,15 +912,15 @@
     window.MetarSidebar?.closeMobile();
   }
 
-  function refreshMessage(failed = false) {
+  function refreshMessage(failed = false, switching = false) {
     document.getElementById('view-refresh-message')?.remove();
     const message = document.createElement('div');
     message.id = 'view-refresh-message';
     message.className = 'view-refresh-status';
     message.setAttribute('role', 'status');
     message.innerHTML = failed
-      ? `<span>${t('暂时无法更新，正在显示返回前的内容。')}</span> <button class="btn small" type="button" data-action="retry">${t('重新加载')}</button>`
-      : t('正在更新内容…');
+      ? `<span>${switching ? t('切换失败，仍显示原来的列表。') : t('暂时无法更新，正在显示返回前的内容。')}</span> <button class="btn small" type="button" data-action="retry">${switching ? t('重试切换') : t('重新加载')}</button>`
+      : switching ? t('正在加载新列表…') : t('正在更新内容…');
     document.getElementById('toast-root').append(message);
   }
 
@@ -919,7 +932,11 @@
     const sequence = ++navigationSequence;
     const key = location.pathname + location.search;
     const session = answer.token();
-    const retain = preservePublicView && shellReady && window.MetarLoading.canRetain(route().path, key, renderedKey, getLanguage(), renderedLanguage, session === renderedSession);
+    const restorePublic = preservePublicView && shellReady && window.MetarLoading.canRetain(route().path, key, renderedKey, getLanguage(), renderedLanguage, session === renderedSession);
+    const switchingLists = !restorePublic && shellReady && window.MetarLoading.canSwitchList(key, renderedKey, getLanguage(), renderedLanguage, session === renderedSession);
+    const retain = restorePublic || switchingLists;
+    clearTimeout(navigationNoticeTimer);
+    pendingListTransition = switchingLists ? {sequence, source:renderedKey, target:key} : null;
     document.getElementById('view-refresh-message')?.remove();
     if (!retain) renderedKey = null;
     clearTimeout(pulseStatusTimer);
@@ -931,12 +948,17 @@
     pulseView = null;
     if (route().path !== '/admin/pulse') pulseAdmin?.dispose();
     renderShell({retain});
-    if (retain) refreshMessage();
+    if (switchingLists) {
+      navigationNoticeTimer = setTimeout(() => { if (sequence === navigationSequence) refreshMessage(false, true); }, 180);
+    } else if (retain) refreshMessage();
     else window.scrollTo({top:0, left:0, behavior:'auto'});
     try {
       const html = await resolveView();
       if (sequence !== navigationSequence) return;
-      renderView(html, {focus:!retain});
+      clearTimeout(navigationNoticeTimer);
+      pendingListTransition = null;
+      renderView(html, {focus:!retain || switchingLists});
+      if (switchingLists) window.scrollTo({top:restore?.y || 0, left:restore?.x || 0, behavior:'auto'});
       renderedKey = key;
       renderedLanguage = getLanguage();
       renderedSession = session;
@@ -944,8 +966,15 @@
     } catch (error) {
       console.error('METAR view load failed', error);
       if (sequence !== navigationSequence) return;
-      if (retain) { app.setAttribute('aria-busy', 'false'); refreshMessage(true); }
-      else renderError(error);
+      clearTimeout(navigationNoticeTimer);
+      if (retain && ![401, 403].includes(error?.status)) {
+        app.setAttribute('aria-busy', 'false');
+        refreshMessage(true, switchingLists);
+      } else {
+        pendingListTransition = null;
+        renderedKey = null;
+        renderError(error);
+      }
     }
     if (restore && !retain) window.scrollTo({top:restore.y, left:restore.x, behavior:'auto'});
   }
@@ -968,7 +997,7 @@
 
   function initializeIdentity() {
     closeTaxonomy(false);
-    navigationCatalog = null;
+    navigationCatalog = null; navigationCatalogScope = null;
     document.querySelectorAll('[data-taxonomy-inline]').forEach(node => updateTaxonomyInline(node, taxonomy.inlineItems(null, node.dataset.taxonomyInline)));
     const sequence = ++identitySequence;
     currentUserState = 'loading'; currentUser = null; identityError = null;

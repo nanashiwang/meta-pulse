@@ -2,6 +2,9 @@
 'use strict';
 (() => {
   const EN = Object.freeze({
+"切换失败，仍显示原来的列表。":"Switch failed. The previous list is still shown.",
+"重试切换":"Retry switch",
+"正在加载新列表…":"Loading the new list…",
 "我的草稿":"My drafts",
 "我的消息":"My messages",
 "近期活动":"Community events",

@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const {render, layout, canRetain} = require('../src/loading.js');
+const {render, layout, canRetain, canSwitchList} = require('../src/loading.js');
 const template = fs.readFileSync(path.join(__dirname, '../src/loading-view.html'), 'utf8');
 
 test('首屏与路由共用骨架，区分列表/网格/私有面板且转义动态标题', () => {
@@ -28,5 +28,20 @@ test('只保留相同 URL、语言及会话的公开页面，私人和状态页�
   }
   for (const route of ['/me', '/me/bookmarks', '/settings/binding', '/pulse', '/admin/pulse', '/admin/growth', '/status', '/users/alice', '/topic/ai/edit']) {
     assert.equal(canRetain(route, route, route, 'zh_CN', 'zh_CN', true), false);
+  }
+});
+
+
+test('only same-language, same-session discussion lists can switch without clearing content', () => {
+  for (const from of ['/', '/latest?order=newest', '/topic/ai?page=2']) {
+    for (const to of ['/latest?order=hot', '/topic/develop?order=score&page=3']) {
+      assert.equal(canSwitchList(to, from, 'zh_CN', 'zh_CN', true), true);
+      assert.equal(canSwitchList(to, from, 'en_US', 'zh_CN', true), false);
+      assert.equal(canSwitchList(to, from, 'zh_CN', 'zh_CN', false), false);
+    }
+  }
+  for (const outside of [null, '', '/me', '/me/bookmarks', '/pulse', '/admin/pulse', '/chat', '/events', '/search', '/topics', '/topic/ai/edit', '//evil.test/latest']) {
+    assert.equal(canSwitchList('/latest', outside, 'zh_CN', 'zh_CN', true), false);
+    assert.equal(canSwitchList(outside, '/latest', 'zh_CN', 'zh_CN', true), false);
   }
 });
