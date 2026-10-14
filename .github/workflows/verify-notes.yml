@@ -25,4 +25,4 @@ jobs:
       - name: Verify decision notes
         env:
           AGENT_NOTE_ARCHIVE_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD' }}
-        run: bash .agents/verify-notes.sh
+        run: make verify-notes

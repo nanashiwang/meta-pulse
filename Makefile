@@ -1,4 +1,4 @@
-.PHONY: help fmt vet test build build-pulse build-forum build-blog build-community test-community \
+.PHONY: help fmt vet verify-notes test build build-pulse build-forum build-blog build-community test-community \
         run-api run-worker migrate-up migrate-status up down deploy-install deploy-update deploy-test deploy-config-test test-integration test-forum-integration test-growth-integration test-chat-integration clean
 
 # The repo root is not a Go module, so `./...` does not resolve across the
@@ -11,6 +11,7 @@ help:
 	@echo ""
 	@echo "  make fmt          gofmt all Go sources"
 	@echo "  make vet          go vet all modules"
+	@echo "  make verify-notes 验证决策笔记目录、格式、链接与归档完整性"
 	@echo "  make test         go test all modules"
 	@echo "  make build        build pulse binaries + blog + METAR frontend"
 	@echo "  make migrate-up   apply Pulse Goose migrations"
@@ -28,6 +29,9 @@ help:
 
 fmt:
 	gofmt -w $(GO_DIRS)
+
+verify-notes:
+	bash .agents/verify-notes.sh
 
 vet:
 	go vet $(GO_MODULES)

@@ -136,6 +136,7 @@ Pulse API 不持有发奖用的 `PULSE_SERVICE_HMAC_SECRET`，该密钥只交给
 ### 本地验证
 
 ```bash
+make verify-notes # 决策笔记结构、链接与归档校验（需 Bun）
 make test       # Go 测试 + 部署脚本 + METAR 正式前端测试
 make test-community
 make vet
@@ -184,6 +185,7 @@ Apache Answer 源码不进入仓库，通过官方镜像与 Go module 引入。
 - [社区架构（论坛 + 博客）](docs/COMMUNITY.md)
 - [实施计划（里程碑与出口标准）](docs/IMPLEMENTATION_PLAN.md)
 - [工程约束](AGENTS.md)
+- [能力地图](docs/FEATURE_MAP.md)与[决策笔记工作流](docs/AGENT_NOTES.md)
 - [基础设施解耦、备份与恢复](docs/INFRASTRUCTURE.md)
 - [数据库迁移说明](services/pulse/migrations/README.md)
 - [服务器一键部署与更新](deploy/README.md)

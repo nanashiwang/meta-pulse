@@ -8,7 +8,7 @@ The [pinned project-local Skill](../.agents/skills/write-notes-like-deepseek/UPS
 2. Search active proposed, implemented and rejected notes. Reuse an existing note when only its facts change. Record new non-trivial decisions with the [proposal template](../.agents/skills/write-notes-like-deepseek/templates/proposed.md), including evidence of existing capabilities, affected entry points, real alternatives and acceptance criteria.
 3. Proceed within existing user authorization. Imported confirmation defaults do not introduce repeated approval requirements. Missing material decisions still need user input; proposed notes do not themselves authorize deployment.
 4. Once implementation and relevant checks are complete, rewrite Proposal as Decision and acceptance/risks as actual validation/consequences; move to implemented in the same commit as code. Decision reversals get new notes with links. Archive only eligible superseded implemented notes, not abandoned proposals.
-5. Run the note checks and the existing tests/build required for the changed area. Update affected map entries. Mechanical edits do not require new notes; do not retroactively invent historical decisions.
+5. Run `make verify-notes` and the existing tests/build required for the changed area. Update affected map entries. Mechanical edits do not require new notes; do not retroactively invent historical decisions.
 
 ## Layout and commands
 
@@ -17,6 +17,8 @@ Notes live under `.agents/notes/{proposed,implemented,rejected,archived}/{class}
 Bun is used only to execute the pinned TypeScript tooling (CI: 1.3.14); it adds no application dependency and does not replace the project's package manager. From any directory, invoke the shell script by its path; auxiliary commands below run from the repository root:
 
 ```sh
+make verify-notes
+# Equivalent standalone entry, also usable by absolute path from another directory:
 bash .agents/verify-notes.sh
 bun .agents/skills/write-notes-like-deepseek/scripts/archive-agent-note.ts <old-note> --superseded-by <new-note>
 bun .agents/skills/write-notes-like-deepseek/scripts/build-board.ts --bundle .agents/notes /tmp/decision-board.html 'Project decisions'
@@ -25,6 +27,8 @@ bun .agents/skills/write-notes-like-deepseek/scripts/build-board.ts --bundle .ag
 The archive command mutates files; inspect the diff and inbound links. The optional board bundles note content, so keep private notes and credentials out of published artifacts. Do not commit generated boards or real customer data, passwords, tokens or private keys.
 
 ## Verification boundaries
+
+Local Make and CI both delegate to the existing shell entry, which runs all three pinned validators. Note checks remain separate from `make test` and application builds, so Go-only workflows do not gain a Bun prerequisite.
 
 The independent Verify Agent Notes CI job runs on main pushes and pull requests, with full Git history. Archive comparison uses the pre-push commit or PR base, not the new HEAD. CI failure does not automatically configure branch protection; no branch protection changes are included here.
 
