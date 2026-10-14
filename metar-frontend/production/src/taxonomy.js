@@ -89,8 +89,19 @@
     return entry.promise;
   }
 
-  function navigation() {
-    return `<nav class="taxonomy-nav" aria-label="${t('类别与标签')}">${[['categories','类别','▦'],['tags','标签','#']].map(([kind,label,icon])=>`<button type="button" class="nav-item taxonomy-trigger" data-action="taxonomy-open" data-kind="${kind}" aria-haspopup="dialog" aria-controls="taxonomy-drawer" aria-expanded="false"><span class="taxonomy-trigger-icon" aria-hidden="true">${icon}</span><span>${t(label)}</span><span class="taxonomy-chevron" aria-hidden="true">›</span></button>`).join('')}</nav>`;
+  function inlineItems(data, kind, current = '') {
+    if (!data) return `<p class="visually-hidden" role="status">${t('正在加载…')}</p>${'<span class="loading-block taxonomy-loading-row" aria-hidden="true"></span>'.repeat(3)}`;
+    const list = data[kind] || [], limit = kind === 'categories' ? 16 : 8;
+    const unavailable = kind === 'categories' ? data.categoriesUnavailable : data.tagsUnavailable;
+    if (unavailable && !list.length) return `<p class="taxonomy-inline-message" role="status">${t('暂时无法加载')}</p><button type="button" class="textlink taxonomy-inline-retry" data-action="taxonomy-inline-retry">${t('重新加载')}</button>`;
+    if (!list.length) return `<p class="taxonomy-inline-message">${t('暂无可用项目')}</p>`;
+    const visible = list.slice(0, limit), selected = list.find(tag => tag.slug_name === current);
+    if (selected && !visible.includes(selected)) visible.push(selected);
+    return visible.map(tag => `<a data-router class="nav-item taxonomy-sidebar-item${tag.slug_name === current ? ' active' : ''}" href="${topicURL(tag.slug_name)}"${tag.slug_name === current ? ' aria-current="page"' : ''} title="${esc(name(tag))}">${kind === 'categories' ? marker(tag.slug_name) : '<span class="taxonomy-hash" aria-hidden="true">#</span>'}<span class="taxonomy-sidebar-name">${esc(name(tag))}</span></a>`).join('');
+  }
+
+  function navigation(data = null, current = '', collapsed = {}) {
+    return `<nav class="taxonomy-nav" aria-label="${t('类别与标签')}">${[['categories','类别'],['tags','标签']].map(([kind,label]) => `<details class="taxonomy-group" data-taxonomy-group="${kind}"${collapsed[kind] ? '' : ' open'}><summary><span class="taxonomy-group-chevron" aria-hidden="true">›</span><span>${t(label)}</span></summary><div data-taxonomy-inline="${kind}">${inlineItems(data,kind,current)}</div><div class="taxonomy-inline-actions"><a data-router data-taxonomy-directory="${kind}" href="${kind === 'categories' ? '/topics' : '/topics?view=tags'}">${t(kind === 'categories' ? '浏览全部类别' : '浏览全部标签')}</a><button type="button" data-action="taxonomy-open" data-kind="${kind}" aria-haspopup="dialog" aria-controls="taxonomy-drawer" aria-expanded="false">${t('搜索')}</button></div></details>`).join('')}</nav>`;
   }
 
   function drawer(kind) {
@@ -209,5 +220,5 @@
     return `<section class="card card-pad stack"><div class="flex wrap"><a class="btn" data-router href="/topics">${t('查看类别与标签')}</a><a class="btn" href="/admin/write">${t('打开撰写设置')}</a><a class="btn" href="/tags">${t('管理原生标签')}</a></div><p>${t('同步会补齐缺失类别和标签，并将旧版默认名称更新为下列名称；保留自定义名称、介绍、帖子归属与撰写设置。')}</p><div class="taxonomy-seed-tags">${categories.map(item=>`<span class="badge green">${esc(t(item.display_name))}</span>`).join('')}</div><div class="taxonomy-seed-tags">${tags.map(item=>`<span class="badge">${esc(t(item.display_name))}</span>`).join('')}</div><form data-form="taxonomy-init"><label class="taxonomy-confirm"><input type="checkbox" required name="confirmed">${t('我已核对起步目录，并确认没有其他管理员同时修改标签或撰写设置。')}</label><button type="submit" class="btn primary">${t('同步类别与标签')}</button><p class="muted" role="status" data-taxonomy-status></p></form><details><summary>${t('处理新增申请')}</summary><p>${t('在申请帖回复审核结果。通过后在原生标签页创建标签；新增类别还需加入撰写设置的推荐标签。公告等管理专用标签可在撰写设置中设为保留标签。')}</p><p>${t('类别用于整理内容，可与其他标签一起选择。资料分享单独筛选，不自动合并到工具资源；申请和标签本身不授予 Pulse 权益。')}</p></details></section>`;
   }
 
-  window.MetarTaxonomy = Object.freeze({categories:Object.freeze(categories),tags:Object.freeze(tags),seedFor,scope,catalog,navigation,drawer,drawerItems,drawerFooter,filters,topicURL,askURL,requestURL,recommended,directory,initialize,renameDefaults,adminPage});
+  window.MetarTaxonomy = Object.freeze({categories:Object.freeze(categories),tags:Object.freeze(tags),seedFor,scope,catalog,navigation,inlineItems,drawer,drawerItems,drawerFooter,filters,topicURL,askURL,requestURL,recommended,directory,initialize,renameDefaults,adminPage});
 })();

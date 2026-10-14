@@ -32,3 +32,5 @@ Status: implemented
 ## Related notes
 
 [目录导航](2026-10-09-taxonomy-navigation.md)部分被本篇替代，保留单条件筛选与公开缓存约束；[类别治理](2026-10-09-community-taxonomy.md)保留数据来源、申请和初始化，其旧默认名称由本篇更新。
+
+2026-10-15 展示更新：[默认展开分组](2026-10-15-expanded-taxonomy-sidebar.md)按用户新要求接管侧栏默认展示；本篇的数据来源、命名、筛选和搜索约束继续保留。

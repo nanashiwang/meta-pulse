@@ -150,11 +150,14 @@ test('failed catalogs are retried, old results cannot overwrite a newer scope, a
   assert.equal(await taxonomy.catalog(delayed),current);
 });
 
-test('sidebar opens a separate dialog and drawer search preserves escaped names, current selection and complete directory access',()=>{
+test('sidebar expands real groups and preserves searchable drawers and complete directories',()=>{
   const data={categories:[{slug_name:'custom',display_name:'<Category>'},{slug_name:'develop',display_name:'开发实践'}],tags:[{slug_name:'ai',display_name:'AI 交流'}]};
-  const nav=taxonomy.navigation();
+  const nav=taxonomy.navigation(data, 'custom');
   assert.equal((nav.match(/aria-haspopup="dialog"/g)||[]).length,2);
-  assert.doesNotMatch(nav,/href="\/topic\/|<details/);
+  assert.equal((nav.match(/data-taxonomy-group="(?:categories|tags)" open/g)||[]).length,2);
+  assert.match(nav,/href="\/topic\/custom" aria-current="page"/);
+  assert.match(nav,/&lt;Category&gt;/);
+  assert.doesNotMatch(nav,/<Category>/);
   const items=taxonomy.drawerItems(data,'categories','category','custom');
   assert.match(items,/&lt;Category&gt;/);assert.match(items,/aria-current="page"/);
   assert.doesNotMatch(items,/\/topic\/develop/);
@@ -201,4 +204,23 @@ test('renaming rechecks permissions and source, detects incompatible/readback st
   const g=renameFixture();g.tags.get('develop').display_name='开发调优';const request=g.answer.request;
   g.answer.request=async(path,options)=>{const result=await request(path,options);if(options)g.tags.get('develop').original_text='Changed elsewhere';return result;};
   await assert.rejects(taxonomy.renameDefaults(g.answer));assert.equal(g.writes.length,1);assert.equal(g.clears,1);
+});
+
+
+test('inline previews are bounded but keep an out-of-preview current selection and full directory links',()=>{
+  const data={categories:Array.from({length:25},(_,i)=>({slug_name:`category-${i}`,display_name:`Category ${i}`})),tags:Array.from({length:50},(_,i)=>({slug_name:`tag-${i}`,display_name:`Tag ${i}`}))};
+  const html=taxonomy.navigation(data,'tag-49',{tags:true});
+  assert.equal((taxonomy.inlineItems(data,'categories').match(/data-router/g)||[]).length,16);
+  assert.equal((taxonomy.inlineItems(data,'tags','tag-49').match(/data-router/g)||[]).length,9);
+  assert.match(html,/href="\/topic\/tag-49" aria-current="page"/);
+  assert.doesNotMatch(html,/href="\/topic\/tag-48"/);
+  assert.match(html,/data-taxonomy-group="tags"><summary>/);
+  assert.match(html,/href="\/topics\?view=tags"/);
+});
+
+test('inline loading, empty and error states never turn seed categories into live links',()=>{
+  assert.match(taxonomy.inlineItems(null,'categories'),/loading-block/);
+  assert.match(taxonomy.inlineItems({categories:[],categoriesUnavailable:true},'categories'),/taxonomy-inline-retry/);
+  assert.match(taxonomy.inlineItems({categories:[]},'categories'),/暂无可用项目/);
+  assert.doesNotMatch(taxonomy.navigation({categories:[],tags:[]}),/href="\/topic\//);
 });

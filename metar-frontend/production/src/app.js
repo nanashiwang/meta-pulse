@@ -242,13 +242,24 @@
 
   let taxonomyDrawer = null;
   let navigationCatalog = null;
+  const taxonomyInlineMarkup = new WeakMap();
+  function updateTaxonomyInline(node, html) {
+    if (taxonomyInlineMarkup.get(node) === html) return;
+    node.innerHTML = html;
+    taxonomyInlineMarkup.set(node, html);
+  }
+  const taxonomyCollapsed = Object.fromEntries([...document.querySelectorAll('.initial-chrome [data-taxonomy-group]')].map(node => [node.dataset.taxonomyGroup, !node.open]));
+  document.addEventListener('toggle', event => {
+    const node = event.target;
+    if (node.matches?.('[data-taxonomy-group]') && node.isConnected) taxonomyCollapsed[node.dataset.taxonomyGroup] = !node.open;
+  }, true);
 
   function sidebar() {
     const { path, query } = route();
     const item = (url, label, icon) => link(url, I(icon) + `<span>${esc(label)}</span>`, `nav-item ${routeMatchesNavigation(path, query.toString(), url) ? 'active' : ''}`);
     return `<aside class="sidebar" id="community-sidebar" aria-label="${t("社区导航")}">
       <div class="nav-group"><div class="nav-label">${t("社区")}</div>${item('/latest', t("全部讨论"), 'chat')}${item('/me/drafts', t('我的草稿'), 'edit')}${link('/chat', I('inbox') + `<span>${t('我的消息')}</span><span class="member-unread" data-chat-unread hidden></span>`, 'nav-item')}${item('/events', t('近期活动'), 'calendar')}${item('/latest?order=unanswered', t("待回答"), 'target')}</div>
-      <div data-taxonomy-navigation>${taxonomy.navigation()}</div>
+      <div data-taxonomy-navigation>${taxonomy.navigation(null, '', taxonomyCollapsed)}</div>
       <div class="side-bottom">${item('/pulse', t("Pulse 权益"), 'pulse')}<div class="side-footer">${link('/guidelines', t("社区规范"))}${external('/sitemap.xml', t("站点地图"))}</div></div>
     </aside>`;
   }
@@ -263,7 +274,9 @@
     const {path, query} = route();
     for (const node of document.querySelectorAll('.sidebar a[data-router], .mobile-bottom a[data-router], .account-menu a[data-router], .topnav a[data-router]')) {
       const href = node.getAttribute('href');
-      const active = node.closest('.topnav') && href === '/latest'
+      const active = node.dataset.taxonomyDirectory
+        ? path === '/topics' && (query.get('view') === 'tags' ? 'tags' : 'categories') === node.dataset.taxonomyDirectory
+        : node.closest('.topnav') && href === '/latest'
         ? /^\/(?:latest|topics?|question)(?:\/|$)/.test(path)
         : routeMatchesNavigation(path, query.toString(), href);
       node.classList.toggle('active', active);
@@ -358,14 +371,23 @@
 
   function enhanceTaxonomy() {
     const node = document.querySelector('[data-taxonomy-filter]');
-    if (!node) return;
+    const navigation = document.querySelector('[data-taxonomy-navigation]');
+    if (!node && !navigation) return;
     const sequence = navigationSequence, key = taxonomy.scope(answer), {path} = route();
     const tag = path.startsWith('/topic/') ? decodeURIComponent(path.slice(7)) : '';
     taxonomy.catalog(answer).then(data => {
       if (key !== taxonomy.scope(answer)) return;
       navigationCatalog = data;
+      if (navigation?.isConnected) {
+        const currentPath = route().path;
+        const current = currentPath.startsWith('/topic/') ? decodeURIComponent(currentPath.slice(7)) : '';
+        for (const area of navigation.querySelectorAll('[data-taxonomy-inline]')) {
+          const html = taxonomy.inlineItems(data, area.dataset.taxonomyInline, current);
+          updateTaxonomyInline(area, html);
+        }
+      }
       syncNavigation();
-      if (node.isConnected && sequence === navigationSequence) node.innerHTML = taxonomy.filters(data, tag);
+      if (node?.isConnected && sequence === navigationSequence) node.innerHTML = taxonomy.filters(data, tag);
     });
   }
 
@@ -947,6 +969,7 @@
   function initializeIdentity() {
     closeTaxonomy(false);
     navigationCatalog = null;
+    document.querySelectorAll('[data-taxonomy-inline]').forEach(node => updateTaxonomyInline(node, taxonomy.inlineItems(null, node.dataset.taxonomyInline)));
     const sequence = ++identitySequence;
     currentUserState = 'loading'; currentUser = null; identityError = null;
     document.querySelectorAll('[data-chat-unread]').forEach(node => { node.hidden = true; node.textContent = ''; });
@@ -1031,6 +1054,7 @@
       event.preventDefault();
       document.getElementById('main')?.focus({ preventScroll: false });
     }
+    if (action === 'taxonomy-inline-retry') { answer.clearContentCache(); enhanceTaxonomy(); }
     if (action === 'taxonomy-open') openTaxonomy(target.dataset.kind, target);
     if (action === 'taxonomy-close') closeTaxonomy();
     if (action === 'taxonomy-retry' && taxonomyDrawer) {

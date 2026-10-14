@@ -271,3 +271,24 @@ input:not([type="checkbox"]),select,textarea { padding:8px 11px; }
   .topbar .mobile-menu{margin-right:-12px}
 }
 @media(max-width:820px){body:not(.menu-open) .sidebar{visibility:hidden}body.menu-open .sidebar{visibility:visible}}
+
+/* Live categories and a bounded tag preview stay visible in the sidebar. */
+.sidebar [data-taxonomy-navigation]{flex-shrink:0}
+.taxonomy-nav{padding:0;border-top:0}
+.taxonomy-group{padding:6px 0;border-top:1px solid var(--border)}
+.taxonomy-group summary{display:flex;align-items:center;gap:8px;padding:9px 11px;color:var(--muted);font-size:11px;cursor:pointer;list-style:none}
+.taxonomy-group summary::-webkit-details-marker{display:none}
+.taxonomy-group summary:hover{color:var(--text)}
+.taxonomy-group-chevron{display:inline-block;font-size:16px;line-height:1;transform:rotate(0deg)}
+.taxonomy-group[open]>summary .taxonomy-group-chevron{transform:rotate(90deg)}
+.taxonomy-sidebar-item{gap:10px!important;padding:5px 11px!important;min-height:30px}
+.taxonomy-sidebar-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.taxonomy-sidebar-item .taxonomy-dot{width:9px;height:9px;flex-shrink:0}
+.taxonomy-inline-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 11px;font-size:11px;color:var(--muted)}
+.taxonomy-inline-actions button{padding:0;border:0;background:none;font:inherit;color:inherit}
+.taxonomy-inline-actions a:hover,.taxonomy-inline-actions button:hover{color:var(--green)}
+.taxonomy-inline-message{padding:6px 11px;font-size:11px;color:var(--muted)}
+.taxonomy-inline-retry{margin:0 11px 6px;border:0;background:none;padding:0;font-size:11px}
+.taxonomy-loading-row{display:block;height:12px;width:calc(100% - 48px);margin:10px 16px 10px 32px}
+.taxonomy-group summary:focus-visible{outline:2px solid var(--green);outline-offset:-2px;border-radius:5px}
+@media(max-width:820px){.taxonomy-sidebar-item{min-height:38px}}
