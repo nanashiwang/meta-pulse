@@ -91,6 +91,7 @@
   let extrasUpdatedAt = 0;
 
   const ICONS = {
+    language: '<path d="m5 8 6 6m-7 0 6-6 2-5M2 5h12M7 2v3m7 17 4-10 4 10m-6.8-3h5.6"/>',
     globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a17 17 0 0 1 0 18 17 17 0 0 1 0-18Z"/>',
     search: '<circle cx="10.8" cy="10.8" r="6.6"/><path d="m16 16 4.2 4.2"/>',
     compass: '<circle cx="12" cy="12" r="9"/><path d="m15.7 8.3-2.2 5.2-5.2 2.2 2.2-5.2z"/>',
@@ -208,7 +209,7 @@
   }
 
   function languageControl() {
-    return `<span class="icon-btn language-control" title="${t('界面语言')}">${I('globe')}<select class="language-select" data-action="language" aria-label="${t('界面语言')}"><option value="zh_CN"${getLanguage() === 'zh_CN' ? ' selected' : ''}>中文</option><option value="en_US"${getLanguage() === 'en_US' ? ' selected' : ''}>English</option></select></span>`;
+    return `<span class="icon-btn language-control" title="${t('界面语言')}">${I('language')}<select class="language-select" data-action="language" aria-label="${t('界面语言')}"><option value="zh_CN"${getLanguage() === 'zh_CN' ? ' selected' : ''}>中文</option><option value="en_US"${getLanguage() === 'en_US' ? ' selected' : ''}>English</option></select></span>`;
   }
 
   function accountMenu() {

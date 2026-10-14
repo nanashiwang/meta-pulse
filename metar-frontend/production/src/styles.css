@@ -259,4 +259,4 @@ input:not([type="checkbox"]),select,textarea { padding:8px 11px; }
 .chat-workspace{display:flex;flex-direction:column;height:calc(100dvh - var(--header) - 32px);min-height:300px}.chat-toolbar,.chat-notice{flex-shrink:0}.chat-layout{height:auto;min-height:0;flex:1}
 @media(max-width:640px){.chat-workspace{height:calc(100dvh - var(--header) - 90px)}}
 
-.language-control{position:relative;flex-shrink:0}.language-control:focus-within{outline:2px solid var(--green);outline-offset:2px}.language-control .ico{pointer-events:none}.language-control .language-select{position:absolute;inset:0;width:100%;height:100%;min-width:0;max-width:none;margin:0;padding:0;opacity:0;cursor:pointer}
+.language-control{position:relative;flex-shrink:0;width:32px;height:32px;border-radius:50%;background:var(--metar-soft);color:var(--metar-text)}.language-control:focus-within{outline:2px solid var(--green);outline-offset:2px}.language-control .ico{pointer-events:none}.language-control .language-select{position:absolute;inset:0;width:100%;height:100%;min-width:0;max-width:none;margin:0;padding:0;opacity:0;cursor:pointer}
