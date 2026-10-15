@@ -30,6 +30,8 @@ pulse_content_award
 pulse_content_award_limit_guard
 ```
 
+`00017_reward_feed_index.sql` 为匿名中奖动态增加 trigger_type/status/created_at/id 查询索引；只增加索引，不回填或改写任何 Grant、金额、状态和 Ledger。动态始终使用当前已到账状态，按近 30 天和最多二十条限制读取。
+
 ## Migration 规则
 
 1. 不直接修改 new-api 数据库 schema；Meta Pulse migration 只管理 Pulse 自己的数据库。

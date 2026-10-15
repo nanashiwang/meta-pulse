@@ -2,6 +2,19 @@
 'use strict';
 (() => {
   const EN = Object.freeze({
+    "查看更多": "View more",
+    "用户": "User",
+    "社区中奖动态": "Community rewards",
+    "匿名用户": "Anonymous user",
+    "暂无社区中奖动态": "No community rewards yet",
+    "近期已到账的抽奖奖励会显示在这里。": "Recent credited draw rewards will appear here.",
+    "展示近 30 天已到账的抽奖奖励，用户信息已匿名处理。": "Credited draw rewards from the last 30 days. Member identities are hidden.",
+    "最近 30 天，最多显示 20 条已到账奖励。": "Up to 20 credited rewards from the last 30 days.",
+    "正在加载社区中奖动态…": "Loading community rewards…",
+    "刷新动态": "Refresh activity",
+    "请重新登录并确认绑定后查看动态。": "Sign in again and confirm your account binding to view activity.",
+    "动态暂时无法更新，仍显示上次记录。": "Unable to update activity. Previous records are still shown.",
+    "暂时无法加载社区中奖动态。": "Community rewards are temporarily unavailable.",
     "开启你的脉冲时刻": "Your Pulse moment starts here",
     "我的脉冲券：{count}": "My Pulse tickets: {count}",
     "抽一次（消耗 1 张）": "Draw once (1 ticket)",

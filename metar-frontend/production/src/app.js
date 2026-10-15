@@ -71,6 +71,7 @@
   let pulseBusy = false;
   let pulseMessage = "";
   let pulseView = null;
+  let pulseFeedView = null;
   let pulseCoreState = null;
   let pulseLastResult = null;
   let pulseAssets = null;
@@ -97,6 +98,7 @@
   let extrasUpdatedAt = 0;
 
   const ICONS = {
+    trophy:'<path d="M8 3h8v6a4 4 0 0 1-8 0V3Zm0 2H4v2a4 4 0 0 0 4 4m8-6h4v2a4 4 0 0 1-4 4m-4 2v5m-4 3h8m-6-3h4l2 3H8Z"/>',
     calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/>',
     edit: '<path d="m16 3 5 5-12 12-6 1 1-6Z M14 5l5 5"/>',
     language: '<path d="m5 8 6 6m-7 0 6-6 2-5M2 5h12M7 2v3m7 17 4-10 4 10m-6.8-3h5.6"/>',
@@ -346,6 +348,7 @@
       pulseView = new window.MetarPulseCore.View(core, { t });
       pulseView.update(pulseCoreState);
     }
+    void mountPulseFeed();
     schedulePulseStatus();
     app.setAttribute('aria-busy', 'false');
     window.MetarSEO?.update();
@@ -644,10 +647,36 @@
       </div>
       <div class="prod-pulse-overview">
         <section class="prod-pulse-panel prod-pulse-recent" aria-labelledby="pulse-recent-title"><header><h2 id="pulse-recent-title">${I('clock')} ${t('我的抽奖记录')}</h2><button type="button" class="prod-pulse-link" data-action="pulse-history" aria-haspopup="dialog" aria-controls="pulse-history">${t('查看全部记录')} <span aria-hidden="true">→</span></button></header><p data-pulse-history-error role="status" class="prod-page-note" hidden></p><div class="prod-pulse-recent-table"><table><thead><tr><th>${t('时间')}</th><th>${t('获得奖励')}</th><th>${t('到账状态')}</th></tr></thead><tbody data-pulse-recent-rows>${pulseRecentRows(rewards, rules.quota_per_unit)}</tbody></table></div></section>
-        <section class="prod-pulse-panel prod-pulse-benefit-preview" aria-labelledby="pulse-benefit-preview-title"><header><h2 id="pulse-benefit-preview-title">${I('pulse')} ${t('我的脉冲权益')}</h2><button type="button" class="prod-pulse-link" data-action="pulse-benefits" aria-haspopup="dialog" aria-controls="pulse-benefits">${t('查看权益详情')} <span aria-hidden="true">→</span></button></header><div data-pulse-benefits-preview>${benefits}</div><div class="prod-pulse-reward-uses"><div><span aria-hidden="true">☆</span><p><strong>${t('社区经验')}</strong><small>${t('用于社区升级')}</small></p></div><div><span aria-hidden="true">ϟ</span><p><strong>${t('API 额度')}</strong><small>${t('用于 API 调用')}</small></p></div></div></section>
+        <section class="prod-pulse-panel prod-pulse-community" data-pulse-feed aria-labelledby="pulse-community-title"><header><h2 id="pulse-community-title">${I('trophy')} ${t('社区中奖动态')}</h2><button type="button" class="prod-pulse-link" data-action="pulse-winners" aria-haspopup="dialog" aria-controls="pulse-winners">${t('查看更多')} <span aria-hidden="true">→</span></button></header><p class="prod-pulse-feed-note">${t('展示近 30 天已到账的抽奖奖励，用户信息已匿名处理。')}</p>${pulseFeedTable('preview')}</section>
       </div>
+      <dialog id="pulse-winners" class="prod-pulse-dialog" aria-labelledby="pulse-winners-title">${dialogHeader('pulse-winners', '社区中奖动态')}<p class="prod-page-note">${t('最近 30 天，最多显示 20 条已到账奖励。')}</p>${pulseFeedTable('full')}</dialog>
       <dialog id="pulse-benefits" class="prod-pulse-dialog prod-pulse-benefits-dialog" aria-labelledby="pulse-benefits-title">${dialogHeader('pulse-benefits', '我的权益')}<div data-pulse-benefits-body>${benefits}</div></dialog>
       <dialog id="pulse-history" class="prod-pulse-dialog" data-pulse-history aria-labelledby="pulse-history-title">${dialogHeader('pulse-history', '奖励记录')}<p data-pulse-history-error role="status" class="prod-page-note" hidden></p><div class="prod-pulse-table" tabindex="0" role="region" aria-label="${t('奖励记录')}"><table><thead><tr><th>${t('奖励')}</th><th>${t('到账状态')}</th><th>${t('时间')}</th><th>${t('奖励编号')}</th></tr></thead><tbody data-pulse-history-rows>${pulseHistoryRows(rewards, rules.quota_per_unit)}</tbody></table></div></dialog>${footer()}`;
+  }
+
+  function pulseFeedTable(kind) {
+    return `<div class="prod-pulse-recent-table"><table><thead><tr><th>${t('用户')}</th><th>${t('获得奖励')}</th><th>${t('时间')}</th></tr></thead><tbody data-pulse-feed-rows="${kind}"></tbody></table></div><p data-pulse-feed-message role="status" class="prod-page-note">${t('正在加载社区中奖动态…')}</p><div class="prod-pulse-feed-tools"><button type="button" class="prod-pulse-link" data-pulse-feed-retry disabled>${t('刷新动态')}</button></div>`;
+  }
+
+  async function mountPulseFeed() {
+    const root = document.querySelector('[data-pulse-feed]');
+    if (!root) return;
+    const sequence = navigationSequence, userId = currentUser?.id, token = answer.token();
+    const current = () => sequence === navigationSequence && route().path === '/pulse' && currentUserState === 'ready' && currentUser?.id === userId && isActiveUser(currentUser) && answer.token() === token;
+    try {
+      await loadFeatureScript('pulse-feed', 'MetarRewardFeed');
+      if (!current()) return;
+      pulseFeedView?.dispose();
+      pulseFeedView = new window.MetarRewardFeed.View(root, document.getElementById('pulse-winners'), {client:pulse, t, displayReward:pulseResultDisplay, locale, current});
+    } catch (_) {
+      if (!current()) return;
+      [root, document.getElementById('pulse-winners')].filter(Boolean).forEach(container => {
+        container.querySelector('[data-pulse-feed-message]').textContent = t('暂时无法加载社区中奖动态。');
+        const retry = container.querySelector('[data-pulse-feed-retry]');
+        retry.disabled = false;
+        retry.onclick = () => { retry.onclick = null; retry.disabled = true; void mountPulseFeed(); };
+      });
+    }
   }
 
   function supportPage() {
@@ -809,9 +838,6 @@
       const benefits = template.content.querySelector('[data-pulse-benefits-body]');
       const previousBenefits = document.querySelector('[data-pulse-benefits-body]');
       if (benefits && previousBenefits) previousBenefits.replaceChildren(...benefits.childNodes);
-      const benefitPreview = template.content.querySelector('[data-pulse-benefits-preview]');
-      const previousPreview = document.querySelector('[data-pulse-benefits-preview]');
-      if (benefitPreview && previousPreview) previousPreview.replaceChildren(...benefitPreview.childNodes);
       previous.replaceWith(next);
       presentation.update(pulseCoreState);
     } catch (_) {
@@ -961,6 +987,8 @@
     closeMobileMenu();
     pulseView?.dispose();
     pulseView = null;
+    pulseFeedView?.dispose();
+    pulseFeedView = null;
     if (route().path !== '/admin/pulse') pulseAdmin?.dispose();
     renderShell({retain});
     if (switchingLists) {
@@ -1115,7 +1143,7 @@
     if (action === 'pulse-draw-five') submitPulse(false, 5);
     if (action === 'pulse-resume') submitPulse(true);
     if (action === 'pulse-refresh') refreshPulse();
-    if (action === 'pulse-benefits' || action === 'pulse-history') {
+    if (action === 'pulse-benefits' || action === 'pulse-history' || action === 'pulse-winners') {
       document.getElementById(action)?.showModal();
     }
     if (action === 'retry-identity') { initializeIdentity(); refreshChrome(); navigate(); }

@@ -98,7 +98,7 @@ func (uc *UserCenter) registerCommunityRoutes(r *gin.RouterGroup, session func(*
 	if r == nil {
 		return
 	}
-	for _, operation := range []string{"summary", "rewards", "rules", "actions"} {
+	for _, operation := range []string{"summary", "rewards", "rules", "actions", "winners"} {
 		method := http.MethodGet
 		if operation == "actions" {
 			method = http.MethodPost
@@ -173,6 +173,9 @@ func (uc *UserCenter) communityHandler(operation string, session func(*gin.Conte
 			return
 		}
 		path := "/v1/internal/me/" + operation
+		if operation == "winners" {
+			path = "/v1/internal/community/rewards"
+		}
 		if encoded := query.Encode(); encoded != "" {
 			path += "?" + encoded
 		}
@@ -329,6 +332,8 @@ func communityProjection(operation, externalID string, data []byte) (any, error)
 			result.Rewards = []communityRewardHistoryItem{}
 		}
 		return result, nil
+	case "winners":
+		return communityRewardFeedProjection(data)
 	case "rules":
 		var result communityRules
 		if err := decodeCommunityResponse(data, &result); err != nil {

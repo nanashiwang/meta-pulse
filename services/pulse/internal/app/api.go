@@ -27,6 +27,7 @@ type APIRoutes struct {
 	Action     transporthttp.ActionExecutor
 	Content    transporthttp.ContentAwardExecutor
 	History    transporthttp.RewardHistoryReader
+	RewardFeed transporthttp.RewardFeedReader
 	Rules      transporthttp.RewardRulesReader
 	Operations transporthttp.OperationsOverviewReader
 	Settings   transporthttp.RuntimeSettings
@@ -84,6 +85,9 @@ func NewRouterWithRoutes(logger *slog.Logger, readiness ReadinessChecker, routes
 	}
 	if routes.Experience != nil {
 		transporthttp.ExperienceRoutes(internal, routes.Experience, routes.Auth)
+	}
+	if routes.RewardFeed != nil {
+		transporthttp.RewardFeedRoute(internal, routes.RewardFeed, routes.Auth)
 	}
 	if routes.History != nil {
 		transporthttp.RewardHistoryRoute(internal, routes.History, routes.Auth)

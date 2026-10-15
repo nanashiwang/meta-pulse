@@ -70,6 +70,7 @@ def build(output: Path, config_path: Path) -> None:
         "member-pages": (ROOT / "src/member-pages.js").read_text(encoding="utf-8"),
         "drafts-store": (ROOT.parents[1] / "services/forum-plugin/user-center-pulse/drafts-store.js").read_text(encoding="utf-8"),
         "app": (ROOT / "src/app.js").read_text(encoding="utf-8"),
+        "pulse-feed": (ROOT / "src/pulse-feed.js").read_text(encoding="utf-8"),
         "pulse-core": (ROOT / "src/pulse-core.js").read_text(encoding="utf-8"),
         "favicon": (ROOT / "src/favicon.svg").read_text(encoding="utf-8"),
     }
@@ -105,6 +106,7 @@ def build(output: Path, config_path: Path) -> None:
     (assets / "member-pages.js").write_text(sources["member-pages"], encoding="utf-8")
     (assets / "drafts-store.js").write_text(sources["drafts-store"], encoding="utf-8")
     (assets / "app.js").write_text(sources["app"], encoding="utf-8")
+    (assets / "pulse-feed.js").write_text(sources["pulse-feed"], encoding="utf-8")
     (assets / "pulse-core.js").write_text(sources["pulse-core"], encoding="utf-8")
     shutil.copyfile(ROOT / "src/pulse-core.css", assets / "pulse-core.css")
     shutil.copyfile(ROOT / "src/images/pulse-gift-hero.webp", assets / "pulse-gift-hero.webp")

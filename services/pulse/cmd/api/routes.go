@@ -47,6 +47,10 @@ func buildAPIRouter(cfg config.Config, logger *slog.Logger, readiness app.Readin
 	if err != nil {
 		return nil, err
 	}
+	feed, err := service.NewRewardFeedService(unit, cfg.QuotaPerUnit, time.Now)
+	if err != nil {
+		return nil, err
+	}
 	history, err := service.NewRewardHistoryService(unit)
 	if err != nil {
 		return nil, err
@@ -78,6 +82,6 @@ func buildAPIRouter(cfg config.Config, logger *slog.Logger, readiness app.Readin
 	rules.SelectionSecret = []byte(cfg.RewardRandomSecret)
 	return app.NewRouterWithRoutes(logger, readiness, app.APIRoutes{
 		Profile: profile, Summary: profile, Action: action, Content: content,
-		Experience: service.NewExperienceService(unit), History: history, Rules: rules, Operations: operations, Settings: settings, Periods: periods, Auth: auth,
+		Experience: service.NewExperienceService(unit), History: history, RewardFeed: feed, Rules: rules, Operations: operations, Settings: settings, Periods: periods, Auth: auth,
 	}, metrics), nil
 }

@@ -356,6 +356,7 @@
     }
     summary() { return this.request('summary'); }
     rules() { return this.request('rules'); }
+    winners() { return this.request('winners'); }
     rewards(actionId = '') { return this.request(`rewards?${actionId ? `action_id=${encodeURIComponent(actionId)}` : 'limit=50'}`); }
     act(operation) { return this.request('actions', { operation }); }
   }

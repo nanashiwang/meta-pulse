@@ -130,6 +130,7 @@ func newRepositories(db *gorm.DB) ports.Repositories {
 		UserPeriod:     &userPeriodStatRepository{db: db},
 		Reward:         &rewardRepository{db: db},
 		RewardHistory:  &rewardRepository{db: db},
+		RewardFeed:     &rewardFeedRepository{db: db},
 		Experience:     &rewardRepository{db: db},
 		Idempotency:    &idempotencyRepository{db: db},
 		Settlement:     &rewardRepository{db: db},
