@@ -1,6 +1,6 @@
 # Meta Pulse: decision-note workflow
 
-The [pinned project-local Skill](../.agents/skills/write-notes-like-deepseek/UPSTREAM.md) records rationale alongside code. It does not replace existing project instructions or architecture documents. The repository is self-contained: no absolute path to another checkout or global Codex memory is required.
+The [pinned project-local Skill](../.agents/skills/write-notes-like-deepseek/UPSTREAM.md) records rationale alongside code. It is managed by project-decision-kit 1.0.1; [project provenance and adaptation](AGENT_WORKFLOW_PROVENANCE.md) preserve the original Meta Pulse source record. It does not replace existing project instructions or architecture documents. The repository is self-contained: no absolute path to another checkout or global Codex memory is required.
 
 ## Working sequence
 
@@ -14,10 +14,13 @@ The [pinned project-local Skill](../.agents/skills/write-notes-like-deepseek/UPS
 
 Notes live under `.agents/notes/{proposed,implemented,rejected,archived}/{class}/yyyy-mm-dd-topic.md`. Classes are feature, bug-fix, simplification, architecture, process and testing. Create directories as needed. No central note index is required; the capability map indexes code, not individual notes.
 
-Bun is used only to execute the pinned TypeScript tooling (CI: 1.3.14); it adds no application dependency and does not replace the project's package manager. From any directory, invoke the shell script by its path; auxiliary commands below run from the repository root:
+Python 3.9+ runs the installation manager; Bun executes the pinned TypeScript tooling (CI: 1.3.14). Both are development/CI dependencies, not application runtime dependencies. From any directory, invoke the shell script by its path; auxiliary commands below run from the repository root:
 
 ```sh
 make verify-notes
+python3 .agents/workflow.py doctor # Managed-file hashes, AGENTS block and Bun availability
+python3 .agents/workflow.py verify # Same validation as make verify-notes
+python3 -m unittest discover -s .agents/tests -v # Integration and rejection regressions
 # Equivalent standalone entry, also usable by absolute path from another directory:
 bash .agents/verify-notes.sh
 bun .agents/skills/write-notes-like-deepseek/scripts/archive-agent-note.ts <old-note> --superseded-by <new-note>
@@ -28,8 +31,24 @@ The archive command mutates files; inspect the diff and inbound links. The optio
 
 ## Verification boundaries
 
-Local Make and CI both delegate to the existing shell entry, which runs all three pinned validators. Note checks remain separate from `make test` and application builds, so Go-only workflows do not gain a Bun prerequisite.
+Local Make and CI both delegate to the existing shell entry, which invokes the installed manager: it verifies managed-file hashes and the AGENTS block before running all three pinned validators. The manager removes inherited `AGENT_NOTE_ROOT` so validation cannot accidentally target another project. Note checks remain separate from `make test` and application builds, so Go-only workflows do not gain Python/Bun prerequisites from this integration.
 
 The independent Verify Agent Notes CI job runs on main pushes and pull requests, with full Git history. Archive comparison uses the pre-push commit or PR base, not the new HEAD. CI failure does not automatically configure branch protection; no branch protection changes are included here.
 
 Checks enforce directory/format/link and archive-seal integrity, not completeness of product research, truth of alternatives, or optimality of a design. Existing business tests, builds, release checks and production acceptance remain separate. Keep README, architecture, community and implementation-plan reading requirements. The root is a Go workspace, not a module; use existing explicit module test targets.
+
+## Installation and upgrades
+
+Clone the repository and install Python 3.9+ and Bun, then run `doctor` and `verify` above. No global Codex Skill is required. All managed tooling, templates, installation state and project notes belong in Git; generated boards do not.
+
+For upgrades, download the complete [release bundle](https://github.com/nanashiwang/new-api/releases/tag/project-decision-kit-v1.0.1), verify its SHA256SUMS.txt, and extract it outside this checkout. From the project root:
+
+```sh
+python3 /path/to/project-decision-kit/workflow.py install "$PWD"
+# Review the preview and resolve conflicts without losing project content first.
+python3 /path/to/project-decision-kit/workflow.py install "$PWD" --apply
+python3 .agents/workflow.py doctor
+make verify-notes
+```
+
+Use the complete downloaded bundle for `install`; the installed `.agents/workflow.py` is the project `doctor`/`verify` entry, not a standalone distribution containing VERSION/templates/payload. Omit `--ci` here because the existing Verify Agent Notes job is already integrated. Keep `.agents/workflow-install.json`; do not regenerate hashes to hide local changes. Project-specific guidance belongs outside managed files and outside the marked AGENTS block. Existing AGENTS rules, project notes, this guide and the capability map remain project-owned. The source record explains the reviewed v1.0.1 provenance conflict resolution.

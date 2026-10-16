@@ -266,3 +266,14 @@ Redis 全丢也不能丢账。
 - Update affected capability-map entries and notes alongside code. Run `bash .agents/verify-notes.sh` plus the existing checks required for the change. Existing architecture, language, build, release and subdirectory rules remain in force.
 
 Project-specific context: Keep README, architecture, community and implementation-plan reading requirements. The root is a Go workspace, not a module; use existing explicit module test targets.
+
+
+<!-- project-workflow:start -->
+## 能力核对与决策笔记
+
+按任务范围从 docs/FEATURE_MAP.md 核对现有入口、权限、接口和数据来源，再设计；优先复用已有能力。
+非平凡改动遵循 .agents/skills/write-notes-like-deepseek/SKILL.md；先搜索活跃笔记，已有归属优先更新，真实取舍才新建。
+提案先 proposed，实施验证后转 implemented，与代码一起提交；机械改动免写。用户和本项目规则优先于 Skill 的默认交互流程，已有授权内自主推进。
+完成时同步能力地图与相关笔记，执行 python3 .agents/workflow.py verify 和改动相关的项目检查。结构检查不代替业务验收。
+提交、发布、部署遵循本项目原有授权。说明见 docs/AGENT_NOTES.md。
+<!-- project-workflow:end -->

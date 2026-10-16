@@ -11,7 +11,7 @@ help:
 	@echo ""
 	@echo "  make fmt          gofmt all Go sources"
 	@echo "  make vet          go vet all modules"
-	@echo "  make verify-notes 验证决策笔记目录、格式、链接与归档完整性"
+	@echo "  make verify-notes 验证工具安装与决策笔记目录、格式、链接、归档完整性"
 	@echo "  make test         go test all modules"
 	@echo "  make build        build pulse binaries + blog + METAR frontend"
 	@echo "  make migrate-up   apply Pulse Goose migrations"

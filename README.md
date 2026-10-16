@@ -136,7 +136,8 @@ Pulse API 不持有发奖用的 `PULSE_SERVICE_HMAC_SECRET`，该密钥只交给
 ### 本地验证
 
 ```bash
-make verify-notes # 决策笔记结构、链接与归档校验（需 Bun）
+python3 .agents/workflow.py doctor # project-decision-kit 安装完整性检查
+make verify-notes # 工具完整性、决策笔记结构、链接与归档校验（需 Python 3.9+、Bun）
 make test       # Go 测试 + 部署脚本 + METAR 正式前端测试
 make test-community
 make vet

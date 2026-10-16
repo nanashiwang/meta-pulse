@@ -1,0 +1,28 @@
+{
+  "version": "1.0.1",
+  "files": {
+    ".agents/skills/write-notes-like-deepseek/SKILL.md": "0ddbf9cc87d40d24c35789ff0ea8fd312c60e3a2cbca277e9f8878dbc87ea2a8",
+    ".agents/skills/write-notes-like-deepseek/UPSTREAM.md": "7eb35569a7c80c0085da9fab8d18e7486dd6ad4c45113ea67e5531e91de24334",
+    ".agents/skills/write-notes-like-deepseek/assets/agent-notes-board.html": "1c692049b81b0854e2de5bd20dc36ddd3d34ac285273fc5028c5469ed22e7d09",
+    ".agents/skills/write-notes-like-deepseek/references/archiving.md": "894ea4639b20d3e404a110259492e2472ab16edf454e0d949327bdb494b026fe",
+    ".agents/skills/write-notes-like-deepseek/references/classification.md": "6f33394aeba1deed850ff2bbd2ea384528ceba7d902f17f93ac88bcde12dc8bb",
+    ".agents/skills/write-notes-like-deepseek/references/note-format.md": "a79fd05c042ed26c9b1f12fd75107874df56d43170885e37a289cf591b8198f1",
+    ".agents/skills/write-notes-like-deepseek/references/prose-checklist.md": "e9e193d7e261a379870e0f9b708ee9fd5bb546abec7553d62a2b51b11249e4c6",
+    ".agents/skills/write-notes-like-deepseek/references/quality-gate.md": "dbd28655da018cd6a284cee9f4582b2becc1813039e5483256f68696ff7ee667",
+    ".agents/skills/write-notes-like-deepseek/references/simplification-checklist.md": "dfd3964d97aa6ca0f897c6898223371a497a111e8058ac976abe082f155f46ea",
+    ".agents/skills/write-notes-like-deepseek/references/verification.md": "1b964d5dcb3df6be0371fa96956ad090b17d404f4d7ee2ffb4f85e86164c4d67",
+    ".agents/skills/write-notes-like-deepseek/references/when-to-write.md": "835d7f24b09fff787fc28a989efabf06ff6ed05ddb682278270cce8586465c7c",
+    ".agents/skills/write-notes-like-deepseek/scripts/agent-note-tree.ts": "19c76e73c5babad50bb84585216c8bd899cb89c9a32009b5dec0f77ba1465d79",
+    ".agents/skills/write-notes-like-deepseek/scripts/archive-agent-note.ts": "35edad10ca02ece4e1ddd9887327d224025dafbc7c784cb5dabf0191499ca084",
+    ".agents/skills/write-notes-like-deepseek/scripts/build-board.ts": "13815f35b1ec9ef31fa985490ce2c8af5a382e3575bc4f962ed06178afcf6afc",
+    ".agents/skills/write-notes-like-deepseek/scripts/check-note-anchors.ts": "5c8295bc32772cae64c2a19b4385bbf3af6da7f4eb69d4fb155734356453bdf8",
+    ".agents/skills/write-notes-like-deepseek/scripts/verify-agent-note-format.ts": "1f3241b9ec411572812e730763623f3f7bd87185342a74961c4d7e7d7ebc53a6",
+    ".agents/skills/write-notes-like-deepseek/scripts/verify-agent-note-tree.ts": "b0e18a79c9b78ac6227eedf5515480154424fded3f3c017b0606ecdffb2251f7",
+    ".agents/skills/write-notes-like-deepseek/scripts/verify-archived-agent-notes.ts": "fef1edf11272508c2c86f11865aab5e62ba4465322079be9133eee18f40cc35a",
+    ".agents/skills/write-notes-like-deepseek/templates/implemented.md": "5fcdf50adba687bacdfab7fc883071d1019700a82ac2ee303e3c3af54c17ff1a",
+    ".agents/skills/write-notes-like-deepseek/templates/proposed.md": "e1909861d779cd4952210c6a79f87f45fb063386cf301fbe6429493091b0ddbe",
+    ".agents/skills/write-notes-like-deepseek/templates/rejected.md": "7e89cf61829c691fc74d754444b937b53479d95739dccfb40978d3163404fbd0",
+    ".agents/workflow.py": "f1006c30959f68f3b85dd0f18e70630c157ee97b0f207903a8afc75cc1c05999"
+  },
+  "block": "2722537c49fd36cd88dc973357a0567ebd3818bae63c57f6ca38242b549db889"
+}
