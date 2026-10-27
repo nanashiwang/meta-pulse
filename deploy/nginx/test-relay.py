@@ -51,16 +51,16 @@ server {
 '''
         (tmp / 'origin.conf').write_text(source)
         edge = (ROOT / 'deploy/nginx/metar-relay.conf').read_text()
-        edge = edge.replace('23.94.111.46', '64.83.9.10')
+        edge = edge.replace('104.168.114.150', '155.103.118.10')
         edge = edge.replace('/etc/ssl/certs/ca-certificates.crt', '/test/ca.pem')
         (tmp / 'edge.conf').write_text(edge)
         try:
             # The dedicated network's edge address exercises the actual production
             # trust allowlist without adding a test-only trusted network.
-            run('docker', 'network', 'create', '--subnet', '64.83.9.0/24', name)
+            run('docker', 'network', 'create', '--subnet', '155.103.118.0/24', name)
             for container, address, config, acme in [
-                (origin, '64.83.9.10', 'origin.conf', 'origin-acme'),
-                (relay, '64.83.9.190', 'edge.conf', 'edge-acme'),
+                (origin, '155.103.118.10', 'origin.conf', 'origin-acme'),
+                (relay, '155.103.118.155', 'edge.conf', 'edge-acme'),
             ]:
                 acme_target = '/var/www/certbot' if container == origin else '/var/www/metar-acme'
                 run('docker', 'run', '-d', '--name', container, '--network', name,
@@ -104,7 +104,7 @@ server {
                 assert status == 200, (status, body)
                 data = json.loads(body)
                 assert data['ip'] == data['xff'], data
-                assert data['ip'] not in ('198.51.100.7', '203.0.113.9', '64.83.9.190'), data
+                assert data['ip'] not in ('198.51.100.7', '203.0.113.9', '155.103.118.155'), data
                 assert data['authorization'] == 'Bearer fixture' and data['cookie'] == 'visit=fixture', data
                 assert data['pulse'] == data['user'] == '', data
                 assert data['method'] == 'POST' and data['length'] == '7', data

@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-目标是现在继续单机 Docker 部署，未来分别迁出 Pulse MySQL、Forum MySQL、Redis 和附件，无需重写业务。当前领域与身份边界已经分离，主要缺口在部署连接、启动依赖、完整备份与迁移验收。本记录覆盖已实现的部署解耦和恢复工具；生产保持单机，异地目的地由用户明确暂缓。
+目标是现在继续单机 Docker 部署，未来分别迁出 Pulse MySQL、Forum MySQL、Redis 和附件，无需重写业务。当前领域与身份边界已经分离，主要缺口在部署连接、启动依赖、完整备份与迁移验收。本记录覆盖部署解耦和恢复工具；生产保持单机。后续用户授权的 NAN 整机迁移与一次性异机恢复材料见[迁移决策](../../implemented/process/2026-10-27-metar-server-migration.md)，不等于已启用定时 restic 异地备份。
 
 ### 2026-10-04 只读生产快照
 
