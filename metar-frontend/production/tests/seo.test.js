@@ -15,3 +15,10 @@ test('public question canonical uses the server rendered Answer URL', () => {
   assert.equal(policy('/latest', '?page=garbage').canonical, 'https://metar.uk/latest');
   assert.equal(policy('/').canonical, 'https://metar.uk/');
 });
+
+test('public category and tag directories remain indexable', () => {
+  for (const search of ['', '?view=tags', '?view=tags&page=2']) {
+    assert.equal(policy('/topics', search).robots, 'index, follow');
+    assert.equal(policy('/topics', search).canonical, 'https://metar.uk/topics');
+  }
+});

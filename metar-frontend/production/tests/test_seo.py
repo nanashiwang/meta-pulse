@@ -54,12 +54,16 @@ class SearchAssetsTest(unittest.TestCase):
                     matches.append((len(value), directive == 'Allow'))
             return max(matches, default=(0, True))[1]
 
-        for endpoint in ('question/page', 'question/info', 'answer/page', 'tags/page'):
+        for endpoint in ('question/page', 'question/info', 'answer/page', 'tags/page',
+                         'siteinfo', 'tag', 'tags'):
             path = '/answer/api/v1/' + endpoint
             self.assertTrue(allowed(path), path)
             self.assertTrue(allowed(path + '?page=1&page_size=20&order=active'), path)
             self.assertFalse(allowed(path + '/private'), path)
+            self.assertFalse(allowed(path + '-private'), path)
         for path in ('/answer/api/v1/user/info', '/answer/api/v1/notification/page',
-                     '/answer/api/v1/question', '/answer/admin', '/metar/api/pulse/summary',
+                     '/answer/api/v1/question', '/answer/api/v1/siteinfo/write',
+                     '/answer/api/v1/tags/following', '/answer/api/v1/tag/synonyms',
+                     '/answer/admin', '/metar/api/pulse/summary',
                      '/metar/api/admin/pulse/settings'):
             self.assertFalse(allowed(path), path)

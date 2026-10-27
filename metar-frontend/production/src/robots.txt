@@ -13,6 +13,14 @@ Allow: /answer/api/v1/answer/page$
 Allow: /answer/api/v1/answer/page?
 Allow: /answer/api/v1/tags/page$
 Allow: /answer/api/v1/tags/page?
+# Category directories and shared navigation also read public site/tag metadata.
+# Match only these endpoints, not their account/admin-related subpaths.
+Allow: /answer/api/v1/siteinfo$
+Allow: /answer/api/v1/siteinfo?
+Allow: /answer/api/v1/tag$
+Allow: /answer/api/v1/tag?
+Allow: /answer/api/v1/tags$
+Allow: /answer/api/v1/tags?
 Disallow: /answer/api
 Disallow: /answer/admin
 Disallow: /metar/api

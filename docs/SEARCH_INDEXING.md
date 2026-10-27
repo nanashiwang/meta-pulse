@@ -9,7 +9,7 @@
 ## 网站端
 
 - `/robots.txt` 向所有爬虫公布三个站点地图，不根据 User-Agent 返回不同内容。
-- 公开问题列表、问题详情、回答列表和标签列表的只读查询允许爬虫获取，以便渲染页面；接口本身继续返回 noindex。其余账户、通知、管理与权益 API 保留抓取限制及原认证规则。禁止将整个 `/answer/api` 全部拦截而不保留这些精确例外，否则 Google 渲染首页时会因公开数据请求被阻止而得到错误页 noindex。
+- 公开问题列表、问题详情、回答列表和标签列表的只读查询允许爬虫获取，以便渲染页面；类别目录与共享导航还依赖 `/answer/api/v1/siteinfo`、`/answer/api/v1/tag?name=…` 和 `/answer/api/v1/tags?tags=…`。robots 对这些端点本身及查询串精确放行，不放开相似前缀或子路径；接口本身继续返回 noindex。其余账户、通知、管理与权益 API 保留抓取限制及原认证规则。robots 不区分 HTTP 方法，写操作仍由 Answer 认证保护。禁止将整个 `/answer/api` 全部拦截而不保留公开渲染依赖，否则 Google 会因数据请求被阻止而得到错误页 noindex。
 - `/sitemap.xml` 与 `/sitemap/*` 保留 Answer 原生动态实现，只包含 Answer 允许公开的问题；新问题由 Answer 自动纳入，缓存刷新由上游管理。不要把该 URL 替换成包含嵌套 sitemap index 的静态索引。
 - `/sitemap-site.xml` 由正式前端构建生成，覆盖公开入口。
 - `/blog/sitemap.xml` 由 VitePress 构建生成，所有文章 URL 保留 `/blog/` 前缀；新文章发布需重新构建。
@@ -36,6 +36,10 @@ make test-community build-blog build-community
 python3 deploy/nginx/test-seo.py
 ```
 
-真实部署后检查首页原始 HTML、三个 XML、Googlebot/Baiduspider 访问、原生帖子正文、博客未知路径 404、私人页面 noindex；最后在站长平台查看验证、提交和索引状态。凭据不可用时明确保留部署/提交为待完成，不能把本地或 CI 成功作为生产证据。
+真实部署后检查首页原始 HTML、三个 XML、Googlebot/Baiduspider 访问、原生帖子正文、博客未知路径 404、私人页面 noindex。对 `/topics` 和 `/topics?view=tags` 还必须在 Search Console 实时测试中核对渲染后的 robots、正文及资源面板：仅检查 curl 的 HTTP 200 和初始 HTML 不足以发现 JavaScript 错误页。账户 `/user/info` 被 robots 拦截是预期行为，不得为清空资源警告而放开账户接口。最后查看提交和索引状态；凭据不可用时明确保留部署/提交为待完成，不能把本地或 CI 成功作为生产证据。
+
+### 2026-10-27 noindex 告警核对
+
+Search Console 报告共七个 URL：`/users/login`、`/users/register`、`/users/account-recovery` 属于账户流程，`/pulse` 是个人权益，`/status` 是不参与收录的实时服务状态页，五者保持 noindex。公开 `/topics` 与 `/topics?view=tags` 被误伤；`/topics` 同时在 sitemap-site.xml 中。Google 实时测试确认 siteinfo 被 robots 阻止，目录加载失败后前端写入 `noindex, follow` 并移除 canonical。修复补齐公开目录的抓取依赖，不删除错误页或私有页的 noindex。详见[抓取依赖决策](../.agents/notes/implemented/bug-fix/2026-10-27-taxonomy-crawl-resources.md)。部署后的可索引测试与后续正式收录是两项独立结果，报告仍可能保留五个有意排除项。
 
 参考：[Google JavaScript SEO](https://developers.google.com/search/docs/crawling-indexing/javascript/javascript-seo-basics)、[Google Sitemap](https://developers.google.com/search/docs/crawling-indexing/sitemaps/build-sitemap)、[百度搜索资源平台](https://ziyuan.baidu.com/)。

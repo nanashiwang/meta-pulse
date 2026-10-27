@@ -7,6 +7,49 @@ require('../src/adapters.js');
 require('../src/taxonomy.js');
 const taxonomy = window.MetarTaxonomy;
 const clone = value => JSON.parse(JSON.stringify(value));
+
+test('crawler can load real directory and sidebar dependencies under the shipped robots policy', async (t) => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const rules = fs.readFileSync(path.join(__dirname, '../src/robots.txt'), 'utf8')
+    .split('\n').map(line => line.match(/^(Allow|Disallow):\s*(\S+)/)).filter(Boolean);
+  const requests = [];
+  const category = {slug_name:'develop',display_name:'Development',description:'Current category description',status:'available'};
+  const tag = {slug_name:'ai',display_name:'AI',description:'Current tag description',status:'available'};
+  const answer = new window.MetarAdapters.AnswerAdapter({answerApiBase:'/answer/api/v1'});
+  t.mock.method(global, 'fetch', async url => {
+    const matches = rules.filter(([, , value]) => value.endsWith('$') ? url === value.slice(0,-1) : url.startsWith(value))
+      .sort((a,b) => b[2].replace(/\$$/, '').length - a[2].replace(/\$$/, '').length || (a[1] === 'Allow' ? -1 : 1));
+    assert.notEqual(matches[0]?.[1], 'Disallow', `Public render dependency blocked: ${url}`);
+    requests.push(url);
+    const parsed = new URL(url, 'https://metar.uk');
+    let data;
+    switch (parsed.pathname) {
+      case '/answer/api/v1/siteinfo': data = {site_write:{recommend_tags:[category]}}; break;
+      case '/answer/api/v1/tag': data = category; break;
+      case '/answer/api/v1/tags': data = [tag]; break;
+      case '/answer/api/v1/tags/page': data = {count:49,list:[tag]}; break;
+      default: throw new Error(`Unreviewed public dependency: ${url}`);
+    }
+    return {ok:true,status:200,json:async()=>({code:200,data})};
+  });
+  const categories = await taxonomy.directory(answer, new URLSearchParams(), '/questions/ask', false);
+  assert.match(categories, /Current category description/);
+  assert.match(categories, /href="\/topic\/develop"/);
+  for (const page of [1,2]) {
+    const tags = await taxonomy.directory(answer, new URLSearchParams(`view=tags&page=${page}`), '/questions/ask', false);
+    assert.match(tags, /Current tag description/);
+    assert.match(tags, /href="\/topic\/ai"/);
+    assert.ok(requests.some(url=>url.includes(`/tags/page?page=${page}&`)));
+  }
+  const catalog = await taxonomy.catalog(answer);
+  assert.equal(catalog.categoriesUnavailable, false);
+  assert.equal(catalog.tagsUnavailable, false);
+  assert.deepEqual(catalog.categories.map(tag=>tag.slug_name), ['develop']);
+  assert.deepEqual(catalog.tags.map(tag=>tag.slug_name), ['ai']);
+  assert.ok(requests.some(url=>url.startsWith('/answer/api/v1/tags?tags=')));
+});
+
 function fixture() {
   let settings = {min_content:30,min_tags:1,required_tag:true,restrict_answer:true,max_image_size:7,authorized_image_extensions:['png'],recommend_tags:[{slug_name:'existing',display_name:'Existing'}],reserved_tags:[{slug_name:'staff',display_name:'Staff'}]};
   const tags = new Map([['ai',{slug_name:'ai',display_name:'Our AI tag',description:'Keep me',status:'available'}]]);

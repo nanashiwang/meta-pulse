@@ -80,11 +80,17 @@ def main():
             assert 'X-Robots-Tag' not in regular[1]
             for bot in ['Googlebot', 'Baiduspider', 'bingbot']:
                 assert get('/', bot)[2] == regular[2], bot
-            for path in ['/me', '/me/notifications', '/me/bookmarks', '/pulse?code=test', '/settings/binding/', '/admin/pulse', '/search?q=hello', '/login']:
+            for path in ['/me', '/me/notifications', '/me/bookmarks', '/pulse', '/pulse?code=test', '/status', '/chat', '/settings/binding/', '/admin/pulse', '/search?q=hello', '/login']:
                 status, headers, body = get(path)
                 assert status == 200, (path, status)
                 assert headers.get('X-Robots-Tag') == 'noindex, nofollow', (path, headers)
                 assert 'rel="canonical"' not in body, path
+            # These native/API routes are proxied; the fixture has no Answer backend,
+            # but the edge must still apply noindex, including allowed render resources.
+            for path in ['/users/login', '/users/register', '/users/account-recovery',
+                         '/answer/api/v1/siteinfo', '/answer/api/v1/tag?name=develop',
+                         '/answer/api/v1/tags?tags=ai', '/answer/api/v1/user/info']:
+                assert get(path)[1].get('X-Robots-Tag') == 'noindex, nofollow', path
             status, headers, _ = get('/question/123?tracking=x')
             assert status == 200
             assert headers.get('Link') == '<https://metar.uk/questions/123>; rel="canonical"', headers
@@ -94,7 +100,14 @@ def main():
             for node in ET.fromstring(body).findall('.//{*}loc'):
                 if node.text.endswith(('/questions', '/tags')):
                     continue  # owned by Answer, deliberately unavailable in this fixture
-                assert get(node.text.removeprefix('https://metar.uk'))[0] == 200, node.text
+                status, headers, page = get(node.text.removeprefix('https://metar.uk'))
+                assert status == 200, node.text
+                assert 'noindex' not in headers.get('X-Robots-Tag', '').lower(), node.text
+                assert 'noindex' not in page.lower(), node.text
+            for path in ['/topics?view=tags', '/topics?view=tags&page=2']:
+                status, headers, page = get(path, 'Googlebot')
+                assert status == 200 and 'noindex' not in page.lower(), path
+                assert 'X-Robots-Tag' not in headers, path
             status, headers, body = get('/blog/sitemap.xml')
             assert status == 200 and 'xml' in headers['Content-Type']
             for node in ET.fromstring(body).findall('.//{*}loc'):
