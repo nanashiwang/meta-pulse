@@ -3,6 +3,7 @@
 import http.client
 import json
 import ssl
+import shutil
 import subprocess
 import tempfile
 import time
@@ -21,11 +22,12 @@ def main():
     origin, relay = name + '-origin', name + '-edge'
     with tempfile.TemporaryDirectory(prefix=name) as temp:
         tmp = Path(temp)
-        cert = tmp / 'live/metar.uk'
+        cert = tmp / 'live/metarhub.com'
         cert.mkdir(parents=True)
         run('openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
-            '-subj', '/CN=metar.uk', '-addext', 'subjectAltName=DNS:metar.uk,DNS:localhost',
+            '-subj', '/CN=metarhub.com', '-addext', 'subjectAltName=DNS:metarhub.com,DNS:localhost',
             '-keyout', str(cert / 'privkey.pem'), '-out', str(cert / 'fullchain.pem'))
+        shutil.copytree(cert, tmp / 'live/metar.uk')
         (tmp / 'ca.pem').write_bytes((cert / 'fullchain.pem').read_bytes())
         context = ssl.create_default_context(cafile=str(cert / 'fullchain.pem'))
         for directory, token, value in [('edge-acme', 'edge-token', 'edge-proof'),
@@ -49,11 +51,12 @@ server {
     }
 }
 '''
-        (tmp / 'origin.conf').write_text(source)
+        legacy = (ROOT / 'deploy/nginx/metar-legacy-redirect.conf').read_text()
+        (tmp / 'origin.conf').write_text(source + '\n' + legacy)
         edge = (ROOT / 'deploy/nginx/metar-relay.conf').read_text()
         edge = edge.replace('104.168.114.150', '155.103.118.10')
         edge = edge.replace('/etc/ssl/certs/ca-certificates.crt', '/test/ca.pem')
-        (tmp / 'edge.conf').write_text(edge)
+        (tmp / 'edge.conf').write_text(edge + '\n' + legacy)
         try:
             # The dedicated network's edge address exercises the actual production
             # trust allowlist without adding a test-only trusted network.
@@ -76,7 +79,7 @@ server {
                 conn = (http.client.HTTPSConnection('localhost', ports[container][True], context=context, timeout=5)
                         if tls else http.client.HTTPConnection('localhost', ports[container][False], timeout=5))
                 try:
-                    conn.request(method, path, body=body, headers={'Host': 'metar.uk', **(headers or {})})
+                    conn.request(method, path, body=body, headers={'Host': 'metarhub.com', **(headers or {})})
                     res = conn.getresponse()
                     return res.status, dict(res.getheaders()), res.read().decode()
                 finally:
@@ -120,8 +123,25 @@ server {
                 assert status == 200 and body == '551f5710c78ce8db2eccdddbe4b36993'
             for method, expected in [('GET', 301), ('HEAD', 301), ('POST', 308)]:
                 status, headers, _ = request('/latest?page=2', tls=False, method=method)
-                assert status == expected and headers['Location'] == 'https://metar.uk/latest?page=2'
-            assert request('/', headers={'Host': 'www.metar.uk'})[0] == 301
+                assert status == expected and headers['Location'] == 'https://metarhub.com/latest?page=2'
+            assert request('/', headers={'Host': 'www.metarhub.com'})[0] == 301
+            for container in (relay, origin):
+                for tls in (True, False):
+                    for host in ('metar.uk', 'www.metar.uk'):
+                        for method, expected in [('GET', 301), ('HEAD', 301), ('POST', 409), ('PUT', 409)]:
+                            status, headers, _ = request('/latest?page=2', container=container,
+                                tls=tls, method=method, headers={'Host': host})
+                            assert status == expected, (host, method, tls, status)
+                            if expected == 301:
+                                assert headers['Location'] == 'https://metarhub.com/latest?page=2'
+                            else:
+                                assert 'Location' not in headers
+                        status, headers, _ = request('/api/user-center/login/callback?ticket=discard',
+                            container=container, tls=tls, headers={'Host': host})
+                        assert status == 302 and headers['Location'] == 'https://metarhub.com/users/login'
+                        status, _, body = request('/.well-known/acme-challenge/origin-token',
+                            container=container, tls=False, headers={'Host': host})
+                        assert status == 200 and body == 'origin-proof'
             # Prove that an untrusted origin certificate fails closed.
             run('openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
                 '-subj', '/CN=unrelated', '-keyout', str(tmp / 'unrelated.key'),

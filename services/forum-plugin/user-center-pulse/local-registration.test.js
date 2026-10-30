@@ -11,7 +11,7 @@ function fixture(agent) {
     setState(next) { this.updates++; state = { ...state, ...next }; listeners.forEach((fn) => fn(state)); },
   };
 }
-const meta = { enabled: true, agent_info: { name: 'Meta Pulse', enabled_original_user_system: true, sign_up_redirect_url: 'https://metar.uk/answer/api/v1/user-center/sign-up/redirect', login_redirect_url: '/connector', control_center_items: [] } };
+const meta = { enabled: true, agent_info: { name: 'Meta Pulse', enabled_original_user_system: true, sign_up_redirect_url: 'https://metarhub.com/answer/api/v1/user-center/sign-up/redirect', login_redirect_url: '/connector', control_center_items: [] } };
 
 test('本地注册在初始加载和重新获取插件信息时均恢复且不改变身份或登录配置', () => {
   const store = fixture();

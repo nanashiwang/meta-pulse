@@ -139,7 +139,7 @@ func (uc *UserCenter) ConnectorSlugName() string { return pluginSlug }
 // is consumed atomically with the signed ticket nonce.
 //
 // The first hop is a same-origin bootstrap page on new-api. Its session cookie
-// is currently SameSite=Strict, so a direct cross-site navigation from metar.uk
+// is currently SameSite=Strict, so a direct cross-site navigation from metarhub.com
 // would omit an otherwise valid new-api session. The bootstrap commits a
 // new-api document first, then navigates to /api/forum/sso/start same-origin.
 func (uc *UserCenter) ConnectorSender(ctx *plugin.GinContext, _ string) string {

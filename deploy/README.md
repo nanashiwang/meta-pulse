@@ -11,7 +11,7 @@
 - `test.sh` / `update_test.sh`：不连接真实 Docker、不执行远程更新的脚本回归。
 - `config-test.sh`：用测试凭据渲染实际生产 Compose，验证 API/Worker/Tool 的最小权限配置；不读取真实 `.env`、不连接业务数据库。
 - `build-blog.sh`：使用一次性 Node 容器和锁文件构建纯静态博客，不在生产机运行 Vite 开发服务。
-- `nginx/renew.sh` / `nginx/install-renewal-timer.sh`：续期 `metar.uk` 证书并安全重载网关。
+- `nginx/renew.sh` / `nginx/install-renewal-timer.sh`：续期 `metarhub.com` 证书并安全重载网关。
 
 ## 部署边界
 

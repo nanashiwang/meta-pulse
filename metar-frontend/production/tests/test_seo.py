@@ -20,21 +20,21 @@ class SearchAssetsTest(unittest.TestCase):
             self.assertIn('href="/questions"', homepage)
             self.assertIn('href="/blog/guides/"', homepage)
             self.assertEqual(1, homepage.count('rel="canonical"'))
-            self.assertIn('href="https://metar.uk/"', homepage)
+            self.assertIn('href="https://metarhub.com/"', homepage)
             # Initial HTML must not declare page 1 canonical for later pages.
             self.assertNotIn('rel="canonical"', (output / 'seo/latest.html').read_text())
             self.assertNotIn('rel="canonical"', (output / 'shell.html').read_text())
             entries = ET.parse(output / 'sitemap-site.xml').findall('.//{*}loc')
             urls = [entry.text for entry in entries]
-            self.assertIn('https://metar.uk/', urls)
-            self.assertIn('https://metar.uk/questions', urls)
+            self.assertIn('https://metarhub.com/', urls)
+            self.assertIn('https://metarhub.com/questions', urls)
             self.assertEqual(len(urls), len(set(urls)))
             for url in urls:
-                self.assertTrue(url.startswith('https://metar.uk/'))
+                self.assertTrue(url.startswith('https://metarhub.com/'))
                 self.assertNotRegex(url, r'/(?:me|admin|pulse|settings|search|login)(?:/|$)')
             robots = (output / 'robots.txt').read_text()
             for sitemap in ['/sitemap.xml', '/sitemap-site.xml', '/blog/sitemap.xml']:
-                self.assertIn('Sitemap: https://metar.uk' + sitemap, robots)
+                self.assertIn('Sitemap: https://metarhub.com' + sitemap, robots)
             self.assertNotIn('Disallow: /metar-assets', robots)
             self.assertNotIn('Disallow: /questions', robots)
 

@@ -6,7 +6,7 @@ const html = fs.readFileSync(__dirname + '/avatar-head.html', 'utf8');
 const context = { module: { exports: {} }, URL };
 vm.runInNewContext(html.match(/<script[^>]*>([\s\S]*?)<\/script>/)[1], context);
 const { initial, avatarURL, profileName, isDefault } = context.module.exports;
-const origin = 'https://metar.uk';
+const origin = 'https://metarhub.com';
 
 test('initial handles whitespace, unicode and missing users', () => {
   assert.equal(initial(' admin '), 'A');

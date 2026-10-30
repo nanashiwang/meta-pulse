@@ -10,11 +10,11 @@ die() {
   exit 1
 }
 
-grep -q 'server_name metar.uk;' "$config" || die 'apex community domain is missing'
-grep -q 'server_name www.metar.uk;' "$config" || die 'www canonical redirect is missing'
-grep -q 'server_name metar.uk www.metar.uk;' "$config" || die 'HTTP ACME/canonical domain block is missing'
+grep -q 'server_name metarhub.com;' "$config" || die 'apex community domain is missing'
+grep -q 'server_name www.metarhub.com;' "$config" || die 'www canonical redirect is missing'
+grep -q 'server_name metarhub.com www.metarhub.com;' "$config" || die 'HTTP ACME/canonical domain block is missing'
 grep -q 'location ^~ /.well-known/acme-challenge/' "$config" || die 'ACME webroot route is missing'
-grep -q 'return 308 https://metar.uk$request_uri;' "$config" || die 'canonical HTTPS redirect is missing'
+grep -q 'return 308 https://metarhub.com$request_uri;' "$config" || die 'canonical HTTPS redirect is missing'
 grep -A2 'location = /blog {' "$config" | grep -q 'return 308 /blog/;' || die 'slashless blog URL is not canonicalized'
 grep -q 'location = /api/user-center/login/callback' "$config" || die 'fixed new-api callback route is missing'
 grep -q 'limit_req_zone $binary_remote_addr zone=community_connector:10m rate=10r/m;' "$config" || die 'connector start rate-limit zone is missing'
@@ -66,7 +66,7 @@ fi
 if grep -Eq 'upstream[[:space:]]+(pulse|new_api)|proxy_pass[[:space:]]+http://(pulse|new_api)' "$config"; then
   die 'community gateway must not proxy Pulse or new-api'
 fi
-grep -q 'PULSE_FORUM_SSO_CALLBACK_URL=https://metar.uk' "$repo_dir/deploy/nginx/README.md" || die 'fixed HTTPS callback is undocumented'
+grep -q 'PULSE_FORUM_SSO_CALLBACK_URL=https://metarhub.com' "$repo_dir/deploy/nginx/README.md" || die 'fixed HTTPS callback is undocumented'
 
 for service in mysql redis pulse-api pulse-worker forum-mysql forum; do
   if awk -v target="$service" '
@@ -87,11 +87,11 @@ command -v openssl >/dev/null 2>&1 || die 'openssl is required'
 
 tmp_dir=$(mktemp -d)
 trap 'rm -rf "$tmp_dir"' EXIT INT TERM
-mkdir -p "$tmp_dir/letsencrypt/live/metar.uk" "$tmp_dir/blog"
+mkdir -p "$tmp_dir/letsencrypt/live/metarhub.com" "$tmp_dir/blog"
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
-  -subj '/CN=metar.uk' \
-  -keyout "$tmp_dir/letsencrypt/live/metar.uk/privkey.pem" \
-  -out "$tmp_dir/letsencrypt/live/metar.uk/fullchain.pem" >/dev/null 2>&1
+  -subj '/CN=metarhub.com' \
+  -keyout "$tmp_dir/letsencrypt/live/metarhub.com/privkey.pem" \
+  -out "$tmp_dir/letsencrypt/live/metarhub.com/fullchain.pem" >/dev/null 2>&1
 
 docker run --rm \
   --add-host forum:127.0.0.1 \

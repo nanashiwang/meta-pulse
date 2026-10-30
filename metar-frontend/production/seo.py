@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-ORIGIN = "https://metar.uk"
+ORIGIN = "https://metarhub.com"
 PAGES = json.loads((Path(__file__).parent / "src/seo-pages.json").read_text())
 
 

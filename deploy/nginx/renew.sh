@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 使用 Certbot webroot 续期 metar.uk，并在成功后安全重载网关。
+# 使用 Certbot webroot 续期 metarhub.com，并在成功后安全重载网关。
 set -Eeuo pipefail
 IFS=$'\n\t'
 
@@ -18,7 +18,7 @@ esac
 
 command -v docker >/dev/null 2>&1 || { echo '[meta-pulse] 错误：缺少 docker' >&2; exit 1; }
 [[ -f "$ENV_FILE" && -f "$COMPOSE_FILE" && -f "$OVERRIDE_FILE" ]] || { echo '[meta-pulse] 错误：缺少生产 Compose 配置' >&2; exit 1; }
-[[ -f /etc/letsencrypt/live/metar.uk/fullchain.pem ]] || { echo '[meta-pulse] 错误：metar.uk 证书尚未签发' >&2; exit 1; }
+[[ -f /etc/letsencrypt/live/metarhub.com/fullchain.pem ]] || { echo '[meta-pulse] 错误：metarhub.com 证书尚未签发' >&2; exit 1; }
 
 mkdir -p "$REPO_ROOT/.data/certbot/.well-known/acme-challenge"
 chmod 755 "$REPO_ROOT/.data/certbot" "$REPO_ROOT/.data/certbot/.well-known" "$REPO_ROOT/.data/certbot/.well-known/acme-challenge"

@@ -18,12 +18,12 @@ export default defineConfig({
 
   // Content is the funnel entrance, so indexing settings are not optional.
   sitemap: {
-    hostname: 'https://metar.uk/blog/',
+    hostname: 'https://metarhub.com/blog/',
   },
   transformPageData(pageData) {
     if (pageData.isNotFound || pageData.relativePath === "404.md") return;
     const path = pageData.relativePath.replace(/(^|\/)index\.md$/, '$1').replace(/\.md$/, '');
-    const canonical = 'https://metar.uk/blog/' + path;
+    const canonical = 'https://metarhub.com/blog/' + path;
     const existing = pageData.frontmatter.head || [];
     pageData.frontmatter.head = [...existing,
       ['link', { rel: 'canonical', href: canonical }],
@@ -43,9 +43,9 @@ export default defineConfig({
     darkModeSwitchTitle: '切换到深色主题',
     lightModeSwitchTitle: '切换到浅色主题',
     nav: [
-      { text: '社区', link: 'https://metar.uk/latest', target: '_self' },
+      { text: '社区', link: 'https://metarhub.com/latest', target: '_self' },
       { text: '知识库', link: '/' },
-      { text: 'Pulse', link: 'https://metar.uk/pulse', target: '_self' },
+      { text: 'Pulse', link: 'https://metarhub.com/pulse', target: '_self' },
       { text: '模型评测', link: '/reviews/' },
       { text: '接入教程', link: '/guides/' },
       { text: '控制台', link: 'https://cn.meta-api.vip/console' },

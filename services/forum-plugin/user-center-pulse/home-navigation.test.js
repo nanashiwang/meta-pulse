@@ -10,7 +10,7 @@ function anchor(href, { home = true, download = false } = {}) {
     setAttribute: (name, value) => { assert.equal(name, 'href'); href = value; },
   };
 }
-const origin = 'https://metar.uk';
+const origin = 'https://metarhub.com';
 
 test('后台返回网站和站名直接指向首页，保留筛选与锚点', () => {
   const link = anchor('/?order=hot#main');

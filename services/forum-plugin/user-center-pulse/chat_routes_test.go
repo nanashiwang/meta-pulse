@@ -37,10 +37,10 @@ func TestChatIdentityOriginAndQueryFailClosed(t *testing.T) {
 		path, token, origin string
 		status              int
 	}{
-		{"/command", "", "https://metar.uk", 401}, {"/command", "test", "https://evil.invalid", 403}, {"/command?user_id=3", "test", "https://metar.uk", 400}, {"/command?token=secret", "test", "https://metar.uk", 400},
+		{"/command", "", "https://metarhub.com", 401}, {"/command", "test", "https://evil.invalid", 403}, {"/command?user_id=3", "test", "https://metarhub.com", 400}, {"/command?token=secret", "test", "https://metarhub.com", 400},
 	} {
 		r := gin.New()
-		r.POST("/command", uc.chatHandler("command", session, false, func() string { return "https://metar.uk" }))
+		r.POST("/command", uc.chatHandler("command", session, false, func() string { return "https://metarhub.com" }))
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest("POST", tc.path, bytes.NewBufferString("{}"))
 		req.Header.Set("Authorization", tc.token)
@@ -55,7 +55,7 @@ func TestChatIdentityOriginAndQueryFailClosed(t *testing.T) {
 		}
 	}
 	r := gin.New()
-	r.GET("/summary", uc.chatHandler("summary", func(*gin.Context) (string, error) { return "", errors.New("identity unavailable") }, false, func() string { return "https://metar.uk" }))
+	r.GET("/summary", uc.chatHandler("summary", func(*gin.Context) (string, error) { return "", errors.New("identity unavailable") }, false, func() string { return "https://metarhub.com" }))
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/summary", nil)
 	req.Header.Set("Authorization", "test")

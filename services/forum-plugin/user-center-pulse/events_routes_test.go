@@ -16,16 +16,16 @@ func TestEventBoundaryRejectsSpoofingAndWrongRole(t *testing.T) {
 		admin                     bool
 		status                    int
 	}{
-		{`{"op":"join","event":{"id":"1"}}`, "", "https://metar.uk", "", false, 401},
+		{`{"op":"join","event":{"id":"1"}}`, "", "https://metarhub.com", "", false, 401},
 		{`{"op":"join","event":{"id":"1"}}`, "test", "https://evil.invalid", "", false, 403},
-		{`{"op":"join","event":{"id":"1"}}`, "test", "https://metar.uk", "?user_id=3", false, 400},
-		{`{"op":"create","event":{}}`, "test", "https://metar.uk", "", false, 403},
-		{`{"op":"join","event":{"id":"1"}}`, "test", "https://metar.uk", "", true, 403},
-		{`{"op":"join","user_id":"3","event":{"id":"1"}}`, "test", "https://metar.uk", "", false, 400},
-		{`{"op":"join","op":"leave","event":{"id":"1"}}`, "test", "https://metar.uk", "", false, 400},
+		{`{"op":"join","event":{"id":"1"}}`, "test", "https://metarhub.com", "?user_id=3", false, 400},
+		{`{"op":"create","event":{}}`, "test", "https://metarhub.com", "", false, 403},
+		{`{"op":"join","event":{"id":"1"}}`, "test", "https://metarhub.com", "", true, 403},
+		{`{"op":"join","user_id":"3","event":{"id":"1"}}`, "test", "https://metarhub.com", "", false, 400},
+		{`{"op":"join","op":"leave","event":{"id":"1"}}`, "test", "https://metarhub.com", "", false, 400},
 	} {
 		r := gin.New()
-		r.POST("/command", uc.eventHandler("command", func(*gin.Context) (string, error) { return "2", nil }, tc.admin, func() string { return "https://metar.uk" }))
+		r.POST("/command", uc.eventHandler("command", func(*gin.Context) (string, error) { return "2", nil }, tc.admin, func() string { return "https://metarhub.com" }))
 		req := httptest.NewRequest("POST", "/command"+tc.query, strings.NewReader(tc.raw))
 		req.Header.Set("Authorization", tc.token)
 		req.Header.Set("Origin", tc.origin)

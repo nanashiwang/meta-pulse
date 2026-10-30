@@ -97,7 +97,7 @@ make build-community  # 产物写入现有博客静态卷的 metar/ 子目录
 
 ### 服务器首次部署
 
-Meta Pulse 使用独立的 Pulse MySQL、Redis、API、Worker 和 Answer 容器；new-api 继续在原服务器独立运行。正式社区首页为 `https://metar.uk/`，Answer 原生论坛路由继续位于同域名，博客位于 `https://metar.uk/blog/`，`www.metar.uk` 跳转主域名。推荐在 Linux 服务器执行：
+Meta Pulse 使用独立的 Pulse MySQL、Redis、API、Worker 和 Answer 容器；new-api 继续在原服务器独立运行。正式社区首页为 `https://metarhub.com/`，Answer 原生论坛路由继续位于同域名，博客位于 `https://metarhub.com/blog/`，`www.metarhub.com` 跳转主域名。推荐在 Linux 服务器执行：
 
 ```bash
 git clone https://github.com/nanashiwang/meta-pulse.git /opt/meta-pulse

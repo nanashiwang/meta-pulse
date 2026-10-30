@@ -133,7 +133,7 @@ new-api 或 Pulse 不覆盖 Answer 的封禁、密码、资料和治理角色。
 
 ## 5. 绑定与登录链路
 
-可选账号绑定复用 new-api 已有 SSO Bridge；该绑定流程本身不要求修改 new-api 业务源码。自动抽奖另需升级付费来源证明与 Benefit 接收端，见第 12 节。原站 Nginx 增加固定的同源 bootstrap 页面，解决其 `SameSite=Strict` session Cookie 在 metar.uk 跨站跳转时不发送的问题：
+可选账号绑定复用 new-api 已有 SSO Bridge；该绑定流程本身不要求修改 new-api 业务源码。自动抽奖另需升级付费来源证明与 Benefit 接收端，见第 12 节。原站 Nginx 增加固定的同源 bootstrap 页面，解决其 `SameSite=Strict` session Cookie 在 metarhub.com 跨站跳转时不发送的问题：
 
 ```nginx
 location = /api/forum/sso/bootstrap {
@@ -167,7 +167,7 @@ Answer Connector 入口
 
 ```env
 PULSE_FORUM_SSO_SECRET=<与 Answer 插件 sso_hmac_secret 一致>
-PULSE_FORUM_SSO_CALLBACK_URL=https://metar.uk/api/user-center/login/callback
+PULSE_FORUM_SSO_CALLBACK_URL=https://metarhub.com/api/user-center/login/callback
 ```
 
 new-api 继续在原服务器独立运行。以上是 SSO 绑定的配置要求，不包含自动奖励所需的钱包核算迁移、接收端升级和额度上限。
@@ -215,9 +215,9 @@ SSO 密钥与 Pulse 只读 Profile、Settlement/Worker 服务签名密钥分离�
 社区使用独立产品域名：
 
 ```text
-https://metar.uk/       METAR 静态首页；其他社区原生/API 路径由 Answer 提供
-https://metar.uk/blog/  VitePress
-https://www.metar.uk/   跳转主域名
+https://metarhub.com/       METAR 静态首页；其他社区原生/API 路径由 Answer 提供
+https://metarhub.com/blog/  VitePress
+https://www.metarhub.com/   跳转主域名
 ```
 
 new-api 继续运行在其现有域名和服务器。社区 Nginx：

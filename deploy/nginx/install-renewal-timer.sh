@@ -11,7 +11,7 @@ REPO_ROOT="$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)"
 
 cat > /etc/systemd/system/metar-certbot-renew.service <<UNIT
 [Unit]
-Description=Renew metar.uk Let's Encrypt certificate
+Description=Renew metarhub.com Let's Encrypt certificate
 After=docker.service network-online.target
 Wants=network-online.target
 Requires=docker.service
@@ -24,7 +24,7 @@ UNIT
 
 cat > /etc/systemd/system/metar-certbot-renew.timer <<'UNIT'
 [Unit]
-Description=Twice-daily metar.uk certificate renewal check
+Description=Twice-daily metarhub.com certificate renewal check
 
 [Timer]
 OnCalendar=*-*-* 03,15:17:00

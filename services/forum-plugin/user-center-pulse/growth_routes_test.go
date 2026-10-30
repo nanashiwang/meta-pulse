@@ -30,9 +30,9 @@ func TestExperienceIdentityAndOriginAreCheckedBeforeStore(t *testing.T) {
 	for _, tc := range []struct {
 		url, token, origin string
 		code               int
-	}{{"/checkin?user_id=3", "ok", "https://metar.uk", 400}, {"/checkin?Authorization=leak", "", "https://metar.uk", 400}, {"/checkin?a=1;b=2", "ok", "https://metar.uk", 400}, {"/checkin", "", "https://metar.uk", 401}, {"/checkin", "ok", "https://evil.invalid", 403}} {
+	}{{"/checkin?user_id=3", "ok", "https://metarhub.com", 400}, {"/checkin?Authorization=leak", "", "https://metarhub.com", 400}, {"/checkin?a=1;b=2", "ok", "https://metarhub.com", 400}, {"/checkin", "", "https://metarhub.com", 401}, {"/checkin", "ok", "https://evil.invalid", 403}} {
 		r := gin.New()
-		r.POST("/checkin", uc.experienceHandler("checkin", session, false, func() string { return "https://metar.uk" }))
+		r.POST("/checkin", uc.experienceHandler("checkin", session, false, func() string { return "https://metarhub.com" }))
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest("POST", tc.url, bytes.NewBufferString("{}"))
 		req.Header.Set("Authorization", tc.token)
@@ -44,7 +44,7 @@ func TestExperienceIdentityAndOriginAreCheckedBeforeStore(t *testing.T) {
 		}
 	}
 	r := gin.New()
-	r.GET("/summary", uc.experienceHandler("summary", func(*gin.Context) (string, error) { return "", errors.New("session unavailable") }, false, func() string { return "https://metar.uk" }))
+	r.GET("/summary", uc.experienceHandler("summary", func(*gin.Context) (string, error) { return "", errors.New("session unavailable") }, false, func() string { return "https://metarhub.com" }))
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/summary", nil)
 	req.Header.Set("Authorization", "ok")

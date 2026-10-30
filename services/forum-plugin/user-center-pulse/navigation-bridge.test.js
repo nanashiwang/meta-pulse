@@ -5,7 +5,7 @@ import { target } from './route-policy.js';
 
 function browser(path = '/users/admin') {
   const tasks = [], listeners = new Map(), loads = [], entries = [];
-  let url = new URL(path, 'https://metar.uk');
+  let url = new URL(path, 'https://metarhub.com');
   const host = {
     location: {
       get href() { return url.href; }, get origin() { return url.origin; },
@@ -71,10 +71,10 @@ test('写操作、敏感落地和未迁移的用户页保持 Answer；失败的�
 });
 
 test('拒绝跨域、凭据、编码路径穿越和分隔符，允许查询及锚点', () => {
-  for (const value of ['https://evil.test/latest', 'https://user:pass@metar.uk/latest', '/topic/%2fadmin', '/topic/%5cadmin', '/topic/%00', '/topic/a%2f..%2fusers', '/topic/%', '/latest\n']) {
-    assert.equal(target(value, 'https://metar.uk'), null, value);
+  for (const value of ['https://evil.test/latest', 'https://user:pass@metarhub.com/latest', '/topic/%2fadmin', '/topic/%5cadmin', '/topic/%00', '/topic/a%2f..%2fusers', '/topic/%', '/latest\n']) {
+    assert.equal(target(value, 'https://metarhub.com'), null, value);
   }
-  assert.equal(target('/question/42?commentId=7#answer-9', 'https://metar.uk'), '/question/42?commentId=7#answer-9');
+  assert.equal(target('/question/42?commentId=7#answer-9', 'https://metarhub.com'), '/question/42?commentId=7#answer-9');
 });
 
 test('重复安装不会叠加历史包装器，同一轮只根据最终已提交路径切换', () => {

@@ -56,3 +56,7 @@ Before adding a feature, inspect adjacent flows and the current source of truth;
 本次核对覆盖上表入口、权限判断、实现位置、事实源及对应测试。单元/适配层验证使用 `make test`（两个显式 Go 模块、部署离线测试、正式前端与 Answer 定制测试）；构建使用 `make build`。需要 MySQL 的测试必须通过专用集成命令或 CI MySQL 8.0/8.4 矩阵执行，不能用无 DSN 时的跳过作为通过证据。
 
 真实 LOG_DB 权限、new-api 接收端与实际到账、生产普通账号流程、邮件与跨实例验收仍参见 [实施计划外部验收](IMPLEMENTATION_PLAN.md#8-当前未冒充完成的外部验收)。地图是本仓库代码索引，不是这些外部事项的完成证明。
+
+## 正式域名入口（2026-10-30）
+
+`https://metarhub.com` 复用 Answer 本地账号、受保护绑定和原有同源 BFF。SEO、博客和站点地图使用新域名；[主网关](../deploy/nginx/meta-pulse.conf)、[前置网关](../deploy/nginx/metar-relay.conf) 与[旧域名兼容](../deploy/nginx/metar-legacy-redirect.conf) 保持两段 TLS 校验、Cookie 隔离、ACME 和写请求边界。[双网关回归](../deploy/nginx/test-relay.py) 覆盖旧域名 GET/HEAD 跳转、写请求 409、SSO 参数丢弃及旧证书续期。Answer SiteURL 与 new-api 固定回调是独立运行配置，发布本身不替代[部署核验](../deploy/nginx/README.md#从-metaruk-迁移至-metarhubcom)。

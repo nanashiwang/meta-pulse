@@ -966,12 +966,14 @@ new-api 与 Meta Pulse/社区允许部署在不同服务器并独立更新。推
 
 ```text
 new-api 服务器：现有域名 + new-api + LOG_DB / Benefit API
-社区服务器：metar.uk + Nginx + Answer + VitePress + Pulse API/Worker + 独立 MySQL/Redis
+社区服务器：metarhub.com + Nginx + Answer + VitePress + Pulse API/Worker + 独立 MySQL/Redis
 ```
 
 两端只通过受控的只读 LOG_DB、Internal Benefit API、Signed BFF 与浏览器 SSO Bridge 建立联系。社区服务器不运行第二套 new-api，社区网关也不代理 new-api/Pulse 公网接口。
 
-社区可以增加自有前置反代：`metar.uk → 155.103.118.155 → HTTPS 104.168.114.150`，Cloudflare 仅管理 DNS。前置机使用独立证书并校验回源证书与 `metar.uk` 主机名，不缓存页面/API，不在访问日志中记录 query、Referer 或凭据。源站只信任该前置机精确 IP 的 `X-Real-IP`，供访客限流与日志使用；转发给 Answer 的 X-Forwarded-For 重新生成为可信单值，不接受浏览器声明用户身份。Answer Cookie、Authorization、绑定与 Pulse 权限边界保持不变。两台机器的 ACME webroot 分开，前置机找不到的挑战文件才转发源站，分别验证自动续期。部署与 DNS 切换顺序见 `deploy/nginx/RELAY.md`。
+社区可以增加自有前置反代：`metarhub.com → 155.103.118.155 → HTTPS 104.168.114.150`，Cloudflare 仅管理 DNS。前置机使用独立证书并校验回源证书与 `metarhub.com` 主机名，不缓存页面/API，不在访问日志中记录 query、Referer 或凭据。源站只信任该前置机精确 IP 的 `X-Real-IP`，供访客限流与日志使用；转发给 Answer 的 X-Forwarded-For 重新生成为可信单值，不接受浏览器声明用户身份。Answer Cookie、Authorization、绑定与 Pulse 权限边界保持不变。两台机器的 ACME webroot 分开，前置机找不到的挑战文件才转发源站，分别验证自动续期。部署与 DNS 切换顺序见 `deploy/nginx/RELAY.md`。
+
+正式社区主域名为 `metarhub.com`。原 `metar.uk` 经可选兼容网关迁移浏览入口：GET/HEAD 保留路径跳转，写请求拒绝，旧 SSO callback 丢弃参数后重新登录。Answer SiteURL、new-api 固定回调、SEO 与两端证书必须协调切换；浏览器会话与本机草稿不跨域迁移。兼容网关仅重定向，不新增业务实例或身份来源。详见 `deploy/nginx/README.md` 的域名迁移步骤。
 
 无论同机或跨服务器，都必须满足：
 

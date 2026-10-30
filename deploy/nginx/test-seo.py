@@ -23,7 +23,7 @@ def main():
         raise SystemExit('Run make build-blog build-community first')
     name = 'metar-seo-test-' + uuid.uuid4().hex[:8]
     with tempfile.TemporaryDirectory(prefix='metar-seo-') as temp:
-        cert = Path(temp) / 'live/metar.uk'
+        cert = Path(temp) / 'live/metarhub.com'
         cert.mkdir(parents=True)
         run('openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
             '-subj', '/CN=localhost', '-addext', 'subjectAltName=DNS:localhost',
@@ -38,7 +38,7 @@ def main():
             port = int(run('docker', 'port', name, '443/tcp').rsplit(':', 1)[1])
             http_port = int(run('docker', 'port', name, '80/tcp').rsplit(':', 1)[1])
 
-            def get(path, user_agent='Mozilla/5.0', host='metar.uk', method='GET', https=True, request_headers=None):
+            def get(path, user_agent='Mozilla/5.0', host='metarhub.com', method='GET', https=True, request_headers=None):
                 conn = (http.client.HTTPSConnection('localhost', port, context=context, timeout=5)
                         if https else http.client.HTTPConnection('localhost', http_port, timeout=5))
                 try:
@@ -93,14 +93,14 @@ def main():
                 assert get(path)[1].get('X-Robots-Tag') == 'noindex, nofollow', path
             status, headers, _ = get('/question/123?tracking=x')
             assert status == 200
-            assert headers.get('Link') == '<https://metar.uk/questions/123>; rel="canonical"', headers
+            assert headers.get('Link') == '<https://metarhub.com/questions/123>; rel="canonical"', headers
             assert 'X-Robots-Tag' not in headers
             status, headers, body = get('/sitemap-site.xml')
             assert status == 200 and 'xml' in headers['Content-Type']
             for node in ET.fromstring(body).findall('.//{*}loc'):
                 if node.text.endswith(('/questions', '/tags')):
                     continue  # owned by Answer, deliberately unavailable in this fixture
-                status, headers, page = get(node.text.removeprefix('https://metar.uk'))
+                status, headers, page = get(node.text.removeprefix('https://metarhub.com'))
                 assert status == 200, node.text
                 assert 'noindex' not in headers.get('X-Robots-Tag', '').lower(), node.text
                 assert 'noindex' not in page.lower(), node.text
@@ -111,8 +111,8 @@ def main():
             status, headers, body = get('/blog/sitemap.xml')
             assert status == 200 and 'xml' in headers['Content-Type']
             for node in ET.fromstring(body).findall('.//{*}loc'):
-                assert node.text.startswith('https://metar.uk/blog/'), node.text
-                route = node.text.removeprefix('https://metar.uk')
+                assert node.text.startswith('https://metarhub.com/blog/'), node.text
+                route = node.text.removeprefix('https://metarhub.com')
                 status, _, page = get(route)
                 assert status == 200, route
                 assert 'rel="canonical" href="' + node.text + '"' in page, route
@@ -121,14 +121,14 @@ def main():
             assert robots[2].count('Sitemap: ') == 3
             for path in ['/blog/missing-page', '/blog/metar/index.html', '/blog/metar/seo/latest.html']:
                 assert get(path)[0] == 404, path
-            assert get('/', host='www.metar.uk')[0] == 301
-            assert get('/', host='www.metar.uk', method='HEAD')[0] == 301
-            assert get('/', host='www.metar.uk', method='POST')[0] == 308
-            assert get('/', host='www.metar.uk')[1]['Location'] == 'https://metar.uk/'
+            assert get('/', host='www.metarhub.com')[0] == 301
+            assert get('/', host='www.metarhub.com', method='HEAD')[0] == 301
+            assert get('/', host='www.metarhub.com', method='POST')[0] == 308
+            assert get('/', host='www.metarhub.com')[1]['Location'] == 'https://metarhub.com/'
             for method, expected in [('GET', 301), ('HEAD', 301), ('POST', 308)]:
                 status, headers, _ = get('/latest?page=2', method=method, https=False)
                 assert status == expected, (method, status)
-                assert headers['Location'] == 'https://metar.uk/latest?page=2'
+                assert headers['Location'] == 'https://metarhub.com/latest?page=2'
             for https in (True, False):
                 status, headers, body = get('/baidu_verify_codeva-5q1djDn6Ob.html', https=https)
                 assert status == 200

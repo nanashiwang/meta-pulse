@@ -1,6 +1,6 @@
 (function(root) {
   'use strict';
-  const origin = 'https://metar.uk';
+  const origin = 'https://metarhub.com';
   function policy(pathname, search = '') {
     const path = pathname.replace(/\/$/, '') || '/';
     const privatePage = /^\/(?:me|settings|pulse|admin|chat|search|publish|login|register|forgot|status)(?:\/|$)/.test(path);

@@ -22,7 +22,7 @@ test('crawler can load real directory and sidebar dependencies under the shipped
       .sort((a,b) => b[2].replace(/\$$/, '').length - a[2].replace(/\$$/, '').length || (a[1] === 'Allow' ? -1 : 1));
     assert.notEqual(matches[0]?.[1], 'Disallow', `Public render dependency blocked: ${url}`);
     requests.push(url);
-    const parsed = new URL(url, 'https://metar.uk');
+    const parsed = new URL(url, 'https://metarhub.com');
     let data;
     switch (parsed.pathname) {
       case '/answer/api/v1/siteinfo': data = {site_write:{recommend_tags:[category]}}; break;

@@ -70,7 +70,7 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
   const windowEvents = new Map();
   const requests = [];
   const redirects = [];
-  const localLocation = (url) => Object.assign(new URL(url, 'https://metar.uk'), { replace: (value) => redirects.push(value) });
+  const localLocation = (url) => Object.assign(new URL(url, 'https://metarhub.com'), { replace: (value) => redirects.push(value) });
   const operations = new Map();
   const document = {
     title: '', documentElement: { dataset: {}, lang: '', getAttribute(key) { return this.dataset[key.replace('data-', '')]; }, setAttribute(key, value) { this.dataset[key.replace('data-', '')] = value; } },
@@ -102,7 +102,7 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
     __METAR_RUNTIME_CONFIG__: JSON.parse(fs.readFileSync(path.join(SOURCE, '../config.production.json'), 'utf8')),
     fetch: async (url, options) => {
       requests.push({ url, options });
-      const pathname = new URL(url, 'https://metar.uk').pathname;
+      const pathname = new URL(url, 'https://metarhub.com').pathname;
       if (pathname === '/answer/api/v1/user/info' && identityGate) await identityGate;
       if (pathname.endsWith('/question/page') || pathname.endsWith('/tags/page')) {
         if (publicControl.before) await publicControl.before(url);
@@ -121,7 +121,7 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
         else if (pathname.endsWith('/rules')) {
           payload = {selection_version:3,selection:'server-choice',draws:Array.from({length:Math.min(5,tickets)},(_,i)=>({selection:'server-choice-'+i,experience_only:false,quota_expires_at:'2026-11-01T00:00:00Z'})),ticket_count:tickets,can_draw_five:tickets>=5,queried_at:'2026-10-09T00:00:00Z',budgets:[],enabled:true,quota_per_unit:500000,total_weight:100,period:{id:1,config_version:'test-rule',key:'test-period',ends_at:'2026-11-01T00:00:00Z'},rewards:[{name:'Daily reward',amount:50000,weight:100}],...pulseRules};
         }
-        else if (pathname.endsWith('/rewards')) payload = { rewards: new URL(url, 'https://metar.uk').searchParams.has('action_id') ? [] : pulseRewards };
+        else if (pathname.endsWith('/rewards')) payload = { rewards: new URL(url, 'https://metarhub.com').searchParams.has('action_id') ? [] : pulseRewards };
         else if (pathname.endsWith('/actions')) {
           if (actionResult === 'timeout') throw new Error('Lost response');
           if (actionResult === 'action_rejected' || (rejectAt && requests.filter(r=>r.url.endsWith('/actions')).length === rejectAt)) return { ok: false, status: 409, json: async () => ({ error: 'action_rejected' }) };
@@ -452,7 +452,7 @@ test('收藏分页使用当前会话用户名和真实页数，后续页仍可�
   assert.match(view.html(), /href="\/me\/bookmarks\?page=3"/);
   assert.match(view.html(), /href="\/questions\/42"/);
   const request = view.requests.find(({ url }) => url.includes('/personal/collection/page'));
-  const url = new URL(request.url, 'https://metar.uk');
+  const url = new URL(request.url, 'https://metarhub.com');
   assert.equal(url.searchParams.get('username'), 'alice');
   assert.equal(url.searchParams.get('page'), '2');
 });
@@ -553,7 +553,7 @@ test('failed list switches preserve old content and title, then retry the reques
 test('rapid list switches only commit the latest request, including when leaving for a private page',async()=>{
   let releaseHot,releaseUnanswered;
   const hot=new Promise(r=>{releaseHot=r}),unanswered=new Promise(r=>{releaseUnanswered=r});
-  const publicControl={before:url=>{const order=new URL(url,'https://metar.uk').searchParams.get('order');return order==='hot'?hot:order==='unanswered'?unanswered:undefined}};
+  const publicControl={before:url=>{const order=new URL(url,'https://metarhub.com').searchParams.get('order');return order==='hot'?hot:order==='unanswered'?unanswered:undefined}};
   const view=await shell({content:true,publicControl});
   const slow=view.navigate('/latest?order=hot');
   await view.navigate('/latest?order=score');const committed=view.nodes.view.innerHTML;

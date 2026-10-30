@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 global.window = global;
-window.location = { origin: 'https://metar.uk' };
+window.location = { origin: 'https://metarhub.com' };
 require('../src/avatars.js');
 const avatars = window.MetarAvatars;
 
@@ -19,9 +19,9 @@ test('默认头像取用户名优先的 Unicode 首字符', () => {
 });
 
 test('Answer 上传头像兼容对象与字符串并保持同源', () => {
-  assert.equal(avatars.source({ type: 'custom', custom: '/uploads/avatar/alice.png' }), 'https://metar.uk/uploads/avatar/alice.png');
-  assert.equal(avatars.source('/uploads/avatar/bob.webp?s=96'), 'https://metar.uk/uploads/avatar/bob.webp?s=96');
-  assert.equal(avatars.source('https://metar.uk/uploads/avatar/carol.jpg'), 'https://metar.uk/uploads/avatar/carol.jpg');
+  assert.equal(avatars.source({ type: 'custom', custom: '/uploads/avatar/alice.png' }), 'https://metarhub.com/uploads/avatar/alice.png');
+  assert.equal(avatars.source('/uploads/avatar/bob.webp?s=96'), 'https://metarhub.com/uploads/avatar/bob.webp?s=96');
+  assert.equal(avatars.source('https://metarhub.com/uploads/avatar/carol.jpg'), 'https://metarhub.com/uploads/avatar/carol.jpg');
   assert.equal(avatars.source({ type: 'gravatar', gravatar: '/avatar/hash', custom: '/uploads/avatar/old.png' }), '');
   assert.equal(avatars.source({ type: 'default', custom: '/uploads/avatar/old.png' }), '');
   assert.equal(avatars.source('/static/media/default-avatar.abcdef.svg'), '');
@@ -33,9 +33,9 @@ test('外部头像与不可用地址不会产生图片请求', () => {
   for (const value of [
     'https://www.gravatar.com/avatar/hash', 'https://gravatar.cn/avatar/hash',
     'https://images.example/avatar.png', '//evil.example/avatar.png',
-    '/\\evil.example/avatar.png', 'https://metar.uk.evil.example/avatar.png',
-    'http://metar.uk/uploads/avatar/a.png', 'https://user:password@metar.uk/a.png',
-    'javascript:alert(1)', 'data:image/svg+xml,<svg></svg>', 'blob:https://metar.uk/id',
+    '/\\evil.example/avatar.png', 'https://metarhub.com.evil.example/avatar.png',
+    'http://metarhub.com/uploads/avatar/a.png', 'https://user:password@metarhub.com/a.png',
+    'javascript:alert(1)', 'data:image/svg+xml,<svg></svg>', 'blob:https://metarhub.com/id',
     'https://[invalid', {}, 42,
   ]) {
     assert.equal(avatars.source(value), '', String(value));
