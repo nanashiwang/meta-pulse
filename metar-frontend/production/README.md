@@ -37,6 +37,23 @@ python3 build.py
 
 部署脚本会把产物构建到 `sites/blog/docs/.vitepress/dist/metar/`，由现有社区网关静态托管。公开配置来自 `config.production.json`，只允许同源路径或无凭据的 HTTPS 外部地址，禁止写入任何密钥。稳定资源路径强制浏览器重新验证，避免更新后首页与旧版 JS/CSS 混用。
 
+浏览器标签图标以 `src/favicon.svg` 为原稿；首页与知识库引用 `/metar-assets/favicon.svg`，Answer 未配置品牌图标时回退的 `/favicon.ico` 由网关返回同图案的多尺寸 ICO。它也覆盖 Answer 默认 manifest 的图标请求，不依赖插件 JavaScript。生产需同时更新静态产物和网关；管理员在 Answer 指定的其他图标 URL 不受影响。若浏览器仍显示旧图标，关闭旧标签并重新打开后再验收。
+
+换标时在仓库根目录重新导出并提交 `src/favicon.ico`；日常构建只复制已提交文件，不增加服务器依赖：
+
+```bash
+uv run --with resvg-py --with pillow python - <<'PY'
+from pathlib import Path
+from io import BytesIO
+from PIL import Image
+import resvg_py
+source = Path('metar-frontend/production/src/favicon.svg')
+png = resvg_py.svg_to_bytes(svg_string=source.read_text(), width=256, height=256)
+Image.open(BytesIO(png)).save(source.with_suffix('.ico'),
+    sizes=[(n, n) for n in (16, 32, 48, 64, 128, 256)])
+PY
+```
+
 公开浏览与身份查询并行，个人、绑定、权益和管理页等待身份确认；身份返回只更新页头，避免重载已出现的内容。站内切页保留导航与搜索输入，浏览器返回恢复原列表位置，过期导航响应不改变当前内容或滚动。首次加载或跨页面类型导航显示静态骨架；同语言同会话的讨论排序、分页及类别切换保留旧内容，成功后一次替换，失败明确提示重试。320px 窄屏保留账户入口并自动露出当前筛选。
 
 初始 HTML 通过 `loading-shell.html` 提供匿名页头、侧栏和移动导航；`loading-view.html` 同时供 Python 构建与运行时加载使用，包含列表、网格和面板布局。`loading.js` 负责轻量语言适配与脚本失败恢复，不请求数据；SEO 正文保留在无脚本回退中。修改骨架无需增加服务器构建依赖。历史恢复在同 URL、语言和会话下保留已显示的公开内容，后台更新失败显示重试提示；不把私人、权限或权益数据放入持久快照。

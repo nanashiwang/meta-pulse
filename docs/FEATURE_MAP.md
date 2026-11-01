@@ -59,6 +59,8 @@ Before adding a feature, inspect adjacent flows and the current source of truth;
 
 ## 正式域名入口（2026-10-30）
 
+浏览器标签图标（2026-11-02）：[现有 SVG 与派生 ICO](../metar-frontend/production/src/favicon.svg) 随[静态构建](../metar-frontend/production/build.py)发布；[网关](../deploy/nginx/meta-pulse.conf)精确提供 `/favicon.ico`，统一 Answer SSR、React 页面和默认 manifest 的回退。[博客配置](../sites/blog/docs/.vitepress/config.mts)显式引用同源 SVG；管理员自定义图标 URL 不改写。[真实网关检查](../deploy/nginx/test-seo.py)覆盖文件字节、MIME、缓存、安全头及博客 HTML。生产部署与客户端旧缓存另行验收。
+
 `https://metarhub.com` 复用 Answer 本地账号、受保护绑定和原有同源 BFF。SEO、博客和站点地图使用新域名；[主网关](../deploy/nginx/meta-pulse.conf)、[前置网关](../deploy/nginx/metar-relay.conf) 与[旧域名兼容](../deploy/nginx/metar-legacy-redirect.conf) 保持两段 TLS 校验、Cookie 隔离、ACME 和写请求边界。[双网关回归](../deploy/nginx/test-relay.py) 覆盖旧域名 GET/HEAD 跳转、写请求 409、SSO 参数丢弃及旧证书续期。Answer SiteURL 与 new-api 固定回调是独立运行配置，发布本身不替代[部署核验](../deploy/nginx/README.md#从-metaruk-迁移至-metarhubcom)。
 
 

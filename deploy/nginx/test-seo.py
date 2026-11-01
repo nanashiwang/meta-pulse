@@ -38,7 +38,7 @@ def main():
             port = int(run('docker', 'port', name, '443/tcp').rsplit(':', 1)[1])
             http_port = int(run('docker', 'port', name, '80/tcp').rsplit(':', 1)[1])
 
-            def get(path, user_agent='Mozilla/5.0', host='metarhub.com', method='GET', https=True, request_headers=None):
+            def get(path, user_agent='Mozilla/5.0', host='metarhub.com', method='GET', https=True, request_headers=None, binary=False):
                 conn = (http.client.HTTPSConnection('localhost', port, context=context, timeout=5)
                         if https else http.client.HTTPConnection('localhost', http_port, timeout=5))
                 try:
@@ -49,7 +49,7 @@ def main():
                     headers['_wire_bytes'] = len(body)
                     if headers.get('Content-Encoding') == 'gzip':
                         body = gzip.decompress(body)
-                    return res.status, headers, body.decode()
+                    return res.status, headers, body if binary else body.decode()
                 finally:
                     conn.close()
 
@@ -63,6 +63,21 @@ def main():
             else:
                 raise AssertionError('Gateway failed to become ready')
             regular = get('/')
+            # Native Answer and browsers without an explicit icon use this root
+            # fallback. It must work even with the Answer backend unavailable.
+            status, headers, icon = get('/favicon.ico', binary=True)
+            assert status == 200 and headers['Content-Type'] == 'image/x-icon'
+            assert icon == (DIST / 'metar/assets/favicon.ico').read_bytes()
+            assert icon[:4] == b'\x00\x00\x01\x00'
+            assert headers['Cache-Control'] == 'no-cache'
+            assert headers['X-Content-Type-Options'] == 'nosniff'
+            assert 'Strict-Transport-Security' in headers
+            assert get('/favicon.ico', request_headers={'If-None-Match': headers['ETag']})[0] == 304
+            assert get('/favicon.ico', method='HEAD')[0] == 200
+            assert get('/metar-assets/favicon.svg')[0] == 200
+            for page_path in DIST.rglob('*.html'):
+                if 'metar' not in page_path.relative_to(DIST).parts:
+                    assert 'href="/metar-assets/favicon.svg"' in page_path.read_text(), page_path
             for asset in ['/metar-assets/app.js', '/metar-assets/app.css', '/blog/']:
                 plain = get(asset)
                 compressed = get(asset, request_headers={'Accept-Encoding':'gzip'})

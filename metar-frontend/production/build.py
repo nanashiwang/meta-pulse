@@ -111,6 +111,7 @@ def build(output: Path, config_path: Path) -> None:
     shutil.copyfile(ROOT / "src/pulse-core.css", assets / "pulse-core.css")
     shutil.copyfile(ROOT / "src/images/pulse-gift-hero.webp", assets / "pulse-gift-hero.webp")
     (assets / "favicon.svg").write_text(sources["favicon"], encoding="utf-8")
+    shutil.copyfile(ROOT / "src/favicon.ico", assets / "favicon.ico")
     build_seo(output, sources["index"], config["siteName"])
     runtime = "window.__METAR_RUNTIME_CONFIG__ = Object.freeze(" + json.dumps(config, ensure_ascii=False, separators=(",", ":")) + ");\n"
     (output / "runtime-config.js").write_text(runtime, encoding="utf-8")

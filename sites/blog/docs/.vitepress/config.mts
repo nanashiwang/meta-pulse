@@ -34,6 +34,7 @@ export default defineConfig({
   cleanUrls: true,
 
   head: [
+    ['link', { rel: 'icon', href: '/metar-assets/favicon.svg', type: 'image/svg+xml' }],
     ['meta', { property: 'og:type', content: 'article' }],
     ['meta', { name: 'robots', content: 'index,follow' }],
   ],
