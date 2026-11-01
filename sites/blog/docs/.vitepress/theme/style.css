@@ -18,6 +18,7 @@
   --vp-sidebar-width: 240px;
 }
 .VPNavBarTitle .title { font-weight: 700; letter-spacing: -.5px; }
+.VPNavBarTitle .metar-brand-logo { width:36px; height:36px; margin-right:8px; border-radius:6px; object-fit:contain; }
 
 /* The home page starts at its destinations and content cards. */
 .VPHome .VPHero { padding-top:calc(var(--vp-nav-height) + var(--vp-layout-top-height, 0px) + 24px); padding-bottom:24px; }

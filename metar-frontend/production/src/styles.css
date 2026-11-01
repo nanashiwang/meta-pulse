@@ -54,7 +54,9 @@
 .prod-avatar.has-image .prod-avatar-initial{visibility:hidden}
 
 @media(max-width:720px){.header-actions{gap:2px}}
-@media(max-width:380px){.topbar .brand-word{display:none}}
+.brand .brand-logo{width:36px;height:36px;object-fit:contain;border-radius:6px;flex-shrink:0}
+@media(max-width:580px){.brand .brand-logo{width:30px;height:30px}}
+@media(max-width:380px){.topbar .brand-word{display:none}.topbar .brand{min-width:30px}}
 .prod-binding-account{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--soft);margin:12px 0}
 .prod-binding-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0}
 .prod-binding-step{padding:14px;border:1px solid var(--border);border-radius:10px}

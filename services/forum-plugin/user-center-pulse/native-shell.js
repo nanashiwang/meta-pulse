@@ -9,6 +9,8 @@ export function installNativeShell(language, host = window) {
   installHomeNavigation(host);
   const root = doc.documentElement;
   root.classList.add('metar-native');
+  // Runtime URL keeps Answer's bundler from resolving a gateway-owned asset.
+  root.style.setProperty('--metar-brand-image', 'url("/metar-assets/brand-logo.jpg")');
   const theme = installTheme(host, { native: true });
   const nav = doc.createElement('nav');
   nav.className = 'metar-primary-nav';

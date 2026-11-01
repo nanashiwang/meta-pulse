@@ -37,21 +37,19 @@ python3 build.py
 
 部署脚本会把产物构建到 `sites/blog/docs/.vitepress/dist/metar/`，由现有社区网关静态托管。公开配置来自 `config.production.json`，只允许同源路径或无凭据的 HTTPS 外部地址，禁止写入任何密钥。稳定资源路径强制浏览器重新验证，避免更新后首页与旧版 JS/CSS 混用。
 
-浏览器标签图标以 `src/favicon.svg` 为原稿；首页与知识库引用 `/metar-assets/favicon.svg`，Answer 未配置品牌图标时回退的 `/favicon.ico` 由网关返回同图案的多尺寸 ICO。它也覆盖 Answer 默认 manifest 的图标请求，不依赖插件 JavaScript。生产需同时更新静态产物和网关；管理员在 Answer 指定的其他图标 URL 不受影响。若浏览器仍显示旧图标，关闭旧标签并重新打开后再验收。
+站点 Logo 以用户提供的 `src/images/brand-logo.jpg` 为原稿，保留完整蓝色渐变、线条与白底，不重新绘制。主页页头、初始加载占位、原生论坛页头与知识库标题共用 `/metar-assets/brand-logo.jpg`。博客通过主题标题插槽引用根路径，避免 VitePress 自动添加 `/blog/` 前缀；原生插件通过运行时 CSS 变量引用网关资源，避免 Answer 构建器尝试将绝对路径当作源码打包。
 
-换标时在仓库根目录重新导出并提交 `src/favicon.ico`；日常构建只复制已提交文件，不增加服务器依赖：
+首页与知识库引用的 `/metar-assets/favicon.svg` 在构建时嵌入同一原图字节，不加载外部图片；Answer 未配置品牌图标时回退的 `/favicon.ico` 由网关返回同图案的多尺寸 ICO，也覆盖默认 manifest。保留上述现有 URL 以兼容旧页面。生产需同时更新 Forum、静态产物与网关；管理员在 Answer 指定的其他图标 URL 不受影响。若浏览器仍显示旧图标，关闭旧标签并重新打开后再验收。
+
+换标时在仓库根目录重新导出并提交 `src/favicon.ico`；日常构建只使用 Python 标准库，不增加服务器依赖：
 
 ```bash
-uv run --with resvg-py --with pillow python - <<'PY'
-from pathlib import Path
-from io import BytesIO
+uv run --with pillow python - <<'PYTHON'
 from PIL import Image
-import resvg_py
-source = Path('metar-frontend/production/src/favicon.svg')
-png = resvg_py.svg_to_bytes(svg_string=source.read_text(), width=256, height=256)
-Image.open(BytesIO(png)).save(source.with_suffix('.ico'),
+Image.open('metar-frontend/production/src/images/brand-logo.jpg').save(
+    'metar-frontend/production/src/favicon.ico',
     sizes=[(n, n) for n in (16, 32, 48, 64, 128, 256)])
-PY
+PYTHON
 ```
 
 公开浏览与身份查询并行，个人、绑定、权益和管理页等待身份确认；身份返回只更新页头，避免重载已出现的内容。站内切页保留导航与搜索输入，浏览器返回恢复原列表位置，过期导航响应不改变当前内容或滚动。首次加载或跨页面类型导航显示静态骨架；同语言同会话的讨论排序、分页及类别切换保留旧内容，成功后一次替换，失败明确提示重试。320px 窄屏保留账户入口并自动露出当前筛选。

@@ -47,10 +47,12 @@ html.metar-native[data-theme="dark"] { --bs-body-color-rgb: 230, 236, 228; color
 .metar-native #header .navbar-brand > * { display: none !important; }
 .metar-native #header .navbar-brand::before {
   content: '';
-  width: 24px;
-  height: 26px;
-  background: var(--metar-primary);
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 20V4l9 9 9-9v16M3 12l9-9 9 9M8 20v-7l4 4 4-4v7' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  background: #fff var(--metar-brand-image) center / contain no-repeat;
+  mask: none;
 }
 .metar-native #header .navbar-brand::after { content: 'metar'; font-size: 23px; font-weight: 700; letter-spacing: -1px; }
 .metar-native .metar-primary-nav { display: flex; align-items: center; flex-shrink: 0; gap: 24px; font-size: 14px; }
@@ -126,7 +128,7 @@ html.metar-native[data-theme="dark"] { --bs-body-color-rgb: 230, 236, 228; color
   .metar-native #header > .w-100 { column-gap: 6px; padding-inline: 12px !important; }
   .metar-native #header .navbar-brand { gap: 5px; }
   .metar-native #header .navbar-brand::after { font-size: 20px; }
-  .metar-native #header .navbar-brand::before { width: 20px; }
+  .metar-native #header .navbar-brand::before { width: 30px; height: 30px; }
   .metar-native #header .navbar-toggler { margin-right: 0 !important; }
   .metar-native .metar-primary-nav { gap: 10px; font-size: 12px; flex-basis: calc(100% - 120px); }
   .metar-native .metar-language-switcher { width: 64px; }

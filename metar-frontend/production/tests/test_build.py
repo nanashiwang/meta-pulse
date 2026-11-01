@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import base64
 import os
 import subprocess
 import tempfile
 import unittest
 from html.parser import HTMLParser
 from pathlib import Path
+from xml.etree import ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -68,13 +70,20 @@ class ProductionBuildTest(unittest.TestCase):
             info = json.loads((output / "BUILD_INFO.json").read_text(encoding="utf-8"))
             self.assertEqual("production", info["kind"])
             self.assertFalse(info["mockData"])
-            combined = "\n".join(path.read_text(encoding="utf-8") for path in output.rglob("*") if path.is_file() and path.suffix not in (".webp", ".ico"))
+            combined = "\n".join(path.read_text(encoding="utf-8") for path in output.rglob("*") if path.is_file() and path.suffix not in (".webp", ".ico", ".jpg"))
             for marker in ("SEED_POSTS", "CANDIDATES", "演示身份", "未发送到线上", "X-Pulse-Signature", "New-Api-User"):
                 self.assertNotIn(marker, combined)
             self.assertIn("/answer/api/v1", (output / "runtime-config.js").read_text(encoding="utf-8"))
             self.assertIn("/metar-assets/app.js", (output / "index.html").read_text(encoding="utf-8"))
             self.assertIn("/metar-assets/favicon.svg", (output / "index.html").read_text(encoding="utf-8"))
             self.assertTrue((output / "assets/favicon.svg").is_file())
+            # The browser icon and visible logo must contain the supplied artwork,
+            # not an independently maintained drawing or an external SVG image URL.
+            brand = (ROOT / "src/images/brand-logo.jpg").read_bytes()
+            self.assertEqual(brand, (output / "assets/brand-logo.jpg").read_bytes())
+            icon = ET.fromstring((output / "assets/favicon.svg").read_text())
+            embedded = icon.find('{http://www.w3.org/2000/svg}image').get('href')
+            self.assertEqual(brand, base64.b64decode(embedded.split(',', 1)[1]))
             index = (output / "index.html").read_text(encoding="utf-8")
             self.assertIn("/metar-assets/avatars.js", index)
             self.assertLess(index.index("/metar-assets/avatars.js"), index.index("/metar-assets/app.js"))

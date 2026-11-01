@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import shutil
 from pathlib import Path
@@ -72,8 +73,13 @@ def build(output: Path, config_path: Path) -> None:
         "app": (ROOT / "src/app.js").read_text(encoding="utf-8"),
         "pulse-feed": (ROOT / "src/pulse-feed.js").read_text(encoding="utf-8"),
         "pulse-core": (ROOT / "src/pulse-core.js").read_text(encoding="utf-8"),
-        "favicon": (ROOT / "src/favicon.svg").read_text(encoding="utf-8"),
     }
+    # Keep the supplied artwork intact. Embedding it makes the SVG icon
+    # self-contained: SVGs loaded as images cannot fetch external image URLs.
+    brand = (ROOT / "src/images/brand-logo.jpg").read_bytes()
+    sources["favicon"] = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">'
+                          '<image width="1024" height="1024" href="data:image/jpeg;base64,'
+                          + base64.b64encode(brand).decode("ascii") + '"/></svg>\n')
     production_text = "\n".join(sources.values())
     for marker in BANNED_PRODUCTION_MARKERS:
         if marker.lower() in production_text.lower():
@@ -111,6 +117,7 @@ def build(output: Path, config_path: Path) -> None:
     shutil.copyfile(ROOT / "src/pulse-core.css", assets / "pulse-core.css")
     shutil.copyfile(ROOT / "src/images/pulse-gift-hero.webp", assets / "pulse-gift-hero.webp")
     (assets / "favicon.svg").write_text(sources["favicon"], encoding="utf-8")
+    (assets / "brand-logo.jpg").write_bytes(brand)
     shutil.copyfile(ROOT / "src/favicon.ico", assets / "favicon.ico")
     build_seo(output, sources["index"], config["siteName"])
     runtime = "window.__METAR_RUNTIME_CONFIG__ = Object.freeze(" + json.dumps(config, ensure_ascii=False, separators=(",", ":")) + ");\n"

@@ -75,9 +75,14 @@ def main():
             assert get('/favicon.ico', request_headers={'If-None-Match': headers['ETag']})[0] == 304
             assert get('/favicon.ico', method='HEAD')[0] == 200
             assert get('/metar-assets/favicon.svg')[0] == 200
+            status, headers, logo = get('/metar-assets/brand-logo.jpg', binary=True)
+            assert status == 200 and headers['Content-Type'] == 'image/jpeg'
+            assert logo == (ROOT / 'metar-frontend/production/src/images/brand-logo.jpg').read_bytes()
             for page_path in DIST.rglob('*.html'):
                 if 'metar' not in page_path.relative_to(DIST).parts:
                     assert 'href="/metar-assets/favicon.svg"' in page_path.read_text(), page_path
+                    if 'class="VPNavBarTitle' in page_path.read_text():
+                        assert 'src="/metar-assets/brand-logo.jpg"' in page_path.read_text(), page_path
             for asset in ['/metar-assets/app.js', '/metar-assets/app.css', '/blog/']:
                 plain = get(asset)
                 compressed = get(asset, request_headers={'Accept-Encoding':'gzip'})
