@@ -96,7 +96,7 @@ export function createImporter({editor,parser,origin,identity,importImage,notify
   function schedule() { clearTimeout(timer); timer=setTimeout(()=>{timer=null;scan();},delay); }
   // Changes cover native HTML-to-Markdown paste, plain Markdown, restored drafts
   // and the image-link toolbar. Debouncing avoids interfering with native paste.
-  return { isBusy:()=>running || pending.size>0 || !!timer, schedule, retry:()=>scan(true), dispose() {disposed=true;clearTimeout(timer);controller?.abort();pending.clear();}, scan };
+  return { isBusy:()=>running || pending.size>0 || (!!timer && current().some(i=>!results.has(i.url) && !failed.has(i.url) && ![...results.values()].includes(i.url))), schedule, retry:()=>scan(true), dispose() {disposed=true;clearTimeout(timer);controller?.abort();pending.clear();}, scan };
 }
 
 // Multiple native editors (question + own answer) share the account's single

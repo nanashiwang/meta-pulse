@@ -72,3 +72,8 @@ test('fragments do not cause duplicate downloads of the same image',()=>{
  const images=imagesIn('![one](https://example.org/a.png#one) ![two](https://example.org/a.png#two)',parser,origin);
  assert.equal(images.length,2);assert.equal(images[0].url,images[1].url);
 });
+
+test('debounced plain text never blocks native submission, unprocessed images do',()=>{
+ const f=fixture(async()=>'/uploads/a.png');f.text='plain text only';f.task.schedule();assert.equal(f.task.isBusy(),false);
+ f.text=image;f.task.schedule();assert.equal(f.task.isBusy(),true);f.task.dispose();
+});
