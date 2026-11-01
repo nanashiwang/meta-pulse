@@ -4,6 +4,8 @@ go 1.25.0
 
 require (
 	github.com/alicebob/miniredis/v2 v2.35.0
+	github.com/anargu/gin-brotli v0.0.0-20220116052358-12bf532d5267
+	github.com/andybalholm/brotli v1.1.0
 	github.com/apache/answer v1.7.1
 	github.com/apache/answer-plugins/util v1.0.3
 	github.com/gin-gonic/gin v1.12.0

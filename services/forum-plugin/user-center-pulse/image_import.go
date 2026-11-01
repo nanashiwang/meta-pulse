@@ -116,7 +116,15 @@ func imageImportHandler(session func(*gin.Context) (string, error), check func(c
 			communityError(c, 422, "image_unavailable")
 			return
 		}
-		c.Data(http.StatusOK, result.MIME, result.Bytes)
+		// Gin 1.12's Data renderer sets the uncompressed Content-Length after
+		// Answer's Brotli wrapper has cleared it. Let the HTTP server/middleware
+		// determine framing from the bytes actually written instead.
+		c.Header("Content-Type", result.MIME)
+		c.Status(http.StatusOK)
+		if _, err := c.Writer.Write(result.Bytes); err != nil {
+			_ = c.Error(err)
+			c.Abort()
+		}
 	}
 }
 func (uc *UserCenter) registerImageImport(r *gin.RouterGroup, session func(*gin.Context) (string, error), site func() string) {
