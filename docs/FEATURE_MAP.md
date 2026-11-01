@@ -65,3 +65,7 @@ Before adding a feature, inspect adjacent flows and the current source of truth;
 | 自动导入外链图片 | 已核对的入口与边界 | 验证 |
 |---|---|---|
 | 原生发帖、回答、编辑与草稿 | [editor 插件](../services/forum-plugin/user-center-pulse/image-import-editor.tsx)、[队列与 Markdown 图片定位](../services/forum-plugin/user-center-pulse/image-import.js)、[认证下载](../services/forum-plugin/user-center-pulse/image_import.go)：Answer 会话和实时活跃账号，同源 POST，公开 HTTPS 光栅图片；复用原生上传/Storage/文件记录，成功才替换，不改普通链接或代码 | [下载边界](../services/forum-plugin/user-center-pulse/imageimport/fetch_test.go)、[身份与限流](../services/forum-plugin/user-center-pulse/image_import_test.go)、[编辑恢复与上传](../services/forum-plugin/user-center-pulse/tests/image-import.test.mjs)；`make test-editor-images`、论坛 Go 测试与真实 Answer 构建 |
+
+## 脉冲券清零与重新起算（2026-11-01）
+
+账户级清零复用 `AdminAdjustmentService` 追加负向账本和审计；旧批次保留发行历史，通过旧来源账户归零及新持续规则隔离后续发券。未成券贡献必须按 `PendingContribution` 的跨规则公式处理，不能直接把全部历史贡献改为零。`CursorSeekService` 可把采集起点前移到指定源事件时间，到点由现有 Worker 自动续采，跳过区间不会补算。此次授权起点为 **2026-11-09 00:00 Asia/Shanghai**，不更改 new-api 余额或已中奖结果；详见[运营决策与验收](../.agents/notes/implemented/process/2026-11-01-ticket-reset.md)。
