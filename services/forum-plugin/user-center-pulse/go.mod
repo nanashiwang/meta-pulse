@@ -11,7 +11,10 @@ require (
 	github.com/segmentfault/pacman v1.0.5-0.20230822083413-c0075a2d401f
 )
 
-require filippo.io/edwards25519 v1.1.0 // indirect
+require (
+	filippo.io/edwards25519 v1.1.0 // indirect
+	golang.org/x/image v0.20.0
+)
 
 require (
 	github.com/LinkinStars/go-i18n/v2 v2.2.2 // indirect

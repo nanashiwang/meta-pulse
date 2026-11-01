@@ -1,3 +1,4 @@
+import ImageImportEditor from './image-import-editor';
 import './drafts-store.js';
 import storageExpires from '@/utils/storageWithExpires';
 import './growth-presentation.js';
@@ -58,10 +59,10 @@ installLanguageSwitcher({
 });
 
 // The enabled plugin's module is loaded once by Answer's plugin registry.
-// No renderer slot is required; avoid importing pluginKit during its own init.
+// Use the official editor slot; avoid importing pluginKit during its own init.
 export default {
-  info: { slug_name: 'pulse_user_center', type: 'render' },
-  component: () => null,
+  info: { slug_name: 'pulse_user_center', type: 'editor' },
+  component: ImageImportEditor,
 };
 
 // Account-scoped drafts retain Answer's native editor and publish cleanup.

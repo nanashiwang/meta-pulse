@@ -366,6 +366,7 @@ func (uc *UserCenter) RegisterAuthUserRouter(r *gin.RouterGroup) {
 	uc.registerExperience(r, answerSessionUserID, false, plugin.SiteURL)
 	uc.registerChat(r, answerSessionUserID, false, plugin.SiteURL)
 	uc.registerEvents(r, answerSessionUserID, false, plugin.SiteURL)
+	uc.registerImageImport(r, answerSessionUserID, plugin.SiteURL)
 }
 
 func (uc *UserCenter) RegisterAuthAdminRouter(r *gin.RouterGroup) {

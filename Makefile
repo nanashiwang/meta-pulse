@@ -89,7 +89,13 @@ build-community:
 	./deploy/build-community.sh
 
 
-test-community:
+test-editor-images:
+	npm ci --prefix services/forum-plugin/user-center-pulse/tests --ignore-scripts --no-audit --no-fund
+	node --test services/forum-plugin/user-center-pulse/tests/*.test.mjs
+
+.PHONY: test-editor-images
+
+test-community: test-editor-images
 	python3 metar-frontend/shared/generate-routes.py --check
 	python3 metar-frontend/shared/generate-theme.py --check
 	python3 -m unittest discover -s metar-frontend/production/tests -v

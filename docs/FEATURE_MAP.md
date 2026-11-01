@@ -60,3 +60,8 @@ Before adding a feature, inspect adjacent flows and the current source of truth;
 ## 正式域名入口（2026-10-30）
 
 `https://metarhub.com` 复用 Answer 本地账号、受保护绑定和原有同源 BFF。SEO、博客和站点地图使用新域名；[主网关](../deploy/nginx/meta-pulse.conf)、[前置网关](../deploy/nginx/metar-relay.conf) 与[旧域名兼容](../deploy/nginx/metar-legacy-redirect.conf) 保持两段 TLS 校验、Cookie 隔离、ACME 和写请求边界。[双网关回归](../deploy/nginx/test-relay.py) 覆盖旧域名 GET/HEAD 跳转、写请求 409、SSO 参数丢弃及旧证书续期。Answer SiteURL 与 new-api 固定回调是独立运行配置，发布本身不替代[部署核验](../deploy/nginx/README.md#从-metaruk-迁移至-metarhubcom)。
+
+
+| 自动导入外链图片 | 已核对的入口与边界 | 验证 |
+|---|---|---|
+| 原生发帖、回答、编辑与草稿 | [editor 插件](../services/forum-plugin/user-center-pulse/image-import-editor.tsx)、[队列与 Markdown 图片定位](../services/forum-plugin/user-center-pulse/image-import.js)、[认证下载](../services/forum-plugin/user-center-pulse/image_import.go)：Answer 会话和实时活跃账号，同源 POST，公开 HTTPS 光栅图片；复用原生上传/Storage/文件记录，成功才替换，不改普通链接或代码 | [下载边界](../services/forum-plugin/user-center-pulse/imageimport/fetch_test.go)、[身份与限流](../services/forum-plugin/user-center-pulse/image_import_test.go)、[编辑恢复与上传](../services/forum-plugin/user-center-pulse/tests/image-import.test.mjs)；`make test-editor-images`、论坛 Go 测试与真实 Answer 构建 |

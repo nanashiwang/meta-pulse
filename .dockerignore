@@ -14,3 +14,6 @@ dist/
 coverage/
 *.log
 sites/blog/docs/.vitepress/dist/
+
+# Isolated editor regression dependencies are installed by the test target.
+services/forum-plugin/user-center-pulse/tests/node_modules/
