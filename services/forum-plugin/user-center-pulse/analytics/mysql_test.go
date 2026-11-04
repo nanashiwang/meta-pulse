@@ -223,3 +223,20 @@ func TestMySQLReportFactsMaturityAndExclusions(t *testing.T) {
 		t.Fatal("fabricated historical visits")
 	}
 }
+
+func TestMySQLFreshAuthenticatedBrowserIsNotAnonymousConversion(t *testing.T) {
+	s := fixture(t)
+	ctx := context.Background()
+	s.Now = func() time.Time { return date("2026-10-28 10:00:00") }
+	cookie := strings.Repeat("d", 64)
+	must(t, s.Track(ctx, cookie, "3", Visit{Kind: "visit"}))
+	if count(t, s, "SELECT COUNT(*) FROM metar_ops_visitor WHERE converted_user IS NOT NULL") != 0 {
+		t.Fatal("unobserved anonymous visit fabricated at signup second")
+	}
+	// Logging out and back in cannot turn that same browser into a prospect.
+	must(t, s.Track(ctx, cookie, "", Visit{Kind: "visit"}))
+	must(t, s.Track(ctx, cookie, "3", Visit{Kind: "visit"}))
+	if count(t, s, "SELECT COUNT(*) FROM metar_ops_visitor WHERE existing_user=FALSE OR converted_user IS NOT NULL") != 0 {
+		t.Fatal("authenticated-first browser entered conversion cohort")
+	}
+}

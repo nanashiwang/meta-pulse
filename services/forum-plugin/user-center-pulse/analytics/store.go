@@ -132,7 +132,9 @@ func (s *Store) Track(ctx context.Context, cookie, user string, v Visit) error {
 	if source == "" {
 		source = "direct"
 	}
-	_, e = tx.ExecContext(ctx, `INSERT INTO metar_ops_visitor(id,first_seen,last_seen,source) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE last_seen=GREATEST(last_seen,VALUES(last_seen))`, hash, stamp, stamp, source)
+	// A browser first observed after authentication is not an anonymous prospect,
+	// even when signup and the first event share the same timestamp second.
+	_, e = tx.ExecContext(ctx, `INSERT INTO metar_ops_visitor(id,first_seen,last_seen,source,existing_user) VALUES(?,?,?,?,?) ON DUPLICATE KEY UPDATE last_seen=GREATEST(last_seen,VALUES(last_seen))`, hash, stamp, stamp, source, user != "")
 	if e != nil {
 		return e
 	}
@@ -144,7 +146,7 @@ func (s *Store) Track(ctx context.Context, cookie, user string, v Visit) error {
 		}
 		// Associate only a registration observed after this browser's first visit. An
 		// existing account logging in is not a new visitor-to-registration conversion.
-		_, e = tx.ExecContext(ctx, `UPDATE IGNORE metar_ops_visitor v JOIN `+"`user`"+` u ON u.id=? SET v.converted_user=u.id,v.registered_at=UNIX_TIMESTAMP(u.created_at) WHERE v.id=? AND v.converted_user IS NULL AND UNIX_TIMESTAMP(u.created_at)>=v.first_seen AND UNIX_TIMESTAMP(u.created_at)<=? AND UNIX_TIMESTAMP(u.created_at)-v.first_seen<=2592000`, user, hash, stamp)
+		_, e = tx.ExecContext(ctx, `UPDATE IGNORE metar_ops_visitor v JOIN `+"`user`"+` u ON u.id=? SET v.converted_user=u.id,v.registered_at=UNIX_TIMESTAMP(u.created_at) WHERE v.id=? AND v.existing_user=FALSE AND v.converted_user IS NULL AND UNIX_TIMESTAMP(u.created_at)>=v.first_seen AND UNIX_TIMESTAMP(u.created_at)<=? AND UNIX_TIMESTAMP(u.created_at)-v.first_seen<=2592000`, user, hash, stamp)
 		if e != nil {
 			return e
 		}
