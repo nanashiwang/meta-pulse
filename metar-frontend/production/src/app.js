@@ -471,6 +471,11 @@
     return `<section class="community-discussions">
       ${pageTitle(title)}
       <div class="discussion-toolbar">${filter}<nav class="discussion-tabs" aria-label="${t('话题筛选')}">${tabs}</nav>${external(askPath, I('plus', 'sm') + t('新建话题'), 'btn primary')}</div>
+      <div class="discussion-pinned"><a class="discussion-pinned-link" href="https://meta-api.com" target="_blank" rel="noopener noreferrer">
+        <span class="discussion-pinned-label">${I('flag', 'sm')}${t('置顶')}</span>
+        <span class="discussion-pinned-main"><strong>${t('元衡 API')}</strong><span>${t('一个入口，连接多种 AI 模型。')}</span></span>
+        <span class="discussion-pinned-cta">${t('立即体验')}<span aria-hidden="true">↗</span></span>
+      </a></div>
       ${list.length ? discussionList(list) : empty(order === 'unanswered' ? t("暂时没有待回答问题") : t("当前筛选没有内容"), t("可以调整筛选，或发起一个新问题。"), external(askPath, t("发起提问"), 'btn primary'), 'chat')}${pager}
     </section>${footer()}`;
   }

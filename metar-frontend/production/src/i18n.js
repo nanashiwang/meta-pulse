@@ -2,6 +2,9 @@
 'use strict';
 (() => {
   const EN = Object.freeze({
+    "元衡 API": "YuanHeng API",
+    "一个入口，连接多种 AI 模型。": "One API, multiple AI models.",
+    "立即体验": "Try it now",
     "查看更多": "View more",
     "用户": "User",
     "社区中奖动态": "Community rewards",

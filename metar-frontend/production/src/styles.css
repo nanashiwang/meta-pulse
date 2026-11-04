@@ -325,3 +325,15 @@ input:not([type="checkbox"]),select,textarea { padding:8px 11px; }
 @media(max-width:430px){.prod-pulse-community .prod-pulse-anonymous{gap:4px;font-size:11px}.prod-pulse-community .prod-pulse-anonymous>span{width:22px;height:22px}.prod-pulse-community time{font-size:10px}}
 
 .prod-pulse-anonymous svg{width:15px;height:15px}
+
+/* Pinned promotion sits immediately below the discussion filters. */
+.discussion-pinned { border-bottom:1px solid var(--border); }
+.discussion-pinned-link { display:flex; align-items:center; gap:14px; padding:14px 12px; border-radius:6px; background:var(--tint); }
+.discussion-pinned-label { display:inline-flex; align-items:center; gap:5px; flex-shrink:0; color:var(--green); font-size:12px; font-weight:600; }
+.discussion-pinned-main { display:flex; flex-direction:column; gap:3px; flex:1; min-width:0; overflow-wrap:anywhere; }
+.discussion-pinned-main strong { color:var(--text); font-size:15px; font-weight:600; }
+.discussion-pinned-main > span { color:var(--muted); font-size:12px; }
+.discussion-pinned-cta { display:inline-flex; align-items:center; gap:6px; flex-shrink:0; color:var(--green); font-size:12px; }
+.discussion-pinned-link:hover { background:var(--hover); }
+.discussion-pinned-link:focus-visible { outline:2px solid var(--green); outline-offset:2px; }
+@media(max-width:580px) { .discussion-pinned-link { flex-wrap:wrap; gap:8px 10px; padding:12px 10px; } .discussion-pinned-label { align-self:flex-start; padding-top:2px; } .discussion-pinned-main { flex-basis:calc(100% - 62px); } .discussion-pinned-cta { margin-left:auto; } }
