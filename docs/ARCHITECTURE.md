@@ -1,5 +1,13 @@
 # 元衡脉冲计划 Meta Pulse｜完整项目架构
 
+## 社区经营数据边界
+
+Answer 继续拥有用户、注册时间、内容与角色事实。UserCenter 插件的 `analytics` 包在 Answer MySQL 中维护 `metar_ops_config/visitor/day/member/label/audit`：分别记录观察起点、随机 Cookie 哈希与归因、日级去重、标签版本、管理员私有标签和事务审计。这些表属于运营投影，不产生 Ledger、Contribution、Ticket、Reward，也不读取 new-api 业务数据库；随 Answer 数据库备份恢复。
+
+匿名 POST `/answer/api/v1/metar/analytics/anonymous` 只认随机访客 Cookie；认证 POST `.../visit` 只认 Answer 会话且实时检查账号状态，拒绝客户端 user_id。网关仅向采集路径转发合法格式的 `metar_ops`，其余论坛 Cookie allowlist 保持原身份边界。采集要求同源、自定义请求头、严格有限 JSON，并在网关/进程限流；不保存 IP、完整 URL 或用户内容，失败与论坛主流程解耦。
+
+`/answer/admin/api/metar/analytics/{report,members,labels}` 受 Answer 管理员中间件及 MySQL 当前角色双重校验。标签保存以操作者 + Idempotency-Key 识别幂等请求，规范化相同 payload 重放原版本；同 key 不同 payload 或旧版本写入冲突。标签、版本与前后值审计同事务提交，不能影响内容标签、权限或经济奖励。统计连接固定 UTC SQL 会话，日界统一上海时区；未完整观察的队列不计流失，法定工作日日历缺年失败关闭。完整口径、保留与归因限制见[社区经营](COMMUNITY_ANALYTICS.md)。
+
 ## 1. 项目说明
 
 ### 一句话定义

@@ -1,3 +1,4 @@
+import './analytics-client.js';
 import ImageImportEditor from './image-import-editor';
 import './drafts-store.js';
 import storageExpires from '@/utils/storageWithExpires';

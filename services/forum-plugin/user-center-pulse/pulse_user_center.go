@@ -16,6 +16,7 @@ import (
 	"github.com/apache/answer-plugins/util"
 	"github.com/apache/answer/plugin"
 	"github.com/gin-gonic/gin"
+	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/analytics"
 	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/chat"
 	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/events"
 	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/growth"
@@ -45,6 +46,8 @@ var Info embed.FS
 // the Connector only binds one immutable new-api identity, while UserCenter
 // contributes optional Pulse branding for bound accounts.
 type UserCenter struct {
+	opsMu             sync.Mutex
+	opsStore          *analytics.Store
 	pulseDeliveryOnce sync.Once
 	pulseDelivery     *pulseExperienceDelivery
 	runtimeMu         sync.RWMutex
@@ -359,10 +362,12 @@ func (uc *UserCenter) AfterLogin(externalID, _ string) {
 
 func (uc *UserCenter) RegisterUnAuthRouter(r *gin.RouterGroup) {
 	uc.registerPublicExperience(r)
+	uc.registerOperations(r, nil, false)
 	r.GET("/metar/events", uc.eventHandler("list", nil, false, plugin.SiteURL))
 }
 func (uc *UserCenter) RegisterAuthUserRouter(r *gin.RouterGroup) {
 	uc.registerCommunityRoutes(r, answerSessionUserID, plugin.SiteURL)
+	uc.registerOperations(r, answerSessionUserID, false)
 	uc.registerExperience(r, answerSessionUserID, false, plugin.SiteURL)
 	uc.registerChat(r, answerSessionUserID, false, plugin.SiteURL)
 	uc.registerEvents(r, answerSessionUserID, false, plugin.SiteURL)
@@ -371,6 +376,7 @@ func (uc *UserCenter) RegisterAuthUserRouter(r *gin.RouterGroup) {
 
 func (uc *UserCenter) RegisterAuthAdminRouter(r *gin.RouterGroup) {
 	uc.registerAdminSettingsRoutes(r, answerAdminSessionUserID, plugin.SiteURL)
+	uc.registerOperations(r, answerAdminSessionUserID, true)
 	uc.registerExperience(r, answerAdminSessionUserID, true, plugin.SiteURL)
 	uc.registerChat(r, answerAdminSessionUserID, true, plugin.SiteURL)
 	uc.registerEvents(r, answerAdminSessionUserID, true, plugin.SiteURL)

@@ -52,6 +52,8 @@ def load_config(path: Path) -> dict:
 def build(output: Path, config_path: Path) -> None:
     config = load_config(config_path)
     sources = {
+        "analytics": (ROOT / "src/analytics.js").read_text(encoding="utf-8"),
+        "analytics-client": (ROOT.parents[1] / "services/forum-plugin/user-center-pulse/analytics-client.js").read_text(encoding="utf-8"),
         "index": (ROOT / "src/index.html").read_text(encoding="utf-8"),
         "seo": (ROOT / "src/seo.js").read_text(encoding="utf-8"),
         "i18n": (ROOT / "src/i18n.js").read_text(encoding="utf-8"),
@@ -119,6 +121,8 @@ def build(output: Path, config_path: Path) -> None:
     (assets / "favicon.svg").write_text(sources["favicon"], encoding="utf-8")
     (assets / "brand-logo.jpg").write_bytes(brand)
     shutil.copyfile(ROOT / "src/favicon.ico", assets / "favicon.ico")
+    (assets / "analytics-client.js").write_text(sources["analytics-client"], encoding="utf-8")
+    (assets / "analytics.js").write_text(sources["analytics"], encoding="utf-8")
     build_seo(output, sources["index"], config["siteName"])
     runtime = "window.__METAR_RUNTIME_CONFIG__ = Object.freeze(" + json.dumps(config, ensure_ascii=False, separators=(",", ":")) + ");\n"
     (output / "runtime-config.js").write_text(runtime, encoding="utf-8")

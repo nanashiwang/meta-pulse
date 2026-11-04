@@ -25,7 +25,8 @@
     "admin/chat",
     "me/drafts",
     "events",
-    "admin/events"
+    "admin/events",
+    "admin/operations"
   ],
   "detailPrefixes": [
     "question",

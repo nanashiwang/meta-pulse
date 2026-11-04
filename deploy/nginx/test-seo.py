@@ -29,10 +29,15 @@ def main():
             '-subj', '/CN=localhost', '-addext', 'subjectAltName=DNS:localhost',
             '-keyout', str(cert / 'privkey.pem'), '-out', str(cert / 'fullchain.pem'))
         context = ssl.create_default_context(cafile=str(cert / 'fullchain.pem'))
+        # Echo only fixture headers from a local backend, exercising the actual
+        # gateway Cookie boundary without a real Answer session or credentials.
+        fixture_config = Path(temp) / 'gateway.conf'
+        fixture_config.write_text((ROOT / 'deploy/nginx/meta-pulse.conf').read_text().replace(
+            'server forum:80;', 'server forum:8080;') + '\nserver { listen 8080; location / { return 200 "$http_cookie|$http_new_api_user|$http_x_pulse_signature|$http_authorization"; } }\n')
         try:
             run('docker', 'run', '-d', '--rm', '--name', name, '--add-host', 'forum:127.0.0.1',
                 '-p', '127.0.0.1::443', '-p', '127.0.0.1::80',
-                '-v', str(ROOT / 'deploy/nginx/meta-pulse.conf') + ':/etc/nginx/conf.d/default.conf:ro',
+                '-v', str(fixture_config) + ':/etc/nginx/conf.d/default.conf:ro',
                 '-v', temp + ':/etc/letsencrypt:ro', '-v', str(DIST) + ':/var/www/blog:ro',
                 'nginx:1.27-alpine')
             port = int(run('docker', 'port', name, '443/tcp').rsplit(':', 1)[1])
@@ -63,6 +68,15 @@ def main():
             else:
                 raise AssertionError('Gateway failed to become ready')
             regular = get('/')
+            visitor = 'a' * 64
+            boundary_headers = {'Cookie': 'visit=test-session; metar_ops=' + visitor + '; secret=unrelated',
+                                'Authorization': 'Bearer fixture', 'New-Api-User': '999', 'X-Pulse-Signature': 'forged'}
+            status, headers, body = get('/answer/api/v1/metar/analytics/anonymous', request_headers=boundary_headers)
+            assert status == 200 and body == 'visit=test-session; metar_ops=' + visitor + '|||Bearer fixture', body
+            assert headers.get('X-Robots-Tag') == 'noindex, nofollow'
+            assert get('/answer/api/v1/user/info', request_headers=boundary_headers)[2] == 'visit=test-session|||Bearer fixture'
+            boundary_headers['Cookie'] = 'visit=test-session; metar_ops=invalid; secret=unrelated'
+            assert get('/answer/api/v1/metar/analytics/anonymous', request_headers=boundary_headers)[2] == 'visit=test-session|||Bearer fixture'
             # Native Answer and browsers without an explicit icon use this root
             # fallback. It must work even with the Answer backend unavailable.
             status, headers, icon = get('/favicon.ico', binary=True)
@@ -100,7 +114,7 @@ def main():
             assert 'X-Robots-Tag' not in regular[1]
             for bot in ['Googlebot', 'Baiduspider', 'bingbot']:
                 assert get('/', bot)[2] == regular[2], bot
-            for path in ['/me', '/me/notifications', '/me/bookmarks', '/pulse', '/pulse?code=test', '/status', '/chat', '/settings/binding/', '/admin/pulse', '/search?q=hello', '/login']:
+            for path in ['/me', '/me/notifications', '/me/bookmarks', '/pulse', '/pulse?code=test', '/status', '/chat', '/settings/binding/', '/admin/pulse', '/admin/operations', '/search?q=hello', '/login']:
                 status, headers, body = get(path)
                 assert status == 200, (path, status)
                 assert headers.get('X-Robots-Tag') == 'noindex, nofollow', (path, headers)

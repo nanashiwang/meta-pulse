@@ -41,8 +41,8 @@ grep -q 'access_log off;' "$config" || die 'callback query logging is not disabl
 grep -q 'add_header Referrer-Policy "no-referrer" always;' "$config" || die 'callback referrer protection is missing'
 grep -q 'proxy_set_header Cookie \$forum_cookie;' "$config" || die 'forum Cookie allowlist is missing'
 [ "$(grep -c 'proxy_set_header Authorization "";' "$config")" -eq 1 ] || die 'only the callback may strip Authorization; Answer API auth must remain usable'
-[ "$(grep -c 'proxy_set_header X-Pulse-Signature "";' "$config")" -eq 9 ] || die 'all forum routes must strip browser Pulse signatures'
-[ "$(grep -c 'proxy_set_header New-Api-User "";' "$config")" -eq 9 ] || die 'all forum routes must strip new-api identity headers'
+[ "$(grep -c 'proxy_set_header X-Pulse-Signature "";' "$config")" -eq 10 ] || die 'all forum routes must strip browser Pulse signatures'
+[ "$(grep -c 'proxy_set_header New-Api-User "";' "$config")" -eq 10 ] || die 'all forum routes must strip new-api identity headers'
 grep -A12 'location /blog/' "$config" | grep -q 'Strict-Transport-Security' || die 'blog location lost inherited security headers'
 grep -q 'location = / {' "$config" || die 'METAR exact homepage route is missing'
 grep -A14 'location = / {' "$config" | grep -q 'try_files /blog/metar/index.html =404;' || die 'METAR homepage does not fail closed on missing production build'
@@ -102,3 +102,6 @@ docker run --rm \
   nginx:1.27-alpine nginx -t
 
 echo 'gateway config tests passed'
+
+[ "$(grep -c 'proxy_set_header Cookie $analytics_cookie;' "$config")" -eq 1 ] || die 'analytics cookie must stay on its own endpoint'
+grep -A20 'location \^~ /answer/api/v1/metar/analytics/' "$config" | grep -q 'limit_req zone=community_analytics' || die 'analytics must be rate limited'

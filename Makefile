@@ -134,3 +134,8 @@ clean:
 test-events-integration:
 	@test -n "$$EVENTS_INTEGRATION_DSN" || { echo "请设置以 _events_test 结尾的专用活动测试库" >&2; exit 1; }
 	go test -count=1 -race ./services/forum-plugin/user-center-pulse/events -run TestMySQL -timeout 5m
+
+.PHONY: test-analytics-integration
+test-analytics-integration:
+	@test -n "$$ANALYTICS_INTEGRATION_DSN" || { echo "请设置以 _analytics_test 结尾的专用统计测试库" >&2; exit 1; }
+	go test -count=1 -race ./services/forum-plugin/user-center-pulse/analytics -run TestMySQL -timeout 5m
