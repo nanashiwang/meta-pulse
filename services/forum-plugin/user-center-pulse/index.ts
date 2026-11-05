@@ -1,3 +1,4 @@
+import { installNativeFavicon } from './native-favicon';
 import './analytics-client.js';
 import ImageImportEditor from './image-import-editor';
 import './drafts-store.js';
@@ -33,6 +34,7 @@ installPasswordVisibility({
   onLanguageChanged: (handler) => i18n.on('languageChanged', handler),
 });
 
+installNativeFavicon();
 installLocalRegistration(userCenterStore);
 installNavigationBridge();
 installNativeShell({
