@@ -1,6 +1,7 @@
 import { mountNotificationNavigation } from './notification-navigation.js';
 import { installTheme } from './shared-theme.js';
 import { installHomeNavigation, canonicalizeHomeLinks } from './home-navigation.js';
+import { mountComposerLayout, positionComposerMenus } from './composer-layout.js';
 
 export function installNativeShell(language, host = window) {
   if (host.__metarNativeShell) return;
@@ -49,8 +50,11 @@ export function installNativeShell(language, host = window) {
   let observedHeader;
   const resize = host.ResizeObserver ? new host.ResizeObserver((entries) => {
     root.style.setProperty('--metar-header-height', `${Math.ceil(entries[0].target.getBoundingClientRect().height)}px`);
+    positionComposerMenus(host);
   }) : null;
   function mount() {
+    mountComposerLayout(doc);
+    positionComposerMenus(host);
     canonicalizeHomeLinks(doc, host.location.origin);
     mountNotificationNavigation(doc, host.location.pathname, language.getLanguage() === 'en_US');
     const header = doc.querySelector('#header');
@@ -68,10 +72,22 @@ export function installNativeShell(language, host = window) {
   }
   // Coalesce rich editor/profile updates and let the host finish rendering.
   let pending = false;
-  new host.MutationObserver(() => {
+  const schedule = () => {
     if (pending) return;
     pending = true;
     host.requestAnimationFrame(() => { pending = false; mount(); });
-  }).observe(root, { childList: true, subtree: true });
+  };
+  new host.MutationObserver(schedule).observe(root, { childList: true, subtree: true });
+  let menuPending = false;
+  const scheduleMenus = () => {
+    if (menuPending) return;
+    menuPending = true;
+    host.requestAnimationFrame(() => { menuPending = false; positionComposerMenus(host); });
+  };
+  doc.addEventListener('focusin', scheduleMenus);
+  host.addEventListener('resize', scheduleMenus);
+  host.addEventListener('scroll', scheduleMenus, { passive: true });
+  host.visualViewport?.addEventListener('resize', scheduleMenus);
+  host.visualViewport?.addEventListener('scroll', scheduleMenus);
   mount();
 }

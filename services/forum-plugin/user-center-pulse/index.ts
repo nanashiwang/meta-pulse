@@ -46,6 +46,8 @@ installNativeShell({
 // user profile/session is written and no new-api/Pulse request is involved.
 i18n.addResourceBundle('zh_CN', 'translation', zhCN.ui, true, false);
 i18n.addResourceBundle('en_US', 'translation', enUS.ui, true, false);
+i18n.addResource('zh_CN', 'translation', 'ask.form.fields.tags.label', '类别与标签');
+i18n.addResource('en_US', 'translation', 'ask.form.fields.tags.label', 'Categories and tags');
 installLanguageSwitcher({
   getLanguage: () => i18n.language,
   changeLanguage: (language: string) => i18n.changeLanguage(language),

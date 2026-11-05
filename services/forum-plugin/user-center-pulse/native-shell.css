@@ -115,6 +115,22 @@ html.metar-native[data-theme="dark"] { --bs-body-color-rgb: 230, 236, 228; color
 .metar-native .pagination { --bs-pagination-active-bg: var(--metar-primary); --bs-pagination-active-border-color: var(--metar-primary); --bs-pagination-active-color: var(--metar-on-primary); }
 .metar-native .dropdown-menu { --bs-dropdown-link-active-bg: var(--metar-primary); --bs-dropdown-link-active-color: var(--metar-on-primary); }
 .metar-native .badge-tag { color: var(--metar-muted); background: var(--metar-soft); }
+/* Native create/edit question fields; the same selector owns categories and tags. */
+.metar-native .metar-composer-taxonomy { margin-top: 0 !important; margin-bottom: 16px !important; }
+.metar-native .metar-composer-taxonomy .dropdown-menu {
+  top: calc(100% + 4px) !important;
+  bottom: auto !important;
+  transform: none !important;
+  min-width: 0;
+  max-height: var(--metar-menu-height, 178px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.metar-native .metar-composer-taxonomy [data-metar-menu-side="up"] .dropdown-menu {
+  top: auto !important;
+  bottom: calc(100% + 4px) !important;
+}
+.metar-native .metar-composer-taxonomy .dropdown-item { white-space: normal; overflow-wrap: anywhere; }
 @media (min-width: 1200px) { .metar-native .main-mx-with { padding-inline: 32px; } }
 @media (max-width: 1199.98px) {
   .metar-native #header > .w-100 { flex-wrap: wrap; row-gap: 8px; }
