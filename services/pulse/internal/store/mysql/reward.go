@@ -355,6 +355,16 @@ func (r *idempotencyRepository) GetOrCreateForUpdate(ctx context.Context, scope,
 	if err := validateIdempotencyIdentity(scope, key, payloadHash); err != nil {
 		return ports.IdempotencyRecord{}, err
 	}
+	// Migration 00018 seeds this permanent mutex. A unique-key locking read
+	// takes only its record lock, avoiding duplicate-INSERT next-key locks
+	// while also avoiding an early repeatable-read snapshot before the mutex.
+	if scope == "period_create_lock" && key == "global" {
+		var model idempotencyModel
+		if err := r.db.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).Where("scope = ? AND idempotency_key = ?", scope, key).Take(&model).Error; err != nil {
+			return ports.IdempotencyRecord{}, fmt.Errorf("lock seeded rule guard: %w", err)
+		}
+		return idempotencyFromModel(model), nil
+	}
 	if err := r.db.WithContext(ctx).Exec(`
 INSERT INTO pulse_idempotency (scope, idempotency_key, payload_hash)
 VALUES (?, ?, ?)

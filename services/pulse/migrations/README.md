@@ -101,3 +101,5 @@ accepted UsageEvent => exactly one accounting effect
 Down 保留配置、密文和幂等回执，重新 Up 不会覆盖现有值。回退旧二进制前先关闭奖励写入并制定配置回迁方案；旧版本只读环境变量，不能把保留数据库表误认为旧版本仍会使用新配置。
 
 - `00016_ticket_rule_selection.sql`：新增按 user_id / period_id / earned_at / id 的组内选券索引；无历史金额、券、预算或概率重写。v2 Action 和拒绝回执要求整体升级 API、社区插件与前端；回退须先关闭 Action，不能删除幂等记录。
+
+`00018_seed_rule_guard.sql` 幂等补齐 `period_create_lock/global` 永久守卫，不覆盖旧身份、payload 或业务回执。新版规则发布、抽奖和社区赠券对该行直接 FOR UPDATE，避免热键重复插入的死锁；需先迁移再启动新版 API/Worker。Down 保留该行，旧代码可安全复用，不能将其当作可清理的过期回执删除。

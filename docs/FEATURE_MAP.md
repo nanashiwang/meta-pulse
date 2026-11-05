@@ -77,3 +77,5 @@ Before adding a feature, inspect adjacent flows and the current source of truth;
 账户级清零复用 `AdminAdjustmentService` 追加负向账本和审计；旧批次保留发行历史，通过旧来源账户归零及新持续规则隔离后续发券。未成券贡献必须按 `PendingContribution` 的跨规则公式处理，不能直接把全部历史贡献改为零。`CursorSeekService` 可把采集起点前移到指定源事件时间，到点由现有 Worker 自动续采，跳过区间不会补算。此次授权起点为 **2026-11-09 00:00 Asia/Shanghai**，不更改 new-api 余额或已中奖结果；详见[运营决策与验收](../.agents/notes/implemented/process/2026-11-01-ticket-reset.md)。
 
 后续取消 API 消费获券：v0.2.82 起上述历史运营游标续采仅更新贡献，不再兑换券；不修改清零历史或游标配置，详见[渠道移除决策](../.agents/notes/implemented/simplification/2026-11-06-stop-usage-tickets.md)。
+
+规则发布、抽奖与社区赠券共用预建的规则守卫；v0.2.83 迁移 00018 保留原幂等身份并改为直接锁行，避免并发赠券的重复键插入死锁。验收覆盖 MySQL 双版本的 100 路重放与周期重叠竞争。

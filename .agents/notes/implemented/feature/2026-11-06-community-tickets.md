@@ -35,3 +35,5 @@ Pulse 只接受 community-bff 签名的固定类别、日期及日序号，服�
 源内容删除在首次扫描前不计入，不能保证奖励短暂存在的违规内容。后台有延迟，需显式展示等待同步；采集与发券失败分别重试。多表与持久来源随 Answer 完整备份，不能单独回退到不认识 ticket_bonus 的 Pulse 版本。
 
 后续[停止消费获券](../../implemented/simplification/2026-11-06-stop-usage-tickets.md)取消新消费与补录的券变更；本篇的社区赠券、历史券/奖池及运营审计边界保留。
+
+并发交付的规则守卫锁由[预建守卫修复](../../implemented/bug-fix/2026-11-06-idempotency-hot-key-lock.md)补强，日上限与发券幂等身份不变。
