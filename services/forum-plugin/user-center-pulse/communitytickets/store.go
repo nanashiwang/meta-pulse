@@ -49,7 +49,21 @@ func (s *Store) Ensure(ctx context.Context) error {
 			table = "metar_exp_event"
 			column = "occurred_at"
 		}
-		if _, err = s.DB.ExecContext(ctx, `INSERT IGNORE INTO metar_ticket_cursor(stream,last_id) SELECT ?,COALESCE(MAX(id),0) FROM `+table+` WHERE `+column+`<?`, stream, start); err != nil {
+		var cursor uint64
+		err = s.DB.QueryRowContext(ctx, `SELECT last_id FROM metar_ticket_cursor WHERE stream=?`, stream).Scan(&cursor)
+		if err == nil {
+			continue
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		// A standalone consistent read must precede INSERT. INSERT SELECT can
+		// take shared locks on Answer tables under MySQL repeatable read.
+		err = s.DB.QueryRowContext(ctx, `SELECT id FROM `+table+` WHERE `+column+`<? ORDER BY id DESC LIMIT 1`, start).Scan(&cursor)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if _, err = s.DB.ExecContext(ctx, `INSERT IGNORE INTO metar_ticket_cursor(stream,last_id) VALUES(?,?)`, stream, cursor); err != nil {
 			return err
 		}
 	}

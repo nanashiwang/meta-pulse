@@ -253,3 +253,29 @@ func TestMySQLTicketsRollbackAndActivationBoundary(t *testing.T) {
 		t.Fatal("durable retry lost", wait, e)
 	}
 }
+
+func TestMySQLTicketInitializationDoesNotLockAnswerWrites(t *testing.T) {
+	s, _ := fixture(t)
+	ctx := context.Background()
+	must(t, s.DB, "INSERT INTO answer VALUES(1,2,1,1,'2026-11-05')")
+	must(t, s.DB, "DELETE FROM metar_ticket_cursor WHERE stream='answer'")
+	tx, e := s.DB.BeginTx(ctx, nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer tx.Rollback()
+	if _, e = tx.ExecContext(ctx, "UPDATE answer SET status=10 WHERE id=1"); e != nil {
+		t.Fatal(e)
+	}
+	bounded, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	// A consistent source read sees the committed row without waiting for the
+	// native writer. INSERT SELECT would wait for its exclusive row lock.
+	if e = s.Ensure(bounded); e != nil {
+		t.Fatalf("initialization blocked by native write: %v", e)
+	}
+	var cursor int
+	if e = s.DB.QueryRowContext(ctx, "SELECT last_id FROM metar_ticket_cursor WHERE stream='answer'").Scan(&cursor); e != nil || cursor != 1 {
+		t.Fatal("incorrect initial cursor", cursor, e)
+	}
+}

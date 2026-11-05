@@ -1376,7 +1376,7 @@ Answer 官方 editor 插件在帖子/回答的编辑上下文中识别图片，�
 
 Answer 插件的 `communitytickets` 维护 `metar_ticket_config/cursor/source/day/outbox`：冻结上线起点、四类来源游标、永久来源去重、用户自然日事务锁及赠券回执。按 Answer v1.7.1 的 comment/answer/activity 与现有 metar_exp_event 签到读取；公开可用内容、账号状态、绑定时间和自互动排除在服务端校验。只存来源 ID 与计数所需元数据，不复制正文。点赞按操作者与对象永久去重，评论按原始内容 ID 去重。日计数以 Asia/Shanghai 计算，分项取整，不跨日携带余数；新门槛只统计当前有效来源。已生成回执不因撤赞删帖返还当日名额或重新生成。
 
-每个来源、日资格和 outbox 在一个 Answer 事务内提交；游标在处理成功后推进，重放来源不会重复生成资格。采集依赖绑定约束 Ready，通过数据库命名锁串行化实例；日行锁和唯一键保护并发。后台与签到/发帖请求分离，持久 outbox 不依赖在线页面。待发记录按持久重试时间公平轮转，单用户禁用不会永久阻塞其他用户。Answer 全库备份覆盖这些表。
+首次游标起点先通过独立只读 SELECT 取得，再写插件游标；禁止 INSERT SELECT 读取来源表以免 Repeatable Read 下加共享锁，已有游标不重新扫描。每个来源、日资格和 outbox 在一个 Answer 事务内提交；游标在处理成功后推进，重放来源不会重复生成资格。采集依赖绑定约束 Ready，通过数据库命名锁串行化实例；日行锁和唯一键保护并发。后台与签到/发帖请求分离，持久 outbox 不依赖在线页面。待发记录按持久重试时间公平轮转，单用户禁用不会永久阻塞其他用户。Answer 全库备份覆盖这些表。
 
 `POST /v1/internal/me/community-tickets` 只允许 community-bff；签名身份派生受益人，JSON 只允许 day/category/ordinal。Forum 每次交付重新验证活跃账号和一对一绑定，必须与原 outbox 的 external_id 相同。Pulse 固定有限编号空间 `(user,上海日期,类别,日序号)`，禁止任意数量；同一编号只生成一条 `ticket_bonus` Ledger、Account 增量、发行批次、Audit 和持久响应，同一 Pulse 事务提交。失败/丢响应用原编号继续，跨日和规则更新返回首次结果。前端只读 `/metar/api/pulse/tasks`，不代理这个内部写接口。
 
