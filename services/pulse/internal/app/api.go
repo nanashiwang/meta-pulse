@@ -22,17 +22,18 @@ type ReadinessChecker interface {
 // simply leaves that route unregistered, so a partially configured process
 // still serves health checks instead of failing to start.
 type APIRoutes struct {
-	Profile    transporthttp.ProfileReader
-	Summary    transporthttp.SummaryReader
-	Action     transporthttp.ActionExecutor
-	Content    transporthttp.ContentAwardExecutor
-	History    transporthttp.RewardHistoryReader
-	RewardFeed transporthttp.RewardFeedReader
-	Rules      transporthttp.RewardRulesReader
-	Operations transporthttp.OperationsOverviewReader
-	Settings   transporthttp.RuntimeSettings
-	Periods    transporthttp.PeriodAdministrator
-	Experience transporthttp.ExperienceDeliverer
+	Profile          transporthttp.ProfileReader
+	Summary          transporthttp.SummaryReader
+	Action           transporthttp.ActionExecutor
+	Content          transporthttp.ContentAwardExecutor
+	History          transporthttp.RewardHistoryReader
+	RewardFeed       transporthttp.RewardFeedReader
+	Rules            transporthttp.RewardRulesReader
+	Operations       transporthttp.OperationsOverviewReader
+	Settings         transporthttp.RuntimeSettings
+	Periods          transporthttp.PeriodAdministrator
+	Experience       transporthttp.ExperienceDeliverer
+	CommunityTickets transporthttp.CommunityTicketGranter
 	// Auth guards every route above. Without it none are registered: an
 	// unauthenticated internal route would expose user data.
 	Auth gin.HandlerFunc
@@ -82,6 +83,9 @@ func NewRouterWithRoutes(logger *slog.Logger, readiness ReadinessChecker, routes
 	}
 	if routes.Content != nil {
 		transporthttp.ContentAwardRoute(internal, routes.Content, routes.Auth)
+	}
+	if routes.CommunityTickets != nil {
+		transporthttp.CommunityTicketRoute(internal, routes.CommunityTickets, routes.Auth)
 	}
 	if routes.Experience != nil {
 		transporthttp.ExperienceRoutes(internal, routes.Experience, routes.Auth)

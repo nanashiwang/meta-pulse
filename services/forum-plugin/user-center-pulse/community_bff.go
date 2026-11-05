@@ -98,7 +98,7 @@ func (uc *UserCenter) registerCommunityRoutes(r *gin.RouterGroup, session func(*
 	if r == nil {
 		return
 	}
-	for _, operation := range []string{"summary", "rewards", "rules", "actions", "winners"} {
+	for _, operation := range []string{"summary", "rewards", "rules", "actions", "winners", "tasks"} {
 		method := http.MethodGet
 		if operation == "actions" {
 			method = http.MethodPost
@@ -170,6 +170,20 @@ func (uc *UserCenter) communityHandler(operation string, session func(*gin.Conte
 		externalID, err := reader.CommunityIdentity(ctx, forumID)
 		if err != nil {
 			communityIdentityError(c, err)
+			return
+		}
+		if operation == "tasks" {
+			s, e := uc.communityTicketStore(ctx)
+			if e != nil {
+				communityError(c, 503, "tasks_unavailable")
+				return
+			}
+			progress, e := s.Progress(ctx, forumID)
+			if e != nil {
+				communityError(c, 503, "tasks_unavailable")
+				return
+			}
+			c.JSON(200, progress)
 			return
 		}
 		path := "/v1/internal/me/" + operation

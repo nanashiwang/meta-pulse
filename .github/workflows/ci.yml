@@ -140,6 +140,13 @@ jobs:
         run: |
           docker exec "$MYSQL_CONTAINER" sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot -e "CREATE DATABASE community_growth_test;"'
           make test-growth-integration
+      - name: Community ticket sources, daily caps and recovery
+        env:
+          MYSQL_CONTAINER: ${{ job.services.mysql.id }}
+          TICKETS_INTEGRATION_DSN: root:pulse_ci_test_only@tcp(127.0.0.1:3306)/community_tickets_test?parseTime=true
+        run: |
+          docker exec "$MYSQL_CONTAINER" sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot -e "CREATE DATABASE community_tickets_test;"'
+          make test-community-tickets-integration
       - name: Private chat membership, replay and moderation regressions
         env:
           MYSQL_CONTAINER: ${{ job.services.mysql.id }}

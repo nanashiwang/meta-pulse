@@ -47,7 +47,7 @@ Answer 继续拥有用户、注册时间、内容与角色事实。UserCenter �
 元衡 C 端 API 业务天然容易落入价格、模型数量、通道稳定性的横向比较。Meta Pulse 不是为了把元衡做成游戏平台，而是解决三个问题：
 
 1. **提高留存**：让过去的真实调用形成持续积累；
-2. **提高有效调用**：权益只来自真实付费使用，不鼓励纯签到和无成本薅羊毛；
+2. **提高有效调用**：贡献值只来自真实付费使用；用户授权的社区签到/互动仅产生有日上限的赠券，不计入贡献毛利；
 3. **建立差异化**：从纯 Token/API 交易平台，逐步形成自己的用户关系、经济规则和数据资产。
 
 Pulse 成功后应同时产生：
@@ -427,6 +427,7 @@ Ticket 操作：
 
 ```text
 ticket_mint
+ticket_bonus
 ticket_spend
 ticket_reverse
 ticket_expire
@@ -1059,7 +1060,7 @@ Answer 主数据库与插件 Guard/成长连接必须指向同一 schema 和账�
 16. Holdout 必须稳定可复现。
 17. 所有人工财务调整必须进入 Audit Log。
 18. Pulse 无 new-api 用户余额直接写权限。
-19. 论坛内容不得产生 contribution 或 ticket。
+19. 论坛内容不得产生 contribution；仅用户明确授权的社区互动/签到可按固定日上限产生 ticket_bonus，其他内容不得产券。
 20. Answer 允许本地独立注册；社区身份与 new-api API/资金身份是双事实源。
 21. 可选绑定必须一对一，不得静默换绑、转移或普通解绑。
 22. 未绑定用户和绑定前内容不得产生 Pulse 内容奖励。
@@ -1325,7 +1326,7 @@ Answer 库中的 `metar_exp_ledger` 是 EXP 事实源、`metar_exp_account` 是�
 
 ### Pulse → Answer 经验奖励交付
 
-新增非货币奖项与独立预算类型 `community_exp`，不改动 contribution/ticket 的产生条件。额度奖项继续使用 loyalty 预算和 new-api Benefit 结算；经验预算不参与金额合计。抽奖按固定顺序锁定 loyalty、community_exp 预算，任一启用奖项所属预算不足以覆盖其最大单次金额时拒绝抽奖，不改变冻结的随机分布。
+新增非货币奖项与独立预算类型 `community_exp`，不改动 contribution 的产生条件；券来源包含后续授权的社区赠券。额度奖项继续使用 loyalty 预算和 new-api Benefit 结算；经验预算不参与金额合计。抽奖按固定顺序锁定 loyalty、community_exp 预算，任一启用奖项所属预算不足以覆盖其最大单次金额时拒绝抽奖，不改变冻结的随机分布。
 
 复用每个 grant 唯一的 settlement outbox，但经验使用 `community_pending → community_delivered` 状态，额度 Worker 不领取；Shadow Mode 仍为 shadow，不交付经验。GET `/v1/internal/me/experience` 和 POST `/v1/internal/me/experience/ack` 仅允许独立 community-bff 角色，身份来自验签 principal。查询返回至多 20 条未确认交付，不用自增 ID 游标，以免跳过晚提交的事务。
 
@@ -1367,3 +1368,16 @@ Answer 官方 editor 插件在帖子/回答的编辑上下文中识别图片，�
 下载接口使用 Answer 服务端会话主体并重新查询 `user.status/mail_status`；浏览器不能指定身份。拒绝 URL 查询参数、非同源写入、非 HTTPS/非标准端口、带凭据 URL、内网及保留地址。每次 DNS 查询验证所有结果，连接固定到已验证 IP；重定向重新执行 URL 和 DNS 校验，禁止环境代理与凭据/Referer 转发。有限大小、像素、时间、单账号与进程并发/速率保护控制资源；进程内限流不声称是多实例全局配额。下载 API no-store，不作为公开 GET 代理。
 
 浏览器只在当前编辑器内保留短期任务和成功映射，上传响应不确定时原文不改写，重试可能留下由 Answer 清理的孤儿文件；不承诺文件级 exactly-once。发布等待正在导入的任务结束；失败可重试或保留原外链。部署不重写既有帖子，打开编辑器后发生的替换仍须原生提交才成为正文事实。
+
+
+## 社区任务赠券边界（2026-11-06）
+
+用户明确授权在原真实付费产券之外增加限额社区赠券。一般内容奖励、社区经营、活动报名、EXP 均不产生 contribution；此新增例外仅允许收到评论、主动评论/点赞和签到产生 `ticket_bonus`，日上限分别为 2、3、1。未绑定与绑定前事件不补发，资格来自 Answer 的真实记录和受保护绑定，不来自浏览器计数。
+
+Answer 插件的 `communitytickets` 维护 `metar_ticket_config/cursor/source/day/outbox`：冻结上线起点、四类来源游标、永久来源去重、用户自然日事务锁及赠券回执。按 Answer v1.7.1 的 comment/answer/activity 与现有 metar_exp_event 签到读取；公开可用内容、账号状态、绑定时间和自互动排除在服务端校验。只存来源 ID 与计数所需元数据，不复制正文。点赞按操作者与对象永久去重，评论按原始内容 ID 去重。日计数以 Asia/Shanghai 计算，分项取整，不跨日携带余数；新门槛只统计当前有效来源。已生成回执不因撤赞删帖返还当日名额或重新生成。
+
+每个来源、日资格和 outbox 在一个 Answer 事务内提交；游标在处理成功后推进，重放来源不会重复生成资格。采集依赖绑定约束 Ready，通过数据库命名锁串行化实例；日行锁和唯一键保护并发。后台与签到/发帖请求分离，持久 outbox 不依赖在线页面。待发记录按持久重试时间公平轮转，单用户禁用不会永久阻塞其他用户。Answer 全库备份覆盖这些表。
+
+`POST /v1/internal/me/community-tickets` 只允许 community-bff；签名身份派生受益人，JSON 只允许 day/category/ordinal。Forum 每次交付重新验证活跃账号和一对一绑定，必须与原 outbox 的 external_id 相同。Pulse 固定有限编号空间 `(user,上海日期,类别,日序号)`，禁止任意数量；同一编号只生成一条 `ticket_bonus` Ledger、Account 增量、发行批次、Audit 和持久响应，同一 Pulse 事务提交。失败/丢响应用原编号继续，跨日和规则更新返回首次结果。前端只读 `/metar/api/pulse/tasks`，不代理这个内部写接口。
+
+新发券与规则发布、Action 共用 `period_create_lock`，然后锁用户券账户，首次选择当前持续规则及其有效天数。奖金券沿用当前奖池与预算，发行批次从实际 Pulse 入账时间计龄，抽奖使用当前最新规则。`ticket_bonus` 不进入 `PendingContribution` 的已铸券扣减，不改 Usage Stat 的付费 entitlement、不产生 Usage/Contribution/Reward；真正抽奖才预留预算并创建 Grant/Outbox。回退到不认识该账本操作的版本前必须暂停新操作并制定兼容方案，不能删除历史账本或重新发券。

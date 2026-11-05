@@ -2,6 +2,24 @@
 'use strict';
 (() => {
   const EN = Object.freeze({
+"社区账号可以独立使用。绑定元衡 API 后，可通过真实付费调用、每日签到和社区互动获得抽奖券。":"Your community account works independently. Bind your API account to earn draw tickets through paid API usage, daily check-ins and community interactions.",
+"今日已签到":"Checked in today",
+"获取抽奖券":"Earn draw tickets",
+"每日签到 · +1 券":"Daily check-in \u00b7 +1 ticket",
+"帖子每收到 10 次评论 +1 券，每天最多 2 券。":"Every 10 replies received on your posts earns 1 ticket, up to 2 per day.",
+"给别人点赞每 40 次或评论每 20 次 +1 券，分别累计，合计每天最多 3 券。":"Every 40 upvotes or 20 replies to others earns 1 ticket. Counted separately, up to 3 tickets combined per day.",
+"每日签到 +1 券；社区任务每天最多 6 券。":"Daily check-in earns 1 ticket. Community tasks earn up to 6 tickets per day.",
+"真实付费 API 调用仍按当前贡献比例累计获券。":"Verified paid API usage continues earning tickets at the current contribution rate.",
+"按北京时间每日重置，仅统计绑定后及功能上线后的有效互动。评论包含回答和评论；自评自赞不计，撤赞重赞不重复计数。":"Resets daily at Beijing midnight. Only valid interactions after binding and feature launch count. Replies include answers and comments. Self-interactions and repeated upvotes do not count.",
+"互动达标后自动发券，通常需等待片刻；0.2 元是消费门槛的等价说明，不直接赠送余额。":"Tickets are credited automatically after reaching a threshold, with a short sync delay. The RMB 0.20 comparison is not a balance payment.",
+"正在读取今日进度…":"Loading today's progress\u2026",
+"刷新任务进度":"Refresh task progress",
+"参与讨论":"Join discussions",
+"今日点赞 {likes} 次 · 评论 {comments} 次 · 收到评论 {received} 次；已获得 {earned}/6 券，已入账 {delivered} 券。":"Today: {likes} upvotes \u00b7 {comments} replies sent \u00b7 {received} replies received; {earned}/6 tickets earned, {delivered} credited.",
+"任务进度暂不可用，请稍后刷新。已确认的券不会重复发放。":"Task progress is unavailable. Please refresh later. Confirmed tickets will not be issued twice.",
+"签到成功，赠券正在同步。稍后刷新任务进度和权益即可查看。":"Checked in. Your ticket is syncing. Refresh task progress and benefits shortly.",
+"暂时无法确认签到，请重试；同一天不会重复签到或发券。":"Unable to confirm check-in. Retry safely; daily check-ins and tickets cannot be duplicated.",
+
     "社区经营": "Community operations",
     "元衡 API": "YuanHeng API",
     "查看更多": "View more",

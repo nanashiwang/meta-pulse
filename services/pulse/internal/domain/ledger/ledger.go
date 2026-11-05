@@ -20,6 +20,7 @@ const (
 	OperationContributionReverse    Operation = "contribution_reverse"
 	OperationContributionAdjustment Operation = "contribution_adjustment"
 	OperationTicketMint             Operation = "ticket_mint"
+	OperationTicketBonus            Operation = "ticket_bonus"
 	OperationTicketSpend            Operation = "ticket_spend"
 	OperationTicketReverse          Operation = "ticket_reverse"
 	OperationTicketExpire           Operation = "ticket_expire"
@@ -89,7 +90,7 @@ func ValidateEntry(entry Entry) error {
 		}
 	case AssetTicket:
 		switch entry.Operation {
-		case OperationTicketMint:
+		case OperationTicketMint, OperationTicketBonus:
 			if entry.Amount < 0 {
 				return fmt.Errorf("%w: ticket mint must be positive", ErrInvalidEntry)
 			}

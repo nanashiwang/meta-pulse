@@ -18,6 +18,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/analytics"
 	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/chat"
+	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/communitytickets"
 	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/events"
 	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/growth"
 	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/i18n"
@@ -46,6 +47,9 @@ var Info embed.FS
 // the Connector only binds one immutable new-api identity, while UserCenter
 // contributes optional Pulse branding for bound accounts.
 type UserCenter struct {
+	ticketMu          sync.Mutex
+	ticketStore       *communitytickets.Store
+	ticketLoopOnce    sync.Once
 	opsMu             sync.Mutex
 	opsStore          *analytics.Store
 	pulseDeliveryOnce sync.Once
@@ -367,6 +371,7 @@ func (uc *UserCenter) RegisterUnAuthRouter(r *gin.RouterGroup) {
 }
 func (uc *UserCenter) RegisterAuthUserRouter(r *gin.RouterGroup) {
 	uc.registerCommunityRoutes(r, answerSessionUserID, plugin.SiteURL)
+	uc.startCommunityTickets()
 	uc.registerOperations(r, answerSessionUserID, false)
 	uc.registerExperience(r, answerSessionUserID, false, plugin.SiteURL)
 	uc.registerChat(r, answerSessionUserID, false, plugin.SiteURL)

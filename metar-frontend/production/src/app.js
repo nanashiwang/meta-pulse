@@ -350,6 +350,7 @@
       pulseView.update(pulseCoreState);
     }
     void mountPulseFeed();
+    void mountCommunityTasks();
     schedulePulseStatus();
     app.setAttribute('aria-busy', 'false');
     window.MetarSEO?.update();
@@ -606,7 +607,7 @@
     if (!isActiveUser(currentUser)) return accountUnavailable(t("Pulse 权益"));
     const userId = currentUser.id;
     const binding = await answer.getBindingState();
-    if (binding.status === 'unbound') return `${pageTitle(t("Pulse 权益"))}<section class="pulse-hero"><div><div class="eyebrow">${t("付费调用回馈计划")}</div><h1>${t("先完成可选账号绑定")}</h1><p>${t("社区账号可以独立使用。只有当你希望查看基于真实付费调用产生的等级、券和回馈时，才需要连接元衡 API 身份。")}</p><div class="actions">${link('/settings/binding', t("了解并开始绑定 ") + I('arrow', 'sm'), 'btn light')}${link('/latest', t("继续浏览社区"), 'btn outline-light')}</div></div>${I('pulse')}</section>${footer()}`;
+    if (binding.status === 'unbound') return `${pageTitle(t("Pulse 权益"))}<section class="pulse-hero"><div><div class="eyebrow">${t("付费调用回馈计划")}</div><h1>${t("先完成可选账号绑定")}</h1><p>${t("社区账号可以独立使用。绑定元衡 API 后，可通过真实付费调用、每日签到和社区互动获得抽奖券。")}</p><div class="actions">${link('/settings/binding', t("了解并开始绑定 ") + I('arrow', 'sm'), 'btn light')}${link('/latest', t("继续浏览社区"), 'btn outline-light')}</div></div>${I('pulse')}</section>${footer()}`;
     if (binding.status === 'unavailable') throw new AdapterError(t("绑定状态暂时不可查询，Pulse 页面不会据此猜测身份。"), { code: 'binding_unavailable' });
     const [summary, catalog, history, coreReady] = await Promise.all([pulse.summary(), pulse.rules(), deferHistory ? {rewards:[]} : pulse.rewards(), loadPulseCore()]);
     if (sequence !== navigationSequence || currentUser?.id !== userId) return '';
@@ -650,6 +651,7 @@
       ${pulseMessage && (!coreReady || pulseMessage !== '本次抽奖已完成。') ? `<div class="prod-status mt24" role="status"><p data-pulse-message>${esc(t(pulseMessage))}</p></div>` : ''}
       ${pending ? `<section class="card card-pad mt24" role="status"><h3>${t('正在确认本轮抽奖结果')}</h3><p class="muted mt8">${t('本轮尚有结果未确认。继续后会恢复原抽奖；已完成的次数不重复扣券，尚未执行的次数每次消耗 1 张券。')}</p><div class="flex wrap mt16"><button class="btn" data-action="retry">${t('查询原抽奖')}</button><button class="btn primary" data-action="pulse-resume" ${pulseBusy ? 'disabled' : ''}>${t('继续完成本轮抽奖')}</button></div></section>` : ''}
       </div>
+      ${communityTasksMarkup()}
       <div class="prod-pulse-overview">
         <section class="prod-pulse-panel prod-pulse-recent" aria-labelledby="pulse-recent-title"><header><h2 id="pulse-recent-title">${I('clock')} ${t('我的抽奖记录')}</h2><button type="button" class="prod-pulse-link" data-action="pulse-history" aria-haspopup="dialog" aria-controls="pulse-history">${t('查看全部记录')} <span aria-hidden="true">→</span></button></header><p data-pulse-history-error role="status" class="prod-page-note" hidden></p><div class="prod-pulse-recent-table"><table><thead><tr><th>${t('时间')}</th><th>${t('获得奖励')}</th><th>${t('到账状态')}</th></tr></thead><tbody data-pulse-recent-rows>${pulseRecentRows(rewards, rules.quota_per_unit)}</tbody></table></div></section>
         <section class="prod-pulse-panel prod-pulse-community" data-pulse-feed aria-labelledby="pulse-community-title"><header><h2 id="pulse-community-title">${I('trophy')} ${t('社区中奖动态')}</h2><button type="button" class="prod-pulse-link" data-action="pulse-winners" aria-haspopup="dialog" aria-controls="pulse-winners">${t('查看更多')} <span aria-hidden="true">→</span></button></header><p class="prod-pulse-feed-note">${t('展示近 30 天已到账的抽奖奖励，用户信息已匿名处理。')}</p>${pulseFeedTable('preview')}</section>
@@ -657,6 +659,47 @@
       <dialog id="pulse-winners" class="prod-pulse-dialog" aria-labelledby="pulse-winners-title">${dialogHeader('pulse-winners', '社区中奖动态')}<p class="prod-page-note">${t('最近 30 天，最多显示 20 条已到账奖励。')}</p>${pulseFeedTable('full')}</dialog>
       <dialog id="pulse-benefits" class="prod-pulse-dialog prod-pulse-benefits-dialog" aria-labelledby="pulse-benefits-title">${dialogHeader('pulse-benefits', '我的权益')}<div data-pulse-benefits-body>${benefits}</div></dialog>
       <dialog id="pulse-history" class="prod-pulse-dialog" data-pulse-history aria-labelledby="pulse-history-title">${dialogHeader('pulse-history', '奖励记录')}<p data-pulse-history-error role="status" class="prod-page-note" hidden></p><div class="prod-pulse-table" tabindex="0" role="region" aria-label="${t('奖励记录')}"><table><thead><tr><th>${t('奖励')}</th><th>${t('到账状态')}</th><th>${t('时间')}</th><th>${t('奖励编号')}</th></tr></thead><tbody data-pulse-history-rows>${pulseHistoryRows(rewards, rules.quota_per_unit)}</tbody></table></div></dialog>${footer()}`;
+  }
+
+  function communityTasksMarkup() {
+    return `<section class="card card-pad mt24" data-community-tasks><div class="between wrap"><h2>${t('获取抽奖券')}</h2><button class="btn" data-task-checkin>${t('每日签到 · +1 券')}</button></div>
+      <ul class="mini-list"><li>${t('帖子每收到 10 次评论 +1 券，每天最多 2 券。')}</li><li>${t('给别人点赞每 40 次或评论每 20 次 +1 券，分别累计，合计每天最多 3 券。')}</li><li>${t('每日签到 +1 券；社区任务每天最多 6 券。')}</li><li>${t('真实付费 API 调用仍按当前贡献比例累计获券。')}</li></ul>
+      <p class="muted mt12">${t('按北京时间每日重置，仅统计绑定后及功能上线后的有效互动。评论包含回答和评论；自评自赞不计，撤赞重赞不重复计数。')}</p>
+      <p class="muted">${t('互动达标后自动发券，通常需等待片刻；0.2 元是消费门槛的等价说明，不直接赠送余额。')}</p>
+      <p role="status" data-task-progress>${t('正在读取今日进度…')}</p><div class="actions"><button class="btn" data-task-refresh>${t('刷新任务进度')}</button><button class="btn" data-action="pulse-refresh">${t('刷新权益')}</button>${link('/latest',t('参与讨论'),'btn')}</div></section>`;
+  }
+  async function mountCommunityTasks() {
+    const root = document.querySelector('[data-community-tasks]');
+    if (!root || root.dataset.mounted) return;
+    root.dataset.mounted = '1';
+    const user = currentUser?.id, sequence = navigationSequence, identity = identitySequence;
+    const current = () => root.isConnected && user === currentUser?.id && identity === identitySequence && sequence === navigationSequence;
+    const status = root.querySelector('[data-task-progress]'), checkin = root.querySelector('[data-task-checkin]'), refresh = root.querySelector('[data-task-refresh]');
+    let busy = false;
+    const load = async () => {
+      if (busy || !current()) return;
+      busy = true; refresh.disabled = true;
+      try {
+        const progress = await pulse.request('tasks');
+        if (!current()) return;
+        if (!['likes','comments','received','earned','delivered'].every(k=>Number.isSafeInteger(progress[k]) && progress[k]>=0) || progress.earned>6 || progress.delivered>progress.earned) throw new Error('invalid task progress');
+        status.textContent = t('今日点赞 {likes} 次 · 评论 {comments} 次 · 收到评论 {received} 次；已获得 {earned}/6 券，已入账 {delivered} 券。',progress);
+        checkin.disabled = progress.checked_in === true;
+        checkin.textContent = t(progress.checked_in ? '今日已签到' : '每日签到 · +1 券');
+      } catch (error) {
+        if (current()) status.textContent=t('任务进度暂不可用，请稍后刷新。已确认的券不会重复发放。');
+      } finally { busy=false; if(current())refresh.disabled=false; }
+    };
+    refresh.onclick=load;
+    checkin.onclick=async()=>{
+      if(checkin.disabled || !current())return;
+      checkin.disabled=true;
+      try {
+        await answer.request('/metar/experience/checkin',{method:'POST',headers:{'Content-Type':'application/json','X-Metar-Request':'1'},body:'{}'});
+        if(current()){checkin.textContent=t('今日已签到');status.textContent=t('签到成功，赠券正在同步。稍后刷新任务进度和权益即可查看。');}
+      }catch(_){if(current()){checkin.disabled=false;status.textContent=t('暂时无法确认签到，请重试；同一天不会重复签到或发券。');}}
+    };
+    await load();
   }
 
   function pulseFeedTable(kind) {

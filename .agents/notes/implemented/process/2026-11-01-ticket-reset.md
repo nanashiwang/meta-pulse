@@ -46,3 +46,5 @@ Status: implemented
 初次 HTTP 验收使用环境变量中的空 community-bff 密钥返回 401；这发生在事务已提交之后，没有重做调整。随后只读加载 API 当前有效运行配置，在容器内完成 5 名用户 × 2 个角色（community-bff/new-api）× 2 个接口（summary/rules）的 20 次真实签名请求，券数全部为零、无单抽/五连抽选择；无签名请求为 401。幂等重放返回原结果且 `replayed=true`；API、Worker、网关与数据库健康。保留 `locked-exit-code=1` 记录初次验收失败，独立 `verification-exit-code=0` 记录最终验收完成。
 
 本任务只调整线上运营数据并记录依据；没有修改应用源码、schema 或主动部署版本，不新建 GitHub Release。同机独立 v0.2.70 部署不归属本任务。运营程序与测试源分别保存在受限证据目录的 `ticket-reset-main.go`、`main_test.go`，有效配置 HTTP 验收源为 `verify-api-effective.go`。
+
+后续[社区任务赠券](../../implemented/feature/2026-11-06-community-tickets.md)新增独立限额券来源，复用本篇的当前奖池/历史账本边界，不重写付费贡献或既有清零记录。
