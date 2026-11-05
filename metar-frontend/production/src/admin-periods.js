@@ -147,22 +147,21 @@
       try {
         list = await this.api.periods();
       } catch (e) {
-        return `<section class="card card-pad mt24"><h2>${t("贡献度与脉冲券")}</h2><p class="muted mt16">${esc(errorText(e))}</p><button class="btn mt16" data-action="retry">${t("重新加载")}</button></section>`;
+        return `<section class="card card-pad mt24"><h2>${t("抽奖奖励规则")}</h2><p class="muted mt16">${esc(errorText(e))}</p><button class="btn mt16" data-action="retry">${t("重新加载")}</button></section>`;
       }
       if (epoch !== this.epoch) return "";
-      if (list.current_reward_rule_supported !== true || list.continuous_supported !== true || list.unlimited_quota_supported !== true) return `<section class="card card-pad mt24"><h2>${t("贡献度与脉冲券")}</h2><p class="muted mt16">${t("奖励配置暂不可用，请确认服务已升级并完成管理通道配对。")}</p></section>`;
+      if (list.current_reward_rule_supported !== true || list.continuous_supported !== true || list.unlimited_quota_supported !== true) return `<section class="card card-pad mt24"><h2>${t("抽奖奖励规则")}</h2><p class="muted mt16">${t("奖励配置暂不可用，请确认服务已升级并完成管理通道配对。")}</p></section>`;
       const now = Date.now();
       this.current = list.periods.filter(p => p.status === 'active' && Date.parse(p.starts_at) <= now && Date.parse(p.ends_at) > now).sort((a,b) => Number(Boolean(b.continuous))-Number(Boolean(a.continuous)) || Date.parse(b.starts_at)-Date.parse(a.starts_at) || b.id-a.id)[0];
       const preset = recommendedRewards(this.quotaPerUnit);
       const initialRewards = this.current?.rewards?.length ? this.current.rewards : (preset || recommendedExpRewards);
-      return `<section class="card card-pad mt24"><div class="between wrap"><h2>${t("贡献度与脉冲券规则")}</h2><button type="button" class="btn primary" data-action="admin-period-toggle" aria-expanded="${Boolean(this.pending)}" aria-controls="admin-period-editor">${t("设置兑换比例")}</button></div>
-        <p class="muted mt16">${t("保存后，所有未用券统一使用最新奖项、概率和预算；已有券的额度有效期不变，未成券贡献继续累计。")}</p>
-        <div class="mt16 prod-status"><div><strong>${this.current ? t("当前长期规则已启用") : t("尚无长期规则")}</strong><p>${this.current ? `${esc(this.current.quota_validity_days)} ${t("天额度资格")} · ${t("每张券")} ${this.current.ticket_threshold_milli ? esc(format(this.current.ticket_threshold_milli, 3)) : t("沿用默认门槛")} ${t("贡献度")}` : t("请设置贡献比例与奖项。")}</p></div><span class="badge">${t("持续生效")}</span></div>
+      return `<section class="card card-pad mt24"><div class="between wrap"><h2>${t("抽奖奖励规则")}</h2><button type="button" class="btn primary" data-action="admin-period-toggle" aria-expanded="${Boolean(this.pending)}" aria-controls="admin-period-editor">${t("设置奖励规则")}</button></div>
+        <p class="muted mt16">${t("保存后，所有未用券统一使用最新奖项、概率和预算；已有券的额度有效期不变。抽奖券通过社区签到和互动获得。")}</p>
+        <div class="mt16 prod-status"><div><strong>${this.current ? t("当前长期规则已启用") : t("尚无长期规则")}</strong><p>${this.current ? `${esc(this.current.quota_validity_days)} ${t("天额度资格")}` : t("请设置奖励有效期与奖项。")}</p></div><span class="badge">${t("持续生效")}</span></div>
         <form id="admin-period-editor" data-form="admin-period" class="prod-admin-form mt24" ${this.pending ? "" : "hidden"}>
         <fieldset ${this.pending ? "disabled" : ""}><div class="prod-admin-grid">
           <label>${t("额度奖励有效天数")}<input name="quota_validity_days" type="number" min="1" max="3650" step="1" value="${this.current?.quota_validity_days || 30}" required><span class="prod-field-help">${t("从每张券获得时起计算，默认 30 天；到期后仅抽取经验。")}</span></label>
-          <label>${t("API 贡献倍率")}<input name="multiplier" type="number" min="0.0001" max="100" step="0.0001" value="${this.current?.rules?.[0] ? esc(format(this.current.rules[0].multiplier_bps,4)) : 1}" required><span class="prod-field-help">${t("1 表示原始贡献的 1 倍；最多支持 4 位小数。")}</span></label>
-          <label>${t("每张脉冲券所需贡献度")}<input name="threshold" type="number" min="0.001" step="0.001" required value="${this.current?.ticket_threshold_milli ? esc(format(this.current.ticket_threshold_milli,3)) : "5"}" placeholder="5"><span class="prod-field-help">${t("未成券贡献度持续累计，按产券时门槛转换；最多支持 3 位小数。推荐方案为每 5 contribution 产 1 张券。")}</span></label>
+          <label>${t("API 贡献倍率")}<input name="multiplier" type="number" min="0.0001" max="100" step="0.0001" value="${this.current?.rules?.[0] ? esc(format(this.current.rules[0].multiplier_bps,4)) : 1}" required><span class="prod-field-help">${t("仅影响 API 贡献统计，不兑换抽奖券；最多支持 4 位小数。")}</span></label>
         </div>
         <h3 class="mt24">${t("统一抽奖规则")}</h3><p class="prod-field-help">${t("每次独立抽取，中奖不减少奖项权重。至少设置一个经验奖项。所有未用券使用新预算，旧奖励继续由原预算结算；保存不会开启抽奖。")}</p>
         <label class="prod-check mt16"><input name="unlimited_quota" type="checkbox" ${(!this.current || this.current.quota_budget_unlimited) ? "checked" : ""}> ${t("不限制额度奖励总量")}</label><p class="prod-field-help">${t("通过奖项和权重控制平均成本；实际支出会波动，不保证固定总额。经验预算仍单独生效。")}</p><label class="prod-admin-field mt16">${t("额度奖池预算（整数 quota）")}<input name="reward_budget" value="${(!this.current || this.current.quota_budget_unlimited) ? "0" : ""}" inputmode="numeric" pattern="0|[1-9][0-9]*"><span class="prod-field-help">${t("不限制总量时忽略此项；取消勾选后填写额度上限。")}</span></label><label class="prod-admin-field mt16">${t("经验奖池预算（整数 EXP）")}<input name="experience_budget" required value="${this.current ? "" : 100000}" inputmode="numeric" pattern="0|[1-9][0-9]*"></label>
@@ -237,7 +236,8 @@
         quota_validity_days,
         expected_period_id: this.current?.id || 0,
         multiplier_bps: fixed(f.get("multiplier"), 4, 1000000n),
-        ticket_threshold_milli: fixed(f.get("threshold"), 3),
+        // Legacy snapshot field: retained for API/history compatibility, not issuance.
+        ticket_threshold_milli: this.current?.ticket_threshold_milli || 5000,
         reward_budget,
         rewards,
         reason,

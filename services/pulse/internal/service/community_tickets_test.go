@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/nanashiwang/meta-pulse/internal/domain/ledger"
+	"github.com/nanashiwang/meta-pulse/internal/domain/usage"
 	"github.com/nanashiwang/meta-pulse/internal/ports"
 	mysqlstore "github.com/nanashiwang/meta-pulse/internal/store/mysql"
 	"sync"
@@ -71,6 +72,19 @@ func TestMySQLCommunityTicketsReplayCapsDrawAndContribution(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+
+	// API spending after community issuance must not add tickets or alter lots.
+	event := usage.Event{SourceSystem: "new-api-log", SourceEventID: key, CursorValue: "1:1", PayloadHash: fmt.Sprintf("%064x", 1), FundingProof: key, UserID: user, EventType: usage.EventConsume, SourceCreatedAt: now, QuotaDelta: 1_000_000}
+	ingest, _ := NewUsageIngestService(unit, staticUsageSource{events: []usage.Event{event}}, UsageIngestConfig{CursorName: key, BatchSize: 1})
+	for i := 0; i < 100; i++ {
+		result, e := ingest.IngestBatch(ctx)
+		if e != nil || result.TicketsMinted != 0 || result.TicketsReversed != 0 {
+			t.Fatalf("usage: %+v %v", result, e)
+		}
+	}
+	if err = db.QueryRow("SELECT COUNT(*),SUM(issued) FROM pulse_ticket_lot WHERE user_id=?", user).Scan(&count, &total); err != nil || count != 6 || total != 6 {
+		t.Fatalf("usage altered bonus lots: %d %d %v", count, total, err)
+	}
 	// Changing the latest rule and date must not remint an old receipt or change
 	// its first issuance/expiry, including a lost successful HTTP response.
 	first, _ := s.Grant(ctx, user, task)
@@ -105,7 +119,7 @@ func TestMySQLCommunityTicketsReplayCapsDrawAndContribution(t *testing.T) {
 	}
 	var contributions int
 	db.QueryRow("SELECT COUNT(*) FROM pulse_ledger_entry WHERE user_id=? AND asset_type='contribution'", user).Scan(&contributions)
-	if contributions != 0 {
-		t.Fatal("community wrote contribution")
+	if contributions != 1 {
+		t.Fatal("usage contribution replay or community isolation failed")
 	}
 }

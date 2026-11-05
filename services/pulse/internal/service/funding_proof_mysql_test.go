@@ -97,7 +97,7 @@ func TestMySQLFundingProofReplayAndTransactionRollback(t *testing.T) {
 	if err := ingest.processOne(ctx, duplicate, &result); err != nil {
 		t.Fatal(err)
 	}
-	if result.Accepted != 1 || result.Replayed != 100 || result.ManualReview != 1 || result.TicketsMinted != 1 {
+	if result.Accepted != 1 || result.Replayed != 100 || result.ManualReview != 1 || result.TicketsMinted != 0 {
 		t.Fatalf("result=%+v", result)
 	}
 	var entries int
@@ -109,7 +109,7 @@ func TestMySQLFundingProofReplayAndTransactionRollback(t *testing.T) {
 	if err := db.QueryRowContext(ctx, "SELECT balance FROM pulse_account WHERE user_id=? AND period_id=? AND asset_type='contribution'", userID, activity.PeriodID).Scan(&contribution); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueryRowContext(ctx, "SELECT balance FROM pulse_account WHERE user_id=? AND period_id=? AND asset_type='ticket'", userID, activity.PeriodID).Scan(&tickets); err != nil {
+	if err := db.QueryRowContext(ctx, "SELECT COALESCE(SUM(balance),0) FROM pulse_account WHERE user_id=? AND period_id=? AND asset_type='ticket'", userID, activity.PeriodID).Scan(&tickets); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.QueryRowContext(ctx, "SELECT resource_id FROM pulse_idempotency WHERE scope=? AND idempotency_key=?", "paid_funding:new-api-log", event.FundingProof).Scan(&owner); err != nil {
@@ -118,7 +118,7 @@ func TestMySQLFundingProofReplayAndTransactionRollback(t *testing.T) {
 	if err := db.QueryRowContext(ctx, "SELECT status FROM pulse_usage_event WHERE source_system=? AND source_event_id=?", event.SourceSystem, duplicate.SourceEventID).Scan(&status); err != nil {
 		t.Fatal(err)
 	}
-	if entries != 2 || contribution != 1500 || tickets != 1 || owner != event.SourceEventID || status != "manual_review" {
+	if entries != 1 || contribution != 1500 || tickets != 0 || owner != event.SourceEventID || status != "manual_review" {
 		t.Fatalf("entries=%d contribution=%d tickets=%d owner=%q status=%q", entries, contribution, tickets, owner, status)
 	}
 }

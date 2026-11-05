@@ -51,7 +51,7 @@
 
 Pulse 管理页创建新周期时，每个奖项可选择 API 调用额度或社区经验 EXP，分别填写 quota 与 EXP 总预算。已有启用周期保持冻结；升级不自动添加奖项或开启抽奖。单次经验奖项为 1–1,000,000 EXP，使用整数，抽奖经验不占论坛日限额。任一类型预算不足以覆盖该类最大单次奖项时暂停整个奖池，不临时移除奖项或改变概率。
 
-经验奖项的 `reward_type` 和 `budget_type` 均为 `community_exp`。由真实付费贡献产券或用户授权的限额社区赠券触发，在 Pulse 事务内完成扣券、预算预留、唯一 grant 与交付 outbox；经验不会发给 new-api Benefit API，也不会计入额度预算汇总。Shadow Mode 只记录，不发经验。
+经验奖项的 `reward_type` 和 `budget_type` 均为 `community_exp`。由历史已发券或用户授权的限额社区赠券触发（新 API 消费不再产券），在 Pulse 事务内完成扣券、预算预留、唯一 grant 与交付 outbox；经验不会发给 new-api Benefit API，也不会计入额度预算汇总。Shadow Mode 只记录，不发经验。
 
 绑定用户打开成长页、个人页，或在 Pulse 页抽奖/读取奖励时，Answer 服务端重新校验受保护绑定，用独立 community-bff 签名读取待交付奖项。先在 Answer 提交经验账本，再确认 Pulse 到账；确认成功后预留 EXP 转为已发 EXP。网络中断保留待处理记录，下次访问重试相同 grant，不依赖最近 20 条历史窗口或浏览器传来的金额、身份。
 

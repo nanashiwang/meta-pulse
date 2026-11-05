@@ -27,9 +27,10 @@ test('fixed-point input preserves decimal precision and rejects overflow or roun
  for(const v of ['0','-1','0.0001','1e3','1.0000','9007199254740.992'])assert.throws(()=>fixed(v,3));
  assert.equal(format(1000000,3),'1000');assert.equal(format(12500,4),'1.25');
 });
-test('form sends frozen ticket rules without a manual period or date',()=>{
+test('form preserves legacy threshold without offering consumption conversion',()=>{
  const h=harness();const p=h.view.payload(h.form);
- assert.equal(p.multiplier_bps,12345);assert.equal(p.ticket_threshold_milli,123456);
+ assert.equal(p.multiplier_bps,12345);assert.equal(p.ticket_threshold_milli,5000);
+ h.view.current={id:7,ticket_threshold_milli:123456};assert.equal(h.view.payload(h.form).ticket_threshold_milli,123456);
  assert.equal(p.starts_at,undefined);assert.equal(p.continuous,true);assert.equal(p.quota_validity_days,30);assert.equal(p.experience_budget,100);
  assert.equal(p.expected_period_id,0);assert.match(p.key,/^rules-/);
  delete h.form.inputs.confirm;assert.throws(()=>h.view.payload(h.form));
@@ -64,7 +65,7 @@ test('legacy list endpoint without continuous capability cannot enable the edito
 });
 test('new backend displays continuous form with a thirty-day default',async()=>{
  const h=harness();h.context.fetch=async()=>({ok:true,status:200,json:async()=>({periods:[],continuous_supported:true,current_reward_rule_supported:true,unlimited_quota_supported:true})});
- const html=await h.view.page();assert.match(html,/name="quota_validity_days"[^>]*value="30"/);assert.doesNotMatch(html,/name="starts_at"/);
+ const html=await h.view.page();assert.match(html,/name="quota_validity_days"[^>]*value="30"/);assert.doesNotMatch(html,/name="starts_at"/);assert.doesNotMatch(html,/name="threshold"|未成券贡献|每张脉冲券所需贡献度/);assert.match(html,/社区签到和互动/);
 });
 test('experience pool uses EXP budget independently and rejects accidental quota conversion',()=>{
  const h=harness();h.form.inputs.reward_budget='0';h.form.inputs.experience_budget='1000';

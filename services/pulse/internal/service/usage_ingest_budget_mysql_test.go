@@ -91,7 +91,7 @@ func TestMySQLUsageBudgetResumeAndRollback(t *testing.T) {
 		if err := db.QueryRowContext(ctx, `SELECT balance FROM pulse_account WHERE period_id = ? AND asset_type = 'contribution'`, id).Scan(&balance); err != nil {
 			t.Fatal(err)
 		}
-		if cursor != events[count-1].CursorValue || rows != count || entries != count*2 || balance != int64(count)*1000 {
+		if cursor != events[count-1].CursorValue || rows != count || entries != count || balance != int64(count)*1000 {
 			t.Fatalf("count=%d cursor=%s rows=%d entries=%d balance=%d", count, cursor, rows, entries, balance)
 		}
 	}

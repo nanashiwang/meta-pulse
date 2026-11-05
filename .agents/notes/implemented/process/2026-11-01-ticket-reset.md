@@ -48,3 +48,5 @@ Status: implemented
 本任务只调整线上运营数据并记录依据；没有修改应用源码、schema 或主动部署版本，不新建 GitHub Release。同机独立 v0.2.70 部署不归属本任务。运营程序与测试源分别保存在受限证据目录的 `ticket-reset-main.go`、`main_test.go`，有效配置 HTTP 验收源为 `verify-api-effective.go`。
 
 后续[社区任务赠券](../../implemented/feature/2026-11-06-community-tickets.md)新增独立限额券来源，复用本篇的当前奖池/历史账本边界，不重写付费贡献或既有清零记录。
+
+后续[停止消费获券](../../implemented/simplification/2026-11-06-stop-usage-tickets.md)取消新消费与补录的券变更；本篇的社区赠券、历史券/奖池及运营审计边界保留。

@@ -39,18 +39,20 @@ func TestMySQLContinuousTicketsAgeReplayAndRuleChanges(t *testing.T) {
 		t.Fatalf("time-dependent replay: %+v %v", replay, err)
 	}
 	user := uint64(time.Now().UnixNano()%1000000000 + 1000000000)
-	ingest := func(id string, amount int64, at time.Time) {
+	seedLegacyTicketLot(t, unit, user, first.PeriodID, prefix+"one", 1, now, 30)
+	consume := func(id string) {
 		t.Helper()
-		event := usage.Event{SourceSystem: "new-api-log", SourceEventID: prefix + id, PayloadHash: fmt.Sprintf("%064x", amount), UserID: user, EventType: usage.EventConsume, SourceCreatedAt: at, QuotaDelta: amount, FundingProof: prefix + id, CursorValue: fmt.Sprintf("%d:1", at.Unix())}
-		in, _ := NewUsageIngestService(unit, staticUsageSource{events: []usage.Event{event}}, UsageIngestConfig{CursorName: prefix + id, BatchSize: 1, TicketThresholdMilli: 1000})
-		in.now = func() time.Time { return at }
+		event := usage.Event{SourceSystem: "new-api-log", SourceEventID: prefix + id, CursorValue: "1:1", PayloadHash: fmt.Sprintf("%064x", 1), FundingProof: prefix + id, UserID: user, EventType: usage.EventConsume, SourceCreatedAt: now, QuotaDelta: 1_000_000}
+		ingest, _ := NewUsageIngestService(unit, staticUsageSource{events: []usage.Event{event}}, UsageIngestConfig{CursorName: prefix + id, BatchSize: 1})
 		for i := 0; i < 100; i++ {
-			if _, err := in.IngestBatch(ctx); err != nil {
-				t.Fatal(err)
+			result, err := ingest.IngestBatch(ctx)
+			if err != nil || result.TicketsMinted != 0 || result.TicketsReversed != 0 {
+				t.Fatalf("usage changed historical tickets: %+v %v", result, err)
 			}
 		}
 	}
-	ingest("one", 1500, now)
+	consume("usage-first")
+
 	request.ExpectedPeriodID = first.PeriodID
 	request.Key = prefix + "-2"
 	request.QuotaValidityDays = 10
@@ -66,11 +68,12 @@ func TestMySQLContinuousTicketsAgeReplayAndRuleChanges(t *testing.T) {
 	if _, err := svc.CreateFromAdmin(ctx, stale, "test", stale.Key); !errors.Is(err, ports.ErrConflict) {
 		t.Fatalf("stale admin form accepted: %v", err)
 	}
-	ingest("two", 1500, now.Add(time.Second)) // 500 carried + 1500 = one new ticket.
+	seedLegacyTicketLot(t, unit, user, second.PeriodID, prefix+"two", 1, now.Add(time.Second), 10)
+	consume("usage-second")
 	var lots, count int
 	db.QueryRow("SELECT COUNT(*),SUM(issued) FROM pulse_ticket_lot WHERE user_id=?", user).Scan(&lots, &count)
 	if lots != 2 || count != 2 {
-		t.Fatalf("lost remainder/replay: %d/%d", lots, count)
+		t.Fatalf("historical lots: %d/%d", lots, count)
 	}
 	rules := NewRewardRulesService(unit, true)
 	rules.SelectionSecret = []byte("test-only-random")
@@ -150,13 +153,6 @@ func TestMySQLContinuousTicketsAgeReplayAndRuleChanges(t *testing.T) {
 		t.Fatal("overspent tickets")
 	}
 	err = unit.Do(ctx, func(r ports.Repositories) error {
-		pending, e := r.Tickets.PendingContribution(ctx, user)
-		if e != nil {
-			return e
-		}
-		if pending != 0 {
-			t.Fatalf("pending=%d", pending)
-		}
 		accounts, e := r.Account.ListForUser(ctx, user)
 		if e != nil {
 			return e
@@ -194,10 +190,9 @@ func TestMySQLUnlimitedQuotaBudget(t *testing.T) {
 	}
 	t.Cleanup(func() { db.Exec("DELETE FROM pulse_period WHERE id=?", p.PeriodID) })
 	user := uint64(time.Now().UnixNano()%1000000000 + 2000000000)
-	event := usage.Event{SourceSystem: "new-api-log", SourceEventID: key, PayloadHash: fmt.Sprintf("%064x", 1), UserID: user, EventType: usage.EventConsume, SourceCreatedAt: now, QuotaDelta: 1000, FundingProof: key, CursorValue: fmt.Sprintf("%d:1", now.Unix())}
-	ingest, _ := NewUsageIngestService(unit, staticUsageSource{events: []usage.Event{event}}, UsageIngestConfig{CursorName: key, BatchSize: 1, TicketThresholdMilli: 1000})
-	ingest.now = func() time.Time { return now }
-	if _, err = ingest.IngestBatch(ctx); err != nil {
+	bonus := NewCommunityTicketService(unit)
+	bonus.now = func() time.Time { return now }
+	if _, err = bonus.Grant(ctx, user, CommunityTicket{now.In(communityZone).Format("2006-01-02"), "checkin", 1}); err != nil {
 		t.Fatal(err)
 	}
 	rules := NewRewardRulesService(unit, true)

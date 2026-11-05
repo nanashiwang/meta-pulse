@@ -52,14 +52,14 @@ func TestUsageIngestReplayAndConflictAreSafe(t *testing.T) {
 			t.Fatalf("replay %d: %v", i, err)
 		}
 	}
-	if len(store.usageEvents) != 1 || len(store.entries) != 2 || first.Replayed != 99 || first.Accepted != 1 {
+	if len(store.usageEvents) != 1 || len(store.entries) != 1 || first.Replayed != 99 || first.Accepted != 1 {
 		t.Fatalf("result=%+v usage=%d ledger=%d", first, len(store.usageEvents), len(store.entries))
 	}
 	if got := store.accounts[accountKey(9, 4, "contribution")].Balance; got != 1500 {
 		t.Fatalf("contribution account = %d", got)
 	}
-	if got := store.accounts[accountKey(9, 4, "ticket")].Balance; got != 1 {
-		t.Fatalf("ticket account = %d, want 1", got)
+	if got := store.accounts[accountKey(9, 4, "ticket")].Balance; got != 0 {
+		t.Fatalf("ticket account = %d, want 0", got)
 	}
 
 	changed := event
@@ -67,12 +67,12 @@ func TestUsageIngestReplayAndConflictAreSafe(t *testing.T) {
 	if err := s.processOne(context.Background(), changed, &first); err != nil {
 		t.Fatal(err)
 	}
-	if first.Conflicts != 1 || len(store.conflicts) != 1 || len(store.entries) != 2 {
+	if first.Conflicts != 1 || len(store.conflicts) != 1 || len(store.entries) != 1 {
 		t.Fatalf("conflict result=%+v conflicts=%d ledger=%d", first, len(store.conflicts), len(store.entries))
 	}
 }
 
-func TestUsageIngestRefundReversesContributionAndTicketEntitlement(t *testing.T) {
+func TestUsageIngestRefundOnlyReversesContribution(t *testing.T) {
 	store := newMemoryLedgerStore()
 	store.periods = []period.Period{{ID: 4, Status: period.StatusActive, ConfigVersion: "v1", StartsAt: time.Unix(1_600_000_000, 0), EndsAt: time.Unix(1_800_000_000, 0)}}
 	store.rules[4] = []economics.Rule{{ID: 8, Key: "default", Eligible: true, MultiplierBps: 10000, ConfigVersion: "v1"}}
@@ -87,7 +87,7 @@ func TestUsageIngestRefundReversesContributionAndTicketEntitlement(t *testing.T)
 	if err := s.processOne(context.Background(), refund, &result); err != nil {
 		t.Fatal(err)
 	}
-	if result.Accepted != 2 || result.TicketsReversed != 1 {
+	if result.Accepted != 2 || result.TicketsReversed != 0 || result.TicketsMinted != 0 {
 		t.Fatalf("result = %+v", result)
 	}
 	if got := store.accounts[accountKey(9, 4, "contribution")].Balance; got != 500 {
@@ -196,7 +196,7 @@ func TestUsageIngestRejectsRefundLinkedToAnotherRefund(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if result.Accepted != 2 || result.ManualReview != 1 || len(store.entries) != 3 {
+	if result.Accepted != 2 || result.ManualReview != 1 || len(store.entries) != 2 {
 		t.Fatalf("result=%+v entries=%d", result, len(store.entries))
 	}
 	if got := store.usageEvents[2].Status; got != usage.StatusManualReview {
@@ -229,7 +229,7 @@ func TestUsageIngestRejectsRefundsExceedingOriginalContribution(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if result.Accepted != 2 || result.ManualReview != 1 || len(store.entries) != 4 {
+	if result.Accepted != 2 || result.ManualReview != 1 || len(store.entries) != 2 {
 		t.Fatalf("result=%+v entries=%d", result, len(store.entries))
 	}
 	if got := store.usageEvents[2].Status; got != usage.StatusManualReview {

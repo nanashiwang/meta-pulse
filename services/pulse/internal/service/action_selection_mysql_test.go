@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/nanashiwang/meta-pulse/internal/domain/ledger"
-	"github.com/nanashiwang/meta-pulse/internal/domain/usage"
 	"github.com/nanashiwang/meta-pulse/internal/ports"
 	mysqlstore "github.com/nanashiwang/meta-pulse/internal/store/mysql"
 )
@@ -30,14 +29,9 @@ func TestMySQLCurrentRuleAcrossTicketSourcesAndReplay(t *testing.T) {
 		t.Fatal(e)
 	}
 	t.Cleanup(func() { db.Exec("DELETE FROM pulse_period WHERE id=?", old.PeriodID) })
+	mintPeriod, mintDays := old.PeriodID, 30
 	mint := func(suffix string, amount int64) {
-		t.Helper()
-		event := usage.Event{SourceSystem: "new-api-log", SourceEventID: key + suffix, PayloadHash: fmt.Sprintf("%064x", amount), UserID: user, EventType: usage.EventConsume, SourceCreatedAt: now, QuotaDelta: amount, FundingProof: key + suffix, CursorValue: fmt.Sprintf("%d:1", now.Unix())}
-		ingest, _ := NewUsageIngestService(unit, staticUsageSource{events: []usage.Event{event}}, UsageIngestConfig{CursorName: key + suffix, BatchSize: 1, TicketThresholdMilli: 1000})
-		ingest.now = func() time.Time { return now }
-		if _, err := ingest.IngestBatch(ctx); err != nil {
-			t.Fatal(err)
-		}
+		seedLegacyTicketLot(t, unit, user, mintPeriod, key+suffix, amount/1000, now, mintDays)
 	}
 	mint("-old-exp", 2000)
 	now = base.Add(10 * 24 * time.Hour)
@@ -52,6 +46,7 @@ func TestMySQLCurrentRuleAcrossTicketSourcesAndReplay(t *testing.T) {
 		t.Fatal(e)
 	}
 	t.Cleanup(func() { db.Exec("DELETE FROM pulse_period WHERE id=?", fresh.PeriodID) })
+	mintPeriod, mintDays = fresh.PeriodID, 60
 	mint("-new", 2000)
 	now = now.Add(time.Hour)
 	mint("-new-later", 1000)

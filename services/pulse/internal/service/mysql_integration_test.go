@@ -494,7 +494,7 @@ VALUES (?, 'integration-default', 0, 'gpt-*', 1, 10000, 'integration-v1')`, peri
 	if err != nil {
 		t.Fatalf("first usage ingest: %v", err)
 	}
-	if first.Accepted != 1 || first.TicketsMinted != 1 {
+	if first.Accepted != 1 || first.TicketsMinted != 0 {
 		t.Fatalf("first usage result=%+v", first)
 	}
 	for i := 0; i < 99; i++ {
@@ -517,17 +517,17 @@ VALUES (?, 'integration-default', 0, 'gpt-*', 1, 10000, 'integration-v1')`, peri
 	if err := sqlDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM pulse_ledger_entry WHERE source_type = 'usage' AND source_ref = ? AND asset_type = 'ticket'`, event.SourceSystem+":"+event.SourceEventID).Scan(&ticketEntries); err != nil {
 		t.Fatal(err)
 	}
-	if usageCount != 1 || contributionEntries != 1 || ticketEntries != 1 {
+	if usageCount != 1 || contributionEntries != 1 || ticketEntries != 0 {
 		t.Fatalf("replay created duplicates usage=%d contribution=%d ticket=%d", usageCount, contributionEntries, ticketEntries)
 	}
 	var contributionBalance, ticketBalance int64
 	if err := sqlDB.QueryRowContext(ctx, `SELECT balance FROM pulse_account WHERE user_id = ? AND period_id = ? AND asset_type = 'contribution'`, userID, periodID).Scan(&contributionBalance); err != nil {
 		t.Fatal(err)
 	}
-	if err := sqlDB.QueryRowContext(ctx, `SELECT balance FROM pulse_account WHERE user_id = ? AND period_id = ? AND asset_type = 'ticket'`, userID, periodID).Scan(&ticketBalance); err != nil {
+	if err := sqlDB.QueryRowContext(ctx, `SELECT COALESCE(SUM(balance),0) FROM pulse_account WHERE user_id = ? AND period_id = ? AND asset_type = 'ticket'`, userID, periodID).Scan(&ticketBalance); err != nil {
 		t.Fatal(err)
 	}
-	if contributionBalance != 1500 || ticketBalance != 1 {
+	if contributionBalance != 1500 || ticketBalance != 0 {
 		t.Fatalf("replay changed balances contribution=%d ticket=%d", contributionBalance, ticketBalance)
 	}
 
@@ -547,7 +547,7 @@ VALUES (?, 'integration-default', 0, 'gpt-*', 1, 10000, 'integration-v1')`, peri
 	if err := sqlDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM pulse_ledger_entry WHERE user_id = ? AND period_id = ?`, userID, periodID).Scan(&entries); err != nil {
 		t.Fatal(err)
 	}
-	if conflicts != 1 || entries != 2 {
+	if conflicts != 1 || entries != 1 {
 		t.Fatalf("conflict mutated accounting conflicts=%d ledger_entries=%d", conflicts, entries)
 	}
 }

@@ -23,24 +23,11 @@ Answer 继续拥有用户、注册时间、内容与角色事实。UserCenter �
 变成：
 
 ```text
-正常使用元衡 API
-        ↓
-产生真实付费消耗
-        ↓
-获得贡献值
-        ↓
-积累脉冲券
-        ↓
-开启一次脉冲
-        ↓
-获得即时回馈
-        ↓
-使用脉冲券参与奖励（新券按获得时间计算额度资格）
-        ↓
-形成持续使用动力
+真实付费 API 调用 → 贡献统计（不兑换抽奖券）
+每日签到 / 有效社区互动 → 限额抽奖券 → 抽奖 → 奖励交付
 ```
 
-用户看到的是“**调用 → 积累 → 开启 → 获得回馈**”；后台运行的是一套严格的 **Economics + Ledger + Idempotency + Budget + Reward + Settlement + Experiment** 系统。
+用户看到的是“**签到/互动 → 获券 → 抽奖 → 获得回馈**”；后台运行的是一套严格的 **Economics + Ledger + Idempotency + Budget + Reward + Settlement + Experiment** 系统。
 
 ## 2. 为什么做
 
@@ -106,17 +93,8 @@ Meta Pulse 不是签到积分，也不是充值后购买抽奖机会。
 价值链：
 
 ```text
-真实付费调用
-        ↓
-平台产生真实贡献毛利
-        ↓
-按模型 / 渠道经济性计算贡献值
-        ↓
-贡献值形成脉冲券
-        ↓
-脉冲券产生用户回馈
-        ↓
-奖励成本从可承受毛利预算释放
+真实付费调用 → 按模型 / 渠道经济性计算贡献值 → 贡献与成本统计
+社区签到 / 有效互动 → 限额抽奖券 → 用户回馈 → 奖励预算预留与结算
 ```
 
 因此 Meta Pulse 首先是一套 **Margin-aware Loyalty Engine**，其次才表现为用户可感知的增长玩法。
@@ -289,11 +267,11 @@ meta-pulse/
 
 新 Usage 按源事件时间选择已启用的最近持续快照，同一秒按 ID 较大者确定。已记账事件重放仍恢复原记录。保存新规则受全局创建锁和 `expected_period_id` 乐观检查保护；同请求恢复首次结果，新的服务器时间不进入重试指纹。时区为 Asia/Shanghai，数据库 DATETIME 写入与读取使用一致的本地时间。
 
-持续规则的未成券贡献跨快照累计，按“持续规则贡献账本净额减去各快照铸券量乘以对应冻结门槛”重建，以任意精度中间运算检查 int64 溢出。当前实现对用户历史账本作锁定当前读，避免 Repeatable Read 下看到旧余额；读取成本随用户历史增长，后续缓存必须可从该公式重建，不能替代账本事实。
+历史持续规则的未成券贡献跨快照累计（v0.2.82 起仅保留核对公式，不再兑换券），按“持续规则贡献账本净额减去各快照铸券量乘以对应冻结门槛”重建，以任意精度中间运算检查 int64 溢出。当前实现对用户历史账本作锁定当前读，避免 Repeatable Read 下看到旧余额；读取成本随用户历史增长，后续缓存必须可从该公式重建，不能替代账本事实。
 
-迁移 `00014` 新增 `pulse_ticket_lot` 发行快照、`pulse_ticket_allocation` 追加式消费分配和 `pulse_ticket_user_lock` 用户事务锁。Usage 同一事务内写入贡献、铸券账本和发行批次；获得时间取实际入账时刻，期限为获得时间加 N×24 小时，均以 UTC 秒存储。铸券账本 metadata 同时记录获得时间与额度截止时间；消费账本 metadata 指向铸券 entry。批次剩余数量等于发行数减去关联的消费分配，可对照账本重建；金额事实仍以 Ledger 为准，批次不能独立增发券。数据库禁止更改发行身份、时间和期限，禁止更新或删除消费分配。
+迁移 `00014` 新增 `pulse_ticket_lot` 发行快照、`pulse_ticket_allocation` 追加式消费分配和 `pulse_ticket_user_lock` 用户事务锁。v0.2.82 起 Usage 仅写贡献；社区赠券同一事务内写入赠券账本和发行批次；获得时间取实际入账时刻，期限为获得时间加 N×24 小时，均以 UTC 秒存储。铸券账本 metadata 同时记录获得时间与额度截止时间；消费账本 metadata 指向铸券 entry。批次剩余数量等于发行数减去关联的消费分配，可对照账本重建；金额事实仍以 Ledger 为准，批次不能独立增发券。数据库禁止更改发行身份、时间和期限，禁止更新或删除消费分配。
 
-Action v3 对所有未用券使用当前最新启用规则的奖项、概率和预算；发券来源与抽奖规则分别记录。扣券、Ticket Allocation 和 User Period Stat 归原发券账户，Grant、HMAC 随机、Budget 和 Outbox 归当前规则。消费账本 metadata 记录实际 reward_period_id / reward_config_version。既有账本、已发券数量、来源、贡献门槛和有效期不改写，未成券贡献仍按原铸券规则重建。
+Action v3 对所有未用券使用当前最新启用规则的奖项、概率和预算；发券来源与抽奖规则分别记录。扣券、Ticket Allocation 和 User Period Stat 归原发券账户，Grant、HMAC 随机、Budget 和 Outbox 归当前规则。消费账本 metadata 记录实际 reward_period_id / reward_config_version。既有账本、已发券数量、来源、贡献门槛和有效期不改写，历史余数仍可按原铸券规则重建，但不再触发发券。
 
 券的原额度截止时间保留，修改新券有效天数不延长或缩短旧券期限。持续券在 `now >= quota_expires_at` 后使用**最新**规则的 `community_exp` 子奖项按权重归一化抽取；已过期的历史定期券不恢复，原关闭流程仍可销券。后台先选额度资格有效券，再按获得时间和来源排序，用户无需选择批次或历史规则。
 
@@ -450,19 +428,13 @@ ticket_adjustment
 SUM(ledger.amount) = account.balance
 ```
 
-## 13. Ticket Entitlement 与退款
+## 13. Ticket 来源与退款
 
-产券按用户周期累计净贡献计算：
+自 v0.2.82 起，按用户授权停止 API 消费获券。Worker、实时摄入和 backfill 共用的 UsageIngestService 仅记录 Usage、付费证明去重、贡献账本/快照、UserPeriodStat 与游标，不创建券分录或发行批次，不再计算 entitlement；保留历史 `entitled_tickets` 值。消费与退款均不增减券，退款仍验证原消费关联和累计冲正上限后冲正贡献。不会改写既有 Ledger、旧券数量/期限或中奖结果，历史异常可用审计调整处理。
 
-```text
-entitled_tickets = floor(net_contribution / threshold)
-```
+新券仅来自下文社区任务赠券（2+3+1 日上限）。API 绑定仍用于身份与奖励交付；new-api 计费、余额和 Benefit 结算边界不变。历史 `ticket_threshold_milli` / `funding_policy`、铸券 operation 和离线 backtest 经济模拟保留兼容及审计用途，不是可重新开启消费获券的开关。管理页不再提供兑换门槛；创建新规则沿用历史字段，不原地修改 Active 规则。
 
-不按单次 API 请求独立取整，避免大量小额调用造成 rounding 偏差。
-
-退款导致 entitlement 下降时写 `ticket_reverse`。
-
-若券已消费，允许形成内部 Ticket Debt；未来新券先抵债，用户可用券显示 `max(balance, 0)`，避免“调用 → 拿券 → 领奖 → 退款”套利。
+所有消费采集 Worker 和离线工具必须使用此版本；仅升级网页/API 不能阻止旧 Worker 发券。回滚旧消费代码会恢复该来源，升级与回滚需统一进程版本。
 
 ## 14. Reward Engine
 

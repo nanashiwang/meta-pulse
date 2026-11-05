@@ -112,13 +112,10 @@ interfaces / stores / adapters
 UsageEvent
 → Contribution Ledger
 → Contribution Account
-→ Ticket Entitlement
-→ Ticket Ledger
-→ Ticket Account
 → User Period Stat
 ```
 
-不得出现半记账状态。
+不得出现半记账状态。用户已于 2026-11-06 取消 API 消费获券；Usage 摄入和补录仅记贡献，不再改变券账本、发行批次或历史 entitlement。社区任务赠券使用独立事务，既有券与奖励保留。
 
 ### Pulse Action
 

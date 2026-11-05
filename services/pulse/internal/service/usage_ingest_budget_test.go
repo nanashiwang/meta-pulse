@@ -74,7 +74,7 @@ func TestUsageBudgetYieldsOnlyCommittedEventsAndResumesTail(t *testing.T) {
 	if err != nil || result.Fetched != 0 || result.Yielded {
 		t.Fatalf("empty batch: %+v %v", result, err)
 	}
-	if len(store.entries) != 6 || store.accounts[accountKey(9, 4, "contribution")].Balance != 3000 || store.accounts[accountKey(9, 4, "ticket")].Balance != 3 {
+	if len(store.entries) != 3 || store.accounts[accountKey(9, 4, "contribution")].Balance != 3000 || store.accounts[accountKey(9, 4, "ticket")].Balance != 0 {
 		t.Fatal("yield/resume changed accounting")
 	}
 }

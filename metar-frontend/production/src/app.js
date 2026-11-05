@@ -607,7 +607,7 @@
     if (!isActiveUser(currentUser)) return accountUnavailable(t("Pulse 权益"));
     const userId = currentUser.id;
     const binding = await answer.getBindingState();
-    if (binding.status === 'unbound') return `${pageTitle(t("Pulse 权益"))}<section class="pulse-hero"><div><div class="eyebrow">${t("付费调用回馈计划")}</div><h1>${t("先完成可选账号绑定")}</h1><p>${t("社区账号可以独立使用。绑定元衡 API 后，可通过真实付费调用、每日签到和社区互动获得抽奖券。")}</p><div class="actions">${link('/settings/binding', t("了解并开始绑定 ") + I('arrow', 'sm'), 'btn light')}${link('/latest', t("继续浏览社区"), 'btn outline-light')}</div></div>${I('pulse')}</section>${footer()}`;
+    if (binding.status === 'unbound') return `${pageTitle(t("Pulse 权益"))}<section class="pulse-hero"><div><div class="eyebrow">${t("社区互动回馈计划")}</div><h1>${t("先完成可选账号绑定")}</h1><p>${t("社区账号可以独立使用。绑定元衡 API 后，可通过每日签到和社区互动获得抽奖券。")}</p><div class="actions">${link('/settings/binding', t("了解并开始绑定 ") + I('arrow', 'sm'), 'btn light')}${link('/latest', t("继续浏览社区"), 'btn outline-light')}</div></div>${I('pulse')}</section>${footer()}`;
     if (binding.status === 'unavailable') throw new AdapterError(t("绑定状态暂时不可查询，Pulse 页面不会据此猜测身份。"), { code: 'binding_unavailable' });
     const [summary, catalog, history, coreReady] = await Promise.all([pulse.summary(), pulse.rules(), deferHistory ? {rewards:[]} : pulse.rewards(), loadPulseCore()]);
     if (sequence !== navigationSequence || currentUser?.id !== userId) return '';
@@ -663,9 +663,9 @@
 
   function communityTasksMarkup() {
     return `<section class="card card-pad mt24" data-community-tasks><div class="between wrap"><h2>${t('获取抽奖券')}</h2><button class="btn" data-task-checkin>${t('每日签到 · +1 券')}</button></div>
-      <ul class="mini-list"><li>${t('帖子每收到 10 次评论 +1 券，每天最多 2 券。')}</li><li>${t('给别人点赞每 40 次或评论每 20 次 +1 券，分别累计，合计每天最多 3 券。')}</li><li>${t('每日签到 +1 券；社区任务每天最多 6 券。')}</li><li>${t('真实付费 API 调用仍按当前贡献比例累计获券。')}</li></ul>
+      <ul class="mini-list"><li>${t('帖子每收到 10 次评论 +1 券，每天最多 2 券。')}</li><li>${t('给别人点赞每 40 次或评论每 20 次 +1 券，分别累计，合计每天最多 3 券。')}</li><li>${t('每日签到 +1 券；社区任务每天最多 6 券。')}</li></ul>
       <p class="muted mt12">${t('按北京时间每日重置，仅统计绑定后及功能上线后的有效互动。评论包含回答和评论；自评自赞不计，撤赞重赞不重复计数。')}</p>
-      <p class="muted">${t('互动达标后自动发券，通常需等待片刻；0.2 元是消费门槛的等价说明，不直接赠送余额。')}</p>
+      <p class="muted">${t('互动达标后自动发券，通常需等待片刻。Meta API 消费不再获得抽奖券。')}</p>
       <p role="status" data-task-progress>${t('正在读取今日进度…')}</p><div class="actions"><button class="btn" data-task-refresh>${t('刷新任务进度')}</button><button class="btn" data-action="pulse-refresh">${t('刷新权益')}</button>${link('/latest',t('参与讨论'),'btn')}</div></section>`;
   }
   async function mountCommunityTasks() {
