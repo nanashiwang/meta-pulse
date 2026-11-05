@@ -7,8 +7,8 @@ const {render, layout, canRetain, canSwitchList} = require('../src/loading.js');
 const template = fs.readFileSync(path.join(__dirname, '../src/loading-view.html'), 'utf8');
 
 test('首屏与路由共用骨架，区分列表/网格/私有面板且转义动态标题', () => {
-  for (const route of ['/', '/latest', '/discover']) assert.equal(layout(route), 'feed');
-  for (const route of ['/topic/ai', '/search', '/me/bookmarks']) assert.equal(layout(route), 'list');
+  for (const route of ['/', '/latest', '/discover', '/topic/ai']) assert.equal(layout(route), 'feed');
+  for (const route of ['/search', '/me/bookmarks']) assert.equal(layout(route), 'list');
   for (const route of ['/topics', '/knowledge']) assert.equal(layout(route), 'grid');
   for (const route of ['/me', '/admin/pulse', '/settings/binding']) assert.equal(layout(route), 'panel');
   assert.equal(layout('/pulse'), 'pulse');

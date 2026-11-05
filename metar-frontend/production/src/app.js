@@ -242,7 +242,7 @@
     return `<header class="topbar">
       <button class="icon-btn mobile-menu" type="button" data-action="menu" aria-label="${t("打开导航")}" aria-controls="community-sidebar" aria-expanded="false">${I('menu')}</button>
       ${link('/latest', LOGO + `<span class="brand-word" aria-hidden="true">${esc(config.siteName.toLowerCase())}</span>`, 'brand')}
-      <nav class="topnav" aria-label="${t("主导航")}">${link('/latest', t("社区"), active('/latest') || active('/question') || active('/topic') || active('/topics') ? 'active' : '')}${link('/pulse', 'Pulse', active('/pulse') ? 'active' : '')}${outbound(config.consoleUrl, t("开发者"))}</nav>
+      <nav class="topnav" aria-label="${t("主导航")}">${link('/latest', t("社区"), active('/latest') || active('/question') || active('/topic') || active('/topics') ? 'active' : '')}${link('/pulse', 'Pulse', active('/pulse') ? 'active' : '')}</nav>
       <form class="searchbox" data-form="search" role="search">${I('search')}<input type="search" name="q" aria-label="${t("搜索社区")}" placeholder="${t("搜索真实问题与回答…")}" value="${path === '/search' ? esc(route().query.get('q') || '') : ''}" autocomplete="off"><kbd>⌘ K</kbd></form>
       <div class="header-actions">${languageControl()}<button type="button" class="icon-btn theme-btn" data-action="theme" aria-label="${document.documentElement.dataset.theme === 'dark' ? t("切换到浅色主题") : t("切换到深色主题")}">${I(document.documentElement.dataset.theme === 'dark' ? 'sun' : 'moon')}</button>${currentUserState === 'loading' ? `<span class="identity-loading" role="status">${t("正在确认身份…")}</span>` : identityUnavailableState ? link('/me', I('server', 'sm') + `<span>${t("身份服务暂不可用")}</span>`, 'btn ghost identity-status') : logged ? (activeUser ? external('/users/notifications/inbox', I('bell') + `<span class="visually-hidden">${t("通知中心")}</span><span class="account-unread-dot" data-account-unread hidden></span>`, 'icon-btn account-notifications') + `<a href="${esc(window.MetarRouter.href('/chat'))}" data-router class="icon-btn header-chat" title="${t('聊天')}">${I('chat')}<span class="visually-hidden">${t('聊天')}</span><span class="chat-unread" data-chat-unread hidden></span></a>` : external('/users/login?status=inactive', t("激活账号"), 'btn primary')) + accountMenu() : external(config.answerLoginPath, t("登录"), 'btn ghost') + external(config.answerRegisterPath, t("加入社区"), 'btn primary guest-register')}</div>
     </header>`;
@@ -471,12 +471,11 @@
     const pager = totalPages > 1 ? `<div class="prod-pager">${page > 1 ? link(`${base}?order=${order}&page=${page - 1}`, t("上一页"), 'btn small') : ''}<span>${t("第 {page} / {total} 页", { page: number(page), total: number(totalPages) })}</span>${page < totalPages ? link(`${base}?order=${order}&page=${page + 1}`, t("下一页"), 'btn small') : ''}</div>` : '';
     return `<section class="community-discussions">
       ${pageTitle(title)}
+      <div class="discussion-intro">
+        <form class="discussion-search" data-form="search" action="/search" role="search">${I('search')}<input type="search" name="q" aria-label="${t('搜索社区')}" placeholder="${t('搜索真实问题与回答…')}" maxlength="60" required autocomplete="off"><button type="submit" class="icon-btn" aria-label="${t('搜索')}">${I('arrow')}</button><kbd>⌘ K</kbd></form>
+        <p class="discussion-guidelines"><span>${t('友善交流，分享实践，一起建设有价值的社区。')}</span>${link('/guidelines', t('《社区准则》'))}</p>
+      </div>
       <div class="discussion-toolbar">${filter}<nav class="discussion-tabs" aria-label="${t('话题筛选')}">${tabs}</nav>${external(askPath, I('plus', 'sm') + t('新建话题'), 'btn primary')}</div>
-      <div class="discussion-pinned"><a class="discussion-pinned-link" href="https://meta-api.com" target="_blank" rel="noopener noreferrer">
-        <span class="discussion-pinned-label">${I('flag', 'sm')}${t('置顶')}</span>
-        <span class="discussion-pinned-main"><strong>${t('元衡 API')}</strong><span>${t('一个入口，连接多种 AI 模型。')}</span></span>
-        <span class="discussion-pinned-cta">${t('立即体验')}<span aria-hidden="true">↗</span></span>
-      </a></div>
       ${list.length ? discussionList(list) : empty(order === 'unanswered' ? t("暂时没有待回答问题") : t("当前筛选没有内容"), t("可以调整筛选，或发起一个新问题。"), external(askPath, t("发起提问"), 'btn primary'), 'chat')}${pager}
     </section>${footer()}`;
   }
@@ -1166,7 +1165,8 @@
   document.addEventListener('keydown', (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
       event.preventDefault();
-      document.querySelector('.searchbox input')?.focus();
+      const search = [...document.querySelectorAll('form[role="search"] input')].find(input => input.getClientRects().length);
+      search?.focus();
     }
     if (event.key === 'Escape' && taxonomyDrawer) return;
     if (event.key === 'Escape') { closeMobileMenu(); closeAccountMenu(true); }

@@ -326,16 +326,24 @@ input:not([type="checkbox"]),select,textarea { padding:8px 11px; }
 
 .prod-pulse-anonymous svg{width:15px;height:15px}
 
-/* Pinned promotion sits immediately below the discussion filters. */
-.discussion-pinned { border-bottom:1px solid var(--border); }
-.discussion-pinned-link { display:flex; align-items:center; gap:14px; padding:14px 12px; border-radius:6px; background:var(--tint); }
-.discussion-pinned-label { display:inline-flex; align-items:center; gap:5px; flex-shrink:0; color:var(--green); font-size:12px; font-weight:600; }
-.discussion-pinned-main { display:flex; flex-direction:column; gap:3px; flex:1; min-width:0; overflow-wrap:anywhere; }
-.discussion-pinned-main strong { color:var(--text); font-size:15px; font-weight:600; }
-.discussion-pinned-main > span { color:var(--muted); font-size:12px; }
-.discussion-pinned-cta { display:inline-flex; align-items:center; gap:6px; flex-shrink:0; color:var(--green); font-size:12px; }
-.discussion-pinned-link:hover { background:var(--hover); }
-.discussion-pinned-link:focus-visible { outline:2px solid var(--green); outline-offset:2px; }
-@media(max-width:580px) { .discussion-pinned-link { flex-wrap:wrap; gap:8px 10px; padding:12px 10px; } .discussion-pinned-label { align-self:flex-start; padding-top:2px; } .discussion-pinned-main { flex-basis:calc(100% - 62px); } .discussion-pinned-cta { margin-left:auto; } }
+/* Discussion search leads the content; other pages keep the header search. */
+body:has(.community-discussions, .page-loading[data-layout="feed"]) .topbar .searchbox { display:none; }
+.topbar .header-actions { margin-left:auto; }
+.discussion-intro { padding-top:28px; }
+.discussion-search { position:relative; display:flex; align-items:center; width:min(100%, 560px); margin:0 auto 32px; }
+.discussion-search > .ico { position:absolute; left:14px; color:var(--muted); pointer-events:none; }
+.discussion-search input { height:44px; padding:10px 98px 10px 42px; border-radius:6px; background:var(--surface); font-size:14px; }
+.discussion-search .icon-btn { position:absolute; right:8px; width:32px; height:32px; color:var(--green); }
+.discussion-search kbd { position:absolute; right:46px; color:var(--muted); font-size:11px; pointer-events:none; }
+.discussion-guidelines { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 8px; padding:9px 14px; margin-bottom:14px; background:var(--tint); font-size:13px; }
+.discussion-guidelines a { color:var(--green); white-space:nowrap; text-decoration:underline; text-underline-offset:3px; }
+.page-loading:not([data-layout="feed"]) .discussion-intro { display:none; }
+@media(max-width:580px) {
+  .discussion-intro { padding-top:12px; }
+  .discussion-search { margin-bottom:20px; }
+  .discussion-search input { padding-right:48px; }
+  .discussion-search kbd { display:none; }
+  .discussion-guidelines { padding:10px 12px; font-size:12px; }
+}
 
 .ops-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:12px}.ops-value{display:block;font-size:23px;margin:8px 0;overflow-wrap:anywhere}.ops-notice{padding:12px 0;color:var(--muted);font-size:13px}.ops-status{margin:12px 0;color:var(--muted)}.ops-table{overflow-x:auto;margin-top:12px}.ops-table table{border-collapse:collapse;width:100%;font-size:13px}.ops-table th,.ops-table td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--border);vertical-align:top;min-width:75px}.ops-table input{min-width:180px}.ops-table th{color:var(--muted);font-weight:500}.ops-table td{font-variant-numeric:tabular-nums}[data-ops-root] summary{cursor:pointer;font-weight:600}[data-ops-root] label{font-size:13px}[data-ops-days]{width:auto;padding:6px}[data-ops-search] label{flex:1;min-width:140px}@media(max-width:980px){.ops-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:580px){.ops-stats{grid-template-columns:1fr}.ops-value{font-size:21px}}

@@ -8,8 +8,8 @@
   const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   function layout(path) {
     if (path === '/pulse') return 'pulse';
-    if (['/', '/latest', '/discover'].includes(path)) return 'feed';
-    if (['/search', '/me/bookmarks'].includes(path) || path.startsWith('/topic/')) return 'list';
+    if (['/', '/latest', '/discover'].includes(path) || path.startsWith('/topic/')) return 'feed';
+    if (['/search', '/me/bookmarks'].includes(path)) return 'list';
     return ['/topics', '/knowledge'].includes(path) ? 'grid' : 'panel';
   }
   function isPublic(path) {
@@ -28,7 +28,16 @@
   }
   function render(template, title, path, label, english = false) {
     // Only static, explicitly marked text is localized; never page/user content.
-    if (english) template = template.replace(/(data-boot-en="([^"]+)"[^>]*>)[^<]*/g, (_match, attributes, text) => attributes + text);
+    if (english) {
+      template = template.replace(/(data-boot-en="([^"]+)"[^>]*>)[^<]*/g, (_match, attributes, text) => attributes + text);
+      template = template.replace(/<[^>]+>/g, tag => {
+        for (const [marker, attribute] of [['data-boot-label-en', 'aria-label'], ['data-boot-placeholder-en', 'placeholder']]) {
+          const value = tag.match(new RegExp(marker + '="([^"]+)"'))?.[1];
+          if (value) tag = tag.replace(new RegExp(' ' + attribute + '="[^"]*"'), ' ' + attribute + '="' + value + '"');
+        }
+        return tag;
+      });
+    }
     return template.replaceAll('__METAR_LOADING_LAYOUT__', layout(path))
       .replaceAll('__METAR_LOADING_TITLE__', () => escape(title))
       .replaceAll('__METAR_LOADING_LABEL__', () => escape(label));
