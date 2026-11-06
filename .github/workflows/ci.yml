@@ -163,6 +163,14 @@ jobs:
           docker exec "$MYSQL_CONTAINER" sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot -e "CREATE DATABASE community_events_test;"'
           make test-events-integration
 
+      - name: Administrator account switching and replay protection
+        env:
+          MYSQL_CONTAINER: ${{ job.services.mysql.id }}
+          FORUM_SWITCH_INTEGRATION_DSN: root:pulse_ci_test_only@tcp(127.0.0.1:3306)/forum_switch_test?parseTime=true
+        run: |
+          docker exec "$MYSQL_CONTAINER" sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot -e "CREATE DATABASE forum_switch_test;"'
+          make test-account-switch-integration
+
       - name: Community analytics cohorts, replay and admin labels
         env:
           MYSQL_CONTAINER: ${{ job.services.mysql.id }}

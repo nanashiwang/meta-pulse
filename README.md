@@ -80,6 +80,8 @@ make test-community
 make build-community  # 产物写入现有博客静态卷的 metar/ 子目录
 ```
 
+管理员可从 `/admin/users` 使用原生「添加用户」批量创建社区账号；启用「管理员账号切换」插件后，可从用户列表「切换登录」并返回管理员。操作与恢复见[社区账号管理](docs/ACCOUNT_MANAGEMENT.md)。
+
 ## 快速开始
 
 正式版本、下载附件及指定版本升级见 [发布与部署](docs/RELEASE.md)。发布页为 [GitHub Releases](https://github.com/nanashiwang/meta-pulse/releases)，已有服务器使用 `metar update --release v0.2.0`。

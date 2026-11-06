@@ -1,3 +1,4 @@
+import './account-switch.js';
 import { installNativeFavicon } from './native-favicon';
 import './analytics-client.js';
 import ImageImportEditor from './image-import-editor';
@@ -85,3 +86,6 @@ export default {
     notice.textContent = i18n.language === 'en_US' ? 'Draft could not be saved. Keep this page open and copy your text before leaving; check storage space or edits in another tab.' : '草稿未能保存。请保留本页并复制正文，再检查存储空间或其他标签页的编辑。';
   },
 });
+
+(window as any).__metarNativeAccountSwitch = true;
+(window as any).MetarAccountSwitch.install(() => loggedUserInfoStore.getState().user);

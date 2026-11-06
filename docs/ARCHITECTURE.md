@@ -736,6 +736,12 @@ bucket = SHA256(experiment_id + user_id) % 10000
 
 ## 24. 用户身份与 API
 
+管理员账号切换由独立 Connector `metar_admin_switch` 复用官方会话签发，主插件与切换插件均需启用。管理 POST `/answer/admin/api/metar/accounts/start` 经过原生管理员认证、实时角色/状态复核、同源 Origin、自定义请求头及严格 JSON。目标用户名仅作为待授权查询条件；拒绝自己、管理员及不可用目标。账号锁串行化签发和映射，单管理员每分钟最多签发 10 次。
+
+Answer 的 `metar_admin_switch` 表保存票据和原会话的 SHA-256、actor/target、签发/过期/消费/返回授权时间。事务一次性消费 60 秒票据并复核双方状态，独立 provider 的 `admin-switch:<Answer ID>` 仅映射现有账号，不传邮箱或注册资料，不写受保护的 API 绑定。交接成功只证明授权给官方登录流程，后续登录失败需重新发起，不能重放票据。浏览器 fetch callback，交接凭据只走请求头，原生 auth-landing token 不导航到地址栏；沿用网关禁止记录该回跳 URL 的保护。
+
+发起标签页的 sessionStorage 暂存返回凭据，双端显示返回入口；共享 token 变化时完整刷新已加载新版脚本的其他标签页。返回管理 POST 用原会话重新认证并实时核验角色，再注销目标会话、恢复原 token；返回审计仅代表返回授权，网络失败可能尚未完成注销。目标会话具有正常权限和原生有效期，票据到期、管理员事后降权或插件禁用不会撤销已签发的目标会话。原会话失效不能凭返回记录签发新的管理员身份。别名及审计属于 Answer 备份边界，不改变 Pulse/new-api 账本和身份事实源。操作见[社区账号管理](ACCOUNT_MANAGEMENT.md)。
+
 浏览器不得自行声明可信 `user_id`。Pulse 用户接口有两条受控链路：
 
 ```text
