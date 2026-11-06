@@ -8,7 +8,7 @@ const memory = () => { const m = new Map(); return { getItem: k => m.get(k) ?? n
 function setup(responses = []) {
   const calls=[],alerts=[],moves=[];
   const window = { __metarNativeAccountSwitch: true, localStorage:memory(), sessionStorage:memory(),
-    document:{documentElement:{lang:'zh-CN'},getElementById:()=>({remove(){}})},
+    document:{documentElement:{lang:'zh-CN'},getElementById:()=>({remove(){}, getAttribute(){}, setAttribute(){}, querySelector:()=>({textContent:''})})},
     location:{origin:'https://forum.test',assign:p=>moves.push(p)},confirm:()=>true,alert:v=>alerts.push(v),
     fetch:async(url,options)=>{calls.push({url,options});const next=responses.shift();if(next instanceof Error) throw next;return typeof next==='function'?next():next;},
   };
@@ -48,4 +48,17 @@ test('expired administrator or failed logout does not claim return succeeded',as
 });
 test('storage failure prevents issuing a switch',async()=>{
  const f=setup();f.window.sessionStorage.setItem=()=>{throw Error('storage disabled');};await f.api.start('member');assert.equal(f.calls.length,0);assert.equal(f.window.localStorage.getItem('_a_ltk_'),'admin');
+});
+test('return banner follows native language hydration and later language changes',()=>{
+ const f=setup(), nodes={span:{textContent:''},button:{textContent:''},a:{textContent:''}}, attrs={};
+ f.window.sessionStorage.setItem('_metar_admin_return_',JSON.stringify({adminToken:'admin',ticket:proof,username:'member'}));
+ f.window.document.documentElement.lang='en';
+ f.window.document.getElementById=()=>({getAttribute:k=>attrs[k],setAttribute:(k,v)=>attrs[k]=v,querySelector:s=>nodes[s]});
+ f.window.document.querySelectorAll=()=>[];
+ let observe;
+ f.window.MutationObserver=class{constructor(fn){observe=fn}observe(){}};
+ f.window.requestAnimationFrame=fn=>fn();f.window.addEventListener=()=>{};
+ f.api.install();assert.equal(nodes.button.textContent,'Return to administrator');
+ f.window.document.documentElement.lang='zh-CN';observe();assert.equal(nodes.button.textContent,'返回管理员');assert.equal(attrs['aria-label'],'账号切换');
+ f.window.document.documentElement.lang='en';observe();assert.equal(nodes.button.textContent,'Return to administrator');
 });

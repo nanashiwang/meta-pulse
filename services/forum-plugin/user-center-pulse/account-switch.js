@@ -83,14 +83,26 @@
     }
     let banner = host.document.getElementById('metar-account-switch-banner');
     if (!state?.ticket) { banner?.remove(); return; }
-    if (banner) return;
-    banner = host.document.createElement('aside'); banner.id = 'metar-account-switch-banner'; banner.setAttribute('aria-label', text('账号切换', 'Account switching'));
-    banner.style.cssText = 'position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:2000;max-width:calc(100vw - 24px);width:max-content;padding:12px 16px;border:1px solid #b78103;border-radius:10px;background:#fff7df;color:#352600;display:flex;align-items:center;gap:12px;flex-wrap:wrap;box-shadow:0 3px 15px #0003;font:14px sans-serif';
-    const label = host.document.createElement('span'); label.textContent = text(`切换账号：@${state.username}`, `Switched account: @${state.username}`);
-    const button = host.document.createElement('button'); button.type = 'button'; button.textContent = text('返回管理员', 'Return to administrator'); button.className = 'btn btn-sm btn-warning'; button.onclick = restore;
-    const login = host.document.createElement('a'); login.href = '/users/login'; login.textContent = text('重新登录', 'Sign in again');
-    banner.append(label, button, login); host.document.body.append(banner);
+    if (!banner) {
+      banner = host.document.createElement('aside'); banner.id = 'metar-account-switch-banner';
+      banner.style.cssText = 'position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:2000;max-width:calc(100vw - 24px);width:max-content;padding:12px 16px;border:1px solid #b78103;border-radius:10px;background:#fff7df;color:#352600;display:flex;align-items:center;gap:12px;flex-wrap:wrap;box-shadow:0 3px 15px #0003;font:14px sans-serif';
+      const label = host.document.createElement('span');
+      const button = host.document.createElement('button'); button.type = 'button'; button.className = 'btn btn-sm btn-warning'; button.onclick = restore;
+      const login = host.document.createElement('a'); login.href = '/users/login';
+      banner.append(label, button, login); host.document.body.append(banner);
+    }
+    const name = text('账号切换', 'Account switching');
+    if (banner.getAttribute('aria-label') !== name) banner.setAttribute('aria-label', name);
+    for (const [selector, value] of [
+      ['span', text(`切换账号：@${state.username}`, `Switched account: @${state.username}`)],
+      ['button', text('返回管理员', 'Return to administrator')],
+      ['a', text('重新登录', 'Sign in again')],
+    ]) {
+      const element = banner.querySelector(selector);
+      if (element.textContent !== value) element.textContent = value;
+    }
   }
+
   function mountRows(getUser) {
     if (host.location.pathname !== '/admin/users' || getUser()?.role_id !== 2 || saved()) return;
     host.document.querySelectorAll('tbody tr').forEach((row) => {
@@ -115,7 +127,7 @@
       host.document.querySelectorAll('a[href$="/connector/login/metar_admin_switch"]').forEach((a) => { a.hidden = true; });
     };
     let pending = false;
-    new host.MutationObserver(() => { if (!pending) { pending = true; host.requestAnimationFrame(() => { pending = false; run(); }); } }).observe(host.document.documentElement, { childList: true, subtree: true });
+    new host.MutationObserver(() => { if (!pending) { pending = true; host.requestAnimationFrame(() => { pending = false; run(); }); } }).observe(host.document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['lang'] });
     // A full document reload discards in-flight requests and private views.
     const initialToken = token();
     host.addEventListener('storage', (e) => { if ((e.key === TOKEN || e.key === null) && token() !== initialToken) host.location.reload(); });
