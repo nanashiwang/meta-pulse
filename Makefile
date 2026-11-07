@@ -36,7 +36,7 @@ verify-notes:
 vet:
 	go vet $(GO_MODULES)
 
-test: deploy-test test-community test-forum-session
+test: deploy-test test-community test-forum-session test-forum-optional-email
 	go test $(GO_MODULES)
 
 deploy-test:
@@ -158,3 +158,7 @@ test-marketplace-integration:
 .PHONY: test-forum-session
 test-forum-session:
 	bash services/forum/test-session.sh
+
+.PHONY: test-forum-optional-email
+test-forum-optional-email:
+	bash services/forum/test-optional-admin-email.sh

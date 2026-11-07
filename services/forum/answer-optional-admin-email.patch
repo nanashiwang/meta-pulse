@@ -1,0 +1,126 @@
+--- a/internal/schema/backyard_user_schema.go
++++ b/internal/schema/backyard_user_schema.go
+@@ -165 +165 @@
+-	Email       string `validate:"required,email,gt=0,lte=500" json:"email"`
++	Email       string `validate:"omitempty,email,gt=0,lte=500" json:"email"`
+--- a/internal/service/user_admin/user_backyard.go
++++ b/internal/service/user_admin/user_backyard.go
+@@ -237,7 +237,9 @@
+-	_, has, err := us.userRepo.GetUserInfoByEmail(ctx, req.Email)
+-	if err != nil {
+-		return err
+-	}
+-	if has {
+-		return errors.BadRequest(reason.EmailDuplicate)
+-	}
++	if req.Email != "" {
++		_, has, err := us.userRepo.GetUserInfoByEmail(ctx, req.Email)
++		if err != nil {
++			return err
++		}
++		if has {
++			return errors.BadRequest(reason.EmailDuplicate)
++		}
++	}
+@@ -309 +309 @@
+-		if emails[user.Email] {
++		if user.Email != "" && emails[user.Email] {
+@@ -325 +325,3 @@
+-		emails[user.Email] = true
++		if user.Email != "" {
++			emails[user.Email] = true
++		}
+@@ -336,11 +340,13 @@
+-		_, has, e := us.userRepo.GetUserInfoByEmail(ctx, user.Email)
+-		if e != nil {
+-			return nil, nil, e
+-		}
+-		if has {
+-			errorData.Field = "email"
+-			errorData.Line = line + 1
+-			errorData.Content = user.Email
+-			errorData.ExtraMessage = translator.Tr(lang, reason.EmailDuplicate)
+-			return nil, errorData, nil
+-		}
++		if user.Email != "" {
++			_, has, e := us.userRepo.GetUserInfoByEmail(ctx, user.Email)
++			if e != nil {
++				return nil, nil, e
++			}
++			if has {
++				errorData.Field = "email"
++				errorData.Line = line + 1
++				errorData.Content = user.Email
++				errorData.ExtraMessage = translator.Tr(lang, reason.EmailDuplicate)
++				return nil, errorData, nil
++			}
++		}
+--- a/i18n/zh_CN.yaml
++++ b/i18n/zh_CN.yaml
+@@ -1896,3 +1896,3 @@
+-            placeholder: "John Smith, john@example.com, BUSYopr2\nAlice, alice@example.com, fpDntV8q"
+-            text: 用逗号分隔“name, email, password”，每行一个用户。
+-            msg: "请输入用户的邮箱，每行一个。"
++            placeholder: "John Smith, john@example.com, BUSYopr2\n社区用户, , fpDntV8q"
++            text: 用逗号分隔“姓名, 邮箱, 密码”，每行一个用户。邮箱可留空。
++            msg: "请按“姓名, 邮箱, 密码”格式输入，每行一个用户。"
+--- a/i18n/en_US.yaml
++++ b/i18n/en_US.yaml
+@@ -1935,3 +1935,3 @@
+-            placeholder: "John Smith, john@example.com, BUSYopr2\nAlice, alice@example.com, fpDntV8q"
+-            text: Separate “name, email, password” with commas. One user per line.
+-            msg: "Please enter the user's email, one per line."
++            placeholder: "John Smith, john@example.com, BUSYopr2\nCommunity user, , fpDntV8q"
++            text: Separate “name, email, password” with commas. Email is optional. One user per line.
++            msg: "Enter users as name, email, password, one per line."
+--- /dev/null
++++ b/internal/schema/metar_optional_email_test.go
+@@ -0,0 +1,21 @@
++package schema
++
++import (
++	"context"
++	"testing"
++)
++
++func TestMetarParseAdminUserWithoutEmail(t *testing.T) {
++	req := &AddUsersReq{UsersStr: "Guest One, ,Password1\nGuest Two, ,Password2"}
++	if _, err := req.ParseUsers(context.Background()); err != nil {
++		t.Fatalf("parse users without email: %v", err)
++	}
++	if len(req.Users) != 2 {
++		t.Fatalf("parsed %d users, want 2", len(req.Users))
++	}
++	for _, user := range req.Users {
++		if user.Email != "" {
++			t.Fatalf("email = %q, want empty", user.Email)
++		}
++	}
++}
+--- /dev/null
++++ b/internal/service/user_admin/metar_optional_email_test.go
+@@ -0,0 +1,24 @@
++package user_admin
++
++import (
++	"context"
++	"testing"
++
++	"github.com/apache/answer/internal/schema"
++)
++
++func TestMetarAdminEmailIsOptionalAndUniqueWhenPresent(t *testing.T) {
++	service := &UserAdminService{}
++	withoutEmail := []*schema.AddUserReq{
++		{DisplayName: "Guest One", Password: "Password1"},
++		{DisplayName: "Guest Two", Password: "Password2"},
++	}
++	if got := service.checkUserDuplicateInner(context.Background(), withoutEmail); got != nil {
++		t.Fatalf("blank emails rejected: %+v", got)
++	}
++
++	invalidEmail := []*schema.AddUserReq{{DisplayName: "Guest", Email: "not-an-email", Password: "Password1"}}
++	if got := service.checkUserDuplicateInner(context.Background(), invalidEmail); got == nil {
++		t.Fatal("invalid non-empty email accepted")
++	}
++}

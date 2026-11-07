@@ -28,8 +28,10 @@ RUN mkdir -p /tmp/answer-source /build \
     && cp -r "$ANSWER_DIR" /build/answer \
     && chmod -R u+w /build/answer
 COPY services/forum/answer-session-retention.patch /build/answer-session-retention.patch
+COPY services/forum/answer-optional-admin-email.patch /build/answer-optional-admin-email.patch
 RUN cd /build/answer \
-    && patch -p1 --fuzz=0 < /build/answer-session-retention.patch
+    && patch -p1 --fuzz=0 < /build/answer-session-retention.patch \
+    && patch -p1 --fuzz=0 < /build/answer-optional-admin-email.patch
 ENV ANSWER_MODULE=/build/answer
 
 WORKDIR /build
