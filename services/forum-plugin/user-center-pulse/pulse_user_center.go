@@ -22,6 +22,7 @@ import (
 	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/events"
 	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/growth"
 	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/i18n"
+	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/marketplace"
 	"github.com/segmentfault/pacman/log"
 )
 
@@ -61,6 +62,8 @@ type UserCenter struct {
 	eventStore        *events.Store
 	growthMu          sync.Mutex
 	growthStore       *growth.Store
+	marketMu          sync.Mutex
+	marketStore       *marketplace.Store
 	Config            *Config
 	Client            *PulseClient
 	Logins            LoginFlowStore
@@ -366,6 +369,7 @@ func (uc *UserCenter) AfterLogin(externalID, _ string) {
 
 func (uc *UserCenter) RegisterUnAuthRouter(r *gin.RouterGroup) {
 	uc.registerPublicExperience(r)
+	uc.registerMarketplacePublic(r)
 	uc.registerOperations(r, nil, false)
 	r.GET("/metar/events", uc.eventHandler("list", nil, false, plugin.SiteURL))
 }
@@ -377,6 +381,7 @@ func (uc *UserCenter) RegisterAuthUserRouter(r *gin.RouterGroup) {
 	uc.registerChat(r, answerSessionUserID, false, plugin.SiteURL)
 	uc.registerEvents(r, answerSessionUserID, false, plugin.SiteURL)
 	uc.registerImageImport(r, answerSessionUserID, plugin.SiteURL)
+	uc.registerMarketplaceUser(r, answerSessionUserID, plugin.SiteURL)
 }
 
 func (uc *UserCenter) RegisterAuthAdminRouter(r *gin.RouterGroup) {
@@ -386,6 +391,7 @@ func (uc *UserCenter) RegisterAuthAdminRouter(r *gin.RouterGroup) {
 	uc.registerExperience(r, answerAdminSessionUserID, true, plugin.SiteURL)
 	uc.registerChat(r, answerAdminSessionUserID, true, plugin.SiteURL)
 	uc.registerEvents(r, answerAdminSessionUserID, true, plugin.SiteURL)
+	uc.registerMarketplaceAdmin(r, answerAdminSessionUserID, plugin.SiteURL)
 	r.GET("/pulse/health", func(ctx *gin.Context) {
 		config := uc.configSnapshot()
 		ctx.JSON(http.StatusOK, gin.H{"pulse_base_url": config.PulseBaseURL})

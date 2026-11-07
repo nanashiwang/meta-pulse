@@ -19,7 +19,7 @@ test('头像管理入口仅正常激活管理员可见，审核权限独立', ()
     assert.ok(accountLinks(user).flatMap(g => g.items).every(i => !i.href.startsWith('/admin')));
   }
   const admin = accountLinks({role_id: 2, status: 'normal', mail_status: 1}).flatMap(g => g.items);
-  assert.equal(admin.filter(i => i.href.startsWith('/admin')).length, 8);
+  assert.equal(admin.filter(i => i.href.startsWith('/admin')).length, 9);
   assert.ok(admin.some(i => i.href === '/admin/taxonomy'));
   assert.ok(admin.some(i => i.href === '/admin/chat'));
   assert.ok(admin.some(i => i.href === '/admin/operations'));

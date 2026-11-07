@@ -7,6 +7,7 @@ export function notificationGroups(nativeNav, english = false) {
       item('/latest', '全部讨论', 'All discussions', 'chat-square-text'),
       item('/latest?order=unanswered', '待回答', 'Unanswered', 'question-circle'),
       item('/topics', '类别与标签', 'Categories and tags', 'tags'),
+      item('/marketplace', 'Vibe Coding 集市', 'Vibe Coding Marketplace', 'code-slash'),
       item('/me/drafts', '我的草稿', 'My drafts', 'pencil-square'),
       item('/chat', '我的消息', 'My messages', 'inbox'),
       item('/events', '近期活动', 'Community events', 'calendar-event'),

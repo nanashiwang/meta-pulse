@@ -1359,3 +1359,16 @@ Answer 插件的 `communitytickets` 维护 `metar_ticket_config/cursor/source/da
 `POST /v1/internal/me/community-tickets` 只允许 community-bff；签名身份派生受益人，JSON 只允许 day/category/ordinal。Forum 每次交付重新验证活跃账号和一对一绑定，必须与原 outbox 的 external_id 相同。Pulse 固定有限编号空间 `(user,上海日期,类别,日序号)`，禁止任意数量；同一编号只生成一条 `ticket_bonus` Ledger、Account 增量、发行批次、Audit 和持久响应，同一 Pulse 事务提交。失败/丢响应用原编号继续，跨日和规则更新返回首次结果。前端只读 `/metar/api/pulse/tasks`，不代理这个内部写接口。
 
 新发券与规则发布、Action 共用 `period_create_lock`，然后锁用户券账户，首次选择当前持续规则及其有效天数。奖金券沿用当前奖池与预算，发行批次从实际 Pulse 入账时间计龄，抽奖使用当前最新规则。`ticket_bonus` 不进入 `PendingContribution` 的已铸券扣减，不改 Usage Stat 的付费 entitlement、不产生 Usage/Contribution/Reward；真正抽奖才预留预算并创建 Grant/Outbox。回退到不认识该账本操作的版本前必须暂停新操作并制定兼容方案，不能删除历史账本或重新发券。
+
+
+## Vibe Coding 集市数据与体验边界（2026-11-07）
+
+集市复用 Answer 身份、原生帖子正文、评论/回答、点赞、收藏及内容治理。`marketplace` 插件包仅在 Answer MySQL 中新增 `metar_market_item/actor/request/audit`；不访问 Pulse/new-api 的账本、余额或模型请求。投稿者先用原生编辑器发布介绍，再将本人帖子关联为集市草稿或提交审核；原帖按 Answer 原有可见性发布，集市草稿/待审核元数据仅本人和管理员可读。每个原帖最多一条收录，项目与想法类型及原帖 ID 不可变，想法的实现通过新项目反向关联，不转移作者身份。
+
+Item 的 `entry_json` 保存当前投稿，`live_json` 保存审核通过的运行元数据。状态为 `draft → pending_review → published`，审核可退回 `changes_requested`，作者/管理员可设为 `archived`。已发布作品只能提交更新审核，待审版本不能原地修改；新审核通过前继续按旧 `live_json` 展示 GitHub/Demo、费用和作者关系。下架清空 live 快照。每次公开查询联查 Answer 的帖子归属、status/show 和作者激活/封禁状态；原生正文编辑不改变已审核运行地址。
+
+写入只接受 Answer Authorization 会话与实时账号状态；管理员另走 `/answer/admin/api/metar/marketplace/admin/*` 并查当前角色。拒绝客户端 user_id、跨源写、重复/未知 JSON 字段和非法 HTTPS/GitHub 地址。用户 + Idempotency-Key 识别规范化命令，同 key 同 payload 恢复首次结果，不同 payload 返回冲突；actor 行锁串行化本人写入、版本检查、日/分钟限流、元数据、审计和响应回执在同一 MySQL 事务内提交。HTTP 响应丢失复用原 key；浏览器按账号暂存原请求，无可靠站点存储则不发送新写入。事务回滚不得留下半条元数据/回执。
+
+站内体验只主动加载服务端审核的外部 HTTPS Demo，iframe 使用 `sandbox="allow-scripts allow-forms"`、no-referrer，禁用相机、麦克风、定位、支付和剪贴板写权限；不授予 same-origin、顶层导航、弹窗或下载。METAR 不向 iframe 传递论坛会话、Authorization、API Key 或余额授权。外站自身 Cookie 策略由浏览器决定。加载事件不能证明调用成功，拒绝嵌入始终可外站打开；更高权限应用应使用外站演示。壳层 CSP 仅新增 HTTPS frame-src，其他脚本、连接与表单来源约束保持。
+
+集市浏览、投稿、收藏、运行及关联不创建 Contribution/Ticket/Reward；关联原帖的有效互动仅按现有社区任务采集一次。建表在独立 Answer pool 的首次使用中加锁执行，失败只影响集市；表随现有论坛数据库备份。部署仍经 `deploy/update.sh` 的备份、构建、迁移与健康检查，不修改 new-api。

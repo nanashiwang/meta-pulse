@@ -4,6 +4,7 @@ export function accountLinks(user, english = false, canReview = false) {
   const groups = [{ label: english ? 'My space' : '我的空间', items: [
     item('/chat', '聊天', 'Chat', 'chat-dots'),
     item('/me', '个人空间', 'My space', 'person'),
+    item('/marketplace/mine', '我的集市发布', 'My submissions', 'code-slash'),
     item('/me/growth', '社区成长', 'Community growth', 'stars'),
     item('/me/bookmarks', '我的收藏', 'Bookmarks', 'bookmark'),
     item('/settings/binding', '账号绑定', 'Account binding', 'link-45deg'),
@@ -17,6 +18,7 @@ export function accountLinks(user, english = false, canReview = false) {
     management.push(item('/admin/operations', '社区经营', 'Community operations', 'graph-up'));
     management.push(item('/admin/events', '活动管理', 'Manage events', 'calendar-event'));
     management.push(item('/admin/taxonomy', '类别管理', 'Category settings', 'tags'));
+    management.push(item('/admin/marketplace', '集市审核', 'Marketplace review', 'code-slash'));
     management.push(item('/admin/dashboard', '社区管理', 'Community admin', 'gear'));
     management.push(item('/admin/pulse_user_center', '社区连接配置', 'Community connections', 'link-45deg'));
   }

@@ -5,6 +5,9 @@
     "topics",
     "knowledge",
     "search",
+    "marketplace",
+    "marketplace/mine",
+    "marketplace/publish",
     "me",
     "me/bookmarks",
     "me/growth",
@@ -26,11 +29,13 @@
     "me/drafts",
     "events",
     "admin/events",
-    "admin/operations"
+    "admin/operations",
+    "admin/marketplace"
   ],
   "detailPrefixes": [
     "question",
-    "topic"
+    "topic",
+    "marketplace/item"
   ],
   "legacyAliases": {
     "/discover": "/latest",

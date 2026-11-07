@@ -149,3 +149,8 @@ test-community-tickets-integration:
 test-account-switch-integration:
 	@test -n "$$FORUM_SWITCH_INTEGRATION_DSN" || { echo "请设置专用账号切换测试库 FORUM_SWITCH_INTEGRATION_DSN" >&2; exit 1; }
 	go test -count=1 -race ./services/forum-plugin/user-center-pulse -run TestMySQLAdminSwitch -timeout 2m
+
+.PHONY: test-marketplace-integration
+test-marketplace-integration:
+	@test -n "$$MARKET_INTEGRATION_DSN" || { echo "请设置以 _market_test 结尾的专用集市测试库" >&2; exit 1; }
+	go test -count=1 -race ./services/forum-plugin/user-center-pulse/marketplace -run TestMySQL -timeout 5m

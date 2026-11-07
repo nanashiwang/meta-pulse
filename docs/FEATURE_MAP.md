@@ -31,9 +31,13 @@ Keep README, architecture, community and implementation-plan reading requirement
 
 Before adding a feature, inspect adjacent flows and the current source of truth; shared filters, data definitions and access rules must not diverge across entry points.
 
-## 产品提案（尚未实现）
+## Vibe Coding 集市（2026-11-07）
 
-- [Vibe Coding 集市](VIBE_CODING_MARKETPLACE.md)（2026-11-07）：类别入口下的项目展示、想法讨论和关联作品；拟复用 Answer 身份与内容，首版收录 GitHub/作者演示并选择性嵌入。当前只有产品方案和对话原型，没有新增业务路由、生产类别、托管运行或计费能力。
+| 入口 | 能力、权限与事实源 | 验证 |
+|---|---|---|
+| 左侧类别、顶部及原生导航 → `/marketplace` | 项目/想法、关键词/用途/GitHub/演示筛选、最新/精选、详情与关联作品；Answer 账号、帖子、评论和收藏，插件保存审核元数据 | [页面与恢复测试](../metar-frontend/production/tests/marketplace.test.js)、[后端](../services/forum-plugin/user-center-pulse/marketplace/)、[请求边界](../services/forum-plugin/user-center-pulse/marketplace_routes_test.go) |
+| `/marketplace/publish`、`/marketplace/mine` | 原生介绍帖 + 本人投稿；草稿、提交、需修改、已发布、下架；Answer 实时激活和所有权检查、版本与请求幂等；不要求 API 绑定 | `make test-marketplace-integration`，专用 `_market_test` 库；并发重放、丢响应、审核快照、治理可见性 |
+| `/admin/marketplace`、站内体验 | Answer 管理员会话 + MySQL 当前角色；审核来源、费用、隐私与嵌入许可；只有已审核 live 地址可主动加载受限 iframe，始终保留外站回退 | 无源码托管、模型代理或新增赠券；[使用与边界](VIBE_CODING_MARKETPLACE.md)，浏览器/生产验收另列 |
 
 ## 2026-10-17 代码核对与测试索引
 

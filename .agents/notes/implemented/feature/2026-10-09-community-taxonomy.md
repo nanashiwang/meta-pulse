@@ -48,3 +48,5 @@ Answer 推荐标签允许多个，不等价于 Discourse 的严格单类别/子�
 [类别与标签导航](2026-10-09-taxonomy-navigation.md)将目录大卡片改为紧凑列表，并增加侧栏分组及并排选择器；本篇继续负责数据来源、初始化和申请治理。
 
 检索 `分类|标签|申请|categor`，命中的[紧凑页面](../../implemented/simplification/2026-10-09-pulse-compact-history.md)与[加载骨架](../../implemented/bug-fix/2026-10-05-community-loading-shell.md)为展示约束，部分重叠并保留；未发现已有类别治理决定。
+
+[Vibe Coding 集市](2026-11-07-vibe-coding-marketplace.md)在类别区增加固定功能入口；真实类别仍由推荐标签投影，集市元数据另经审核，本篇的数据来源与预览约束继续保留。

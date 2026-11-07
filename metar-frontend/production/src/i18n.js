@@ -2,6 +2,13 @@
 'use strict';
 (() => {
   const EN = Object.freeze({
+    "Vibe Coding 集市": "Vibe Coding Marketplace",
+    "我的集市发布": "My submissions",
+    "发布到集市": "Share with the marketplace",
+    "集市审核": "Marketplace review",
+    "集市": "Marketplace",
+    "返回集市": "Back to marketplace",
+    "发现项目、在线体验与想法讨论。": "Discover projects, live demos and ideas.",
 "社区账号可以独立使用。绑定元衡 API 后，可通过真实付费调用、每日签到和社区互动获得抽奖券。":"Your community account works independently. Bind your API account to earn draw tickets through paid API usage, daily check-ins and community interactions.",
 "今日已签到":"Checked in today",
 "获取抽奖券":"Earn draw tickets",

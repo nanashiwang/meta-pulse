@@ -253,7 +253,7 @@ test('renaming rechecks permissions and source, detects incompatible/readback st
 test('inline previews are bounded but keep an out-of-preview current selection and full directory links',()=>{
   const data={categories:Array.from({length:25},(_,i)=>({slug_name:`category-${i}`,display_name:`Category ${i}`})),tags:Array.from({length:50},(_,i)=>({slug_name:`tag-${i}`,display_name:`Tag ${i}`}))};
   const html=taxonomy.navigation(data,'tag-49',{tags:true});
-  assert.equal((taxonomy.inlineItems(data,'categories').match(/data-router/g)||[]).length,16);
+  assert.equal((taxonomy.inlineItems(data,'categories').match(/data-router/g)||[]).length,17);
   assert.equal((taxonomy.inlineItems(data,'tags','tag-49').match(/data-router/g)||[]).length,9);
   assert.match(html,/href="\/topic\/tag-49" aria-current="page"/);
   assert.doesNotMatch(html,/href="\/topic\/tag-48"/);

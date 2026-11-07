@@ -31,7 +31,7 @@
   const seedFor = slug => seeds.find(item => item.slug_name === slug);
   const name = tag => tag.display_name || tag.slug_name;
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c]));
-  const topicURL = slug => `/topic/${encodeURIComponent(slug)}`;
+  const topicURL = slug => slug === 'vibe-coding' ? '/marketplace' : `/topic/${encodeURIComponent(slug)}`;
   const askURL = (path, slug) => `${path}?${new URLSearchParams({tags:slug})}`;
 
   function recommended(site) {
@@ -89,15 +89,22 @@
     return entry.promise;
   }
 
-  function inlineItems(data, kind, current = '') {
+  function inlineTagItems(data, kind, current = '') {
     if (!data) return `<p class="visually-hidden" role="status">${t('正在加载…')}</p>${'<span class="loading-block taxonomy-loading-row" aria-hidden="true"></span>'.repeat(3)}`;
-    const list = data[kind] || [], limit = kind === 'categories' ? 16 : 8;
+    const list = (data[kind] || []).filter(tag=>tag.slug_name !== 'vibe-coding'), limit = kind === 'categories' ? 16 : 8;
     const unavailable = kind === 'categories' ? data.categoriesUnavailable : data.tagsUnavailable;
     if (unavailable && !list.length) return `<p class="taxonomy-inline-message" role="status">${t('暂时无法加载')}</p><button type="button" class="textlink taxonomy-inline-retry" data-action="taxonomy-inline-retry">${t('重新加载')}</button>`;
     if (!list.length) return `<p class="taxonomy-inline-message">${t('暂无可用项目')}</p>`;
     const visible = list.slice(0, limit), selected = list.find(tag => tag.slug_name === current);
     if (selected && !visible.includes(selected)) visible.push(selected);
     return visible.map(tag => `<a data-router class="nav-item taxonomy-sidebar-item${tag.slug_name === current ? ' active' : ''}" href="${topicURL(tag.slug_name)}"${tag.slug_name === current ? ' aria-current="page"' : ''} title="${esc(name(tag))}">${kind === 'categories' ? marker(tag.slug_name) : '<span class="taxonomy-hash" aria-hidden="true">#</span>'}<span class="taxonomy-sidebar-name">${esc(name(tag))}</span></a>`).join('');
+  }
+
+  function marketplaceLink(current = '') {
+    return `<a data-router class="nav-item taxonomy-sidebar-item marketplace-sidebar-link${current === '/marketplace' || current.startsWith('/marketplace/') ? ' active' : ''}" href="/marketplace"${current === '/marketplace' || current.startsWith('/marketplace/') ? ' aria-current="page"' : ''}><span class="taxonomy-dot taxonomy-color-marketplace" aria-hidden="true"></span><span class="taxonomy-sidebar-name">${t('Vibe Coding 集市')}</span></a>`;
+  }
+  function inlineItems(data, kind, current = '') {
+    return (kind === 'categories' ? marketplaceLink(current) : '') + inlineTagItems(data,kind,current);
   }
 
   function navigation(data = null, current = '', collapsed = {}) {
@@ -150,7 +157,7 @@
         } catch (_) { /* A missing description must not hide a configured category. */ }
         return tag;
       }));
-      return toolbar + (!categoryList.length ? `<p class="muted">${t('起步类别待管理员启用，已有帖子和标签仍可正常浏览。')}</p>` : '') + `<div class="taxonomy-list">${(categoryList.length ? detailed : categories).map(tag=>categoryRow(tag,!categoryList.length)).join('')}</div>`;
+      return toolbar + (!categoryList.length ? `<p class="muted">${t('起步类别待管理员启用，已有帖子和标签仍可正常浏览。')}</p>` : '') + `<div class="taxonomy-list">${categoryRow({slug_name:'vibe-coding',display_name:t('Vibe Coding 集市'),description:t('发现项目、在线体验与想法讨论。')})}${(categoryList.length ? detailed : categories).filter(tag=>tag.slug_name!=='vibe-coding').map(tag=>categoryRow(tag,!categoryList.length)).join('')}</div>`;
     }
     const result = await answer.listTags({page,pageSize:48,order:'name'});
     const list = Array.isArray(result?.list) ? result.list : [];
