@@ -31,6 +31,10 @@ Keep README, architecture, community and implementation-plan reading requirement
 
 Before adding a feature, inspect adjacent flows and the current source of truth; shared filters, data definitions and access rules must not diverge across entry points.
 
+## 产品提案（尚未实现）
+
+- [Vibe Coding 集市](VIBE_CODING_MARKETPLACE.md)（2026-11-07）：类别入口下的项目展示、想法讨论和关联作品；拟复用 Answer 身份与内容，首版收录 GitHub/作者演示并选择性嵌入。当前只有产品方案和对话原型，没有新增业务路由、生产类别、托管运行或计费能力。
+
 ## 2026-10-17 代码核对与测试索引
 
 以下是本仓库源码和已有测试的导航索引，不把页面原型、跨仓库文档或生产配置视为实现证据。上表保留具体交互说明；本表补齐身份、数据来源和验证入口。未改动业务代码，也未在本次工具接入中完成新的生产浏览器/真实到账验收。
