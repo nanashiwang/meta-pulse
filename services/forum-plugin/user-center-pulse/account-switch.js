@@ -111,14 +111,19 @@
       const path = new URL(link.href, host.location.origin).pathname;
       if (!/^\/users\/[^/]+$/.test(path)) return;
       const username = decodeURIComponent(path.slice(7));
+      const existing = row.querySelector('[data-metar-switch]');
+      if (existing?.tagName === 'BUTTON' && !existing.hasAttribute('data-rr-ui-dropdown-item')) existing.remove();
       if (username === getUser()?.username) return;
-      let button = row.querySelector('[data-metar-switch]');
-      if (!button) {
-        button = host.document.createElement('button'); button.type = 'button'; button.className = 'btn btn-sm btn-outline-primary mt-1'; button.setAttribute('data-metar-switch', '');
-        row.lastElementChild.append(button);
+      const menu = row.querySelector('td:last-child .dropdown-menu');
+      if (!menu) return;
+      let item = menu.querySelector('[data-metar-switch]');
+      if (!item) {
+        item = host.document.createElement('button'); item.type = 'button'; item.className = 'dropdown-item';
+        item.setAttribute('data-metar-switch', ''); item.setAttribute('data-rr-ui-dropdown-item', ''); item.tabIndex = 0;
+        menu.append(item);
       }
-      const label = text('切换登录', 'Sign in as'); if (button.textContent !== label) button.textContent = label;
-      button.onclick = () => start(username);
+      const label = text('切换登录', 'Sign in as'); if (item.textContent !== label) item.textContent = label;
+      item.onclick = () => start(username);
     });
   }
   function install(getUser = () => null) {

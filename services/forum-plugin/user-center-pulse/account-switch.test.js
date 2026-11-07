@@ -62,3 +62,30 @@ test('return banner follows native language hydration and later language changes
  f.window.document.documentElement.lang='zh-CN';observe();assert.equal(nodes.button.textContent,'返回管理员');assert.equal(attrs['aria-label'],'账号切换');
  f.window.document.documentElement.lang='en';observe();assert.equal(nodes.button.textContent,'Return to administrator');
 });
+test('admin user switching is an item in each row three-dot menu, not an extra row button',()=>{
+ const item={tagName:'BUTTON',attrs:{},setAttribute(k,v){this.attrs[k]=v},hasAttribute(k){return k in this.attrs},remove(){this.removed=true}};
+ const menuItems=[];
+ const menu={querySelector:s=>s==='[data-metar-switch]'?menuItems.find(x=>!x.removed):null,append(x){menuItems.push(x)}};
+ const link={href:'https://forum.test/users/member'};
+ const row={querySelector(s){if(s==='td:first-child a[href^="/users/"]')return link;if(s==='[data-metar-switch]')return item;if(s==='td:last-child .dropdown-menu')return menu;return null}};
+ const f=setup();let confirmed='';f.window.confirm=message=>{confirmed=message;return false};
+ f.window.location.pathname='/admin/users';
+ f.window.document.querySelectorAll=s=>s==='tbody tr'?[row]:[];
+ f.window.document.createElement=tag=>({tagName:tag.toUpperCase(),attrs:{},setAttribute(k,v){this.attrs[k]=v},hasAttribute(k){return k in this.attrs},className:'',textContent:'',tabIndex:0});
+ let observe;
+ f.window.MutationObserver=class{constructor(fn){observe=fn}observe(){}};
+ f.window.requestAnimationFrame=fn=>fn();f.window.addEventListener=()=>{};
+ f.api.install(()=>({role_id:2,username:'admin'}));
+ assert.equal(item.removed,true);
+ assert.equal(menuItems.length,1);
+ assert.equal(menuItems[0].textContent,'切换登录');
+ assert.equal(menuItems[0].className,'dropdown-item');
+ menuItems[0].onclick();
+ return new Promise(resolve=>setImmediate(()=>{
+  assert.match(confirmed,/切换登录到 @member/);
+  assert.equal(f.calls.length,0);
+  observe();
+  assert.equal(menuItems.length,1);
+  resolve();
+ }));
+});
