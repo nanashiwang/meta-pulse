@@ -31,10 +31,10 @@ func TestProfileSummaryIsReadOnlyAndIncludesCurrentLedger(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if summary.Profile.LifetimeContribution != 2000 || summary.Profile.Level.Key != "pulse" || summary.CurrentContribution != 1500 || summary.AvailableTickets != 1 {
+	if summary.Profile.LifetimeContribution != 0 || summary.Profile.Level.Key != "retired" || summary.CurrentContribution != 0 || summary.AvailableTickets != 1 {
 		t.Fatalf("summary=%+v", summary)
 	}
-	if len(summary.CurrentLedgerEntries) != 2 || summary.CurrentLedgerEntries[0].ID != 1 || len(store.entries) != before {
+	if len(summary.CurrentLedgerEntries) != 1 || summary.CurrentLedgerEntries[0].ID != 2 || len(store.entries) != before {
 		t.Fatalf("ledger=%+v entries=%d", summary.CurrentLedgerEntries, len(store.entries))
 	}
 }
@@ -49,10 +49,7 @@ func TestProfileSummaryBoundsRecentLedgerWithoutChangingBalances(t *testing.T) {
 			store.accounts[accountKey(9, 4, ledger.AssetContribution)] = ledger.Account{UserID: 9, PeriodID: 4, AssetType: ledger.AssetContribution, Balance: 9000}
 			store.accounts[accountKey(9, 4, ledger.AssetTicket)] = ledger.Account{UserID: 9, PeriodID: 4, AssetType: ledger.AssetTicket, Balance: 7}
 			for i := count; i > 0; i-- {
-				asset := ledger.AssetContribution
-				if i%3 == 0 {
-					asset = ledger.AssetTicket
-				}
+				asset := ledger.AssetTicket
 				store.entries = append(store.entries, ledger.Entry{ID: uint64(i), UserID: 9, PeriodID: 4, AssetType: asset, Amount: 1})
 			}
 			store.entries = append(store.entries,
@@ -74,7 +71,7 @@ func TestProfileSummaryBoundsRecentLedgerWithoutChangingBalances(t *testing.T) {
 					t.Fatalf("entry %d = %+v", i, entry)
 				}
 			}
-			if summary.Profile.LifetimeContribution != 9500 || summary.CurrentContribution != 9000 || summary.AvailableTickets != 7 || len(store.entries) != count+2 {
+			if summary.Profile.LifetimeContribution != 0 || summary.CurrentContribution != 0 || summary.AvailableTickets != 7 || len(store.entries) != count+2 {
 				t.Fatalf("summary changed balances or facts: %+v", summary)
 			}
 		})
@@ -92,7 +89,7 @@ func TestProfileSummaryAllowsNoActivePeriod(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if summary.CurrentPeriod != nil || summary.Profile.LifetimeContribution != 500 {
+	if summary.CurrentPeriod != nil || summary.Profile.LifetimeContribution != 0 {
 		t.Fatalf("summary=%+v", summary)
 	}
 }
@@ -113,5 +110,16 @@ func TestProfileSummaryClampsTicketDebtForProductView(t *testing.T) {
 	}
 	if summary.AvailableTickets != 0 {
 		t.Fatalf("available tickets=%d, want 0 for ticket debt", summary.AvailableTickets)
+	}
+}
+
+func TestRetiredProfileIgnoresHistoricalContributionWithoutReadingStore(t *testing.T) {
+	svc, err := NewProfileService(memoryUnit{}, []level.Definition{{Key: "vip", MinContributionMilli: 0}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := svc.Get(context.Background(), 9)
+	if err != nil || result.LifetimeContribution != 0 || result.Level.Key != "retired" {
+		t.Fatalf("profile=%+v err=%v", result, err)
 	}
 }

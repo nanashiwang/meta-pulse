@@ -194,10 +194,10 @@ func rewardsStorePending(rewards *memoryRewardStore) []ports.RewardGrant {
 	return pending
 }
 
-func TestContentAwardPaidThresholdProducesHonorOnlyRecord(t *testing.T) {
-	s, _, content, rewards, audit := newContentAwardFixture(t, 999)
+func TestContentAwardIgnoresRetiredPaidThreshold(t *testing.T) {
+	s, _, content, rewards, audit := newContentAwardFixture(t, 0)
 	result, err := s.ReviewAndAward(context.Background(), ContentAwardCommand{CandidateID: 1, AwardVersion: 1, RewardType: "quota", Amount: 10, Reason: "优质内容", ActorType: "admin", ActorID: "op-1", RequestID: "review-1"})
-	if err != nil || result.Award.ID == 0 || result.Eligibility != ports.ContentAwardIneligible || len(rewards.grants) != 0 || len(rewards.outboxes) != 0 || content.awards[result.Award.ActionID].Status != ports.ContentAwardIneligible || len(audit.logs) != 1 {
+	if err != nil || result.Award.ID == 0 || result.Eligibility != "eligible" || len(rewards.grants) != 1 || len(rewards.outboxes) != 1 || content.awards[result.Award.ActionID].Status != ports.ContentAwardPending || len(audit.logs) != 1 {
 		t.Fatalf("result=%+v err=%v awards=%+v audits=%d", result, err, content.awards, len(audit.logs))
 	}
 }

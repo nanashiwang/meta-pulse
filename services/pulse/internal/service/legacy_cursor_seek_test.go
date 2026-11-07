@@ -1,3 +1,4 @@
+// Historical cursor audit fixture only; not compiled into production binaries.
 package service
 
 import (

@@ -13,3 +13,16 @@ func TestParseRewardRetryArgsRequiresTargetGrant(t *testing.T) {
 		}
 	}
 }
+
+func TestRetiredUsageCommands(t *testing.T) {
+	for _, command := range []string{"backfill", "backtest", "cursor-seek", "ingest-snapshot", "access-check"} {
+		if !isRetiredUsageCommand(command) {
+			t.Fatalf("usage command %s accepted", command)
+		}
+	}
+	for _, command := range []string{"reconcile", "reward-retry", "period-close", "ledger-check", "config-check", "migrate-up"} {
+		if isRetiredUsageCommand(command) {
+			t.Fatalf("retirement disabled recovery command %s", command)
+		}
+	}
+}

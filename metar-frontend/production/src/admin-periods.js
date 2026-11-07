@@ -93,7 +93,7 @@
       return t("暂时无法确认保存结果，请重试原请求。");
     if (error.code === "invalid_period" || error.status === 400)
       return t(
-        "请检查有效天数、倍率、每券贡献度、预算与奖项，并至少配置一个经验奖项。",
+        "请检查有效天数、预算与奖项，并至少配置一个经验奖项。",
       );
     if (error.status === 401 || error.status === 403)
       return t("仅正常且已激活的社区管理员可管理 Pulse 配置。");
@@ -161,7 +161,6 @@
         <form id="admin-period-editor" data-form="admin-period" class="prod-admin-form mt24" ${this.pending ? "" : "hidden"}>
         <fieldset ${this.pending ? "disabled" : ""}><div class="prod-admin-grid">
           <label>${t("额度奖励有效天数")}<input name="quota_validity_days" type="number" min="1" max="3650" step="1" value="${this.current?.quota_validity_days || 30}" required><span class="prod-field-help">${t("从每张券获得时起计算，默认 30 天；到期后仅抽取经验。")}</span></label>
-          <label>${t("API 贡献倍率")}<input name="multiplier" type="number" min="0.0001" max="100" step="0.0001" value="${this.current?.rules?.[0] ? esc(format(this.current.rules[0].multiplier_bps,4)) : 1}" required><span class="prod-field-help">${t("仅影响 API 贡献统计，不兑换抽奖券；最多支持 4 位小数。")}</span></label>
         </div>
         <h3 class="mt24">${t("统一抽奖规则")}</h3><p class="prod-field-help">${t("每次独立抽取，中奖不减少奖项权重。至少设置一个经验奖项。所有未用券使用新预算，旧奖励继续由原预算结算；保存不会开启抽奖。")}</p>
         <label class="prod-check mt16"><input name="unlimited_quota" type="checkbox" ${(!this.current || this.current.quota_budget_unlimited) ? "checked" : ""}> ${t("不限制额度奖励总量")}</label><p class="prod-field-help">${t("通过奖项和权重控制平均成本；实际支出会波动，不保证固定总额。经验预算仍单独生效。")}</p><label class="prod-admin-field mt16">${t("额度奖池预算（整数 quota）")}<input name="reward_budget" value="${(!this.current || this.current.quota_budget_unlimited) ? "0" : ""}" inputmode="numeric" pattern="0|[1-9][0-9]*"><span class="prod-field-help">${t("不限制总量时忽略此项；取消勾选后填写额度上限。")}</span></label><label class="prod-admin-field mt16">${t("经验奖池预算（整数 EXP）")}<input name="experience_budget" required value="${this.current ? "" : 100000}" inputmode="numeric" pattern="0|[1-9][0-9]*"></label>
@@ -235,7 +234,7 @@
         continuous: true,
         quota_validity_days,
         expected_period_id: this.current?.id || 0,
-        multiplier_bps: fixed(f.get("multiplier"), 4, 1000000n),
+        multiplier_bps: this.current?.rules?.[0]?.multiplier_bps || 10000, // Historical snapshot compatibility only.
         // Legacy snapshot field: retained for API/history compatibility, not issuance.
         ticket_threshold_milli: this.current?.ticket_threshold_milli || 5000,
         reward_budget,
@@ -317,7 +316,7 @@
         }
         form.querySelector('[data-period-prizes]').innerHTML = rewards.map(rewardRow).join('');
         form.querySelector('[name="reason"]').value = t("采用 50% 额度概率方案：每券期望 0.25 ⚡️，经验奖励为 1 / 4 / 20 EXP。");
-        form.querySelector("[data-period-expectation]").innerHTML = `<p>${t("已载入奖项；发券门槛、倍率、有效期和预算设置保持原值。核对后保存才会生效。")}</p>${rewardPreview(rewards, this.quotaPerUnit)}`;
+        form.querySelector("[data-period-expectation]").innerHTML = `<p>${t("已载入奖项；有效期和预算设置保持原值。核对后保存才会生效。")}</p>${rewardPreview(rewards, this.quotaPerUnit)}`;
         return;
       }
       if (action === "admin-period-retry") return this.submit(form, true);

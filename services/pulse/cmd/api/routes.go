@@ -8,7 +8,6 @@ import (
 	"github.com/nanashiwang/meta-pulse/internal/adapter/newapi"
 	"github.com/nanashiwang/meta-pulse/internal/app"
 	"github.com/nanashiwang/meta-pulse/internal/config"
-	"github.com/nanashiwang/meta-pulse/internal/domain/level"
 	"github.com/nanashiwang/meta-pulse/internal/observability"
 	"github.com/nanashiwang/meta-pulse/internal/ports"
 	"github.com/nanashiwang/meta-pulse/internal/security"
@@ -17,10 +16,7 @@ import (
 )
 
 func buildAPIRouter(cfg config.Config, logger *slog.Logger, readiness app.ReadinessChecker, unit ports.UnitOfWork, nonces security.NonceStore, settings transporthttp.RuntimeSettings, metrics *observability.Metrics) (http.Handler, error) {
-	profile, err := service.NewProfileService(unit, []level.Definition{
-		{Key: "new", Name: "新用户", MinContributionMilli: 0},
-		{Key: "pulse", Name: "脉冲者", MinContributionMilli: 1000000},
-	})
+	profile, err := service.NewProfileService(unit, nil)
 	if err != nil {
 		return nil, err
 	}

@@ -34,10 +34,5 @@ func newRuntimePeriodCloser(ctx context.Context, provider app.RuntimeConfigProvi
 	if err := cfg.ValidateWorker(); err != nil {
 		return nil, err
 	}
-	return service.NewPeriodCloseService(unit, service.PeriodCloseConfig{
-		BatchSize: cfg.PeriodCloseBatchSize, CursorName: service.DefaultUsageCursorName,
-		SourceSystem: "new-api-log", RequireWatermark: cfg.PeriodCloseRequireWatermark,
-		EnablePeriodRewards: cfg.PeriodRewardsEnabled, RandomSecret: []byte(cfg.RewardRandomSecret),
-		ShadowMode: cfg.RewardShadowMode,
-	})
+	return service.NewPeriodCloseService(unit, service.PeriodCloseConfig{BatchSize: cfg.PeriodCloseBatchSize})
 }

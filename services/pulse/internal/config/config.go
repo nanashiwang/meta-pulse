@@ -64,10 +64,7 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	ingestBatchSize, err := getenvInt("PULSE_INGEST_BATCH_SIZE", 250, false)
-	if err != nil {
-		return Config{}, err
-	}
+	ingestBatchSize := 250 // Retired API consumption setting; ignore legacy environment.
 	settlementBatchSize, err := getenvInt("PULSE_SETTLEMENT_BATCH_SIZE", 100, false)
 	if err != nil {
 		return Config{}, err
@@ -84,22 +81,13 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	periodCloseRequireWatermark, err := getenvBool("PULSE_PERIOD_CLOSE_REQUIRE_WATERMARK", true)
-	if err != nil {
-		return Config{}, err
-	}
-	periodRewardsEnabled, err := getenvBool("PULSE_PERIOD_REWARDS_ENABLED", false)
-	if err != nil {
-		return Config{}, err
-	}
+	periodCloseRequireWatermark := false // Retired API consumption setting; ignore legacy environment.
+	periodRewardsEnabled := false        // Retired API consumption setting; ignore legacy environment.
 	contentIngestBatchSize, err := getenvInt("PULSE_CONTENT_INGEST_BATCH_SIZE", 100, false)
 	if err != nil {
 		return Config{}, err
 	}
-	contentMinPaidContribution, err := getenvInt64("PULSE_CONTENT_MIN_PAID_CONTRIBUTION_MILLI", 1000, true)
-	if err != nil {
-		return Config{}, err
-	}
+	contentMinPaidContribution := int64(0) // Retired API consumption setting; ignore legacy environment.
 	contentMaxUserPeriodAmount, err := getenvInt64("PULSE_CONTENT_MAX_USER_PERIOD_AMOUNT", 100, false)
 	if err != nil {
 		return Config{}, err
@@ -120,7 +108,7 @@ func Load() (Config, error) {
 		RedisAddr:                      getenv("PULSE_REDIS_ADDR", "127.0.0.1:6379"),
 		RedisPassword:                  os.Getenv("PULSE_REDIS_PASSWORD"),
 		RedisDB:                        redisDB,
-		NewAPILogDSN:                   os.Getenv("NEWAPI_LOG_DSN"),
+		NewAPILogDSN:                   "", // API usage ingestion is retired.
 		ForumDBDSN:                     os.Getenv("FORUM_DB_DSN"),
 		NewAPIInternalURL:              os.Getenv("NEWAPI_INTERNAL_BASE_URL"),
 		ServiceHMACSecret:              os.Getenv("PULSE_SERVICE_HMAC_SECRET"),
@@ -335,9 +323,6 @@ func (cfg Config) ValidateWorker() error {
 		"PULSE_SERVICE_HMAC_SECRET":  cfg.ServiceHMACSecret,
 		"PULSE_REWARD_RANDOM_SECRET": cfg.RewardRandomSecret,
 	})}
-	if err := cfg.ValidateLogReader(); err != nil {
-		errs = append(errs, err)
-	}
 	if strings.TrimSpace(cfg.NewAPIInternalURL) == "" {
 		errs = append(errs, errors.New("NEWAPI_INTERNAL_BASE_URL is required for worker"))
 	}

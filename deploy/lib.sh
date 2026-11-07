@@ -117,7 +117,7 @@ ensure_env_file() {
   # Optional shell variables make non-interactive provisioning possible while
   # keeping DSNs out of command-line arguments and process listings.
   local key
-  for key in PULSE_ENV NEWAPI_LOG_DSN FORUM_DB_DSN NEWAPI_INTERNAL_BASE_URL; do
+  for key in PULSE_ENV FORUM_DB_DSN NEWAPI_INTERNAL_BASE_URL; do
     if [[ -n "${!key:-}" ]]; then
       set_env_value "$key" "${!key}"
     fi
@@ -165,7 +165,6 @@ validate_environment() {
 }
 
 validate_worker_environment() {
-  require_env_value NEWAPI_LOG_DSN
   require_env_value NEWAPI_INTERNAL_BASE_URL
 }
 

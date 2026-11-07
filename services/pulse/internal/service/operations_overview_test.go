@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -98,23 +97,23 @@ func TestLoadReportsHealthyWhenAnActivePeriodHasRules(t *testing.T) {
 
 // This is the exact production condition that stalled ingestion: rows are
 // fetched every batch but no period can accept them.
-func TestLoadReportsBlockedWhenNoActivePeriodExists(t *testing.T) {
+func TestLoadDoesNotReportRetiredIngestionAsBlocked(t *testing.T) {
 	memory := &overviewMemory{periods: []ports.PeriodOverview{{ID: 9, Key: "2026-P000", Status: "closed"}}}
 	result, err := newOverviewService(t, memory, nil).Load(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Health.HasActivePeriod || !result.Health.IngestBlocked {
-		t.Fatalf("health = %+v, want blocked with no active period", result.Health)
+	if result.Health.HasActivePeriod || result.Health.IngestBlocked {
+		t.Fatalf("health = %+v, want no active period without retired ingest alarm", result.Health)
 	}
-	if !strings.Contains(result.Health.BlockedReason, "does not advance the cursor") {
+	if result.Health.BlockedReason != "" {
 		t.Fatalf("blocked reason = %q", result.Health.BlockedReason)
 	}
 }
 
 // An active period whose window has already passed cannot accept events even
 // though its status column still says active.
-func TestLoadTreatsAnExpiredActiveWindowAsBlocked(t *testing.T) {
+func TestLoadExpiredWindowDoesNotReviveIngestAlert(t *testing.T) {
 	expired := activePeriodOverview()
 	expired.StartsAt = overviewNow.Add(-20 * 24 * time.Hour)
 	expired.EndsAt = overviewNow.Add(-10 * 24 * time.Hour)
@@ -123,14 +122,14 @@ func TestLoadTreatsAnExpiredActiveWindowAsBlocked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.Health.IngestBlocked {
-		t.Fatal("an expired active window was reported as healthy")
+	if result.Health.IngestBlocked {
+		t.Fatal("expired window revived retired ingest alarm")
 	}
 }
 
 // A rule-less active period silently records every event as ineligible with
 // zero contribution, which is worse than a hard failure because it looks fine.
-func TestLoadFlagsAnActivePeriodWithNoRules(t *testing.T) {
+func TestLoadRulelessPeriodDoesNotReviveIngestAlert(t *testing.T) {
 	ruleless := activePeriodOverview()
 	ruleless.RuleCount = 0
 	memory := &overviewMemory{periods: []ports.PeriodOverview{ruleless}, rules: map[uint64][]ports.EconomicsRuleOverview{}}
@@ -138,10 +137,10 @@ func TestLoadFlagsAnActivePeriodWithNoRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.Health.HasActivePeriod || !result.Health.IngestBlocked {
-		t.Fatalf("health = %+v, want an active but blocked period", result.Health)
+	if !result.Health.HasActivePeriod || result.Health.IngestBlocked {
+		t.Fatalf("health = %+v, want active reward period without retired ingest alarm", result.Health)
 	}
-	if !strings.Contains(result.Health.BlockedReason, "ineligible") {
+	if result.Health.BlockedReason != "" {
 		t.Fatalf("blocked reason = %q", result.Health.BlockedReason)
 	}
 }
@@ -166,7 +165,7 @@ func TestLoadFetchesRulesOnlyForDraftAndActivePeriods(t *testing.T) {
 	}
 }
 
-func TestLoadIncludesCursorProgress(t *testing.T) {
+func TestLoadHidesRetiredCursorProgress(t *testing.T) {
 	watermark := overviewNow.Add(-90 * time.Second)
 	memory := &overviewMemory{
 		periods: []ports.PeriodOverview{activePeriodOverview()},
@@ -177,7 +176,7 @@ func TestLoadIncludesCursorProgress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Cursors) != 1 || result.Cursors[0].LagSeconds != 90 {
+	if len(result.Cursors) != 0 || result.APIUsageEnabled || result.ContributionStatus != "retired" {
 		t.Fatalf("cursors = %+v", result.Cursors)
 	}
 }

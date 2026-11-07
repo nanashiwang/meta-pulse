@@ -32,15 +32,14 @@ func main() {
 		return
 	}
 
+	if isRetiredUsageCommand(os.Args[1]) {
+		logger.Error("API 消费贡献已退役，此命令不可再执行", "command", os.Args[1])
+		os.Exit(1)
+	}
 	switch os.Args[1] {
 	case "infra-check":
 		if err := runInfrastructureCheck(); err != nil {
 			logger.Error("infrastructure check failed", "error", err)
-			os.Exit(1)
-		}
-	case "ingest-snapshot":
-		if err := runIngestSnapshot(); err != nil {
-			logger.Error("ingest snapshot unavailable")
 			os.Exit(1)
 		}
 	case "config-check":
@@ -53,24 +52,9 @@ func main() {
 			logger.Error("migration command failed", "error", err)
 			os.Exit(1)
 		}
-	case "access-check":
-		if err := runAccessCheck(); err != nil {
-			logger.Error("access check failed", "error", err)
-			os.Exit(1)
-		}
 	case "ledger-check":
 		if err := runLedgerCheck(); err != nil {
 			logger.Error("ledger check failed", "error", err)
-			os.Exit(1)
-		}
-	case "backfill":
-		if err := runBackfill(os.Args[2:]); err != nil {
-			logger.Error("backfill failed", "error", err)
-			os.Exit(1)
-		}
-	case "backtest":
-		if err := runBacktest(os.Args[2:]); err != nil {
-			logger.Error("backtest failed", "error", err)
 			os.Exit(1)
 		}
 	case "reward-retry":
@@ -91,11 +75,6 @@ func main() {
 	case "period-create":
 		if err := runPeriodCreate(os.Args[2:]); err != nil {
 			logger.Error("period create failed", "error", err)
-			os.Exit(1)
-		}
-	case "cursor-seek":
-		if err := runCursorSeek(os.Args[2:]); err != nil {
-			logger.Error("cursor seek failed", "error", err)
 			os.Exit(1)
 		}
 	default:
@@ -194,136 +173,6 @@ func runRewardRetry(args []string) error {
 	return err
 }
 
-func runBacktest(args []string) error {
-	flags := flag.NewFlagSet("backtest", flag.ContinueOnError)
-	fromValue := flags.String("from", "", "start time in RFC3339 (inclusive)")
-	toValue := flags.String("to", "", "end time in RFC3339 (exclusive)")
-	manualMultiplier := flags.Int64("manual-multiplier-bps", 10000, "manual comparison multiplier in basis points")
-	if err := flags.Parse(args); err != nil {
-		return err
-	}
-	parseTime := func(name, value string) (time.Time, error) {
-		if value == "" {
-			return time.Time{}, nil
-		}
-		parsed, err := time.Parse(time.RFC3339, value)
-		if err != nil {
-			return time.Time{}, fmt.Errorf("invalid --%s: %w", name, err)
-		}
-		return parsed, nil
-	}
-	from, err := parseTime("from", *fromValue)
-	if err != nil {
-		return err
-	}
-	to, err := parseTime("to", *toValue)
-	if err != nil {
-		return err
-	}
-	cfg, err := config.Load()
-	if err != nil {
-		return err
-	}
-	database, err := mysqlstore.Open(cfg.PulseDBDSN)
-	if err != nil {
-		return err
-	}
-	defer database.Close()
-	reader, err := newapi.OpenLogReader(cfg.NewAPILogDSN)
-	if err != nil {
-		return err
-	}
-	defer reader.Close()
-	source, err := newapi.NewLogSource(reader, "new-api-log")
-	if err != nil {
-		return err
-	}
-	unit, err := mysqlstore.NewUnitOfWork(database)
-	if err != nil {
-		return err
-	}
-	backtest, err := service.NewBacktestService(unit, source, service.BacktestConfig{
-		BatchSize:            cfg.IngestBatchSize,
-		TicketThresholdMilli: cfg.TicketThresholdMilli,
-		ManualMultiplierBps:  money.Bps(*manualMultiplier),
-	})
-	if err != nil {
-		return err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-	defer cancel()
-	report, runErr := backtest.Run(ctx, from, to)
-	encoded, encodeErr := json.MarshalIndent(report, "", "  ")
-	if encodeErr != nil {
-		return encodeErr
-	}
-	fmt.Println(string(encoded))
-	return runErr
-}
-
-func runBackfill(args []string) error {
-	flags := flag.NewFlagSet("backfill", flag.ContinueOnError)
-	fromValue := flags.String("from", "", "start time in RFC3339")
-	toValue := flags.String("to", "", "end time in RFC3339")
-	dryRun := flags.Bool("dry-run", false, "report only; do not write Pulse data")
-	if err := flags.Parse(args); err != nil {
-		return err
-	}
-	parseTime := func(value string) (time.Time, error) {
-		if value == "" {
-			return time.Time{}, nil
-		}
-		return time.Parse(time.RFC3339, value)
-	}
-	from, err := parseTime(*fromValue)
-	if err != nil {
-		return fmt.Errorf("invalid --from: %w", err)
-	}
-	to, err := parseTime(*toValue)
-	if err != nil {
-		return fmt.Errorf("invalid --to: %w", err)
-	}
-	cfg, err := config.Load()
-	if err != nil {
-		return err
-	}
-	database, err := mysqlstore.Open(cfg.PulseDBDSN)
-	if err != nil {
-		return err
-	}
-	defer database.Close()
-	reader, err := newapi.OpenLogReader(cfg.NewAPILogDSN)
-	if err != nil {
-		return err
-	}
-	defer reader.Close()
-	source, err := newapi.NewLogSource(reader, "new-api-log")
-	if err != nil {
-		return err
-	}
-	unit, err := mysqlstore.NewUnitOfWork(database)
-	if err != nil {
-		return err
-	}
-	ingest, err := service.NewUsageIngestService(unit, source, service.UsageIngestConfig{CursorName: "new-api-usage-backfill", SourceSystem: "new-api-log", BatchSize: cfg.IngestBatchSize, TicketThresholdMilli: cfg.TicketThresholdMilli})
-	if err != nil {
-		return err
-	}
-	backfill, err := service.NewBackfillService(ingest, source)
-	if err != nil {
-		return err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-	defer cancel()
-	report, err := backfill.Run(ctx, service.BackfillOptions{From: from, To: to, DryRun: *dryRun})
-	encoded, encodeErr := json.MarshalIndent(report, "", "  ")
-	if encodeErr != nil {
-		return encodeErr
-	}
-	fmt.Println(string(encoded))
-	return err
-}
-
 func runPeriodClose() error {
 	cfg, err := config.Load()
 	if err != nil {
@@ -343,15 +192,7 @@ func runPeriodClose() error {
 	if err != nil {
 		return err
 	}
-	periodCloser, err := service.NewPeriodCloseService(unit, service.PeriodCloseConfig{
-		BatchSize:           cfg.PeriodCloseBatchSize,
-		CursorName:          service.DefaultUsageCursorName,
-		SourceSystem:        "new-api-log",
-		RequireWatermark:    cfg.PeriodCloseRequireWatermark,
-		EnablePeriodRewards: cfg.PeriodRewardsEnabled,
-		RandomSecret:        []byte(cfg.RewardRandomSecret),
-		ShadowMode:          cfg.RewardShadowMode,
-	})
+	periodCloser, err := service.NewPeriodCloseService(unit, service.PeriodCloseConfig{BatchSize: cfg.PeriodCloseBatchSize})
 	if err != nil {
 		return err
 	}
@@ -365,38 +206,6 @@ func runPeriodClose() error {
 	}
 	fmt.Println(string(encoded))
 	return runErr
-}
-
-func runAccessCheck() error {
-	cfg, err := config.Load()
-	if err != nil {
-		return err
-	}
-	// Permission checks must not require Benefit connectivity or its HMAC
-	// secret; those are unrelated to proving LOG_DB is read-only.
-	if err := cfg.ValidateLogReader(); err != nil {
-		return err
-	}
-	reader, err := newapi.OpenLogReader(cfg.NewAPILogDSN)
-	if err != nil {
-		return err
-	}
-	defer reader.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	report, err := reader.CheckReadOnly(ctx)
-	if err != nil {
-		return err
-	}
-	encoded, encodeErr := json.MarshalIndent(report, "", "  ")
-	if encodeErr != nil {
-		return encodeErr
-	}
-	fmt.Println(string(encoded))
-	if !report.Readable || !report.ReadOnly {
-		return fmt.Errorf("new-api LOG_DB account is not a proven read-only account")
-	}
-	return nil
 }
 
 func runLedgerCheck() error {
@@ -442,7 +251,7 @@ func runMigration(up bool) error {
 
 func usage() {
 	fmt.Println("Meta Pulse operator tool")
-	fmt.Println("commands: infra-check | ingest-snapshot | config-check --role <api|worker|tool> | migrate-up | migrate-status | backfill | backtest | access-check | reconcile | ledger-check | period-close | period-create | cursor-seek | reward-retry --grant-id <pg_...>")
+	fmt.Println("commands: infra-check | config-check --role <api|worker|tool> | migrate-up | migrate-status | reconcile | ledger-check | period-close | period-create | reward-retry --grant-id <pg_...>")
 }
 
 // runConfigCheck never opens a database or emits credential values.
@@ -472,7 +281,7 @@ func runPeriodCreate(args []string) error {
 	timezone := flags.String("timezone", "Asia/Shanghai", "period timezone")
 	configVersion := flags.String("config-version", "", "immutable economics config version")
 	randomVersion := flags.String("random-version", "", "immutable random version (defaults to config version)")
-	multiplierBps := flags.Int("multiplier-bps", 0, "catch-all contribution multiplier in basis points (10000 = 1.0x)")
+	multiplierBps := flags.Int("multiplier-bps", 10000, "deprecated historical snapshot metadata; no contribution is recorded")
 	ruleKey := flags.String("rule-key", "default", "catch-all rule key")
 	rewardsFile := flags.String("rewards-file", "", "strict JSON prize array [{key,amount,weight}]; amounts are integer quota")
 	rewardBudget := flags.Int64("reward-budget", 0, "positive loyalty hard budget in integer quota; requires --rewards-file")
@@ -491,7 +300,7 @@ func runPeriodCreate(args []string) error {
 		return fmt.Errorf("invalid --starts-at: %w", err)
 	}
 	if *multiplierBps <= 0 {
-		return errors.New("--multiplier-bps must be positive; a zero multiplier would record every event with zero contribution")
+		return errors.New("--multiplier-bps must be positive; legacy snapshot metadata requires a positive value")
 	}
 	if *multiplierBps > int(money.MaxBps) {
 		return fmt.Errorf("--multiplier-bps exceeds the maximum of %d", money.MaxBps)
@@ -550,66 +359,6 @@ func runPeriodCreate(args []string) error {
 	return nil
 }
 
-// runCursorSeek forfeits the backlog before --skip-before. Those log rows are
-// never ingested, so they produce no contribution, tickets or rewards.
-func runCursorSeek(args []string) error {
-	flags := flag.NewFlagSet("cursor-seek", flag.ContinueOnError)
-	skipBefore := flags.String("skip-before", "", "resume ingestion at this RFC3339 time, forfeiting everything earlier")
-	cursorName := flags.String("cursor-name", service.DefaultUsageCursorName, "worker cursor name")
-	sourceSystem := flags.String("source-system", "new-api-log", "cursor source system")
-	reason := flags.String("reason", "", "required audit reason")
-	actorID := flags.String("actor-id", "", "required operator identity for the audit log")
-	confirm := flags.Bool("confirm", false, "required: acknowledge that skipped log rows are permanently forfeited")
-	if err := flags.Parse(args); err != nil {
-		return err
-	}
-	if !*confirm {
-		return errors.New("--confirm is required: skipped rows never produce contribution, tickets or rewards")
-	}
-	if *skipBefore == "" {
-		return errors.New("--skip-before is required")
-	}
-	target, err := time.Parse(time.RFC3339, *skipBefore)
-	if err != nil {
-		return fmt.Errorf("invalid --skip-before: %w", err)
-	}
-
-	cfg, err := config.Load()
-	if err != nil {
-		return err
-	}
-	database, err := mysqlstore.Open(cfg.PulseDBDSN)
-	if err != nil {
-		return err
-	}
-	defer database.Close()
-	unit, err := mysqlstore.NewUnitOfWork(database)
-	if err != nil {
-		return err
-	}
-	seeker, err := service.NewCursorSeekService(unit, time.Now)
-	if err != nil {
-		return err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	result, err := seeker.Seek(ctx, service.CursorSeekCommand{
-		ActorType: "operator", ActorID: *actorID, CursorName: *cursorName,
-		SourceSystem: *sourceSystem, SkipBefore: target, Reason: *reason,
-	})
-	if err != nil {
-		return err
-	}
-	encoded, encodeErr := json.MarshalIndent(result, "", "  ")
-	if encodeErr != nil {
-		return encodeErr
-	}
-	fmt.Println(string(encoded))
-	return nil
-}
-
-// Financial tools resolve the same role-specific settings as the worker. They
-// must not silently use old env credentials after a UI rotation.
 func loadWorkerRuntime(database *mysqlstore.DB, baseline config.Config) (config.Config, error) {
 	if _, err := os.Stat(filepath.Join(baseline.RuntimeKeyDir, "worker.key")); err != nil {
 		return config.Config{}, errors.New("worker runtime key unavailable; run this command inside pulse-worker")
@@ -628,4 +377,12 @@ func loadWorkerRuntime(database *mysqlstore.DB, baseline config.Config) (config.
 		return config.Config{}, err
 	}
 	return cfg, nil
+}
+
+func isRetiredUsageCommand(command string) bool {
+	switch command {
+	case "ingest-snapshot", "access-check", "backfill", "backtest", "cursor-seek":
+		return true
+	}
+	return false
 }

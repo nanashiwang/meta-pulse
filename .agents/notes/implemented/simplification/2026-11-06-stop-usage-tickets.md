@@ -27,3 +27,5 @@ Status: implemented
 所有采集 Worker / CLI 需升级才生效，旧进程仍可执行旧代码。历史字段和离线 backtest 的经济模拟保留，不表示当前可兑换。回滚到旧版会恢复消费发券，应避免混跑。发布不代表生产已部署。
 
 相关：[社区赠券](../../implemented/feature/2026-11-06-community-tickets.md)、[当前抽奖规则](../../implemented/feature/2026-10-09-pulse-current-reward-rule.md)、[历史运营清零](../../implemented/process/2026-11-01-ticket-reset.md)。
+
+2026-11-08 的[消费贡献退役决定](2026-11-08-retire-api-contribution.md)取代本篇“继续写贡献与消费游标”的部分；本篇历史券不追溯修改及独立社区赠券边界继续成立。

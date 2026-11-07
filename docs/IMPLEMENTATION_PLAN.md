@@ -1,5 +1,18 @@
 # Meta Pulse 实施计划
 
+## 当前边界：API 消费贡献已退役（2026-11-08）
+
+API 消费、退款、差额结算和历史补录不再进入 Pulse：不读取 new-api LOG_DB，不新增 Usage Event、付费证明、贡献账本/账户/统计，不推进消费游标，不产生消费券或消费等级。历史表、账本和不可变规则快照保留供审计及恢复，不清零、不删表。
+
+Worker 继续执行奖励结算、查询对账、旧周期关闭、内容采集和账本/预算监控；启动不再需要日志库账号。`backfill`、`backtest`、`cursor-seek`、`ingest-snapshot`、`access-check` 在连接数据库前拒绝，`--accept-ingest` 已退役。旧消费环境变量不会重新启用功能。
+
+资料与概览保留兼容的零贡献字段、`level.key=retired`，并返回 `api_usage_enabled=false`、`contribution_status=retired`；概览账本仅展示券。社区不显示消费徽章、等级、贡献或倍率输入。Answer 自身 EXP 等级继续生效。内容奖励仍要求保护绑定、人工审核、独立预算和限额，但不再要求消费贡献。旧周期关闭不等待消费水位，也不再创建 `period_reward`；已有 Grant/Outbox 仍按原 source_ref 结算、查询、撤销和恢复。
+
+所有 API/Worker/离线工具及 forum 静态资源必须一起升级。只有确认旧进程全部停止且新 Worker 健康后，才能回收 Meta API 专用只读账号。不要只撤销数据库权限或停止整个 Worker。回滚旧版会恢复消费摄入。代码发布与生产部署、真实到账验收分别报告。
+
+下文涉及 Usage、Economics、消费等级、付费证明、消费游标和贡献型 Period Reward 的旧设计仅解释历史数据；现行行为以本节为准，不应按历史设计恢复接入。
+
+
 社区经营观察（v0.2.76）：管理员总览与用户运营标签复用 Answer 身份和事实，日级采集覆盖壳与原生内容页；自然日留存与中国法定七工作日活跃独立统计。出口包括真实 MySQL 去重、归因、成熟度、并发标签审计、法定调休与跨年、权限撤销、采集前后台和失败隔离，以及桌面/手机页面验收。指标定义与后续运营问题见 [COMMUNITY_ANALYTICS.md](COMMUNITY_ANALYTICS.md)。发布与生产升级分别验证。
 
 本文档是 `docs/ARCHITECTURE.md`（系统基线）与 `docs/COMMUNITY.md`（社区层）之上的工程执行清单。目标不是先把页面做出来，而是先打通身份、日志、记账、预算和结算边界，再逐步开放奖励。

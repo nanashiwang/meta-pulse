@@ -46,7 +46,7 @@ cd /opt/meta-pulse
 ./deploy/install.sh
 ```
 
-首次运行会在 `/opt/meta-pulse/.env` 创建配置并自动生成 Pulse/Forum 数据库密码及 HMAC 随机密钥。由于 `NEWAPI_LOG_DSN` 必须来自真实环境，脚本会在缺少该配置时安全退出；编辑配置后再次执行：
+首次运行会在 `/opt/meta-pulse/.env` 创建配置并自动生成 Pulse/Forum 数据库密码及 HMAC 随机密钥。API 消费已退役，无需配置日志库；确认 Benefit 内部地址和密钥后执行：
 
 ```bash
 chmod 600 .env
@@ -57,7 +57,6 @@ vi .env
 也可以在非交互场景通过环境变量注入外部配置（不要把 DSN 放进命令行参数）：
 
 ```bash
-NEWAPI_LOG_DSN='只读账号 DSN' \
 NEWAPI_INTERNAL_BASE_URL='http://<new-api私网地址>:3000' \
 ./deploy/install.sh
 ```
@@ -202,7 +201,7 @@ docker compose --env-file .env -f docker-compose.yml up -d pulse-api pulse-worke
 
 ## 监控与最小权限
 
-API 使用服务/BFF/Admin/随机密钥；Worker 只需要服务/随机密钥、只读 LOG_DB 和 Benefit 地址，不能为了通过启动校验给它额外分发 BFF/Admin 密钥。迁移工具不需要签名密钥。可用 `meta-pulse-tool config-check --role worker` 校验对应环境（角色也支持 `api`、`tool`）；命令不连接数据库、不输出密钥。
+API 使用服务/BFF/Admin/随机密钥；Worker 只需要服务/随机密钥和 Benefit 地址，不能为了通过启动校验给它额外分发 BFF/Admin 密钥。迁移工具不需要签名密钥。可用 `meta-pulse-tool config-check --role worker` 校验对应环境（角色也支持 `api`、`tool`）；命令不连接数据库、不输出密钥。
 
 Prometheus 必须能访问 Docker 私网，可配置两组抓取目标（不要发布宿主机端口）：
 
@@ -219,7 +218,7 @@ scrape_configs:
 - API `/metrics`：HTTP 计数，按路由模板分组。
 - Worker `/metrics`：真实账本差异、结算 retry/dead、预算、周期/任务失败、采集新鲜度。
 - 需要同时告警抓取失败、`meta_pulse_operations_up == 0` 和 `time() - meta_pulse_operations_last_success_timestamp_seconds > 120`。首次采集前业务值为 NaN；失败时保留旧值但将 up 设为 0，不能把陈旧数据当作正常。
-- Worker `/readyz` 只检查 Pulse MySQL/Redis；日志源只读权限仍在启动时 fail closed 验收。启动后各任务独立超时，慢日志/论坛查询不消耗结算和对账的任务预算。
+- Worker `/readyz` 只检查 Pulse MySQL/Redis；不连接已退役的 LOG_DB。启动后各任务独立超时，慢论坛查询不消耗结算和对账的任务预算。
 
 ## 幂等升级与回归
 
@@ -243,27 +242,9 @@ make test-forum-integration    # 需要专用测试库 FORUM_INTEGRATION_DSN
 
 运营只读页面在 **new-api 的 `/console/pulse-ops`**，不是社区域名的 `/admin`。已有代码链路为管理员会话 → `/api/pulse/ops/overview` → Pulse `/v1/internal/admin/operations/overview`。new-api 需配置 Pulse 私网地址 `PULSE_INTERNAL_URL` 与独立 `PULSE_ADMIN_HMAC_SECRET`，后者与 Pulse API 同名配置一致；new-api 控制台中已保存的对应选项优先于环境变量。不得向浏览器或社区静态配置分发密钥。
 
-上线后先确认管理员能读取周期与游标、普通用户被拒绝、Pulse 不可用时页面明确降级。页面中的活动周期提示只说明当前时刻存在周期和规则，不能单独证明 Worker 正在运行、历史积压已有对应周期或游标已追平。
+上线后确认管理员能读取奖励规则与结算诊断、普通用户被拒绝。消费摄入已退役，概览返回 `api_usage_enabled=false`、`contribution_status=retired` 和空消费游标，不再监控消费积压。
 
-### 批量与时间预算
-
-Go、Compose 与生产模板的 `PULSE_INGEST_BATCH_SIZE` 默认值均为 **250**，允许显式配置 1–5000。已有 `.env` 中的显式值不会被更新脚本改写；此前已调成 250 的配置会保留。
-
-Usage Worker 单轮保留 20 秒硬超时，并在 15 秒处理预算后从最近已提交事件处让出批次。正常让出返回 `yielded=true`，30 秒后继续，不触发错误退避；数据库错误、事务失败、取消和硬超时仍退避。该预算在事件之间检查，不保证任意慢单条事务都能在 20 秒内完成。
-
-更新并检查 `/readyz` 后，观察至少三个连续批次：
-
-```bash
-docker compose --env-file .env -f docker-compose.yml logs --since 10m pulse-worker
-```
-
-- `elapsed_ms` 是实际处理耗时，`fetched` 是读取条数，`accepted` 等结果只计成功提交；
-- `yielded=true` 表示本页未处理尾部将在下一轮重新读取，不代表丢数据或跳过记录；
-- 核对运营概览中的 `value`、`version` 和 `watermark_at` 持续前进，积压期间 `lag_seconds` 持续缩小；
-- 无新调用时水位可能不前进，不能只用水位年龄宣称摄入失败；同时看 Worker 成功日志与实际源流量；
-- 若仍出现 `context deadline exceeded`，核对单批耗时与数据库延迟，再按实测降低批量；不要关闭故障退避或通过 `cursor-seek` 跳过积压来制造“追平”。
-
-仓库测试和 `/readyz` 不能替代上述真实摄入验收。没有真实日志与水位证据时，应保留“积压是否追平待验收”。
+升级需同时更新 API、Worker、forum 与工具。Worker 不再连接 LOG_DB，保留结算、对账和健康检查。全部旧进程停止后，才可在 Meta API 回收 Pulse 专用日志只读账号。历史数据保留；回滚旧版会恢复摄入。
 
 ## metar 快捷管理命令
 
@@ -322,50 +303,11 @@ export PATH="$HOME/.local/bin:$PATH"
 启动前应已完成首次部署和数据库迁移；`metar start` 不构建镜像、不执行迁移，代码升级应使用 `metar update`。启动器指向仓库中的脚本，后续 Git 更新会自动更新命令实现，无需重复安装快捷命令。
 
 
-### 自动摄入验收（只读）
+### 消费摄入验收已退役
 
-服务器更新并验收（Python 3 标准库，无需安装 pip 包）：
+`--accept-ingest`、`deploy/accept-ingest.py` 及工具 `ingest-snapshot/backfill/backtest/cursor-seek/access-check` 均在访问数据库前拒绝执行。升级脚本调用方需移除旧参数。
 
-```bash
-./deploy/update.sh --ref main --skip-forum --accept-ingest
-```
-
-已有新版部署可单独运行：
-
-```bash
-python3 deploy/accept-ingest.py --seconds 180
-# 自定义配置沿用部署入口，不能用 shell PULSE_* 覆盖 .env：
-META_PULSE_ENV_FILE=/opt/meta-pulse/.env python3 deploy/accept-ingest.py
-```
-
-验收核对干净工作区 HEAD、运行中 Worker 镜像的 OCI revision、容器实际
-`PULSE_INGEST_BATCH_SIZE`（不是模板值），打印容器/image ID 与启动时间。
-部署 helper 自动把当前 HEAD 注入镜像构建参数；旧镜像没有 revision 时必须重建，
-`--no-build` 不会把旧镜像伪装成新 commit。手动 Compose 构建需显式设置
-`META_PULSE_REVISION=$(git rev-parse HEAD)`，且只在干净工作区构建。
-
-采集前后通过运行中 Worker 的 `meta-pulse-tool ingest-snapshot` 只读查询
-`new-api-usage/new-api-log` 游标，输出 value/version/watermark_at/lag_seconds
-及 version、lag 差值。快照复用 Worker 实际 Pulse DSN 和时区，不依赖运营指标缓存，
-不连接 new-api。观察窗口默认 180 秒，最少 90 秒；只统计首次快照之后的日志，
-至少需要连续三个成功批次，输出 fetched/accepted/replayed/conflicts/manual_review/
-yielded/elapsed_ms。窗口内任一 ingest 失败均保留为失败，不被后续成功掩盖。
-
-退出码：
-
-- `0`：至少三个成功批次且 value/version/watermark 有前进，证明观察窗口内正常续跑；
-  **不代表已追平**，本工具未独立读取源端尾部，也不证明新流量持续到达。
-- `2`：**证据不足**，包括空批次（没有新源流量或可摄入源行）、日志不足、
-  游标未动、watermark 同秒未变、观察中容器重启/替换。无流量时 lag 自然增长，
-  不能据此报摄入失败或已追平；延长窗口或等真实流量后重跑。
-- `1`：配置/版本/采集失败、窗口内 ingest 失败或游标回退。命令不打印底层错误和凭据。
-
-lag 是最后已提交源事件的年龄，不是剩余行数；忙碌源端下 lag 增长也不能单独认定故障。
-缺游标时 value 为空、version 为 0、watermark 为 null，lag 的 0 不表示追平。
-验收不会触发 backfill、cursor-seek、记账、源端流量或服务重启，也不会操作 new-api。
-`--accept-ingest` 不能与 `--skip-worker` 同用；验收退出 1/2 时更新本身可能已完成，
-不会自动回滚或修改游标。原始批次错误字段不输出，需在服务器受控环境另查日志。
-生产验收仍需实际执行，离线测试和 CI 不替代线上证据。
+使用 `./deploy/update.sh --ref main` 完整升级，再核对 API/Worker/Forum 版本与健康、社区任务赠券、抽奖恢复和 Benefit 实际到账。确认新版 Worker 不出现 `usage_ingest` 任务，观察窗口内无新增 API Usage/贡献记录且消费游标不变。无调用数据不能作为独立证明，需同时核对实际镜像 revision 和任务组成。发布本身不代表生产验收。
 
 ## 基础设施外置与完整恢复集
 

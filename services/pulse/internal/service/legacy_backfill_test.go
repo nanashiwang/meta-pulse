@@ -1,3 +1,4 @@
+// Historical compatibility fixture only; never compiled into production binaries.
 package service
 
 import (

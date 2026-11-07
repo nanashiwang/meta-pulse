@@ -4,25 +4,21 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/nanashiwang/meta-pulse/internal/domain/ledger"
 	"github.com/nanashiwang/meta-pulse/internal/domain/period"
-	"github.com/nanashiwang/meta-pulse/internal/domain/reward"
 	"github.com/nanashiwang/meta-pulse/internal/ports"
 )
-
-var ErrPeriodWatermarkNotReady = errors.New("period watermark is not ready")
 
 type PeriodCloseConfig struct {
 	BatchSize           int
 	CursorName          string
 	SourceSystem        string
-	RequireWatermark    bool
-	EnablePeriodRewards bool
+	RequireWatermark    bool // Deprecated: ignored; usage ingestion is retired.
+	EnablePeriodRewards bool // Deprecated: ignored; historical grants still settle.
 	RandomSecret        []byte
 	ShadowMode          bool
 	Now                 func() time.Time
@@ -58,9 +54,6 @@ func NewPeriodCloseService(unit ports.UnitOfWork, cfg PeriodCloseConfig) (*Perio
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
-	if cfg.EnablePeriodRewards && len(cfg.RandomSecret) == 0 {
-		return nil, errors.New("period reward random secret is required")
-	}
 	return &PeriodCloseService{unit: unit, cfg: cfg}, nil
 }
 
@@ -81,10 +74,6 @@ func (s *PeriodCloseService) RunOnce(ctx context.Context) (PeriodCloseReport, er
 	report.Checked = len(periods)
 	for _, activity := range periods {
 		closed, expired, rewards, err := s.closeOne(ctx, activity)
-		if errors.Is(err, ErrPeriodWatermarkNotReady) {
-			report.Deferred++
-			continue
-		}
 		if err != nil {
 			report.Failed++
 			continue
@@ -102,12 +91,8 @@ func (s *PeriodCloseService) closeOne(ctx context.Context, activity period.Perio
 	var expired, rewards int
 	closed := false
 	err := s.unit.Do(ctx, func(repos ports.Repositories) error {
-		if repos.PeriodAdmin == nil || repos.Cursor == nil || repos.Account == nil || repos.Ledger == nil {
+		if repos.PeriodAdmin == nil || repos.Account == nil || repos.Ledger == nil {
 			return errors.New("period close repositories are not initialized")
-		}
-		cursor, err := repos.Cursor.GetOrCreateForUpdate(ctx, s.cfg.CursorName, s.cfg.SourceSystem)
-		if err != nil {
-			return err
 		}
 		// ListDueForClose runs in a separate read transaction. Re-read and lock
 		// the period here so another worker cannot make decisions from the stale
@@ -123,9 +108,6 @@ func (s *PeriodCloseService) closeOne(ctx context.Context, activity period.Perio
 			return fmt.Errorf("period %d has unexpected close status %s", current.ID, current.Status)
 		}
 		activity = current
-		if s.cfg.RequireWatermark && (cursor.WatermarkAt == nil || cursor.WatermarkAt.Before(activity.EndsAt)) {
-			return ErrPeriodWatermarkNotReady
-		}
 		if activity.Status == period.StatusActive {
 			if err := repos.PeriodAdmin.Transition(ctx, activity.ID, period.StatusActive, period.StatusSettling, s.cfg.Now()); err != nil {
 				return err
@@ -138,12 +120,6 @@ func (s *PeriodCloseService) closeOne(ctx context.Context, activity period.Perio
 		expired, err = expirePeriodTickets(ctx, repos, activity.ID, s.cfg.Now())
 		if err != nil {
 			return err
-		}
-		if s.cfg.EnablePeriodRewards {
-			rewards, err = createPeriodRewards(ctx, repos, activity, s.cfg)
-			if err != nil {
-				return err
-			}
 		}
 		if err := repos.PeriodAdmin.Transition(ctx, activity.ID, period.StatusSettling, period.StatusClosed, s.cfg.Now()); err != nil {
 			return err
@@ -200,77 +176,6 @@ func expirePeriodTickets(ctx context.Context, repos ports.Repositories, periodID
 		expired++
 	}
 	return expired, nil
-}
-
-func createPeriodRewards(ctx context.Context, repos ports.Repositories, activity period.Period, cfg PeriodCloseConfig) (int, error) {
-	if repos.Reward == nil {
-		return 0, errors.New("reward repository is not initialized")
-	}
-	accounts, err := repos.Account.ListAll(ctx)
-	if err != nil {
-		return 0, err
-	}
-	definitions, err := repos.Reward.ListDefinitions(ctx, activity.ID)
-	if err != nil {
-		return 0, err
-	}
-	if len(definitions) == 0 {
-		return 0, nil
-	}
-	if err := validateRewardDefinitions(definitions, activity.ConfigVersion); err != nil {
-		return 0, err
-	}
-	budget, err := repos.Reward.GetBudgetForUpdate(ctx, activity.ID, "period_reward")
-	if err != nil {
-		return 0, err
-	}
-	created := 0
-	for _, account := range accounts {
-		if account.PeriodID != activity.ID || account.AssetType != ledger.AssetContribution || account.Balance <= 0 {
-			continue
-		}
-		actionID := fmt.Sprintf("period_reward:%d:%d", activity.ID, account.UserID)
-		if _, findErr := repos.Reward.FindGrantByAction(ctx, activity.ID, account.UserID, actionID); findErr == nil {
-			continue
-		} else if !errors.Is(findErr, ports.ErrNotFound) {
-			return created, findErr
-		}
-		randomBytes, err := reward.Derive(cfg.RandomSecret, activity.ID, account.UserID, actionID, activity.ConfigVersion)
-		if err != nil {
-			return created, err
-		}
-		definition, err := reward.SelectWeighted(definitions, randomBytes)
-		if err != nil {
-			return created, err
-		}
-		if err := reserveBudget(&budget, definition.Amount); err != nil {
-			return created, err
-		}
-		grantID := reward.GrantID(activity.ID, account.UserID, actionID)
-		grant := ports.RewardGrant{GrantID: grantID, PeriodID: activity.ID, UserID: account.UserID, ActionID: actionID, TriggerType: "period_reward", RewardDefinitionID: definition.ID, RewardType: definition.RewardType, Amount: definition.Amount, TransferableQuota: false, BudgetType: "period_reward", RandomValue: reward.RandomHex(randomBytes), ConfigVersion: activity.ConfigVersion, Status: RewardStatusPending, SourceRef: grantID, Reason: "period reward", CreatedAt: cfg.Now()}
-		persisted, err := repos.Reward.CreateGrant(ctx, grant)
-		if err != nil {
-			return created, err
-		}
-		payload, err := json.Marshal(settlementPayload{GrantID: persisted.GrantID, UserID: persisted.UserID, Amount: persisted.Amount, SourceRef: persisted.SourceRef, RewardType: persisted.RewardType})
-		if err != nil {
-			return created, err
-		}
-		outboxStatus := OutboxStatusPending
-		if cfg.ShadowMode {
-			outboxStatus = OutboxStatusShadow
-		}
-		if _, err := repos.Reward.CreateOutbox(ctx, ports.SettlementOutbox{RewardGrantID: persisted.ID, Operation: "grant", PayloadHash: canonicalJSONHash(payload), PayloadJSON: payload, Status: outboxStatus, NextAttemptAt: cfg.Now(), CreatedAt: cfg.Now()}); err != nil {
-			return created, err
-		}
-		created++
-	}
-	if created > 0 {
-		if err := repos.Reward.SaveBudget(ctx, budget); err != nil {
-			return created, err
-		}
-	}
-	return created, nil
 }
 
 func hashString(value string) string { return sha256HexBytes([]byte(value)) }

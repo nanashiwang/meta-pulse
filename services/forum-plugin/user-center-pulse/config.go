@@ -116,16 +116,6 @@ func (uc *UserCenter) ConfigFields() []plugin.ConfigField {
 			},
 			Value: config.NonceRedisURL,
 		},
-		{
-			Name:        "level_badge_enabled",
-			Type:        plugin.ConfigTypeSwitch,
-			Title:       plugin.MakeTranslator(i18n.ConfigLevelBadgeEnabledTitle),
-			Description: plugin.MakeTranslator(i18n.ConfigLevelBadgeEnabledDescription),
-			UIOptions: plugin.ConfigFieldUIOptions{
-				Label: plugin.MakeTranslator(i18n.ConfigLevelBadgeEnabledLabel),
-			},
-			Value: config.LevelBadgeEnabled,
-		},
 	}
 }
 

@@ -45,17 +45,7 @@ func (s *ProfileService) GetSummary(ctx context.Context, userID uint64, at time.
 		if err != nil {
 			return err
 		}
-		var total money.Milli
-		for _, account := range accounts {
-			if account.AssetType != ledger.AssetContribution {
-				continue
-			}
-			total, err = total.Add(money.Milli(account.Balance))
-			if err != nil {
-				return err
-			}
-		}
-		result.Profile = UserProfile{UserID: userID, LifetimeContribution: total, Level: level.Calculate(total, s.levels)}
+		result.Profile = UserProfile{UserID: userID, Level: level.Result{Key: "retired", Name: "已停用"}}
 
 		active, periodErr := repos.Period.FindActiveAt(ctx, at)
 		if errors.Is(periodErr, period.ErrNoActivePeriod) {
@@ -66,6 +56,9 @@ func (s *ProfileService) GetSummary(ctx context.Context, userID uint64, at time.
 		}
 		result.CurrentPeriod = &active
 		for _, account := range accounts {
+			if account.AssetType != ledger.AssetTicket {
+				continue
+			}
 			if account.PeriodID != active.ID {
 				if !active.Continuous || repos.Tickets == nil {
 					continue
@@ -79,11 +72,6 @@ func (s *ProfileService) GetSummary(ctx context.Context, userID uint64, at time.
 				}
 			}
 			switch account.AssetType {
-			case ledger.AssetContribution:
-				result.CurrentContribution, err = result.CurrentContribution.Add(money.Milli(account.Balance))
-				if err != nil {
-					return err
-				}
 			case ledger.AssetTicket:
 				// Ticket debt is retained in the ledger so refunds cannot be
 				// abused, but the product-facing available count must never
@@ -97,15 +85,11 @@ func (s *ProfileService) GetSummary(ctx context.Context, userID uint64, at time.
 				}
 			}
 		}
-		contributionEntries, err := repos.Ledger.ListRecentAccountEntries(ctx, userID, active.ID, ledger.AssetContribution, SummaryLedgerLimit+1)
-		if err != nil {
-			return err
-		}
 		ticketEntries, err := repos.Ledger.ListRecentAccountEntries(ctx, userID, active.ID, ledger.AssetTicket, SummaryLedgerLimit+1)
 		if err != nil {
 			return err
 		}
-		result.CurrentLedgerEntries = append(contributionEntries, ticketEntries...)
+		result.CurrentLedgerEntries = ticketEntries
 		sort.SliceStable(result.CurrentLedgerEntries, func(i, j int) bool {
 			return result.CurrentLedgerEntries[i].ID < result.CurrentLedgerEntries[j].ID
 		})

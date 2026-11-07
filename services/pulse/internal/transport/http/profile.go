@@ -37,6 +37,8 @@ func ProfileRoute(router *gin.RouterGroup, reader ProfileReader, auth gin.Handle
 		}
 		c.JSON(http.StatusOK, gin.H{
 			"user_id":                     profile.UserID,
+			"api_usage_enabled":           false,
+			"contribution_status":         "retired",
 			"lifetime_contribution_milli": profile.LifetimeContribution,
 			"level":                       gin.H{"key": profile.Level.Key, "name": profile.Level.Name},
 		})

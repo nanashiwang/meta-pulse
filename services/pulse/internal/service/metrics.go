@@ -52,12 +52,12 @@ func (s *MetricsAggregationService) Aggregate(ctx context.Context) (ports.Operat
 		if err != nil {
 			return err
 		}
+		snapshot.IngestLagSeconds = 0
+		snapshot.OpenConflictCount = 0
 		values := []struct {
 			name  string
 			value int64
 		}{
-			{"ingest_lag_seconds", snapshot.IngestLagSeconds},
-			{"ingest_conflict_open", snapshot.OpenConflictCount},
 			{"ledger_mismatch", snapshot.LedgerMismatchCount},
 			{"settlement_retry", snapshot.SettlementRetryCount},
 			{"settlement_dead", snapshot.SettlementDeadCount},

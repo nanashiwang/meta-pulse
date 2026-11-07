@@ -12,11 +12,13 @@ import (
 // round trip: which periods exist, what rules a period froze, and how far
 // ingestion has progressed.
 type OperationsOverview struct {
-	ObservedAt time.Time                 `json:"observed_at"`
-	Periods    []PeriodOverviewItem      `json:"periods"`
-	Cursors    []CursorOverviewItem      `json:"cursors"`
-	Health     OperationsOverviewHealth  `json:"health"`
-	Snapshot   *OperationsOverviewCounts `json:"snapshot,omitempty"`
+	APIUsageEnabled    bool                      `json:"api_usage_enabled"`
+	ContributionStatus string                    `json:"contribution_status"`
+	ObservedAt         time.Time                 `json:"observed_at"`
+	Periods            []PeriodOverviewItem      `json:"periods"`
+	Cursors            []CursorOverviewItem      `json:"cursors"`
+	Health             OperationsOverviewHealth  `json:"health"`
+	Snapshot           *OperationsOverviewCounts `json:"snapshot,omitempty"`
 }
 
 type PeriodOverviewItem struct {
@@ -55,12 +57,7 @@ type CursorOverviewItem struct {
 	LagSeconds   int64      `json:"lag_seconds"`
 }
 
-// OperationsOverviewHealth answers the one question the console exists to
-// answer at a glance: can usage ingestion currently record anything?
-//
-// IngestBlocked is not a guess about the worker. With no active period,
-// usage_ingest fails every batch by construction and deliberately does not
-// advance the cursor, so the condition is a property of the data.
+// Consumption ingestion is retired; legacy health fields remain neutral for clients.
 type OperationsOverviewHealth struct {
 	HasActivePeriod bool   `json:"has_active_period"`
 	IngestBlocked   bool   `json:"ingest_blocked"`
@@ -110,17 +107,13 @@ func NewOperationsOverviewService(unit ports.UnitOfWork, cfg OperationsOverviewC
 // cannot advance a cursor, mutate a period or touch the Ledger.
 func (s *OperationsOverviewService) Load(ctx context.Context) (OperationsOverview, error) {
 	observedAt := s.now()
-	overview := OperationsOverview{ObservedAt: observedAt}
+	overview := OperationsOverview{ObservedAt: observedAt, ContributionStatus: "retired"}
 
 	err := s.unit.Do(ctx, func(repos ports.Repositories) error {
 		if repos.Overview == nil {
 			return errors.New("operations overview repository is not initialized")
 		}
 		periods, err := repos.Overview.ListPeriods(ctx, s.cfg.PeriodLimit)
-		if err != nil {
-			return err
-		}
-		cursors, err := repos.Overview.ListCursors(ctx, observedAt)
 		if err != nil {
 			return err
 		}
@@ -135,7 +128,7 @@ func (s *OperationsOverviewService) Load(ctx context.Context) (OperationsOvervie
 				UsageEventCount: source.UsageEventCount,
 				EntitledTickets: source.EntitledTickets, SpentTickets: source.SpentTickets,
 			}
-			// Rules are fetched only for periods that can still affect ingest.
+			// Rules are historical snapshot metadata for active/draft periods.
 			// A closed period's rules are history; the console links to them
 			// rather than paying for them on every refresh.
 			if source.Status == "draft" || source.Status == "active" {
@@ -156,21 +149,15 @@ func (s *OperationsOverviewService) Load(ctx context.Context) (OperationsOvervie
 			overview.Periods = append(overview.Periods, item)
 		}
 
-		overview.Cursors = make([]CursorOverviewItem, 0, len(cursors))
-		for _, source := range cursors {
-			overview.Cursors = append(overview.Cursors, CursorOverviewItem{
-				Name: source.Name, SourceSystem: source.SourceSystem, Value: source.Value,
-				WatermarkAt: source.WatermarkAt, Version: source.Version, LagSeconds: source.LagSeconds,
-			})
-		}
+		overview.Cursors = []CursorOverviewItem{}
 
 		// The operational snapshot is a diagnostic projection and is allowed to
 		// be unavailable; the rest of the console must still render.
 		if repos.Operations != nil {
 			if snapshot, snapErr := repos.Operations.Snapshot(ctx, observedAt, s.cfg.CursorName, s.cfg.SourceSystem); snapErr == nil {
 				overview.Snapshot = &OperationsOverviewCounts{
-					IngestLagSeconds:     snapshot.IngestLagSeconds,
-					OpenConflictCount:    snapshot.OpenConflictCount,
+					IngestLagSeconds:     0,
+					OpenConflictCount:    0,
 					LedgerMismatchCount:  snapshot.LedgerMismatchCount,
 					SettlementRetryCount: snapshot.SettlementRetryCount,
 					SettlementDeadCount:  snapshot.SettlementDeadCount,
@@ -187,29 +174,12 @@ func (s *OperationsOverviewService) Load(ctx context.Context) (OperationsOvervie
 	return overview, nil
 }
 
-// deriveOverviewHealth distinguishes the two ways ingestion stalls, because
-// they need different operator actions: no active period at all (create one),
-// versus an active period that froze no rules (every event lands ineligible
-// with zero contribution, and invariant #11 means it cannot be repaired in
-// place — the period must be closed and a new one created).
+// Only reward-rule availability remains relevant to the current product.
 func deriveOverviewHealth(periods []PeriodOverviewItem, at time.Time) OperationsOverviewHealth {
 	for _, item := range periods {
-		if item.Status != "active" {
-			continue
+		if item.Status == "active" && !at.Before(item.StartsAt) && at.Before(item.EndsAt) {
+			return OperationsOverviewHealth{HasActivePeriod: true}
 		}
-		if at.Before(item.StartsAt) || !at.Before(item.EndsAt) {
-			continue
-		}
-		if item.RuleCount == 0 {
-			return OperationsOverviewHealth{
-				HasActivePeriod: true, IngestBlocked: true,
-				BlockedReason: "active period has no economics rule: every event records as ineligible with zero contribution",
-			}
-		}
-		return OperationsOverviewHealth{HasActivePeriod: true}
 	}
-	return OperationsOverviewHealth{
-		IngestBlocked: true,
-		BlockedReason: "no active period covers the current time: usage ingest fails every batch and does not advance the cursor",
-	}
+	return OperationsOverviewHealth{}
 }

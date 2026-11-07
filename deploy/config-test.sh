@@ -28,11 +28,8 @@ fixture.write_text(text)
 fixture.chmod(0o600)
 rendered = subprocess.run(['docker','compose','--env-file',str(fixture),'-f',str(root/'docker-compose.yml'),'config','--format','json'], env=env, check=True, capture_output=True, text=True)
 services = json.loads(rendered.stdout)['services']
-assert str(services['pulse-worker']['environment']['PULSE_INGEST_BATCH_SIZE']) == '250', 'production ingest batch default must be 250'
-# Also test Compose's fallback when upgrading an older env without this key.
-fixture.write_text('\n'.join(line for line in text.splitlines() if not line.startswith('PULSE_INGEST_BATCH_SIZE='))+'\n')
-fallback = subprocess.run(['docker','compose','--env-file',str(fixture),'-f',str(root/'docker-compose.yml'),'config','--format','json'], env=env, check=True, capture_output=True, text=True)
-assert str(json.loads(fallback.stdout)['services']['pulse-worker']['environment']['PULSE_INGEST_BATCH_SIZE']) == '250', 'Compose ingest fallback must be 250'
+assert 'NEWAPI_LOG_DSN' not in services['pulse-worker']['environment']
+assert 'PULSE_INGEST_BATCH_SIZE' not in services['pulse-worker']['environment']
 for service_name, configured in services.items():
     if configured.get('ports'):
         raise AssertionError(f'{service_name} must not publish host ports')
@@ -61,7 +58,7 @@ for role in ('api','worker'):
     if result.returncode:
         raise AssertionError(f'{role} production validation failed: {result.stderr}')
     required = ['PULSE_REWARD_RANDOM_SECRET']
-    required += ['PULSE_FORUM_HMAC_SECRET','PULSE_USER_BFF_HMAC_SECRET','PULSE_ADMIN_HMAC_SECRET'] if role == 'api' else ['PULSE_SERVICE_HMAC_SECRET','NEWAPI_LOG_DSN','NEWAPI_INTERNAL_BASE_URL']
+    required += ['PULSE_FORUM_HMAC_SECRET','PULSE_USER_BFF_HMAC_SECRET','PULSE_ADMIN_HMAC_SECRET'] if role == 'api' else ['PULSE_SERVICE_HMAC_SECRET','NEWAPI_INTERNAL_BASE_URL']
     for key in required:
         invalid = {**app_env, key:''}
         assert subprocess.run(command, env={**env, **invalid}, capture_output=True).returncode != 0, f'{role} accepted missing {key}'

@@ -298,7 +298,7 @@ WHERE user_id = ? AND period_id = ? AND asset_type = 'contribution'`, userID, pe
 		t.Fatalf("repair contribution account: %v", err)
 	}
 	closed, err := closer.RunOnce(ctx)
-	if err != nil || closed.Checked != 1 || closed.Failed != 0 || closed.Closed != 1 || closed.TicketsExpired != 1 || closed.RewardsCreated != 1 {
+	if err != nil || closed.Checked != 1 || closed.Failed != 0 || closed.Closed != 1 || closed.TicketsExpired != 1 || closed.RewardsCreated != 0 {
 		t.Fatalf("closed report=%+v err=%v", closed, err)
 	}
 
@@ -342,7 +342,7 @@ WHERE user_id = ? AND period_id = ? AND asset_type = 'contribution'`, userID, pe
 	if err := restarted.SQL().QueryRowContext(ctx, `SELECT COUNT(*) FROM pulse_settlement_outbox WHERE reward_grant_id IN (SELECT id FROM pulse_reward_grant WHERE period_id = ? AND user_id = ?)`, periodID, userID).Scan(&outboxes); err != nil {
 		t.Fatal(err)
 	}
-	if expired != 1 || grants != 1 || outboxes != 1 {
+	if expired != 1 || grants != 0 || outboxes != 0 {
 		t.Fatalf("replayed close duplicates expired=%d grants=%d outboxes=%d", expired, grants, outboxes)
 	}
 }

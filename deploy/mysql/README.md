@@ -3,7 +3,7 @@
 Meta Pulse 的运行账号与 new-api 主库账号必须分离：
 
 - `PULSE_DB_DSN`：只连接 Pulse 独立数据库，允许 Pulse 迁移和业务写入；
-- `NEWAPI_LOG_DSN`：只连接 new-api `LOG_DB`，只能读取 `logs` 表；
+- API 消费摄入已退役，不再需要 `NEWAPI_LOG_DSN`；所有旧进程停止后回收专用只读账号；
 - Pulse 不配置、也不需要 new-api 主库写账号，不能写 `users.quota` 或其他余额表。
 
 ## DBA 授权模板

@@ -141,26 +141,26 @@ func appendCloseAccountEntry(t *testing.T, store *memoryLedgerStore, entry ledge
 	}
 }
 
-func TestPeriodCloseIsReentrantAndUsesStableRewardAction(t *testing.T) {
+func TestPeriodCloseIsReentrantWithoutRetiredContributionRewards(t *testing.T) {
 	closer, ledgerStore, rewardStore, admin, now := setupPeriodClose(t, true)
 	appendCloseAccountEntry(t, ledgerStore, ledger.Entry{UserID: 9, PeriodID: 4, AssetType: ledger.AssetContribution, Operation: ledger.OperationContributionEarn, Amount: 2000, SourceType: "usage", SourceRef: "event:1", IdempotencyKey: "contribution:event:1", PayloadHash: "hash-1", CreatedAt: now})
 	appendCloseAccountEntry(t, ledgerStore, ledger.Entry{UserID: 9, PeriodID: 4, AssetType: ledger.AssetTicket, Operation: ledger.OperationTicketMint, Amount: 2, SourceType: "usage", SourceRef: "event:1", IdempotencyKey: "ticket:event:1", PayloadHash: "hash-1", CreatedAt: now})
 
 	first, err := closer.RunOnce(context.Background())
-	if err != nil || first.Closed != 1 || first.TicketsExpired != 1 || first.RewardsCreated != 1 {
+	if err != nil || first.Closed != 1 || first.TicketsExpired != 1 || first.RewardsCreated != 0 {
 		t.Fatalf("first=%+v err=%v", first, err)
 	}
 	if got := ledgerStore.accounts[accountKey(9, 4, ledger.AssetTicket)].Balance; got != 0 {
 		t.Fatalf("ticket balance=%d, want 0", got)
 	}
-	if len(rewardStore.grants) != 1 || len(rewardStore.outboxes) != 1 || rewardStore.grants[0].ActionID != "period_reward:4:9" || rewardStore.outboxes[0].Status != OutboxStatusShadow {
+	if len(rewardStore.grants) != 0 || len(rewardStore.outboxes) != 0 {
 		t.Fatalf("grants=%+v outboxes=%+v", rewardStore.grants, rewardStore.outboxes)
 	}
-	if got := rewardStore.budgets[budgetKey(4, "period_reward")].ReservedAmount; got != 10 {
+	if got := rewardStore.budgets[budgetKey(4, "period_reward")].ReservedAmount; got != 0 {
 		t.Fatalf("reserved=%d, want 10", got)
 	}
 	second, err := closer.RunOnce(context.Background())
-	if err != nil || second.Checked != 0 || len(rewardStore.grants) != 1 || len(ledgerStore.entries) != 3 {
+	if err != nil || second.Checked != 0 || len(rewardStore.grants) != 0 || len(ledgerStore.entries) != 3 {
 		t.Fatalf("second=%+v err=%v grants=%d entries=%d", second, err, len(rewardStore.grants), len(ledgerStore.entries))
 	}
 	if admin.periods[0].Status != period.StatusClosed || strings.Join(admin.transitions, ",") != "active->settling,settling->closed" {
@@ -168,15 +168,15 @@ func TestPeriodCloseIsReentrantAndUsesStableRewardAction(t *testing.T) {
 	}
 }
 
-func TestPeriodCloseDefersBeforeChangingActiveStateWhenWatermarkLags(t *testing.T) {
+func TestPeriodCloseIgnoresRetiredUsageWatermark(t *testing.T) {
 	closer, ledgerStore, _, admin, _ := setupPeriodClose(t, false)
 	lagging := admin.periods[0].EndsAt.Add(-time.Second)
 	ledgerStore.cursor.WatermarkAt = &lagging
 	report, err := closer.RunOnce(context.Background())
-	if err != nil || report.Deferred != 1 || report.Closed != 0 {
+	if err != nil || report.Deferred != 0 || report.Closed != 1 {
 		t.Fatalf("report=%+v err=%v", report, err)
 	}
-	if admin.periods[0].Status != period.StatusActive || len(admin.transitions) != 0 {
+	if admin.periods[0].Status != period.StatusClosed || len(admin.transitions) != 2 {
 		t.Fatalf("period=%+v transitions=%v", admin.periods[0], admin.transitions)
 	}
 }
@@ -206,7 +206,7 @@ func TestPeriodCloseResumesAfterInterruptionWithoutDuplicateEffects(t *testing.T
 	if err != nil || second.Closed != 1 || second.RewardsCreated != 0 || second.TicketsExpired != 0 {
 		t.Fatalf("second=%+v err=%v", second, err)
 	}
-	if len(rewardStore.grants) != 1 || len(rewardStore.outboxes) != 1 || len(ledgerStore.entries) != 3 {
+	if len(rewardStore.grants) != 0 || len(rewardStore.outboxes) != 0 || len(ledgerStore.entries) != 3 {
 		t.Fatalf("grants=%d outboxes=%d entries=%d", len(rewardStore.grants), len(rewardStore.outboxes), len(ledgerStore.entries))
 	}
 }
@@ -216,7 +216,7 @@ func TestPeriodCloseHardBudgetPreventsAnyReward(t *testing.T) {
 	rewardStore.budgets[budgetKey(4, "period_reward")] = ports.RewardBudget{ID: 2, PeriodID: 4, BudgetType: "period_reward", HardCap: 5}
 	appendCloseAccountEntry(t, ledgerStore, ledger.Entry{UserID: 9, PeriodID: 4, AssetType: ledger.AssetContribution, Operation: ledger.OperationContributionEarn, Amount: 1000, SourceType: "usage", SourceRef: "event:1", IdempotencyKey: "contribution:event:1", PayloadHash: "hash-1", CreatedAt: now})
 	report, err := closer.RunOnce(context.Background())
-	if err != nil || report.Failed != 1 || len(rewardStore.grants) != 0 || admin.periods[0].Status != period.StatusSettling {
+	if err != nil || report.Failed != 0 || len(rewardStore.grants) != 0 || admin.periods[0].Status != period.StatusClosed {
 		t.Fatalf("report=%+v err=%v grants=%d period=%+v", report, err, len(rewardStore.grants), admin.periods[0])
 	}
 }
@@ -238,13 +238,13 @@ func TestPeriodCloseFailsClosedForInvalidRewardTable(t *testing.T) {
 	rewardStore.definitions = append(rewardStore.definitions, reward.Definition{ID: 9, RewardKey: "wrong-version", RewardType: "quota", Amount: 10, Weight: 1, ConfigVersion: "v2", Enabled: true})
 	appendCloseAccountEntry(t, ledgerStore, ledger.Entry{UserID: 9, PeriodID: 4, AssetType: ledger.AssetContribution, Operation: ledger.OperationContributionEarn, Amount: 1000, SourceType: "usage", SourceRef: "event:1", IdempotencyKey: "contribution:event:1", PayloadHash: "hash-1", CreatedAt: now})
 	report, err := closer.RunOnce(context.Background())
-	if err != nil || report.Failed != 1 || report.Closed != 0 {
+	if err != nil || report.Failed != 0 || report.Closed != 1 {
 		t.Fatalf("report=%+v err=%v", report, err)
 	}
 	if len(rewardStore.grants) != 0 || len(rewardStore.outboxes) != 0 || rewardStore.budgets[budgetKey(4, "period_reward")].ReservedAmount != 0 {
 		t.Fatalf("invalid table created rewards grants=%d outboxes=%d budget=%+v", len(rewardStore.grants), len(rewardStore.outboxes), rewardStore.budgets[budgetKey(4, "period_reward")])
 	}
-	if admin.periods[0].Status != period.StatusSettling {
+	if admin.periods[0].Status != period.StatusClosed {
 		t.Fatalf("memory fixture did not reach validation path: period=%+v", admin.periods[0])
 	}
 }

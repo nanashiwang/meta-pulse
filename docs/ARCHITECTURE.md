@@ -1,5 +1,18 @@
 # 元衡脉冲计划 Meta Pulse｜完整项目架构
 
+## 当前边界：API 消费贡献已退役（2026-11-08）
+
+API 消费、退款、差额结算和历史补录不再进入 Pulse：不读取 new-api LOG_DB，不新增 Usage Event、付费证明、贡献账本/账户/统计，不推进消费游标，不产生消费券或消费等级。历史表、账本和不可变规则快照保留供审计及恢复，不清零、不删表。
+
+Worker 继续执行奖励结算、查询对账、旧周期关闭、内容采集和账本/预算监控；启动不再需要日志库账号。`backfill`、`backtest`、`cursor-seek`、`ingest-snapshot`、`access-check` 在连接数据库前拒绝，`--accept-ingest` 已退役。旧消费环境变量不会重新启用功能。
+
+资料与概览保留兼容的零贡献字段、`level.key=retired`，并返回 `api_usage_enabled=false`、`contribution_status=retired`；概览账本仅展示券。社区不显示消费徽章、等级、贡献或倍率输入。Answer 自身 EXP 等级继续生效。内容奖励仍要求保护绑定、人工审核、独立预算和限额，但不再要求消费贡献。旧周期关闭不等待消费水位，也不再创建 `period_reward`；已有 Grant/Outbox 仍按原 source_ref 结算、查询、撤销和恢复。
+
+所有 API/Worker/离线工具及 forum 静态资源必须一起升级。只有确认旧进程全部停止且新 Worker 健康后，才能回收 Meta API 专用只读账号。不要只撤销数据库权限或停止整个 Worker。回滚旧版会恢复消费摄入。代码发布与生产部署、真实到账验收分别报告。
+
+下文涉及 Usage、Economics、消费等级、付费证明、消费游标和贡献型 Period Reward 的旧设计仅解释历史数据；现行行为以本节为准，不应按历史设计恢复接入。
+
+
 ## 社区经营数据边界
 
 Answer 继续拥有用户、注册时间、内容与角色事实。UserCenter 插件的 `analytics` 包在 Answer MySQL 中维护 `metar_ops_config/visitor/day/member/label/audit`：分别记录观察起点、随机 Cookie 哈希与归因、日级去重、标签版本、管理员私有标签和事务审计。这些表属于运营投影，不产生 Ledger、Contribution、Ticket、Reward，也不读取 new-api 业务数据库；随 Answer 数据库备份恢复。
@@ -12,7 +25,7 @@ Answer 继续拥有用户、注册时间、内容与角色事实。UserCenter �
 
 ### 一句话定义
 
-**元衡脉冲计划（Meta Pulse）是一套建立在元衡 API 真实付费调用之上的 C 端用户增长与回馈系统。**
+**元衡脉冲计划（Meta Pulse）是一套围绕社区参与、带账本和预算约束的 C 端用户增长与回馈系统。**
 
 它把原本单向的：
 
@@ -23,7 +36,6 @@ Answer 继续拥有用户、注册时间、内容与角色事实。UserCenter �
 变成：
 
 ```text
-真实付费 API 调用 → 贡献统计（不兑换抽奖券）
 每日签到 / 有效社区互动 → 限额抽奖券 → 抽奖 → 奖励交付
 ```
 
@@ -72,7 +84,7 @@ Pulse 成功后应同时产生：
 
 用户不需要理解 Provider 成本、Ledger、幂等、Outbox 或 Budget，只需理解：
 
-> 正常使用元衡 → 获得贡献值 → 获得脉冲券 → 开启脉冲 → 获得回馈。
+> 社区签到/互动 → 获得脉冲券 → 开启脉冲 → 获得回馈。
 
 METAR 社区权益页通过按需加载的轻量 Canvas 展示“脉冲核心”演出：微光汇聚、晶体蓄能、裂变与奖励卡显现。视觉时间线等待已认证 Action 响应后才进入揭晓；跳过、减少动态效果和页面切换不创建额外 Action。服务端 Grant 仍是唯一结果来源，浏览器不随机选奖、不乐观扣券，也不把揭晓等同于已到账。沿用既有按用户隔离的操作编号恢复语义；页面刷新后的结果从原 action 查询恢复，券数和结算状态从服务端重新读取。动画结束后局部刷新数据，故障不抹除已确认的奖励显示。
 
@@ -659,61 +671,11 @@ not_found                → 尚未找到奖励，可使用原 source_ref 重试
 
 ## 21. Period Reward
 
-Reward Grant 的来源类型固定为：
-
-```text
-trigger_type = pulse          # 用户开启脉冲，仅由 /me/actions 生成
-trigger_type = period_reward  # Period Close 服务端生成
-trigger_type = content        # 管理员审核内容后服务端生成
-```
-
-用户 Action 只能提交 `pulse`，不得伪装 `period_reward` 或 `content`；持久化层同时校验来源、Reward Definition 与 `loyalty` / `period_reward` / `content_reward` Budget 的固定绑定。
-
-周期奖励公式参数化，可支持平均分、按 Contribution 权重、按 Ticket Spend 权重、固定档位。
-
-必须满足：
-
-```text
-SUM(period rewards) <= period reward budget
-```
-
-周期奖励 action id 稳定，例如：
-
-```text
-period_reward:{period_id}:{user_id}
-```
-
-重复运行不会重复发放。
+贡献型周期奖励已退役，不再根据旧贡献生成新的 `period_reward`。历史来源类型和 Budget 绑定保持不变，已有 Grant/Outbox 继续使用原 action_id/source_ref 结算、对账和撤销；用户 Action 仍不得伪装 `period_reward` 或 `content`。
 
 ## 22. Period Close
 
-关闭状态机：
-
-```text
-active
- ↓
-settling
- ↓
-停止新 Pulse
- ↓
-确认 Usage Watermark
- ↓
-Ledger / Account 对账
- ↓
-计算 Period Reward
- ↓
-创建 Reward Grants / Outbox
- ↓
-Settlement
- ↓
-Ticket Expiration
- ↓
-Metrics 固化
- ↓
-closed
-```
-
-必须是可重入 State Machine；中途崩溃后继续，而不是重发。
+旧定期规则仍按 active → settling → closed 可重入关闭：锁定并重读周期，Ledger/Account 对账，按原定期规则到期处理券，提交 closed。不再读取或创建消费游标、不等待 Usage Watermark、不生成新的贡献型周期奖励。历史已经生成的奖励由独立 Settlement/Query/Reconcile 持续处理。持续规则的券龄与额度资格仍沿用现有语义。
 
 ## 23. Holdout Experiment
 

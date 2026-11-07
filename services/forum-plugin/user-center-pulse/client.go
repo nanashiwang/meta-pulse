@@ -29,7 +29,7 @@ const (
 
 // UserProfile is the read-only projection Meta Pulse exposes to the forum.
 //
-// Meta Pulse remains the source of truth for levels and contribution; the forum
+// Historical profile fields remain for wire compatibility; the forum
 // never writes back. See docs/COMMUNITY.md for why this direction is enforced.
 type UserProfile struct {
 	UserID                 uint64       `json:"user_id"`

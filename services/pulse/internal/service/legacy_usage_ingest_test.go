@@ -1,3 +1,4 @@
+// Historical compatibility fixture only; never compiled into production binaries.
 package service
 
 import (
@@ -13,10 +14,6 @@ import (
 	"github.com/nanashiwang/meta-pulse/internal/domain/usage"
 	"github.com/nanashiwang/meta-pulse/internal/ports"
 )
-
-const DefaultUsageCursorName = "new-api-usage"
-
-var errWorkerCursorAdvanced = errors.New("worker cursor advanced concurrently")
 
 type UsageIngestService struct {
 	unit            ports.UnitOfWork
@@ -368,10 +365,6 @@ func (s *UsageIngestService) resolveRefund(ctx context.Context, repos ports.Repo
 		return ledger.Entry{}, errors.New("refund contribution exceeds original contribution")
 	}
 	return *original, nil
-}
-
-func cursorAdvanced(current, incoming string, expected []string) bool {
-	return len(expected) == 1 && current != expected[0] && current != incoming
 }
 
 func saveCursor(ctx context.Context, repository ports.CursorRepository, cursor ports.Cursor, event usage.Event, expectedCursor ...string) error {

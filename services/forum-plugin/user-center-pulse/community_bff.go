@@ -32,6 +32,8 @@ type communityPeriod struct {
 }
 
 type communitySummary struct {
+	APIUsageEnabled      bool             `json:"api_usage_enabled"`
+	ContributionStatus   string           `json:"contribution_status"`
 	LifetimeContribution int64            `json:"lifetime_contribution_milli"`
 	CurrentContribution  int64            `json:"current_contribution_milli"`
 	AvailableTickets     int64            `json:"available_tickets"`
@@ -334,6 +336,11 @@ func communityProjection(operation, externalID string, data []byte) (any, error)
 		if strconv.FormatUint(raw.UserID, 10) != externalID {
 			return nil, errors.New("summary identity mismatch")
 		}
+		raw.LifetimeContribution = 0
+		raw.CurrentContribution = 0
+		raw.Level = ProfileLevel{Key: "retired", Name: "已停用"}
+		raw.APIUsageEnabled = false
+		raw.ContributionStatus = "retired"
 		return raw.communitySummary, nil
 	case "rewards":
 		var result struct {

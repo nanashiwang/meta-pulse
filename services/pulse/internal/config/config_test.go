@@ -75,31 +75,28 @@ func TestValidateWorkerUsesReadOnlyIntegrationSettings(t *testing.T) {
 	}
 }
 
-func TestLoadRejectsInvalidIntegerInsteadOfFallingBack(t *testing.T) {
-	t.Setenv("PULSE_ENV", "development")
-	t.Setenv("PULSE_DB_DSN", "pulse@tcp(mysql:3306)/meta_pulse")
-	t.Setenv("PULSE_INGEST_BATCH_SIZE", "invalid")
-	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "PULSE_INGEST_BATCH_SIZE") {
-		t.Fatalf("Load() error = %v, want invalid integer", err)
-	}
-}
-
-func TestLoadIngestBatchDefaultAndOverride(t *testing.T) {
-	t.Setenv("PULSE_ENV", "development")
-	t.Setenv("PULSE_DB_DSN", "pulse@tcp(mysql:3306)/meta_pulse")
-	for _, tc := range []struct {
-		value string
-		want  int
-	}{{"", 250}, {"100", 100}, {"500", 500}} {
-		t.Setenv("PULSE_INGEST_BATCH_SIZE", tc.value)
+func TestRetiredUsageEnvironmentCannotBlockOrReenableWorker(t *testing.T) {
+	t.Setenv("PULSE_DB_DSN", "pulse:test@tcp(localhost:3306)/pulse_test")
+	for _, value := range []string{"", "invalid", "5001", "true"} {
+		t.Setenv("PULSE_INGEST_BATCH_SIZE", value)
+		t.Setenv("PULSE_PERIOD_CLOSE_REQUIRE_WATERMARK", value)
+		t.Setenv("PULSE_PERIOD_REWARDS_ENABLED", value)
+		t.Setenv("PULSE_CONTENT_MIN_PAID_CONTRIBUTION_MILLI", value)
+		t.Setenv("NEWAPI_LOG_DSN", "invalid-retired-dsn")
 		cfg, err := Load()
-		if err != nil || cfg.IngestBatchSize != tc.want {
-			t.Fatalf("batch=%q got=%d err=%v", tc.value, cfg.IngestBatchSize, err)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.NewAPILogDSN != "" || cfg.PeriodCloseRequireWatermark || cfg.PeriodRewardsEnabled || cfg.ContentMinPaidContribution != 0 {
+			t.Fatal("retired configuration reenabled")
 		}
 	}
-	t.Setenv("PULSE_INGEST_BATCH_SIZE", "5001")
-	if _, err := Load(); err == nil {
-		t.Fatal("offline config check accepted an unusable batch size")
+	cfg := validConfig()
+	cfg.NewAPILogDSN = ""
+	cfg.ServiceHMACSecret = strings.Repeat("s", 32)
+	cfg.NewAPIInternalURL = "http://new-api:3000"
+	if err := cfg.ValidateWorker(); err != nil {
+		t.Fatal(err)
 	}
 }
 

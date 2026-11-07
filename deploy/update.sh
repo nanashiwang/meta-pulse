@@ -71,7 +71,7 @@ while (($# > 0)); do
       shift
       ;;
     --accept-ingest)
-      ACCEPT_INGEST=1
+      die "API 消费摄入已退役，请移除 --accept-ingest；奖励结算继续由 Worker 执行"
       shift
       ;;
     --release)

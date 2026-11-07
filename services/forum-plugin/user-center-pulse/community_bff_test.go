@@ -191,6 +191,9 @@ func TestCommunityBFFProjectsSummaryAndQueriesOriginalAction(t *testing.T) {
 		if w.Code != 200 || strings.Contains(w.Body.String(), "private") || strings.Contains(w.Body.String(), "user_id") {
 			t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
 		}
+		if op == "summary" && (!strings.Contains(w.Body.String(), `"contribution_status":"retired"`) || !strings.Contains(w.Body.String(), `"lifetime_contribution_milli":0`) || !strings.Contains(w.Body.String(), `"available_tickets":3`) || strings.Contains(w.Body.String(), `"key":"pulse"`)) {
+			t.Fatalf("mixed-version upstream revived contribution: %s", w.Body.String())
+		}
 	}
 	if len(paths) != 2 || paths[1] != "/v1/internal/me/rewards?action_id=old_action&limit=10" {
 		t.Fatalf("paths=%v", paths)

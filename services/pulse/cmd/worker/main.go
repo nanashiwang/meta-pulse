@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/nanashiwang/meta-pulse/internal/adapter/forum"
-	"github.com/nanashiwang/meta-pulse/internal/adapter/newapi"
 	"github.com/nanashiwang/meta-pulse/internal/app"
 	"github.com/nanashiwang/meta-pulse/internal/buildinfo"
 	"github.com/nanashiwang/meta-pulse/internal/config"
@@ -62,33 +61,9 @@ func main() {
 		os.Exit(1)
 	}
 	defer cache.Close()
-	logReader, err := newapi.OpenLogReader(cfg.NewAPILogDSN)
-	if err != nil {
-		logger.Error("initialize new-api log reader", "error", err)
-		os.Exit(1)
-	}
-	defer logReader.Close()
-	accessCtx, accessCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	accessReport, accessErr := verifyLogReaderAccess(accessCtx, logReader)
-	accessCancel()
-	if accessErr != nil {
-		logger.Error("verify new-api log reader permissions", "error", accessErr, "current_user", accessReport.CurrentUser, "database", accessReport.Database, "grant_count", accessReport.GrantCount)
-		os.Exit(1)
-	}
-	logger.Info("verified new-api log reader permissions", "current_user", accessReport.CurrentUser, "database", accessReport.Database, "grant_count", accessReport.GrantCount)
-	source, err := newapi.NewLogSource(logReader, "new-api-log")
-	if err != nil {
-		logger.Error("initialize new-api usage source", "error", err)
-		os.Exit(1)
-	}
 	unit, err := mysqlstore.NewUnitOfWork(database)
 	if err != nil {
 		logger.Error("initialize unit of work", "error", err)
-		os.Exit(1)
-	}
-	ingest, err := service.NewUsageIngestService(unit, source, service.UsageIngestConfig{BatchSize: cfg.IngestBatchSize, SourceSystem: "new-api-log", TicketThresholdMilli: cfg.TicketThresholdMilli, BatchTimeBudget: 15 * time.Second})
-	if err != nil {
-		logger.Error("initialize usage ingest", "error", err)
 		os.Exit(1)
 	}
 	metricsAggregation, err := service.NewMetricsAggregationService(unit, service.MetricsAggregationConfig{
@@ -100,8 +75,8 @@ func main() {
 	}
 
 	// Forum ingestion is deliberately optional and isolated. A missing or
-	// unavailable forum database disables only content candidates; usage
-	// ingestion, settlement, period close, and metrics keep running.
+	// unavailable forum database disables only content candidates; settlement,
+	// period close, and metrics keep running.
 	var contentIngest *service.ContentIngestService
 	var forumReader *forum.Reader
 	if cfg.ForumDBDSN != "" {
@@ -156,18 +131,6 @@ func main() {
 	addExternalTask := func(name string, run func(context.Context) error) {
 		tasks = append(tasks, job.Task{Name: name, Interval: 30 * time.Second, Timeout: 20 * time.Second, MaxBackoff: 10 * time.Minute, Run: run})
 	}
-
-	addExternalTask("usage_ingest", func(checkCtx context.Context) error {
-		startedAt := time.Now()
-		usageResult, usageErr := ingest.IngestBatch(checkCtx)
-		if usageErr != nil {
-			logger.Warn("usage ingest failed", "error", usageErr, "fetched", usageResult.Fetched, "accepted", usageResult.Accepted, "elapsed_ms", time.Since(startedAt).Milliseconds())
-		} else if usageResult.Fetched > 0 {
-			logger.Info("usage ingest batch completed", "fetched", usageResult.Fetched, "accepted", usageResult.Accepted, "replayed", usageResult.Replayed, "conflicts", usageResult.Conflicts, "manual_review", usageResult.ManualReview, "yielded", usageResult.Yielded, "elapsed_ms", time.Since(startedAt).Milliseconds())
-		}
-
-		return usageErr
-	})
 
 	addTask("settlement", func(checkCtx context.Context) error {
 		settlement, err := newRuntimeSettlement(checkCtx, runtime, unit)

@@ -265,19 +265,14 @@ for stage in 'mysqldump' ' build ' 'migrate-up' health 'nginx -t'; do
   [[ -f "$old_backup/pulse.sql" ]]
   ! grep -q '^REMOVED ' "$tmp/output"
 done
-cat >"$tmp/repo/deploy/accept-ingest.py" <<'ACCEPT'
-import json, os, pathlib, sys
-root = pathlib.Path(os.environ['MOCK_REPO']) / '.data/deploy-backups'
-assert any(json.loads(p.read_text())['status'] == 'running' for p in root.glob('*/.update-state.json'))
-assert (root / os.environ['MOCK_OLD_NAME'] / 'pulse.sql').is_file()
-sys.exit(int(os.environ.get('MOCK_ACCEPT_FAIL', '0')))
-ACCEPT
-export MOCK_OLD_NAME="$old_name"
-if MOCK_ACCEPT_FAIL=1 MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" --accept-ingest --backup-keep 1 >"$tmp/output" 2>&1; then
-  echo 'acceptance failure ignored' >&2; exit 1
+# Retired acceptance fails before starting deployment or deleting backups.
+: >"$MOCK_LOG"
+if bash "$tmp/repo/deploy/update.sh" --accept-ingest >"$tmp/output" 2>&1; then
+  echo 'retired ingestion acceptance accepted' >&2; exit 1
 fi
+grep -q 'API 消费摄入已退役' "$tmp/output"
+! grep -Eq '^(docker|fetch)' "$MOCK_LOG"
 [[ -f "$old_backup/pulse.sql" ]]
-! grep -q '更新及验收完成' "$tmp/output"
 # TERM is classified as failed, and never triggers retention.
 if MOCK_TERMINATE=1 bash "$tmp/repo/deploy/update.sh" --backup-keep 1 >"$tmp/output" 2>&1; then
   echo 'TERM ignored' >&2; exit 1
@@ -310,13 +305,13 @@ touch "$tmp/repo/fetch-release"
 wait "$holder" && exit 1
 [[ -f "$old_backup/pulse.sql" ]]
 # A successful acceptance can finally remove eligible old successes, not failures.
-MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" --accept-ingest --backup-keep 1 >"$tmp/output" 2>&1 || { cat "$tmp/output"; exit 1; }
+MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" --backup-keep 1 >"$tmp/output" 2>&1 || { cat "$tmp/output"; exit 1; }
 [[ ! -e "$old_backup" ]]
 python3 - "$tmp/repo/.data/deploy-backups" <<'CHECK'
 import json, pathlib, sys
 states = [json.loads(p.read_text())['status'] for p in pathlib.Path(sys.argv[1]).glob('*/.update-state.json')]
 assert states.count('success') == 1, states
-assert states.count('failed') >= 8, states
+assert states.count('failed') >= 7, states
 assert 'running' not in states, states
 CHECK
 printf '备份保留、预览、更新/验收失败、TERM 与真实并发互斥回归通过\n'

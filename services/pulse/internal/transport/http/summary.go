@@ -34,6 +34,8 @@ func SummaryRoute(router *gin.RouterGroup, reader SummaryReader, auth gin.Handle
 		}
 		response := gin.H{
 			"user_id":                     summary.Profile.UserID,
+			"api_usage_enabled":           false,
+			"contribution_status":         "retired",
 			"lifetime_contribution_milli": summary.Profile.LifetimeContribution,
 			"level": gin.H{
 				"key":  summary.Profile.Level.Key,

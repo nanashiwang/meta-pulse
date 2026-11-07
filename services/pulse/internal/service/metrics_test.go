@@ -49,7 +49,7 @@ func TestMetricsAggregationPersistsOperationalSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != operations.snapshot || len(metrics.values) != 7 {
+	if got.IngestLagSeconds != 0 || got.OpenConflictCount != 0 || got.SettlementRetryCount != 3 || got.LedgerMismatchCount != 1 || len(metrics.values) != 5 {
 		t.Fatalf("snapshot=%+v values=%d", got, len(metrics.values))
 	}
 	for _, value := range metrics.values {

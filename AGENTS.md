@@ -14,14 +14,14 @@
 
 ## 1. 项目本质
 
-Meta Pulse 是建立在元衡 API 真实付费调用之上的 **Margin-aware Loyalty Engine**。
+Meta Pulse 是围绕社区参与、带预算与账本约束的增长权益系统。
 
 它不是模型代理，不是主计费系统，不是支付系统，也不是一个独立博彩/抽奖平台。
 
 ```text
 new-api = 模型调用与资金事实源
 Answer  = 社区身份与内容事实源
-Meta Pulse = 调用之后的增长与权益系统
+Meta Pulse = 社区任务与增长权益系统
 ```
 
 对外产品入口可以“社区为主、Pulse 权益为辅”，但不得改变上述经济边界。
@@ -104,18 +104,9 @@ interfaces / stores / adapters
 
 ## 5. 数据与事务
 
-### Usage Ingest
+### API 消费已退役
 
-同一个 Pulse DB 事务内完成：
-
-```text
-UsageEvent
-→ Contribution Ledger
-→ Contribution Account
-→ User Period Stat
-```
-
-不得出现半记账状态。用户已于 2026-11-06 取消 API 消费获券；Usage 摄入和补录仅记贡献，不再改变券账本、发行批次或历史 entitlement。社区任务赠券使用独立事务，既有券与奖励保留。
+2026-11-08 用户取消全部 API 消费贡献。生产进程不得读取 LOG_DB、新增 Usage/付费证明/贡献账本或推进消费游标；补录、回测和游标工具已退役。历史账本不可清零或改写，仅用于审计与恢复；历史算法仅保留在测试夹具中。社区任务赠券使用独立事务，既有券、奖励和待结算 Outbox 保留。Answer EXP 等级不受影响。
 
 ### Pulse Action
 
@@ -197,7 +188,7 @@ Pulse 从 new-api 只读取业务必要字段。
 - 支付信息
 - 无关的 raw `Other`
 
-Pulse 对 LOG_DB 使用只读账号。
+Pulse 不再连接 LOG_DB；所有旧进程升级后才能回收专用只读账号。
 
 Reward 最终额度只能通过 new-api Internal Benefit API 发放，不能直接操作 `users.quota`。
 

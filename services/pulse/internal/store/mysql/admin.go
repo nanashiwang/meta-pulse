@@ -235,16 +235,6 @@ func (r *operationsRepository) Snapshot(ctx context.Context, now time.Time, curs
 	}
 	var snapshot ports.OperationalSnapshot
 	if err := r.db.WithContext(ctx).Raw(`
-SELECT COALESCE(GREATEST(TIMESTAMPDIFF(SECOND, MAX(watermark_at), ?), 0), 0)
-FROM pulse_worker_cursor
-WHERE cursor_name = ? AND source_system = ?`, now, cursorName, sourceSystem).Scan(&snapshot.IngestLagSeconds).Error; err != nil {
-		return ports.OperationalSnapshot{}, fmt.Errorf("read ingest lag: %w", err)
-	}
-	if err := r.db.WithContext(ctx).Raw(`
-SELECT COUNT(*) FROM pulse_ingest_conflict WHERE status = 'open'`).Scan(&snapshot.OpenConflictCount).Error; err != nil {
-		return ports.OperationalSnapshot{}, fmt.Errorf("count ingest conflicts: %w", err)
-	}
-	if err := r.db.WithContext(ctx).Raw(`
 SELECT COUNT(*)
 FROM pulse_account a
 LEFT JOIN (

@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 	"time"
 
@@ -93,7 +92,7 @@ func NewContentAwardService(unit ports.UnitOfWork, cfg ContentAwardConfig, rollb
 }
 
 // ReviewAndAward is the only content-to-quota mutation. It combines manual
-// approval, four anti-abuse gates, an isolated budget reservation, Grant and
+// approval, protected binding and spending limits, an isolated budget reservation, Grant and
 // Outbox creation, and an audit record in one Pulse transaction.
 func (s *ContentAwardService) ReviewAndAward(ctx context.Context, command ContentAwardCommand) (ContentAwardResult, error) {
 	command.RewardType = strings.TrimSpace(command.RewardType)
@@ -108,7 +107,7 @@ func (s *ContentAwardService) ReviewAndAward(ctx context.Context, command Conten
 	payloadHash := contentAwardPayloadHash(command)
 	var result ContentAwardResult
 	err := s.unit.Do(ctx, func(repos ports.Repositories) error {
-		if repos.Content == nil || repos.Account == nil || repos.Reward == nil || repos.Idempotency == nil || repos.Audit == nil {
+		if repos.Content == nil || repos.Reward == nil || repos.Idempotency == nil || repos.Audit == nil {
 			return errors.New("content award repositories are not initialized")
 		}
 		idempotency, err := repos.Idempotency.GetOrCreateForUpdate(ctx, "content_award", command.RequestID, payloadHash)
@@ -158,23 +157,7 @@ func (s *ContentAwardService) ReviewAndAward(ctx context.Context, command Conten
 			}
 		}
 
-		lifetimeContribution, err := lifetimeContribution(ctx, repos.Account, candidate.AuthorUserID)
-		if err != nil {
-			return err
-		}
 		award := ports.ContentAward{CandidateID: candidate.ID, AwardVersion: command.AwardVersion, ActionID: actionID, PeriodID: periodID, UserID: candidate.AuthorUserID, Amount: command.Amount, RewardType: command.RewardType, BudgetType: s.cfg.BudgetType, Status: ports.ContentAwardPending, Reason: command.Reason, CreatedAt: now}
-		if lifetimeContribution < s.cfg.MinPaidContributionMilli {
-			award.Status = ports.ContentAwardIneligible
-			award, err = repos.Content.CreateAward(ctx, award)
-			if err != nil {
-				return err
-			}
-			result = ContentAwardResult{Award: award, Eligibility: award.Status}
-			if err := appendContentAudit(ctx, repos.Audit, command, candidate, award, "paid_threshold", now); err != nil {
-				return err
-			}
-			return saveContentAwardIdempotency(ctx, repos.Idempotency, idempotency, result)
-		}
 		// Limit totals are projections, so lock durable user-period and business-day
 		// guards before reading them. Different candidate rows must not be able to
 		// pass the same cap concurrently.
@@ -245,30 +228,6 @@ func (s *ContentAwardService) ReviewAndAward(ctx context.Context, command Conten
 	return result, nil
 }
 
-func lifetimeContribution(ctx context.Context, accounts ports.AccountRepository, userID uint64) (int64, error) {
-	rows, err := accounts.ListForUser(ctx, userID)
-	if err != nil {
-		return 0, err
-	}
-	var total int64
-	for _, account := range rows {
-		if account.AssetType != ledger.AssetContribution {
-			continue
-		}
-		if account.Balance > 0 && total > math.MaxInt64-account.Balance {
-			return 0, errors.New("lifetime contribution overflow")
-		}
-		if account.Balance < 0 && total < math.MinInt64-account.Balance {
-			return 0, errors.New("lifetime contribution overflow")
-		}
-		total += account.Balance
-	}
-	return total, nil
-}
-
-// Reverse marks a content award as reversed only after the original Grant is
-// rolled back through the normal Benefit source_ref. It never creates a new
-// source_ref or a compensating content award.
 func (s *ContentAwardService) Reverse(ctx context.Context, actionID, actorType, actorID, reason, requestID string) error {
 	if s.rollback == nil {
 		return errors.New("content award rollback is not configured")

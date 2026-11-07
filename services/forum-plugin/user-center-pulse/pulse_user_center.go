@@ -340,27 +340,9 @@ func (uc *UserCenter) UserSettings(string) (*plugin.SettingInfo, error) {
 	return &plugin.SettingInfo{}, nil
 }
 
+// Consumption contribution badges are retired. Answer owns community EXP.
 func (uc *UserCenter) PersonalBranding(externalID string) []*plugin.PersonalBranding {
-	if uc == nil {
-		return nil
-	}
-	uc.runtimeMu.RLock()
-	config, client := uc.Config, uc.Client
-	if config == nil || !config.LevelBadgeEnabled || client == nil {
-		uc.runtimeMu.RUnlock()
-		return nil
-	}
-	baseURL := config.NewAPIBaseURL
-	uc.runtimeMu.RUnlock()
-	profile, err := client.GetUserProfile(externalID)
-	if err != nil {
-		log.Debugf("pulse branding unavailable for %s: %v", externalID, err)
-		return nil
-	}
-	return []*plugin.PersonalBranding{
-		{Name: "pulse_level", Label: profile.Level.Name, Url: baseURL + "/console/pulse"},
-		{Name: "pulse_contribution", Label: formatContribution(profile.LifetimeContributionMi), Url: baseURL + "/console/pulse"},
-	}
+	return nil
 }
 
 func (uc *UserCenter) AfterLogin(externalID, _ string) {
