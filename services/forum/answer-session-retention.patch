@@ -1,0 +1,55 @@
+diff --git a/internal/base/constant/cache_key.go b/internal/base/constant/cache_key.go
+--- a/internal/base/constant/cache_key.go
++++ b/internal/base/constant/cache_key.go
+@@ -25,9 +25,9 @@
+ 	UserStatusChangedCacheKey                  = "answer:user:status:"
+ 	UserStatusChangedCacheTime                 = 7 * 24 * time.Hour
+ 	UserTokenCacheKey                          = "answer:user:token:"
+-	UserTokenCacheTime                         = 7 * 24 * time.Hour
++	UserTokenCacheTime                         = 30 * 24 * time.Hour
+ 	UserVisitTokenCacheKey                     = "answer:user:visit:"
+-	UserVisitCacheTime                         = 7 * 24 * 60 * 60
++	UserVisitCacheTime                         = 30 * 24 * 60 * 60
+ 	UserVisitCookiesCacheKey                   = "visit"
+ 	AdminTokenCacheKey                         = "answer:admin:token:"
+ 	AdminTokenCacheTime                        = 7 * 24 * time.Hour
+diff --git a/internal/controller/user_controller.go b/internal/controller/user_controller.go
+--- a/internal/controller/user_controller.go
++++ b/internal/controller/user_controller.go
+@@ -713,13 +713,6 @@
+ }
+ 
+ func (uc *UserController) setVisitCookies(ctx *gin.Context, visitToken string, force bool) {
+-	if !force {
+-		cookie, _ := ctx.Cookie(constant.UserVisitCookiesCacheKey)
+-		// If the cookie is the same as the visitToken, no need to set it again
+-		if cookie == visitToken {
+-			return
+-		}
+-	}
+ 	general, err := uc.siteInfoCommonService.GetSiteGeneral(ctx)
+ 	if err != nil {
+ 		log.Errorf("get site general error: %v", err)
+diff --git a/internal/repo/auth/auth.go b/internal/repo/auth/auth.go
+--- a/internal/repo/auth/auth.go
++++ b/internal/repo/auth/auth.go
+@@ -56,6 +56,10 @@
+ 	}
+ 	userInfo = &entity.UserCacheInfo{}
+ 	_ = json.Unmarshal([]byte(userInfoCache), userInfo)
++	// Treat a successful authenticated request as activity and keep the bearer token alive for the sliding retention window.
++	if err := ar.data.Cache.SetString(ctx, constant.UserTokenCacheKey+accessToken, userInfoCache, constant.UserTokenCacheTime); err != nil {
++		log.Error(err)
++	}
+ 	return userInfo, nil
+ }
+ 
+@@ -94,6 +98,9 @@
+ 	if !exist {
+ 		return "", nil
+ 	}
++	if err := ar.data.Cache.SetString(ctx, constant.UserVisitTokenCacheKey+visitToken, accessToken, constant.UserTokenCacheTime); err != nil {
++		log.Error(err)
++	}
+ 	return accessToken, nil
+ }

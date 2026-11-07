@@ -12,11 +12,25 @@ FROM golang:1.25-alpine AS builder
 # floating latest pnpm makes old Answer releases depend on future package
 # manager behaviour and currently fails its pre-install identity check.
 ARG PNPM_VERSION=9.7.0
-RUN apk add --no-cache build-base git bash nodejs npm \
+RUN apk add --no-cache build-base git bash nodejs npm patch \
     && npm install -g "pnpm@${PNPM_VERSION}" \
     && test "$(pnpm --version)" = "${PNPM_VERSION}"
 
 COPY --from=answer-base /usr/bin/answer /usr/bin/answer
+
+# Build against the pinned Answer source so the community session policy is
+# explicit, reviewable, and kept in sync with the runtime binary.
+RUN mkdir -p /tmp/answer-source /build \
+    && printf 'module answer-source\\ngo 1.25\\n' > /tmp/answer-source/go.mod \
+    && cd /tmp/answer-source \
+    && go mod download github.com/apache/answer@v1.7.1 \
+    && ANSWER_DIR="$(go env GOPATH)/pkg/mod/github.com/apache/answer@v1.7.1" \
+    && cp -r "$ANSWER_DIR" /build/answer \
+    && chmod -R u+w /build/answer
+COPY services/forum/answer-session-retention.patch /build/answer-session-retention.patch
+RUN cd /build/answer \
+    && patch -p1 --fuzz=0 < /build/answer-session-retention.patch
+ENV ANSWER_MODULE=/build/answer
 
 WORKDIR /build
 COPY services/forum-plugin/user-center-pulse ./user-center-pulse

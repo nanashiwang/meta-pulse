@@ -78,6 +78,14 @@ grep -A10 'location \^~ /metar-assets/' "$ROOT/deploy/nginx/meta-pulse.conf" | g
 ! grep -Eq 'upstream[[:space:]]+(pulse|new_api)|proxy_pass[[:space:]]+http://(pulse|new_api)' "$ROOT/deploy/nginx/meta-pulse.conf"
 grep -q 'FORUM_BINDING_GUARD_DSN:' "$ROOT/docker-compose.yml"
 
+# Forum login retention is implemented in the pinned Answer build, not only
+# at the Nginx cookie layer; keep the source patch and build hook together.
+grep -q 'ENV ANSWER_MODULE=/build/answer' "$ROOT/services/forum/Dockerfile"
+grep -q 'answer-session-retention.patch' "$ROOT/services/forum/Dockerfile"
+grep -q 'UserTokenCacheTime                         = 30 \* 24 \* time.Hour' "$ROOT/services/forum/answer-session-retention.patch"
+grep -q 'UserVisitCacheTime                         = 30 \* 24 \* 60 \* 60' "$ROOT/services/forum/answer-session-retention.patch"
+grep -q 'sliding retention window' "$ROOT/services/forum/answer-session-retention.patch"
+
 community_dist="$tmp_dir/community"
 python3 "$ROOT/metar-frontend/production/build.py" --output "$community_dist" >/dev/null
 [[ -s "$community_dist/index.html" && -s "$community_dist/assets/app.js" && -s "$community_dist/assets/favicon.svg" && -s "$community_dist/runtime-config.js" ]]
