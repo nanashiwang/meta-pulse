@@ -21,7 +21,7 @@ COPY --from=answer-base /usr/bin/answer /usr/bin/answer
 # Build against the pinned Answer source so the community session policy is
 # explicit, reviewable, and kept in sync with the runtime binary.
 RUN mkdir -p /tmp/answer-source /build \
-    && printf 'module answer-source\\ngo 1.25\\n' > /tmp/answer-source/go.mod \
+    && printf 'module answer-source\ngo 1.25\n' > /tmp/answer-source/go.mod \
     && cd /tmp/answer-source \
     && go mod download github.com/apache/answer@v1.7.1 \
     && ANSWER_DIR="$(go env GOPATH)/pkg/mod/github.com/apache/answer@v1.7.1" \

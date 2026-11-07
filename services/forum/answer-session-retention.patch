@@ -1,9 +1,13 @@
 diff --git a/internal/base/constant/cache_key.go b/internal/base/constant/cache_key.go
+index 987798d..2f1a3f0 100644
 --- a/internal/base/constant/cache_key.go
 +++ b/internal/base/constant/cache_key.go
-@@ -25,9 +25,9 @@
+@@ -23,11 +23,11 @@ import "time"
+ 
+ const (
  	UserStatusChangedCacheKey                  = "answer:user:status:"
- 	UserStatusChangedCacheTime                 = 7 * 24 * time.Hour
+-	UserStatusChangedCacheTime                 = 7 * 24 * time.Hour
++	UserStatusChangedCacheTime                 = 30 * 24 * time.Hour
  	UserTokenCacheKey                          = "answer:user:token:"
 -	UserTokenCacheTime                         = 7 * 24 * time.Hour
 +	UserTokenCacheTime                         = 30 * 24 * time.Hour
@@ -14,9 +18,21 @@ diff --git a/internal/base/constant/cache_key.go b/internal/base/constant/cache_
  	AdminTokenCacheKey                         = "answer:admin:token:"
  	AdminTokenCacheTime                        = 7 * 24 * time.Hour
 diff --git a/internal/controller/user_controller.go b/internal/controller/user_controller.go
+index 77c806e..47cfbb0 100644
 --- a/internal/controller/user_controller.go
 +++ b/internal/controller/user_controller.go
-@@ -713,13 +713,6 @@
+@@ -95,7 +95,9 @@ func (uc *UserController) GetUserInfoByUserID(ctx *gin.Context) {
+ 	}
+ 
+ 	resp, err := uc.userService.GetUserInfoByUserID(ctx, token, userInfo.UserID)
+-	uc.setVisitCookies(ctx, userInfo.VisitToken, false)
++	if err == nil && userInfo.UserStatus == entity.UserStatusAvailable {
++		uc.setVisitCookies(ctx, userInfo.VisitToken, false)
++	}
+ 	handler.HandleResponse(ctx, err, resp)
+ }
+ 
+@@ -713,13 +715,6 @@ func (uc *UserController) SearchUserListByName(ctx *gin.Context) {
  }
  
  func (uc *UserController) setVisitCookies(ctx *gin.Context, visitToken string, force bool) {
@@ -31,25 +47,274 @@ diff --git a/internal/controller/user_controller.go b/internal/controller/user_c
  	if err != nil {
  		log.Errorf("get site general error: %v", err)
 diff --git a/internal/repo/auth/auth.go b/internal/repo/auth/auth.go
+index 597352b..c5f4b50 100644
 --- a/internal/repo/auth/auth.go
 +++ b/internal/repo/auth/auth.go
-@@ -56,6 +56,10 @@
+@@ -22,6 +22,7 @@ package auth
+ import (
+ 	"context"
+ 	"encoding/json"
++	"sync"
+ 
+ 	"github.com/apache/answer/internal/service/auth"
+ 
+@@ -35,6 +36,7 @@ import (
+ 
+ // authRepo auth repository
+ type authRepo struct {
++	mu   sync.Mutex
+ 	data *data.Data
+ }
+ 
+@@ -47,6 +49,8 @@ func NewAuthRepo(data *data.Data) auth.AuthRepo {
+ 
+ // GetUserCacheInfo get user cache info
+ func (ar *authRepo) GetUserCacheInfo(ctx context.Context, accessToken string) (userInfo *entity.UserCacheInfo, err error) {
++	ar.mu.Lock()
++	defer ar.mu.Unlock()
+ 	userInfoCache, exist, err := ar.data.Cache.GetString(ctx, constant.UserTokenCacheKey+accessToken)
+ 	if err != nil {
+ 		return nil, errors.InternalServer(reason.DatabaseError).WithError(err).WithStack()
+@@ -55,13 +59,48 @@ func (ar *authRepo) GetUserCacheInfo(ctx context.Context, accessToken string) (u
+ 		return nil, nil
  	}
  	userInfo = &entity.UserCacheInfo{}
- 	_ = json.Unmarshal([]byte(userInfoCache), userInfo)
-+	// Treat a successful authenticated request as activity and keep the bearer token alive for the sliding retention window.
-+	if err := ar.data.Cache.SetString(ctx, constant.UserTokenCacheKey+accessToken, userInfoCache, constant.UserTokenCacheTime); err != nil {
-+		log.Error(err)
+-	_ = json.Unmarshal([]byte(userInfoCache), userInfo)
++	if err := json.Unmarshal([]byte(userInfoCache), userInfo); err != nil || userInfo.UserID == "" {
++		return nil, errors.InternalServer(reason.DatabaseError)
++	}
++	// Status changes must be merged before renewal, or an active token could
++	// outlive a suspension marker and silently restore the old account status.
++	status, err := ar.GetUserStatus(ctx, userInfo.UserID)
++	if err != nil {
++		return nil, err
++	}
++	if status != nil {
++		userInfo.UserStatus = status.UserStatus
++		userInfo.EmailStatus = status.EmailStatus
++		userInfo.RoleID = status.RoleID
++	}
++	if userInfo.UserStatus != entity.UserStatusAvailable {
++		return userInfo, nil
++	}
++	// Refresh all native session records under the same lock as logout and
++	// password-reset revocation. Missing or expired tokens are never recreated.
++	if err := ar.addUserTokenMapping(ctx, userInfo.UserID, accessToken); err != nil {
++		return nil, err
++	}
++	encoded, err := json.Marshal(userInfo)
++	if err != nil {
++		return nil, err
++	}
++	if userInfo.VisitToken != "" {
++		if err := ar.data.Cache.SetString(ctx, constant.UserVisitTokenCacheKey+userInfo.VisitToken, accessToken, constant.UserTokenCacheTime); err != nil {
++			return nil, err
++		}
++	}
++	if err := ar.data.Cache.SetString(ctx, constant.UserTokenCacheKey+accessToken, string(encoded), constant.UserTokenCacheTime); err != nil {
++		return nil, err
 +	}
  	return userInfo, nil
  }
  
-@@ -94,6 +98,9 @@
- 	if !exist {
- 		return "", nil
+ // SetUserCacheInfo set user cache info
+ func (ar *authRepo) SetUserCacheInfo(ctx context.Context,
+ 	accessToken, visitToken string, userInfo *entity.UserCacheInfo) (err error) {
++	ar.mu.Lock()
++	defer ar.mu.Unlock()
+ 	userInfo.VisitToken = visitToken
+ 	userInfoCache, err := json.Marshal(userInfo)
+ 	if err != nil {
+@@ -72,7 +111,7 @@ func (ar *authRepo) SetUserCacheInfo(ctx context.Context,
+ 	if err != nil {
+ 		return errors.InternalServer(reason.DatabaseError).WithError(err).WithStack()
  	}
-+	if err := ar.data.Cache.SetString(ctx, constant.UserVisitTokenCacheKey+visitToken, accessToken, constant.UserTokenCacheTime); err != nil {
-+		log.Error(err)
-+	}
- 	return accessToken, nil
+-	if err := ar.AddUserTokenMapping(ctx, userInfo.UserID, accessToken); err != nil {
++	if err := ar.addUserTokenMapping(ctx, userInfo.UserID, accessToken); err != nil {
+ 		log.Error(err)
+ 	}
+ 	if len(visitToken) == 0 {
+@@ -99,7 +138,9 @@ func (ar *authRepo) GetUserVisitCacheInfo(ctx context.Context, visitToken string
+ 
+ // RemoveUserCacheInfo remove user cache info
+ func (ar *authRepo) RemoveUserCacheInfo(ctx context.Context, accessToken string) (err error) {
+-	err = ar.data.Cache.Del(ctx, constant.UserTokenCacheKey+accessToken)
++	ar.mu.Lock()
++	defer ar.mu.Unlock()
++	err = ar.removeUserCacheInfo(ctx, accessToken)
+ 	if err != nil {
+ 		return errors.InternalServer(reason.DatabaseError).WithError(err).WithStack()
+ 	}
+@@ -108,6 +149,8 @@ func (ar *authRepo) RemoveUserCacheInfo(ctx context.Context, accessToken string)
+ 
+ // RemoveUserVisitCacheInfo remove visit token cache
+ func (ar *authRepo) RemoveUserVisitCacheInfo(ctx context.Context, visitToken string) (err error) {
++	ar.mu.Lock()
++	defer ar.mu.Unlock()
+ 	err = ar.data.Cache.Del(ctx, constant.UserVisitTokenCacheKey+visitToken)
+ 	if err != nil {
+ 		return errors.InternalServer(reason.DatabaseError).WithError(err).WithStack()
+@@ -117,6 +160,8 @@ func (ar *authRepo) RemoveUserVisitCacheInfo(ctx context.Context, visitToken str
+ 
+ // SetUserStatus set user status
+ func (ar *authRepo) SetUserStatus(ctx context.Context, userID string, userInfo *entity.UserCacheInfo) (err error) {
++	ar.mu.Lock()
++	defer ar.mu.Unlock()
+ 	userInfoCache, err := json.Marshal(userInfo)
+ 	if err != nil {
+ 		return err
+@@ -192,7 +237,13 @@ func (ar *authRepo) RemoveAdminUserCacheInfo(ctx context.Context, accessToken st
  }
+ 
+ // AddUserTokenMapping add user token mapping
+-func (ar *authRepo) AddUserTokenMapping(ctx context.Context, userID, accessToken string) (err error) {
++func (ar *authRepo) AddUserTokenMapping(ctx context.Context, userID, accessToken string) error {
++	ar.mu.Lock()
++	defer ar.mu.Unlock()
++	return ar.addUserTokenMapping(ctx, userID, accessToken)
++}
++
++func (ar *authRepo) addUserTokenMapping(ctx context.Context, userID, accessToken string) (err error) {
+ 	key := constant.UserTokenMappingCacheKey + userID
+ 	resp, _, err := ar.data.Cache.GetString(ctx, key)
+ 	if err != nil {
+@@ -209,6 +260,8 @@ func (ar *authRepo) AddUserTokenMapping(ctx context.Context, userID, accessToken
+ 
+ // RemoveUserTokens Log out all users under this user id
+ func (ar *authRepo) RemoveUserTokens(ctx context.Context, userID string, remainToken string) {
++	ar.mu.Lock()
++	defer ar.mu.Unlock()
+ 	key := constant.UserTokenMappingCacheKey + userID
+ 	resp, _, err := ar.data.Cache.GetString(ctx, key)
+ 	if err != nil {
+@@ -224,7 +277,7 @@ func (ar *authRepo) RemoveUserTokens(ctx context.Context, userID string, remainT
+ 		if token == remainToken {
+ 			continue
+ 		}
+-		if err := ar.RemoveUserCacheInfo(ctx, token); err != nil {
++		if err := ar.removeUserCacheInfo(ctx, token); err != nil {
+ 			log.Error(err)
+ 		} else {
+ 			log.Debugf("del user %s token success", userID)
+@@ -236,4 +289,27 @@ func (ar *authRepo) RemoveUserTokens(ctx context.Context, userID string, remainT
+ 	if err := ar.data.Cache.Del(ctx, key); err != nil {
+ 		log.Error(err)
+ 	}
++	if remainToken != "" {
++		if err := ar.addUserTokenMapping(ctx, userID, remainToken); err != nil {
++			log.Error(err)
++		}
++	}
++}
++
++func (ar *authRepo) removeUserCacheInfo(ctx context.Context, accessToken string) error {
++	raw, exists, err := ar.data.Cache.GetString(ctx, constant.UserTokenCacheKey+accessToken)
++	if err != nil {
++		return err
++	}
++	// Revoke the bearer first, so visit cookies cannot authenticate after logout.
++	if err := ar.data.Cache.Del(ctx, constant.UserTokenCacheKey+accessToken); err != nil {
++		return err
++	}
++	if exists {
++		var info entity.UserCacheInfo
++		if json.Unmarshal([]byte(raw), &info) == nil && info.VisitToken != "" {
++			return ar.data.Cache.Del(ctx, constant.UserVisitTokenCacheKey+info.VisitToken)
++		}
++	}
++	return nil
+ }
+diff --git a/internal/service/auth/auth.go b/internal/service/auth/auth.go
+index b94f791..feaccb3 100644
+--- a/internal/service/auth/auth.go
++++ b/internal/service/auth/auth.go
+@@ -69,11 +69,6 @@ func (as *AuthService) GetUserCacheInfo(ctx context.Context, accessToken string)
+ 		userCacheInfo.UserStatus = cacheInfo.UserStatus
+ 		userCacheInfo.EmailStatus = cacheInfo.EmailStatus
+ 		userCacheInfo.RoleID = cacheInfo.RoleID
+-		// update current user cache info
+-		err := as.authRepo.SetUserCacheInfo(ctx, accessToken, userCacheInfo.VisitToken, userCacheInfo)
+-		if err != nil {
+-			return nil, err
+-		}
+ 	}
+ 
+ 	// try to get user status from user center
+@@ -105,7 +100,9 @@ func (as *AuthService) CheckUserVisitToken(ctx context.Context, visitToken strin
+ 	if len(accessToken) == 0 {
+ 		return false
+ 	}
+-	return true
++	// A visit mapping alone is insufficient after bearer revocation/expiry.
++	info, err := as.authRepo.GetUserCacheInfo(ctx, accessToken)
++	return err == nil && info != nil && info.UserStatus == entity.UserStatusAvailable
+ }
+ 
+ func (as *AuthService) SetUserStatus(ctx context.Context, userInfo *entity.UserCacheInfo) (err error) {
+diff --git a/internal/base/middleware/auth.go b/internal/base/middleware/auth.go
+index f21837b..32e6d1e 100644
+--- a/internal/base/middleware/auth.go
++++ b/internal/base/middleware/auth.go
+@@ -20,7 +20,9 @@
+ package middleware
+ 
+ import (
++	"github.com/apache/answer/internal/base/constant"
+ 	"net/http"
++	"net/url"
+ 	"strings"
+ 
+ 	"github.com/apache/answer/internal/schema"
+@@ -71,6 +73,7 @@ func (am *AuthUserMiddleware) Auth() gin.HandlerFunc {
+ 		}
+ 		if userInfo != nil {
+ 			ctx.Set(ctxUUIDKey, userInfo)
++			am.renewVisitCookie(ctx, userInfo)
+ 		}
+ 		ctx.Next()
+ 	}
+@@ -128,6 +131,7 @@ func (am *AuthUserMiddleware) MustAuthWithoutAccountAvailable() gin.HandlerFunc
+ 			return
+ 		}
+ 		ctx.Set(ctxUUIDKey, userInfo)
++		am.renewVisitCookie(ctx, userInfo)
+ 		ctx.Next()
+ 	}
+ }
+@@ -165,6 +169,7 @@ func (am *AuthUserMiddleware) MustAuthAndAccountAvailable() gin.HandlerFunc {
+ 			return
+ 		}
+ 		ctx.Set(ctxUUIDKey, userInfo)
++		am.renewVisitCookie(ctx, userInfo)
+ 		ctx.Next()
+ 	}
+ }
+@@ -190,6 +195,7 @@ func (am *AuthUserMiddleware) AdminAuth() gin.HandlerFunc {
+ 				return
+ 			}
+ 			ctx.Set(ctxUUIDKey, userInfo)
++			am.renewVisitCookie(ctx, userInfo)
+ 		}
+ 		ctx.Next()
+ 	}
+@@ -282,3 +288,20 @@ func ExtractToken(ctx *gin.Context) (token string) {
+ 	}
+ 	return strings.TrimPrefix(token, "Bearer ")
+ }
++
++// renewVisitCookie matches the renewed native bearer session; it never accepts
++// a user ID or token from a browser cookie as proof of authentication.
++func (am *AuthUserMiddleware) renewVisitCookie(ctx *gin.Context, info *entity.UserCacheInfo) {
++	if info.UserStatus != entity.UserStatusAvailable || info.VisitToken == "" {
++		return
++	}
++	general, err := am.siteInfoCommonService.GetSiteGeneral(ctx)
++	if err != nil {
++		return
++	}
++	site, err := url.Parse(general.SiteUrl)
++	if err != nil || site.Hostname() == "" {
++		return
++	}
++	ctx.SetCookie(constant.UserVisitCookiesCacheKey, info.VisitToken, constant.UserVisitCacheTime, "/", site.Hostname(), true, true)
++}

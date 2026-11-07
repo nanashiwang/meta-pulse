@@ -84,7 +84,7 @@ grep -q 'ENV ANSWER_MODULE=/build/answer' "$ROOT/services/forum/Dockerfile"
 grep -q 'answer-session-retention.patch' "$ROOT/services/forum/Dockerfile"
 grep -q 'UserTokenCacheTime                         = 30 \* 24 \* time.Hour' "$ROOT/services/forum/answer-session-retention.patch"
 grep -q 'UserVisitCacheTime                         = 30 \* 24 \* 60 \* 60' "$ROOT/services/forum/answer-session-retention.patch"
-grep -q 'sliding retention window' "$ROOT/services/forum/answer-session-retention.patch"
+grep -q 'Refresh all native session records' "$ROOT/services/forum/answer-session-retention.patch"
 
 community_dist="$tmp_dir/community"
 python3 "$ROOT/metar-frontend/production/build.py" --output "$community_dist" >/dev/null

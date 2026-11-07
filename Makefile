@@ -36,7 +36,7 @@ verify-notes:
 vet:
 	go vet $(GO_MODULES)
 
-test: deploy-test test-community
+test: deploy-test test-community test-forum-session
 	go test $(GO_MODULES)
 
 deploy-test:
@@ -154,3 +154,7 @@ test-account-switch-integration:
 test-marketplace-integration:
 	@test -n "$$MARKET_INTEGRATION_DSN" || { echo "请设置以 _market_test 结尾的专用集市测试库" >&2; exit 1; }
 	go test -count=1 -race ./services/forum-plugin/user-center-pulse/marketplace -run TestMySQL -timeout 5m
+
+.PHONY: test-forum-session
+test-forum-session:
+	bash services/forum/test-session.sh

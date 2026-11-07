@@ -4,37 +4,26 @@ Status: implemented
 
 ## Problem
 
-Apache Answer 1.7.1 的社区登录由浏览器 `visit` Cookie 和 Redis 中的 access/visit 会话缓存共同决定，默认两者都是 7 天。只延长 Cookie 会造成浏览器仍持有凭证、但服务端会话已过期；只改服务端 TTL 又会留下较短的浏览器 Cookie。
+Answer 1.7.1 原生会话默认 7 天；用户要求 30 天并在访问时续期。浏览器 `_a_ltk_` 无客户端 TTL，visit Cookie 用于私有附件访问；服务端默认可落盘内存缓存，不应假定为 Redis。
 
 ## Decision
 
-在论坛镜像构建时对版本锁定的 Answer 1.7.1 应用本地补丁：将 access token、visit token 映射和 `visit` Cookie 的固定 TTL 统一为 30 天；有效会话被读取时刷新服务端缓存 TTL；成功读取当前用户信息时始终重新下发 30 天 Cookie，使活跃用户按每次有效访问续期。登录、主动退出、服务端撤销和账号状态校验仍沿用 Answer 原生边界。
+在固定版本构建源码上应用可审阅补丁，使用官方 ANSWER_MODULE 替换入口。原生 bearer、visit 映射和用户撤销索引同步刷新为 30 天，认证中间件以及当前用户响应刷新 Cookie。已有未到期会话下次有效访问采用新期限，过期会话不得恢复。状态缓存延长至完整窗口，合并状态后才续期，封禁/删除不续期。单 Answer 进程的续期、注销、批量撤销共用仓库锁，删除 bearer 时清理 visit 映射；移除服务层旧快照回写，避免并发注销后恢复 token。
 
 ## Alternatives considered
 
-- 只在 Nginx 增加 `Max-Age=30d`：不能续期 Redis 会话，也无法覆盖 Answer 原生的 token 生命周期。
-- 仅在前端定时请求自定义续期接口：会依赖脚本加载和额外路由，不能覆盖原生页面/图片鉴权，且重复实现 Answer 会话逻辑。
-- 复制 Answer 到仓库长期维护：可控但扩大 Fork 边界；改为构建时从固定版本源码生成并应用小补丁，保留升级时的明确冲突点。
-
-## Outcome
-
-- 浏览器 `visit` Cookie、access token 缓存和 visit 映射的基础 TTL 均为 30 天。
-- 读取有效 access/visit 会话后，服务端对应缓存 TTL 重新回到 30 天。
-- 当前用户信息成功响应会重新下发 30 天 Cookie。
-- Answer 1.7.1 补丁可无模糊应用并通过受影响包编译/测试。
-- 部署离线回归和论坛插件现有检查通过。
-
-## Risks
-
-- Answer 升级可能改变受补丁文件的上下文，导致论坛镜像无法构建；构建时固定补丁失败应阻止发布。
-- 滑动会话会让持续活跃用户长期保持登录，退出、撤销、账号状态失效和 Redis 故障仍必须保持即时失效。
+- 仅改 Cookie：服务端仍会到期，无法满足需求。
+- 插件路由续期：不能覆盖已注册的原生路由，也没有可用的原生缓存续期接口。
+- 自建会话或长期 Fork：增加身份事实源或维护范围；选择固定版本构建补丁，并在升级时强制重新验收。
 
 ## Validation
 
-- Answer 1.7.1 源码补丁以 `--fuzz=0` 干净应用；受影响的 `internal/repo/auth`、`internal/controller`、`internal/base/middleware` 和 `internal/service/auth` 编译测试通过。
-- `go test ./services/pulse/... ./services/forum-plugin/user-center-pulse/...`、`go vet ./services/forum-plugin/user-center-pulse/...`、`make test` 和 `python3 .agents/workflow.py verify` 通过。
-- Dockerfile 已验证包含固定 Answer 源码替换和补丁入口；论坛镜像构建尝试因 Docker Hub 请求 `alpine:3.20` 元数据超时失败，未观察到源码编译错误。
+`make test-forum-session` 对真实补丁源码使用可控时钟验证连续三次第 29 天访问、30 天无访问到期、access/visit/索引 TTL、注销、密码重置撤销、100 并发访问与注销、封禁不续期、损坏缓存拒绝和保留当前会话索引。`-race` 验证并发；原生控制器/中间件/服务编译检查。完整项目检查和镜像构建结果以发布交付记录为准。
 
 ## Consequences
 
-升级 Answer 版本时必须重新审阅并应用该补丁；该行为不改变 Pulse 身份边界，不会让 new-api Cookie 或 Pulse 凭证进入 Answer。
+每次认证增加缓存写入，后台认证轮询也视为有效访问。该锁针对当前单 Answer 进程；多进程共享缓存需要原子续期/撤销实现。发布需重建 forum，生产部署单独核验；实际等待 30 天并未验收。
+
+## Related notes
+
+检索登录、会话和账号笔记：[管理员切换](2026-11-06-admin-account-switch.md)部分重叠，沿用原身份切换和撤销边界；社区经营、聊天笔记只消费身份，不拥有期限策略。
