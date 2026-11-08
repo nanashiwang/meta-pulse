@@ -27,8 +27,22 @@ def release_state(repo, tag):
         return json.loads(result.stdout)
     # Authentication, rate limits and network failures are not absence.
     if '(HTTP 404)' in result.stderr:
-        return None
+        # The tag endpoint returns published releases only. Drafts are visible
+        # in the authenticated collection, including older paginated entries.
+        pages = json.loads(output('gh', 'api', '--paginate', '--slurp',
+                                  f'repos/{repo}/releases?per_page=100'))
+        matches = [item for page in pages for item in page if item.get('tag_name') == tag]
+        if len(matches) > 1:
+            raise ValueError('同一标签有多个 Release，拒绝选择或覆盖')
+        return matches[0] if matches else None
     raise RuntimeError(f'无法读取 Release：{result.stderr.strip()}')
+
+
+def require_release(repo, tag):
+    state = release_state(repo, tag)
+    if state is None or type(state.get('draft')) is not bool:
+        raise ValueError('Release 消失或状态无效，停止发布')
+    return state
 
 
 def tag_commit(repo, tag):
@@ -109,7 +123,7 @@ def publish(tag, build_if_needed=False):
                     return
                 if state.get('draft') is not True:
                     raise ValueError('并发创建后 Release 状态无效')
-        state = release_state(repo, tag)
+        state = require_release(repo, tag)
         if state.get('draft') is False:
             verify_remote(repo, tag, commit, state)
             return
@@ -121,7 +135,7 @@ def publish(tag, build_if_needed=False):
                 raise ValueError(f'草稿已有附件与本次构建冲突：{name}；禁止覆盖，请人工核对或发布新版本')
             seen.add(name)
         for name in sorted(set(local) - seen):
-            state = release_state(repo, tag)
+            state = require_release(repo, tag)
             if state.get('draft') is False:
                 verify_remote(repo, tag, commit, state)
                 return
@@ -139,7 +153,7 @@ def publish(tag, build_if_needed=False):
                 if (uploaded is None or uploaded.get('state') != 'uploaded' or
                         any(uploaded.get(key) != local[name][key] for key in ('size', 'digest'))):
                     raise ValueError(f'并发补传附件冲突：{name}；未覆盖远端附件')
-        state = release_state(repo, tag)
+        state = require_release(repo, tag)
         if state.get('draft') is False:
             verify_remote(repo, tag, commit, state)
             return
@@ -150,7 +164,7 @@ def publish(tag, build_if_needed=False):
                 if (Path(tmp) / name).read_bytes() != (directory / name).read_bytes():
                     raise ValueError(f'草稿回读与本次构建不一致：{name}')
         verified_state = state
-        state = release_state(repo, tag)
+        state = require_release(repo, tag)
         if state.get('draft') is False:
             verify_remote(repo, tag, commit, state)
             return

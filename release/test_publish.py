@@ -26,17 +26,20 @@ mode = os.environ.get('FAKE_MODE', '')
 def save(): (root / 'state.json').write_text(json.dumps(state))
 def fail(message): print(message, file=sys.stderr); sys.exit(1)
 if args[0] == 'api':
-    path = args[1]
+    path = next(arg for arg in args if arg.startswith('repos/'))
     if '/git/ref/tags/' in path:
         kind = 'tag' if mode == 'annotated' else 'commit'
         sha = 'f' * 40 if mode == 'tag-conflict' else os.environ['FAKE_COMMIT']
         print(json.dumps({'object': {'type': kind, 'sha': sha}}))
     elif '/git/tags/' in path:
         print(json.dumps({'object': {'type': 'commit', 'sha': os.environ['FAKE_COMMIT']}}))
+    elif '/releases?per_page=' in path:
+        if mode == 'draft-list-error': fail('gh: Forbidden (HTTP 403)')
+        print(json.dumps([[], [] if state is None else [state]]))
     elif '/releases/tags/' in path:
         if mode in ('403', '500', 'network'):
             fail('gh: ' + ('TLS handshake timeout' if mode == 'network' else '(HTTP ' + mode + ')'))
-        if state is None: fail('gh: Not Found (HTTP 404)')
+        if state is None or state['draft'] or mode == 'draft-list-error': fail('gh: Not Found (HTTP 404)')
         print(json.dumps(state))
     else: fail('unexpected endpoint: ' + path)
 elif args[:2] == ['release', 'download']:
@@ -173,6 +176,9 @@ class PublishTests(unittest.TestCase):
             for p in sorted(self.bundle.iterdir()) if p.name != 'SHA256SUMS'))
         self.state = self.inventory(self.bundle)
         self.save_state()
+
+    def test_draft_listing_errors_do_not_create_release(self):
+        self.assert_read_only(self.run_publish('draft-list-error', success=False))
 
     def test_remote_tag_conflict(self):
         self.assert_read_only(self.run_publish('tag-conflict', success=False))
