@@ -270,7 +270,7 @@
 
   function toolsMenu(isActive) {
     const items = TOOLS.map(tool => link(tool.path, esc(getLanguage() === 'en_US' ? tool.en : tool.zh), 'topnav-menu-link')).join('');
-    return `<details class="topnav-menu${isActive ? ' active' : ''}"><summary>${t('工具')}</summary><div class="topnav-menu-panel" role="group" aria-label="${t('工具')}">${items}${link('/tools', t('全部工具'), 'topnav-menu-link')}</div></details>`;
+    return `<details class="topnav-menu${isActive ? ' active' : ''}"><summary>${t('工具')}</summary><div class="topnav-menu-panel" role="group" aria-label="${t('工具')}">${link('/tools', t('全部工具'), 'topnav-menu-link')}${items}</div></details>`;
   }
 
   function sidebar() {
