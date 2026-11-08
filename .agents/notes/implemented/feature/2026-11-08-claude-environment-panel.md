@@ -30,6 +30,6 @@ Status: implemented
 
 ## Testing
 
-17 项 tools.test.js 测试覆盖评分边界、未知、语言/字体/UA、请求超时/格式/CORS、WebRTC 未知出口、导航销毁、重复扫描、转义和两处 CSP。make test-community、make build-community、笔记两种校验入口、nginx 容器语法/配置测试通过。
+17 项 tools.test.js 测试覆盖评分边界、未知、语言/字体/UA、请求超时/格式/CORS、WebRTC 未知出口、导航销毁、重复扫描、转义和两处 CSP。分档标题表达环境信号而非用户身份，并覆盖 30/31/61 分边界和英文结果。make test-community、make build-community、笔记两种校验入口、nginx 容器语法/配置测试通过。
 
 Playwright 本地壳层验收 1440px 桌面及 375px 手机、中英文、深浅主题、章节跳转、FAQ 展开与扫描完成；页面无横向溢出。网络实测 claude.ai trace 可读，claude.com 超时并显示未知。社区出口使用仅本地预览的文档测试 IP，因此 WebRTC 差异结果仅验证交互，不作真实泄露结论；预览未接 Answer，侧栏/身份接口错误符合预期。生产部署与真实用户验收未执行。

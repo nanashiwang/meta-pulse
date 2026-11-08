@@ -303,13 +303,20 @@
 
   function scoreMarkup(result) {
     const label = result.complete ? t(...({ low: ['低特征分', 'Low signal score'], medium: ['中特征分', 'Medium signal score'], high: ['高特征分', 'High signal score'] }[result.band])) : t('检测不完整', 'Incomplete scan');
+    const verdict = result.complete
+      ? t(...({
+        low: ['当前环境不像 Claude 中国用户环境', 'This environment does not resemble the Claude China-user profile'],
+        medium: ['当前环境可能呈现 Claude 中国用户特征', 'This environment may show Claude China-user signals'],
+        high: ['当前环境呈现明显 Claude 中国用户特征', 'This environment shows strong Claude China-user signals'],
+      }[result.band]))
+      : t('部分信号无法读取', 'Some signals are unavailable');
     const hits = result.signals.filter(s => s.hit);
     return `<div class="ce-score-layout" data-band="${result.complete ? result.band : 'unknown'}">
       <div class="ce-gauge" role="img" aria-label="${esc(t(`环境特征分 ${result.score}，已测权重 ${result.coverage}/100`, `Signal score ${result.score}, measured weight ${result.coverage}/100`))}">
         <svg viewBox="0 0 200 200" aria-hidden="true"><circle class="ce-gauge-track" cx="100" cy="100" r="86"/><circle class="ce-gauge-fill" cx="100" cy="100" r="86" pathLength="100" stroke-dasharray="${result.score} 100"/></svg>
         <div><strong>${result.complete ? result.score : '—'}</strong><span>${result.complete ? '/ 100' : t(`已知分 ${result.score}`, `Known score ${result.score}`)}</span></div>
       </div>
-      <div class="ce-verdict"><span class="ce-band">${esc(label)}</span><h2>${esc(result.complete ? t('了解你的环境，\n而不只看 IP。', 'Know your environment.\nBeyond your IP.') : t('部分信号无法读取', 'Some signals are unavailable'))}</h2><p>${esc(t('这是中文环境特征的参考分，不是身份识别、封号概率，也不是 Claude 官方风控结果。', 'A reference score for Chinese environment signals—not identity, ban probability, or an official Claude decision.'))}</p><div class="ce-scale"><span>0–30 ${t('低', 'Low')}</span><span>31–60 ${t('中', 'Medium')}</span><span>61–100 ${t('高', 'High')}</span></div></div>
+      <div class="ce-verdict"><span class="ce-band">${esc(label)}</span><h2>${esc(verdict)}</h2><p>${esc(t('这是中文环境特征的参考分，不是身份识别、封号概率，也不是 Claude 官方风控结果。', 'A reference score for Chinese environment signals—not identity, ban probability, or an official Claude decision.'))}</p><div class="ce-scale"><span>0–30 ${t('低', 'Low')}</span><span>31–60 ${t('中', 'Medium')}</span><span>61–100 ${t('高', 'High')}</span></div></div>
       <div class="ce-hits"><span class="ce-eyebrow">${t('命中的信号', 'MATCHED SIGNALS')}</span><div>${hits.length ? hits.map(s => `<span class="ce-hit">${esc(t(SIGNAL_COPY[s.id][0], SIGNAL_COPY[s.id][1]))} <b>+${s.points}</b></span>`).join('') : `<span class="muted">${t('已读取的项目中暂无命中', 'No matches among measured signals')}</span>`}</div><small>${esc(t(`已读取 ${result.signals.filter(s => s.ratio !== null).length}/6 项 · 已测权重 ${result.coverage}/100 · 单项系数 ≥ 0.25 计为命中`, `${result.signals.filter(s => s.ratio !== null).length}/6 read · measured weight ${result.coverage}/100 · match threshold ≥ 0.25`))}</small></div>
     </div>`;
   }

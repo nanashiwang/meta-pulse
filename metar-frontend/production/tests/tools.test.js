@@ -148,6 +148,22 @@ test('six-signal model has exact weights, complete scoring and match threshold',
   assert.equal(full.band, 'high');
   assert.equal(full.complete, true);
   assert.deepEqual(Array.from(full.signals, s => s.weight), [30, 24, 20, 10, 8, 8]);
+  assert.match(tools.scoreMarkup(full), /当前环境呈现明显 Claude 中国用户特征/);
+  const byBand = band => {
+    const template = [
+      {timeZone:'Asia/Shanghai',languages:['en'],locale:'en',offset:'UTC+00:00'},
+      {timeZone:'Asia/Shanghai',languages:['en'],locale:'en',offset:'UTC+00:00'},
+      {timeZone:'Asia/Shanghai',languages:['en'],locale:'zh',offset:'UTC+00:00'},
+      {timeZone:'Asia/Shanghai',languages:['en'],locale:'zh',offset:'UTC+00:00'},
+    ];
+    const input = template[band];
+    return tools.environmentScore(input, {available:true,fonts:band >= 2 ? ['Test'] : []}, {ratio:band >= 2 ? 0.125 : band % 2 ? 0.125 : 0,value:'Test'});
+  };
+  assert.match(tools.scoreMarkup(byBand(0)), /当前环境不像 Claude 中国用户环境/);
+  assert.match(tools.scoreMarkup(byBand(1)), /当前环境可能呈现 Claude 中国用户特征/);
+  assert.match(tools.scoreMarkup(byBand(2)), /当前环境呈现明显 Claude 中国用户特征/);
+  const enHigh = load('en_US').scoreMarkup(full);
+  assert.match(enHigh, /This environment shows strong Claude China-user signals/);
   const language = value => tools.environmentScore({...env, languages: value}, {available: true, fonts: []}, {ratio: 0, value: 'Linux'}).signals[1].points;
   assert.equal(language(['en-US', 'zh-CN']), 12);
   assert.equal(language(['zh-TW']), 12);
@@ -167,6 +183,7 @@ test('score boundaries, unknown inputs and partial readings never report safe', 
   assert.equal(empty.coverage, 0);
   assert.equal(empty.signals.every(s => s.points === null), true);
   assert.match(tools.scoreMarkup(empty), /检测不完整/);
+  assert.doesNotMatch(tools.scoreMarkup(empty), /Claude 中国用户环境|Claude 中国用户特征/);
   assert.doesNotMatch(tools.scoreMarkup(empty), /低特征分/);
   const low = make('Asia/Shanghai', ['en'], [], 'en', 'UTC+00:00', 0);
   assert.equal(low.score, 30); assert.equal(low.band, 'low');
