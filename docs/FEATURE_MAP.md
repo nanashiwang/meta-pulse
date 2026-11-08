@@ -44,7 +44,7 @@ Before adding a feature, inspect adjacent flows and the current source of truth;
 
 | 入口 | 能力、权限与事实源 | 验证 |
 |---|---|---|
-| 顶部导航「模型榜」→ `/models`、`/models/leaderboard`、`/model/:slug`、`/models/methodology` | 匿名只读；独立 `services/intel` 与 `metar_intel` 库；综合分 v1、领先卡片、筛选排序分页；缺失数据显示「—」 | `go test ./services/intel/...`、[页面测试](../metar-frontend/production/tests/models.test.js) |
+| 顶部导航「模型榜」→ `/models`、`/models/leaderboard`、`/model/:slug`、`/models/methodology` | 匿名只读；独立 `services/intel` 与 `metar_intel` 库；综合分 v1、领先卡片、筛选排序分页；缺失数据显示「—」；nginx 公开代理仅允许 GET/HEAD 并清除浏览器凭据头 | `go test ./services/intel/...`、[页面测试](../metar-frontend/production/tests/models.test.js)、[网关凭据隔离回归](../deploy/nginx/test-seo.py) |
 | 管理员头像菜单 → `/admin/models` | 校验后导入 JSON、导出、立即重算、导入审计；论坛插件 [admin BFF](../services/forum-plugin/user-center-pulse/intel_admin_bff.go) 实时核对 Answer 管理员后 HMAC 签名转发；导入幂等 | [BFF 测试](../services/forum-plugin/user-center-pulse/intel_admin_bff_test.go)、[页面测试](../metar-frontend/production/tests/admin-models.test.js)；MySQL 集成与生产验收未做，见 [设计](MODEL_INTEL.md#m1-实现状态2026-11-08) |
 
 ## 2026-10-17 代码核对与测试索引

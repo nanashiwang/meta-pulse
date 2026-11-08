@@ -32,8 +32,10 @@ def main():
         # Echo only fixture headers from a local backend, exercising the actual
         # gateway Cookie boundary without a real Answer session or credentials.
         fixture_config = Path(temp) / 'gateway.conf'
-        fixture_config.write_text((ROOT / 'deploy/nginx/meta-pulse.conf').read_text().replace(
-            'server forum:80;', 'server forum:8080;') + '\nserver { listen 8080; location / { return 200 "$http_cookie|$http_new_api_user|$http_x_pulse_signature|$http_authorization"; } }\n')
+        fixture_config.write_text((ROOT / 'deploy/nginx/meta-pulse.conf').read_text()
+            .replace('server forum:80;', 'server forum:8080;')
+            .replace('set $intel_upstream http://intel-api:8090;', 'set $intel_upstream http://127.0.0.1:8080;')
+            + '\nserver { listen 8080; location / { return 200 "$http_cookie|$http_new_api_user|$http_x_pulse_signature|$http_authorization"; } }\n')
         try:
             run('docker', 'run', '-d', '--rm', '--name', name, '--add-host', 'forum:127.0.0.1',
                 '-p', '127.0.0.1::443', '-p', '127.0.0.1::80',
@@ -75,6 +77,9 @@ def main():
             assert status == 200 and body == 'visit=test-session; metar_ops=' + visitor + '|||Bearer fixture', body
             assert headers.get('X-Robots-Tag') == 'noindex, nofollow'
             assert get('/answer/api/v1/user/info', request_headers=boundary_headers)[2] == 'visit=test-session|||Bearer fixture'
+            intel_headers = {'Authorization': 'Bearer fixture', 'New-Api-User': '999', 'X-Pulse-Signature': 'forged'}
+            status, _, body = get('/metar/api/intel/v1/home', request_headers=intel_headers)
+            assert status == 200 and body.split('|')[-1] == '', (status, body)
             boundary_headers['Cookie'] = 'visit=test-session; metar_ops=invalid; secret=unrelated'
             assert get('/answer/api/v1/metar/analytics/anonymous', request_headers=boundary_headers)[2] == 'visit=test-session|||Bearer fixture'
             # Native Answer and browsers without an explicit icon use this root
