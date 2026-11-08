@@ -11,8 +11,12 @@ func TestUnlimitedQuotaAccountingBounds(t *testing.T) {
 		t.Fatal("unlimited quota capped")
 	}
 	b.BudgetType = "community_exp"
+	if !b.CanReserve(1000000) {
+		t.Fatal("unlimited EXP capped")
+	}
+	b.BudgetType = "legacy"
 	if b.CanReserve(1) {
-		t.Fatal("EXP became unlimited")
+		t.Fatal("unknown budget type became unlimited")
 	}
 	b.BudgetType = "loyalty"
 	b.HardCap = 10

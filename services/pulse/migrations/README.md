@@ -2,7 +2,7 @@
 
 Meta Pulse 使用独立 MySQL 8.0+ 逻辑库。SQL 文件采用 Goose 注释格式，并按数字顺序执行。
 
-`00015_unlimited_quota_budget.sql` 为额度预算增加显式 unlimited 模式，旧记录默认 false。不限总量仍完整记录预留与结算，且受整数表示边界保护。经验预算不能使用此模式。存在不限总量记录时 Down 会拒绝，需配套版本与备份恢复。
+`00015_unlimited_quota_budget.sql` 为额度预算增加显式 unlimited 模式，旧记录默认 false。不限总量仍完整记录预留与结算，且受整数表示边界保护。经验预算自 `00019` 起亦可使用此模式。存在不限总量记录时 Down 会拒绝，需配套版本与备份恢复。
 
 `00014_continuous_tickets.sql` 增加持续规则标记、额度资格天数、券发行批次、追加式消费分配和用户事务锁。既有周期默认非持续，原券不迁移、不改变期限。升级须同时更新 API、Worker、Answer 插件和前端；备份后向前迁移。产生新券后不能直接降级旧服务或执行 Down，否则会丢失券龄与消费分配；恢复需使用配套数据库备份。
 
@@ -103,3 +103,5 @@ Down 保留配置、密文和幂等回执，重新 Up 不会覆盖现有值。�
 - `00016_ticket_rule_selection.sql`：新增按 user_id / period_id / earned_at / id 的组内选券索引；无历史金额、券、预算或概率重写。v2 Action 和拒绝回执要求整体升级 API、社区插件与前端；回退须先关闭 Action，不能删除幂等记录。
 
 `00018_seed_rule_guard.sql` 幂等补齐 `period_create_lock/global` 永久守卫，不覆盖旧身份、payload 或业务回执。新版规则发布、抽奖和社区赠券对该行直接 FOR UPDATE，避免热键重复插入的死锁；需先迁移再启动新版 API/Worker。Down 保留该行，旧代码可安全复用，不能将其当作可清理的过期回执删除。
+
+`00019_unlimited_experience_budget.sql` 放宽 `chk_pulse_budget_cap`，允许持续规则的 `community_exp` 预算显式 `unlimited=true`、`hard_cap=0`，网页新规则纯按概率发放 EXP。仍记录预留与结算并受 int64 边界保护；不改写历史有限预算。存在不限经验预算时 Down 拒绝，避免静默加上限。需先迁移再启动新版 API。

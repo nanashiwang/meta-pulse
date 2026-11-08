@@ -13,7 +13,7 @@ function harness() {
   });context.window=context;
   for (const name of ['i18n.js','adapters.js','admin-periods.js']) vm.runInContext(fs.readFileSync(path.join(__dirname,'../src',name),'utf8'),context);
   const nodes = new Map();
-  const form={inputs:{quota_validity_days:'30',multiplier:'1.2345',threshold:'123.456',reward_budget:'0',experience_budget:'100',reason:'Reviewed rates',confirm:'on'},
+  const form={inputs:{quota_validity_days:'30',multiplier:'1.2345',threshold:'123.456',reason:'Reviewed rates',confirm:'on'},
     querySelector:s=>{if(!nodes.has(s))nodes.set(s,{});return nodes.get(s);},
     querySelectorAll:()=>[{querySelector:s=>({value:s.includes('prize_type')?'community_exp':s.includes('prize_key')?'reward':s.includes('prize_amount')?'10':'1'})}],reset(){}};
   context.document={querySelector:()=>form};
@@ -31,7 +31,7 @@ test('form preserves legacy threshold without offering consumption conversion',(
  const h=harness();const p=h.view.payload(h.form);
  assert.equal(p.multiplier_bps,10000);assert.equal(p.ticket_threshold_milli,5000);
  h.view.current={id:7,ticket_threshold_milli:123456,rules:[{multiplier_bps:23456}]};assert.equal(h.view.payload(h.form).multiplier_bps,23456);assert.equal(h.view.payload(h.form).ticket_threshold_milli,123456);
- assert.equal(p.starts_at,undefined);assert.equal(p.continuous,true);assert.equal(p.quota_validity_days,30);assert.equal(p.experience_budget,100);
+ assert.equal(p.starts_at,undefined);assert.equal(p.continuous,true);assert.equal(p.quota_validity_days,30);assert.equal(p.experience_budget,undefined);assert.equal(p.experience_budget_unlimited,true);
  assert.equal(p.expected_period_id,0);assert.match(p.key,/^rules-/);
  delete h.form.inputs.confirm;assert.throws(()=>h.view.payload(h.form));
 });
@@ -64,24 +64,23 @@ test('legacy list endpoint without continuous capability cannot enable the edito
  const html=await h.view.page();assert.match(html,/奖励配置暂不可用/);assert.doesNotMatch(html,/data-form="admin-period"/);
 });
 test('new backend displays continuous form with a thirty-day default',async()=>{
- const h=harness();h.context.fetch=async()=>({ok:true,status:200,json:async()=>({periods:[],continuous_supported:true,current_reward_rule_supported:true,unlimited_quota_supported:true})});
+ const h=harness();h.context.fetch=async()=>({ok:true,status:200,json:async()=>({periods:[],continuous_supported:true,current_reward_rule_supported:true,unlimited_quota_supported:true,unlimited_experience_supported:true})});
  const html=await h.view.page();assert.match(html,/name="quota_validity_days"[^>]*value="30"/);assert.doesNotMatch(html,/name="starts_at"/);assert.doesNotMatch(html,/name="threshold"|name="multiplier"|API 贡献倍率|未成券贡献|每张脉冲券所需贡献度/);assert.match(html,/社区签到和互动/);
 });
-test('experience pool uses EXP budget independently and rejects accidental quota conversion',()=>{
- const h=harness();h.form.inputs.reward_budget='0';h.form.inputs.experience_budget='1000';
+test('experience-only pool is probability-only with no EXP budget and keeps per-prize limit',()=>{
+ const h=harness();
  h.form.querySelectorAll=()=>[{querySelector:s=>({value:s.includes('prize_key')?'exp-500':s.includes('prize_amount')?'500':s.includes('prize_type')?'community_exp':'1'})}];
  const p=h.view.payload(h.form);
- assert.equal(p.experience_budget,1000);assert.equal(p.reward_budget,0);
+ assert.equal(p.experience_budget,undefined);assert.equal(p.experience_budget_unlimited,true);assert.equal(p.reward_budget,0);assert.equal(p.quota_budget_unlimited,undefined);
  assert.equal(p.rewards[0].amount,500);assert.equal(p.rewards[0].reward_type,'community_exp');
- h.form.inputs.experience_budget='499';assert.throws(()=>h.view.payload(h.form));
- h.form.inputs.experience_budget='1000';h.form.inputs.reward_budget='100';assert.throws(()=>h.view.payload(h.form));
+ h.form.querySelectorAll=()=>[{querySelector:s=>({value:s.includes('prize_key')?'exp-big':s.includes('prize_amount')?'1000001':s.includes('prize_type')?'community_exp':'1'})}];
+ assert.throws(()=>h.view.payload(h.form));
 });
 
-test('unlimited quota sends zero cap and accepts prizes beyond finite input',()=>{
- const h=harness();h.form.inputs.unlimited_quota='on';
+test('quota and EXP pools always send zero caps and probability-only flags',()=>{
+ const h=harness();
  h.form.querySelectorAll=()=>['community_exp','newapi_quota'].map(type=>({querySelector:s=>({value:s.includes('prize_type')?type:s.includes('prize_key')?type:s.includes('prize_amount')?'10':'1'})}));
- const p=h.view.payload(h.form);assert.equal(p.quota_budget_unlimited,true);assert.equal(p.reward_budget,0);
- delete h.form.inputs.unlimited_quota;assert.throws(()=>h.view.payload(h.form));
+ const p=h.view.payload(h.form);assert.equal(p.quota_budget_unlimited,true);assert.equal(p.experience_budget_unlimited,true);assert.equal(p.reward_budget,0);assert.equal(p.experience_budget,undefined);
 });
 test('quota expectation includes experience weight and avoids unsafe products',()=>{
  const {context}=harness();
@@ -111,14 +110,12 @@ test('50% pool preserves the approved 0.25-unit expectation across quota convers
  recommendedRewards(4)[4].amount=999;
  assert.equal(recommendedRewards(4)[4].amount,1);
 });
-test('loading the pool changes only prizes and reason, preserving budgets, issuance and pending requests',()=>{
+test('loading the pool changes only prizes and reason, preserving validity and pending requests',()=>{
  const h=harness();
- const original={multiplier:'1.23',threshold:'900',quota_validity_days:'60',experience_budget:'987',reward_budget:'345'};
+ const original={quota_validity_days:'60'};
  for(const [key,value] of Object.entries(original))h.form.querySelector(`[name="${key}"]`).value=value;
- h.form.querySelector('[name="unlimited_quota"]').checked=false;
  h.view.action('admin-period-preset');
  for(const [key,value] of Object.entries(original))assert.equal(h.form.querySelector(`[name="${key}"]`).value,value);
- assert.equal(h.form.querySelector('[name="unlimited_quota"]').checked,false);
  assert.match(h.form.querySelector('[data-period-prizes]').innerHTML,/value="44000"/);
  assert.match(h.form.querySelector('[data-period-expectation]').innerHTML,/2.76 EXP/);
  assert.equal(h.view.pending,null);assert.equal(h.storage.size,0);
@@ -127,17 +124,16 @@ test('loading the pool changes only prizes and reason, preserving budgets, issua
  h.view.quotaPerUnit=4;h.view.action('admin-period-preset');
  assert.equal(h.form.querySelector('[data-period-prizes]').innerHTML,html);
 });
-test('existing finite rules keep their cap mode and require explicit new budgets instead of refilling history',async()=>{
+test('existing finite rules show their prizes but the form offers no budget inputs',async()=>{
  const h=harness();
- h.context.fetch=async()=>({ok:true,status:200,json:async()=>({continuous_supported:true,current_reward_rule_supported:true,unlimited_quota_supported:true,periods:[{id:1,key:'old-rule',rules:[],ticket_threshold_milli:5000,status:'active',continuous:true,starts_at:'2020-01-01',ends_at:'2099-01-01',quota_budget_unlimited:false,reward_budget:10000,experience_budget:20000,rewards:[{key:'old',amount:10,weight:1,reward_type:'community_exp'}]}]})});
+ h.context.fetch=async()=>({ok:true,status:200,json:async()=>({continuous_supported:true,current_reward_rule_supported:true,unlimited_quota_supported:true,unlimited_experience_supported:true,periods:[{id:1,key:'old-rule',rules:[],ticket_threshold_milli:5000,status:'active',continuous:true,starts_at:'2020-01-01',ends_at:'2099-01-01',quota_budget_unlimited:false,reward_budget:10000,experience_budget:20000,rewards:[{key:'old',amount:10,weight:1,reward_type:'community_exp'}]}]})});
  const html=await h.view.page();
- assert.doesNotMatch(html,/name="unlimited_quota"[^>]*checked/);
- assert.match(html,/name="reward_budget" value=""/);
- assert.match(html,/name="experience_budget" required value=""/);
+ assert.doesNotMatch(html,/name="unlimited_quota"|name="reward_budget"|name="experience_budget"/);
+ assert.match(html,/保存统一规则/);assert.match(html,/name="reason"/);assert.match(html,/name="confirm"/);
  assert.match(html,/value="old"/);assert.doesNotMatch(html,/value="api-participation"/);
 });
 test('approved preset payload preserves integer amounts and weights when submitted',()=>{
- const h=harness();h.form.inputs.unlimited_quota='on';
+ const h=harness();
  const rows=h.context.MetarPeriodAdmin.recommendedRewards(100000);
  h.form.querySelectorAll=()=>rows.map(r=>({querySelector:s=>({value:String(s.includes('prize_type')?(r.reward_type||'newapi_quota'):s.includes('prize_key')?r.key:s.includes('prize_amount')?r.amount:r.weight)})}));
  const payload=h.view.payload(h.form);

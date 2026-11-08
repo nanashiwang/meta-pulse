@@ -21,11 +21,11 @@ type RewardBudget struct {
 }
 
 // CanReserve enforces the configured cap, or only integer accounting bounds
-// for explicitly unlimited quota pools. EXP and legacy budgets remain capped.
+// for explicitly unlimited quota or EXP pools. Legacy budgets remain capped.
 func (b RewardBudget) CanReserve(amount int64) bool {
 	limit := b.HardCap
 	if b.Unlimited {
-		if b.BudgetType != "loyalty" || b.HardCap != 0 {
+		if (b.BudgetType != "loyalty" && b.BudgetType != "community_exp") || b.HardCap != 0 {
 			return false
 		}
 		limit = math.MaxInt64

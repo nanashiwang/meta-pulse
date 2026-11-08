@@ -116,8 +116,12 @@
 .prod-admin-form .btn { font-size: 12px; padding: 8px 12px; }
 .prod-admin-form .prod-admin-grid { gap: 14px 16px; }
 .prod-period-prize { padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
-.prod-period-prize .prod-admin-grid { gap: 14px 18px; }
-.prod-period-prize .btn { align-self: end; justify-self: start; }
+.prod-period-prize { display: grid; grid-template-columns: minmax(0,1.4fr) minmax(0,1.2fr) minmax(0,1fr) minmax(0,.8fr) auto; gap: 10px; align-items: end; }
+.prod-period-prize input, .prod-period-prize select { box-sizing: border-box; height: 40px; }
+.prod-period-prize label { font-size: 12px; min-width: 0; }
+.prod-period-prize select { width: 100%; margin-top: 8px; }
+.prod-period-prize .btn { white-space: nowrap; }
+@media (max-width: 640px) { .prod-period-prize { grid-template-columns: repeat(2, minmax(0,1fr)); } .prod-period-prize .btn { grid-column: 1 / -1; justify-self: start; } }
 .prod-admin-form label > input:not([type="checkbox"]), .prod-admin-form label > textarea { display: block; width: 100%; margin-top: 8px; }
 .prod-admin-form label > .prod-field-help { display: block; }
 

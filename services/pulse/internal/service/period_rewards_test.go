@@ -140,3 +140,41 @@ func TestCreateLegacyPeriodRemainsIneligibleForCashRewards(t *testing.T) {
 		t.Fatalf("legacy result=%+v", r)
 	}
 }
+
+func probabilityOnlyCommand() PeriodCreateCommand {
+	c := validCreateCommand()
+	c.StartsAt = time.Time{}
+	c.Continuous, c.QuotaValidityDays, c.RequestID, c.Activate = true, 30, "probability-only", true
+	c.QuotaBudgetUnlimited, c.ExperienceBudgetUnlimited = true, true
+	c.TicketThresholdMilli = 1000
+	c.Rewards = []PeriodRewardSpec{{Key: "api-participation", Amount: 625000, Weight: 50}, {Key: "exp", RewardType: ExperienceRewardType, Amount: 1000000, Weight: 50}}
+	return c
+}
+
+func TestProbabilityOnlyRuleValidatesWithoutQuotaOrEXPCap(t *testing.T) {
+	if _, err := normalizePeriodCreateCommand(probabilityOnlyCommand()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCreateProbabilityOnlyRuleKeepsPrizeAndShapeLimits(t *testing.T) {
+	for name, mutate := range map[string]func(*PeriodCreateCommand){
+		"exp prize over limit":   func(c *PeriodCreateCommand) { c.Rewards[1].Amount = 1000001 },
+		"unlimited with exp cap": func(c *PeriodCreateCommand) { c.ExperienceBudget = 10 },
+		"unlimited exp no prize": func(c *PeriodCreateCommand) { c.Rewards = c.Rewards[:1] },
+		"non-continuous": func(c *PeriodCreateCommand) {
+			c.Continuous = false
+			c.QuotaBudgetUnlimited = false
+			c.QuotaValidityDays = 0
+			c.StartsAt = time.Now()
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := probabilityOnlyCommand()
+			mutate(&c)
+			if _, err := normalizePeriodCreateCommand(c); err == nil {
+				t.Fatal("invalid probability-only rule accepted")
+			}
+		})
+	}
+}

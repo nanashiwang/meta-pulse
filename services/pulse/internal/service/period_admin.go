@@ -20,10 +20,11 @@ var webPeriodKey = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
 // The web form always creates a complete, frozen paid-funding period. It
 // cannot edit active economics or switch on settlement.
 type PeriodAdminRequest struct {
-	QuotaBudgetUnlimited bool   `json:"quota_budget_unlimited"`
-	Continuous           bool   `json:"continuous"`
-	QuotaValidityDays    int    `json:"quota_validity_days"`
-	ExpectedPeriodID     uint64 `json:"expected_period_id"`
+	QuotaBudgetUnlimited      bool   `json:"quota_budget_unlimited"`
+	ExperienceBudgetUnlimited bool   `json:"experience_budget_unlimited"`
+	Continuous                bool   `json:"continuous"`
+	QuotaValidityDays         int    `json:"quota_validity_days"`
+	ExpectedPeriodID          uint64 `json:"expected_period_id"`
 
 	Key                  string             `json:"key"`
 	StartsAt             time.Time          `json:"starts_at"`
@@ -45,7 +46,7 @@ func (s *PeriodCreateService) CreateFromAdmin(ctx context.Context, request Perio
 		return PeriodCreateResult{}, ErrInvalidPeriod
 	}
 	return s.Create(ctx, PeriodCreateCommand{
-		QuotaBudgetUnlimited: request.QuotaBudgetUnlimited, Continuous: request.Continuous, QuotaValidityDays: request.QuotaValidityDays, ExpectedPeriodID: request.ExpectedPeriodID,
+		QuotaBudgetUnlimited: request.QuotaBudgetUnlimited, ExperienceBudgetUnlimited: request.ExperienceBudgetUnlimited, Continuous: request.Continuous, QuotaValidityDays: request.QuotaValidityDays, ExpectedPeriodID: request.ExpectedPeriodID,
 		RequestID: key, ActorType: "community_admin", ActorID: actor,
 		Key: request.Key, StartsAt: request.StartsAt.UTC(), Timezone: "Asia/Shanghai",
 		ConfigVersion: request.Key, RandomVersion: request.Key,
@@ -68,10 +69,11 @@ type AdminPeriodView struct {
 	Budgets   []AdminBudgetView `json:"budgets"`
 	QueriedAt time.Time         `json:"queried_at"`
 
-	QuotaBudgetUnlimited bool               `json:"quota_budget_unlimited"`
-	Rewards              []PeriodRewardSpec `json:"rewards"`
-	RewardBudget         int64              `json:"reward_budget"`
-	ExperienceBudget     int64              `json:"experience_budget"`
+	QuotaBudgetUnlimited      bool               `json:"quota_budget_unlimited"`
+	ExperienceBudgetUnlimited bool               `json:"experience_budget_unlimited"`
+	Rewards                   []PeriodRewardSpec `json:"rewards"`
+	RewardBudget              int64              `json:"reward_budget"`
+	ExperienceBudget          int64              `json:"experience_budget"`
 
 	Continuous        bool `json:"continuous"`
 	QuotaValidityDays int  `json:"quota_validity_days"`
@@ -139,6 +141,7 @@ func (s *PeriodCreateService) ListForAdmin(ctx context.Context) ([]AdminPeriodVi
 						view.QuotaBudgetUnlimited = b.Unlimited
 					} else {
 						view.ExperienceBudget = b.HardCap
+						view.ExperienceBudgetUnlimited = b.Unlimited
 					}
 				}
 			}

@@ -184,7 +184,7 @@ func TestMySQLUnlimitedQuotaBudget(t *testing.T) {
 	now := time.Date(2092, 1, 1, 0, 0, 0, 0, time.UTC)
 	key := fmt.Sprintf("unlimited-%d", time.Now().UnixNano())
 	svc, _ := NewPeriodCreateService(unit, func() time.Time { return now })
-	p, err := svc.CreateFromAdmin(ctx, PeriodAdminRequest{Key: key, Continuous: true, QuotaValidityDays: 30, QuotaBudgetUnlimited: true, MultiplierBps: 10000, TicketThresholdMilli: 1000, ExperienceBudget: 10000, Rewards: []PeriodRewardSpec{{Key: "quota", Amount: 100, Weight: 1}, {Key: "exp", RewardType: ExperienceRewardType, Amount: 10, Weight: 1}}, Reason: "unlimited quota test"}, "test", key)
+	p, err := svc.CreateFromAdmin(ctx, PeriodAdminRequest{Key: key, Continuous: true, QuotaValidityDays: 30, QuotaBudgetUnlimited: true, ExperienceBudgetUnlimited: true, MultiplierBps: 10000, TicketThresholdMilli: 1000, Rewards: []PeriodRewardSpec{{Key: "quota", Amount: 100, Weight: 1}, {Key: "exp", RewardType: ExperienceRewardType, Amount: 10, Weight: 1}}, Reason: "unlimited quota test"}, "test", key)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,6 +246,9 @@ func TestMySQLUnlimitedQuotaBudget(t *testing.T) {
 	var unlimited bool
 	if e := db.QueryRow("SELECT hard_cap,reserved_amount,unlimited FROM pulse_reward_budget WHERE period_id=? AND budget_type='loyalty'", p.PeriodID).Scan(&cap, &reserved, &unlimited); e != nil || cap != 0 || reserved != 100 || !unlimited {
 		t.Fatalf("reservation %d %d %v %v", cap, reserved, unlimited, e)
+	}
+	if e := db.QueryRow("SELECT hard_cap,unlimited FROM pulse_reward_budget WHERE period_id=? AND budget_type='community_exp'", p.PeriodID).Scan(&cap, &unlimited); e != nil || cap != 0 || !unlimited {
+		t.Fatalf("EXP budget %d %v %v", cap, unlimited, e)
 	}
 	if _, e := db.Exec("UPDATE pulse_reward_budget SET unlimited=FALSE WHERE period_id=? AND budget_type='loyalty'", p.PeriodID); e == nil {
 		t.Fatal("active cap policy mutated")
