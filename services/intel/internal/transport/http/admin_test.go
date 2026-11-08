@@ -58,7 +58,7 @@ var (
 func adminRouter(t *testing.T, svc *fakeAdmin) http.Handler {
 	t.Helper()
 	r := NewRouter(nil, &fakeReader{}, fakeDB{}, time.Hour)
-	if !RegisterAdmin(r, nil, svc, [][]byte{adminSecret}, nonceSet{}, func() time.Time { return adminNow }) {
+	if !RegisterAdmin(r, nil, svc, nil, [][]byte{adminSecret}, nonceSet{}, func() time.Time { return adminNow }) {
 		t.Fatal("admin routes not registered")
 	}
 	return r
@@ -102,7 +102,7 @@ func TestAdminRequiresSignature(t *testing.T) {
 
 func TestAdminNotRegisteredWithoutSecret(t *testing.T) {
 	r := NewRouter(nil, &fakeReader{}, fakeDB{}, time.Hour)
-	if RegisterAdmin(r, nil, &fakeAdmin{}, [][]byte{[]byte("short")}, nonceSet{}, nil) {
+	if RegisterAdmin(r, nil, &fakeAdmin{}, nil, [][]byte{[]byte("short")}, nonceSet{}, nil) {
 		t.Fatal("registered with unusable secret")
 	}
 	if w := serve(r, signedAdmin("GET", "/v1/internal/admin/overview", "")); w.Code != 404 {

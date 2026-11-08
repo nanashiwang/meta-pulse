@@ -246,3 +246,10 @@ func (c *Client) Fetch(ctx context.Context) (Dataset, error) {
 	}
 	return ds, nil
 }
+
+// Account checks a key with the quota-free /v1/account route, so saving a
+// key from the admin UI never spends daily quota.
+func (c *Client) Account(ctx context.Context) error {
+	var out map[string]any
+	return c.get(ctx, "/v1/account", nil, &out)
+}

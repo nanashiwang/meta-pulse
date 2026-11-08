@@ -1,7 +1,9 @@
 package http
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -19,6 +21,14 @@ import (
 // the gateway's 1 MiB body limit. Larger imports use metar-intel-tool.
 const MaxAdminBody = 1 << 20
 
+// SourceAdmin manages data-source credentials. Optional: nil leaves the
+// /sources routes unregistered.
+type SourceAdmin interface {
+	View(ctx context.Context) (admin.SourcesView, error)
+	UpdateLLMStats(ctx context.Context, actor string, req admin.LLMStatsUpdate) (admin.SourcesView, error)
+	RequestSync(ctx context.Context, actor string) (admin.SourcesView, error)
+}
+
 type Admin interface {
 	Overview(ctx context.Context) (mysqlstore.Overview, error)
 	Export(ctx context.Context) (catalog.Document, error)
@@ -32,7 +42,7 @@ var idempotencyKeyPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f
 // RegisterAdmin adds the signed admin routes. Without at least one usable
 // secret nothing is registered, so a misconfigured deployment exposes no
 // admin surface at all.
-func RegisterAdmin(r *gin.Engine, logger *slog.Logger, svc Admin, secrets [][]byte, nonces security.NonceStore, now func() time.Time) bool {
+func RegisterAdmin(r *gin.Engine, logger *slog.Logger, svc Admin, sources SourceAdmin, secrets [][]byte, nonces security.NonceStore, now func() time.Time) bool {
 	usable := false
 	for _, s := range secrets {
 		if len(s) >= 32 {
@@ -75,6 +85,16 @@ func RegisterAdmin(r *gin.Engine, logger *slog.Logger, svc Admin, secrets [][]by
 			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "invalid_document", "problems": invalid.Problems})
 		case errors.Is(err, mysqlstore.ErrIdempotencyConflict):
 			c.JSON(http.StatusConflict, gin.H{"error": "idempotency_conflict"})
+		case errors.Is(err, admin.ErrInvalidAPIKey):
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "invalid_api_key"})
+		case errors.Is(err, admin.ErrManagedByEnv):
+			c.JSON(http.StatusConflict, gin.H{"error": "managed_by_env"})
+		case errors.Is(err, admin.ErrNotConfigured):
+			c.JSON(http.StatusConflict, gin.H{"error": "not_configured"})
+		case errors.Is(err, admin.ErrInvalidSourceReq):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
+		case errors.Is(err, admin.ErrVerifyFailed):
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "verify_unavailable"})
 		default:
 			logger.Error("intel admin operation failed", "path", c.FullPath(), "error", err)
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "unavailable"})
@@ -135,6 +155,43 @@ func RegisterAdmin(r *gin.Engine, logger *slog.Logger, svc Admin, secrets [][]by
 		}
 		c.JSON(http.StatusOK, res)
 	})
+	if sources != nil {
+		g.GET("/sources", func(c *gin.Context) {
+			v, err := sources.View(c.Request.Context())
+			if err != nil {
+				fail(c, err)
+				return
+			}
+			c.JSON(http.StatusOK, v)
+		})
+		g.PUT("/sources/llmstats", func(c *gin.Context) {
+			var req admin.LLMStatsUpdate
+			dec := json.NewDecoder(bytes.NewReader(c.MustGet("intel.body").([]byte)))
+			dec.DisallowUnknownFields()
+			if err := dec.Decode(&req); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
+				return
+			}
+			v, err := sources.UpdateLLMStats(c.Request.Context(), c.GetString("intel.actor"), req)
+			if err != nil {
+				fail(c, err)
+				return
+			}
+			c.JSON(http.StatusOK, v)
+		})
+		g.POST("/sources/llmstats/sync", func(c *gin.Context) {
+			if len(c.MustGet("intel.body").([]byte)) != 0 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
+				return
+			}
+			v, err := sources.RequestSync(c.Request.Context(), c.GetString("intel.actor"))
+			if err != nil {
+				fail(c, err)
+				return
+			}
+			c.JSON(http.StatusAccepted, v)
+		})
+	}
 	g.POST("/recompute", func(c *gin.Context) {
 		if len(c.MustGet("intel.body").([]byte)) != 0 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})

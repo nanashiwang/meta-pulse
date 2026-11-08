@@ -186,3 +186,63 @@ func TestIntelAdminUnconfigured(t *testing.T) {
 		t.Fatal("sentinel")
 	}
 }
+
+func TestIntelAdminSourceSettingsRoutes(t *testing.T) {
+	var gotMethod, gotPath, gotBody string
+	router, _ := intelTestRouter(t, func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		gotMethod, gotPath, gotBody = r.Method, r.URL.Path, string(b)
+		switch r.URL.Path {
+		case "/v1/internal/admin/sources/llmstats/sync":
+			w.WriteHeader(http.StatusAccepted)
+			w.Write([]byte(`{"llm_stats":{"configured":true}}`))
+		case "/v1/internal/admin/sources/llmstats":
+			if strings.Contains(string(b), "bad") {
+				w.WriteHeader(422)
+				w.Write([]byte(`{"error":"invalid_api_key"}`))
+				return
+			}
+			if strings.Contains(string(b), "offline") {
+				w.WriteHeader(503)
+				w.Write([]byte(`{"error":"verify_unavailable"}`))
+				return
+			}
+			w.Write([]byte(`{"llm_stats":{"configured":true,"key_hint":"1234"}}`))
+		default:
+			w.Write([]byte(`{"llm_stats":{"configured":false}}`))
+		}
+	}, nil)
+	put := func(body string) *httptest.ResponseRecorder {
+		r := intelTestRequest("PUT", "sources/llmstats", body)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, r)
+		return w
+	}
+	if w := put(`{"api_key":"sk_ze_good"}`); w.Code != 200 || gotMethod != "PUT" || gotPath != "/v1/internal/admin/sources/llmstats" || gotBody != `{"api_key":"sk_ze_good"}` {
+		t.Fatalf("put: %d %s %s %s", w.Code, gotMethod, gotPath, gotBody)
+	}
+	if w := put(`{"api_key":"bad"}`); w.Code != 422 || !strings.Contains(w.Body.String(), "invalid_api_key") {
+		t.Fatalf("invalid key: %d %s", w.Code, w.Body.String())
+	}
+	if w := put(`{"api_key":"offline"}`); w.Code != 503 || !strings.Contains(w.Body.String(), "verify_unavailable") {
+		t.Fatalf("verify unavailable: %d %s", w.Code, w.Body.String())
+	}
+	cross := intelTestRequest("PUT", "sources/llmstats", `{"enabled":false}`)
+	cross.Header.Set("Origin", "https://evil.example")
+	gotPath = ""
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, cross)
+	if w.Code != 403 || gotPath != "" {
+		t.Fatalf("cross-origin PUT reached upstream: %d %q", w.Code, gotPath)
+	}
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, intelTestRequest("POST", "sources/llmstats/sync", ""))
+	if w.Code != 202 || gotPath != "/v1/internal/admin/sources/llmstats/sync" || gotBody != "" {
+		t.Fatalf("sync: %d %q %q", w.Code, gotPath, gotBody)
+	}
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, intelTestRequest("GET", "sources", ""))
+	if w.Code != 200 || gotPath != "/v1/internal/admin/sources" {
+		t.Fatalf("view: %d %q", w.Code, gotPath)
+	}
+}

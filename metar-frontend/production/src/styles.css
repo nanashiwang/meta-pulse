@@ -565,3 +565,9 @@ body:has(.community-discussions, .page-loading[data-layout="feed"]) .topbar .sea
 /* Third-party data credits on model pages (required for LLM Stats data). */
 .intel-attribution{display:block;font-size:12px;color:var(--muted);margin-top:2px}
 .intel-credit{color:var(--green);text-decoration:underline;text-underline-offset:2px}
+
+/* Model admin: data source settings. */
+.intel-admin-key-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.intel-admin-key-row input{flex:1 1 260px;width:auto;font-family:"SFMono-Regular",Consolas,monospace;font-size:13px}
+.intel-admin-source-error code,.intel-admin-report{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
+.intel-admin-note{font-size:12px}

@@ -53,11 +53,14 @@ type intelAdminOperation struct {
 }
 
 var intelAdminOperations = map[string]intelAdminOperation{
-	"overview":  {http.MethodGet, "/v1/internal/admin/overview", false, false},
-	"export":    {http.MethodGet, "/v1/internal/admin/export", false, false},
-	"validate":  {http.MethodPost, "/v1/internal/admin/validate", true, false},
-	"import":    {http.MethodPost, "/v1/internal/admin/import", true, true},
-	"recompute": {http.MethodPost, "/v1/internal/admin/recompute", false, false},
+	"sources":               {http.MethodGet, "/v1/internal/admin/sources", false, false},
+	"sources/llmstats":      {http.MethodPut, "/v1/internal/admin/sources/llmstats", true, false},
+	"sources/llmstats/sync": {http.MethodPost, "/v1/internal/admin/sources/llmstats/sync", false, false},
+	"overview":              {http.MethodGet, "/v1/internal/admin/overview", false, false},
+	"export":                {http.MethodGet, "/v1/internal/admin/export", false, false},
+	"validate":              {http.MethodPost, "/v1/internal/admin/validate", true, false},
+	"import":                {http.MethodPost, "/v1/internal/admin/import", true, true},
+	"recompute":             {http.MethodPost, "/v1/internal/admin/recompute", false, false},
 }
 
 func (uc *UserCenter) registerIntelAdmin(r *gin.RouterGroup, session func(*gin.Context) (string, error), siteURL func() string) {
@@ -89,7 +92,7 @@ func (uc *UserCenter) intelAdminHandler(op intelAdminOperation, session func(*gi
 		}
 		var body []byte
 		key := ""
-		if op.method == http.MethodPost {
+		if op.method != http.MethodGet {
 			if !communitySameOrigin(c.Request, siteURL()) {
 				communityError(c, http.StatusForbidden, "forbidden")
 				return
@@ -135,16 +138,25 @@ func (uc *UserCenter) intelAdminHandler(op intelAdminOperation, session func(*gi
 		}
 		data, status, err := intelAdminRequest(ctx, intelAdminConfig(), op, adminID, key, body)
 		if err != nil || status >= 500 {
+			// Distinguish "the key could not be checked with LLM Stats" from
+			// Intel being down; nothing else from a 5xx body is forwarded.
+			var failure struct {
+				Error string `json:"error"`
+			}
+			if err == nil && status == http.StatusServiceUnavailable && json.Unmarshal(data, &failure) == nil && failure.Error == "verify_unavailable" {
+				communityError(c, http.StatusServiceUnavailable, "verify_unavailable")
+				return
+			}
 			communityError(c, http.StatusServiceUnavailable, "intel_unavailable")
 			return
 		}
 		switch status {
-		case http.StatusOK:
+		case http.StatusOK, http.StatusAccepted:
 			if !json.Valid(data) {
 				communityError(c, http.StatusServiceUnavailable, "intel_unavailable")
 				return
 			}
-			c.Data(http.StatusOK, "application/json; charset=utf-8", data)
+			c.Data(status, "application/json; charset=utf-8", data)
 		case http.StatusUnprocessableEntity, http.StatusConflict, http.StatusBadRequest:
 			intelAdminUpstreamError(c, status, data)
 		default:
@@ -160,7 +172,8 @@ func intelAdminUpstreamError(c *gin.Context, status int, data []byte) {
 		Error    string   `json:"error"`
 		Problems []string `json:"problems"`
 	}
-	allowed := map[string]int{"invalid_document": 422, "idempotency_conflict": 409, "invalid_idempotency_key": 400, "invalid_request": 400}
+	allowed := map[string]int{"invalid_document": 422, "idempotency_conflict": 409, "invalid_idempotency_key": 400, "invalid_request": 400,
+		"invalid_api_key": 422, "managed_by_env": 409, "not_configured": 409}
 	if json.Unmarshal(data, &failure) != nil || allowed[failure.Error] != status {
 		communityError(c, http.StatusServiceUnavailable, "intel_unavailable")
 		return

@@ -25,6 +25,11 @@
       case 'document_too_large': return t('文件超过 1 MiB。请拆分，或在服务器上用 metar-intel-tool 导入。', 'The document exceeds 1 MiB. Split it or import it on the server with metar-intel-tool.');
       case 'invalid_json': return t('不是合法的 JSON。', 'This is not valid JSON.');
       case 'pending': return t('结果尚未确认。重试会沿用原请求，不会重复导入。', 'The result is unconfirmed. Retrying reuses the original request and will not import twice.');
+      case 'invalid_api_key': return t('API key 无效或已被吊销，请到 llm-stats.com/developer 检查后重新填写。', 'The API key is invalid or revoked. Check it at llm-stats.com/developer and enter it again.');
+      case 'verify_unavailable': return t('暂时无法连接 LLM Stats 验证这个 key，未保存，请稍后重试。', 'LLM Stats could not be reached to verify the key; nothing was saved. Try again shortly.');
+      case 'managed_by_env': return t('该密钥由服务器环境变量配置，需在服务器上修改。', 'This key is set in the server environment and must be changed there.');
+      case 'not_configured': return t('尚未配置可用的 API key。', 'No usable API key is configured.');
+      case 'empty_key': return t('请先粘贴 API key。', 'Paste an API key first.');
       default: return t('模型榜服务暂时不可用，或尚未配置管理连接。', 'The model leaderboard service is unavailable or its admin connection is not configured.');
     }
   }
@@ -58,7 +63,7 @@
       this.storage = (() => { try { return root.sessionStorage; } catch (_) { return null; } })();
       this.generation = 0;
     }
-    dispose() { this.generation++; this.root = null; }
+    dispose() { this.generation++; this.root = null; clearTimeout(this.sourceTimer); }
 
     async page(user) {
       this.dispose();
@@ -76,6 +81,9 @@
         this.overview = null;
         this.loadError = error;
       }
+      this.sourceMessage = '';
+      this.sourceKind = '';
+      await this.refreshSources().catch(() => {});
       return this.render();
     }
 
@@ -131,6 +139,49 @@
     async exportDocument() { return this.call('export'); }
     async refresh() { this.overview = await this.call('overview'); this.loadError = null; }
 
+    // Data sources. The API key is read from the password field at the
+    // moment of saving and never kept in page state, storage or responses.
+    async refreshSources() {
+      try { this.sources = await this.call('sources'); this.sourcesError = null; }
+      catch (error) { this.sources = null; this.sourcesError = error; throw error; }
+    }
+    async saveSourceKey(key) {
+      key = String(key || '').trim();
+      if (!key) throw new AdminError('empty_key', 0);
+      this.sources = await this.call('sources/llmstats', {method: 'PUT', body: JSON.stringify({api_key: key})});
+    }
+    async setSourceEnabled(enabled) { this.sources = await this.call('sources/llmstats', {method: 'PUT', body: JSON.stringify({enabled: !!enabled})}); }
+    async clearSourceKey() { this.sources = await this.call('sources/llmstats', {method: 'PUT', body: JSON.stringify({clear: true})}); }
+    async requestSourceSync() { this.sources = await this.call('sources/llmstats/sync', {method: 'POST'}); }
+
+    sourcesSection() {
+      const title = `<h2>${t('数据源 · LLM Stats', 'Data source · LLM Stats')}</h2>`;
+      if (!this.sources) return `<section class="card card-pad mt16 intel-admin-sources">${title}<p class="muted">${esc(errorText(this.sourcesError))}</p></section>`;
+      const s = this.sources.llm_stats || {};
+      const status = s.origin === 'env' ? t(`已配置（服务器环境变量，末四位 ${s.key_hint || '—'}）`, `Configured in the server environment (…${s.key_hint || '—'})`)
+        : !s.configured ? t('未配置', 'Not configured')
+        : s.key_stale ? t('已保存的 key 无法解密（管理密钥已更换），请重新填写', 'The saved key can no longer be decrypted (admin secret rotated); enter it again')
+        : !s.enabled ? t(`已停用（末四位 ${s.key_hint || '—'}）`, `Disabled (…${s.key_hint || '—'})`)
+        : t(`已启用（后台保存，末四位 ${s.key_hint || '—'}）`, `Enabled (saved here, …${s.key_hint || '—'})`);
+      const ok = s.configured && s.enabled && !s.key_stale;
+      const last = s.last_attempt_at ? `<p class="muted">${t('上次同步：', 'Last sync: ')}${time(s.last_attempt_at)} · ${s.last_status === 'ok' ? `<span class="green">${t('成功', 'succeeded')}</span>` : `<span class="danger">${t('失败', 'failed')}</span>`} · ${esc(s.last_requests)} ${t('次请求', 'requests')}${s.last_success_at && s.last_status !== 'ok' ? ` · ${t('最近成功：', 'last success: ')}${time(s.last_success_at)}` : ''}</p>${s.last_error ? `<p class="danger intel-admin-source-error"><code>${esc(s.last_error)}</code></p>` : ''}${s.last_report ? `<details class="mt8"><summary>${t('同步摘要', 'Sync summary')}</summary><code class="intel-admin-report">${esc(s.last_report)}</code></details>` : ''}`
+        : `<p class="muted">${t('尚未同步。', 'Not synced yet.')}</p>`;
+      const requested = s.sync_requested_at ? `<p class="green" role="status">${t('已请求立即同步，约 30 秒内开始，完成后此处自动刷新。', 'Sync requested; it starts within about 30 seconds and this panel refreshes when done.')}</p>` : '';
+      const form = s.can_edit ? `<div class="intel-admin-key-row mt16"><input type="password" data-intel-source-key autocomplete="off" spellcheck="false" maxlength="220" placeholder="sk_ze_…" aria-label="${t('LLM Stats API key', 'LLM Stats API key')}"><button class="btn primary small" data-intel-source="save">${s.configured ? t('替换并验证', 'Replace and verify') : t('保存并验证', 'Save and verify')}</button></div>` : '';
+      const actions = [
+        ok ? `<button class="btn small" data-intel-source="sync"${s.sync_requested_at ? ' disabled' : ''}>${t('立即同步', 'Sync now')}</button>` : '',
+        s.can_edit && s.configured && !s.key_stale ? `<button class="btn small" data-intel-source="${s.enabled ? 'disable' : 'enable'}">${s.enabled ? t('停用', 'Disable') : t('启用', 'Enable')}</button>` : '',
+        s.can_edit && s.configured ? `<button class="btn small" data-intel-source="clear">${t('清除 key', 'Remove key')}</button>` : '',
+      ].join('');
+      const msg = this.sourceMessage ? `<p class="intel-admin-message ${this.sourceKind}" role="status">${esc(this.sourceMessage)}</p>` : '';
+      return `<section class="card card-pad mt16 intel-admin-sources">${title}
+        <p><strong>${esc(status)}</strong></p>
+        <p class="muted">${t(`每 ${s.interval_hours || 24} 小时自动同步模型、评测、价格与速度；保存新 key 后会立即同步一次。获取方式：在 `, `Models, benchmarks, prices and speeds sync every ${s.interval_hours || 24} hours, and once right after a new key is saved. Get a key: sign in at `)}<a href="https://llm-stats.com/developer" target="_blank" rel="noopener noreferrer">llm-stats.com/developer</a>${t(' 登录后创建 API key（sk_ze_…）。key 加密保存，任何页面都不会显示完整 key。', ' and create an API key (sk_ze_…). The key is stored encrypted and is never shown in full.')}</p>
+        ${last}${requested}${form}${actions ? `<div class="intel-side-actions mt16">${actions}</div>` : ''}${msg}
+        <p class="muted intel-admin-note mt16">${t('使用该数据的页面会自动显示「Data by LLM Stats」来源链接。LLM Stats 免费计划条款写明不得再发布，公开展示前请与对方确认授权。', 'Pages using this data show a "Data by LLM Stats" credit automatically. LLM Stats\'s free plan terms prohibit redistribution; confirm permission before showing it publicly.')}</p>
+      </section>`;
+    }
+
     render() {
       const head = `<div class="page-title intel-admin-head"><div><h1>${t('模型榜管理', 'Model leaderboard admin')}</h1><p class="muted">${t('导入与修正模型、价格、评测和速度数据，所有导入记录操作人。', 'Import and correct models, prices, benchmarks and speeds. Every import records who ran it.')}</p></div><div class="intel-side-actions"><a data-router class="btn" href="/models">${t('查看榜单', 'View leaderboard')}</a></div></div>`;
       if (!this.overview) return `${head}<section class="card card-pad intel-state" role="alert"><h2>${t('无法读取模型榜状态', 'Unable to load the leaderboard status')}</h2><p class="muted">${esc(errorText(this.loadError))}</p></section>`;
@@ -146,6 +197,7 @@
       return `${head}
         <section class="intel-stats">${stat(t('厂商', 'Providers'), c.providers)}${stat(t('模型', 'Models'), c.models)}${stat(t('评测', 'Benchmarks'), c.benchmarks)}${stat(t('售卖条目', 'Offerings'), c.offerings)}${stat(t('价格记录', 'Price records'), c.prices)}${stat(t('评测结果', 'Results'), c.benchmark_results)}</section>
         <section class="card card-pad mt16"><div class="intel-section-head"><p class="muted">${snap}</p><div class="intel-side-actions"><button class="btn small" data-intel-admin="recompute">${t('立即重算', 'Recompute now')}</button><button class="btn small" data-intel-admin="export">${t('导出当前数据', 'Export current data')}</button></div></div></section>
+        ${this.sourcesSection()}
         ${pending}
         <section class="card card-pad mt16 intel-admin-import"><h2>${t('导入数据', 'Import data')}</h2>
           <p class="muted">${t('上传或粘贴导入文件（JSON，最大 1 MiB）。先校验，通过后再导入。导出文件可直接修改后重新导入；修改前请先改 source.slug。', 'Upload or paste an import document (JSON, up to 1 MiB). Validate first, then import. An export can be edited and imported again; change source.slug first.')}</p>
@@ -196,7 +248,47 @@
         this.message = '';
         rerender();
       });
+      // Refresh the source panel while a requested sync is pending (max 10 min).
+      let polls = 0;
+      const watch = () => {
+        clearTimeout(this.sourceTimer);
+        if (!live() || !this.sources?.llm_stats?.sync_requested_at || polls++ > 60) return;
+        this.sourceTimer = setTimeout(async () => {
+          if (!live()) return;
+          try { await this.refreshSources(); if (!this.sources?.llm_stats?.sync_requested_at) await this.refresh().catch(() => {}); } catch (_) { /* keep last view */ }
+          if (live() && !this.busy) rerender();
+          watch();
+        }, 10000);
+      };
+      watch();
+      const runSource = async action => {
+        if (this.busy) return;
+        this.busy = true;
+        const input = container.querySelector('[data-intel-source-key]');
+        container.querySelectorAll('button').forEach(b => { b.disabled = true; });
+        try {
+          await action(input);
+          this.sourceKind = 'green';
+        } catch (error) {
+          this.sourceMessage = errorText(error);
+          this.sourceKind = 'danger';
+        } finally {
+          if (input) input.value = '';
+          this.busy = false;
+          rerender();
+          watch();
+        }
+      };
       container.addEventListener('click', event => {
+        const sourceButton = event.target.closest('[data-intel-source]');
+        if (sourceButton && container.contains(sourceButton)) {
+          const op = sourceButton.dataset.intelSource;
+          if (op === 'save') runSource(async input => { await this.saveSourceKey(input?.value); this.sourceMessage = t('key 验证通过并已加密保存，正在发起首次同步。', 'Key verified and stored encrypted; the first sync has been requested.'); });
+          if (op === 'sync') runSource(async () => { await this.requestSourceSync(); this.sourceMessage = t('已请求同步。', 'Sync requested.'); });
+          if (op === 'enable' || op === 'disable') runSource(async () => { await this.setSourceEnabled(op === 'enable'); this.sourceMessage = op === 'enable' ? t('已启用。', 'Enabled.') : t('已停用，不再自动同步。', 'Disabled; automatic sync stopped.'); });
+          if (op === 'clear' && root.confirm(t('确定清除已保存的 API key？清除后停止自动同步，已有数据保留。', 'Remove the saved API key? Automatic sync stops; existing data stays.'))) runSource(async () => { await this.clearSourceKey(); this.sourceMessage = t('已清除 key。', 'Key removed.'); });
+          return;
+        }
         const button = event.target.closest('[data-intel-admin]');
         if (!button || !container.contains(button)) return;
         const op = button.dataset.intelAdmin;

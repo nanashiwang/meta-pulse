@@ -264,6 +264,8 @@ services:
       INTEL_LLMSTATS_API_KEY: ${INTEL_LLMSTATS_API_KEY:-}
       INTEL_LLMSTATS_BASE_URL: ${INTEL_LLMSTATS_BASE_URL:-https://api.llm-stats.com/stats}
       INTEL_LLMSTATS_SYNC_INTERVAL: ${INTEL_LLMSTATS_SYNC_INTERVAL:-24h}
+      # Decrypts data-source keys saved from /admin/models (same value as intel-api).
+      INTEL_ADMIN_HMAC_SECRET: ${INTEL_ADMIN_HMAC_SECRET:-}
       INTEL_SPEED_WINDOW: ${INTEL_SPEED_WINDOW:-168h}
     depends_on:
       intel-mysql:

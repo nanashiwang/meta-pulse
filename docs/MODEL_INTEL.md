@@ -259,3 +259,12 @@ docker compose --profile intel up -d intel-api intel-worker
 - **署名**：快照记录数据来源，任何包含 `llm-stats` 来源的页面自动显示带链接的 “Data by LLM Stats”。
 - **授权**：LLM Stats 网站条款允许署名转载，但数据 API 免费/Builder 计划写明不得再发布，商业合约另议。公开展示前应与对方书面确认。
 - 首次启用前用 `metar-intel-tool sync-llmstats --dry-run` 验证密钥并查看维度分布与未映射分类，再按需调整 [映射](../services/intel/internal/source/llmstats/convert.go)。
+
+### 后台配置 API key（2026-11-08）
+
+`/admin/models` 的「数据源 · LLM Stats」可直接粘贴 key（在 https://llm-stats.com/developer 登录后创建，`sk_ze_…`）：
+
+- 保存前用不计配额的 `/v1/account` 验证，无效 key 不保存；保存后立即请求一次同步，worker 每 30 秒检查请求。
+- key 以 AES-256-GCM 加密存入 `intel_source_state`，密钥由 `INTEL_ADMIN_HMAC_SECRET` 派生（API 与 worker 共用），任何接口只返回末四位；管理密钥轮换后显示「无法解密，请重新填写」。
+- 支持停用、启用、清除与立即同步；展示上次同步时间、结果、请求数、错误与摘要。失败后自动同步退避 1 小时，手动同步不受限。
+- 服务器 `.env` 设置了 `INTEL_LLMSTATS_API_KEY` 时以环境变量为准，后台只读。

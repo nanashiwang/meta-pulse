@@ -15,6 +15,7 @@ import (
 	"github.com/nanashiwang/meta-pulse/services/intel/internal/config"
 	"github.com/nanashiwang/meta-pulse/services/intel/internal/domain/score"
 	"github.com/nanashiwang/meta-pulse/services/intel/internal/service"
+	"github.com/nanashiwang/meta-pulse/services/intel/internal/settings"
 	mysqlstore "github.com/nanashiwang/meta-pulse/services/intel/internal/store/mysql"
 	transporthttp "github.com/nanashiwang/meta-pulse/services/intel/internal/transport/http"
 )
@@ -36,7 +37,13 @@ func main() {
 	reader := service.NewReader(store, score.V1, cfg.CacheTTL)
 	router := transporthttp.NewRouter(logger, reader, store, cfg.SpeedWindow)
 	adminSvc := &admin.Service{Store: store, Method: score.V1, SpeedWindow: cfg.SpeedWindow}
-	if transporthttp.RegisterAdmin(router, logger, adminSvc, cfg.AdminSecrets, store, time.Now) {
+	var box *settings.Box
+	if len(cfg.AdminSecrets) > 0 {
+		box, _ = settings.NewBox(cfg.AdminSecrets[0])
+	}
+	sources := &admin.Sources{Store: store, Box: box, EnvKey: cfg.LLMStatsAPIKey, BaseURL: cfg.LLMStatsBaseURL,
+		SyncInterval: cfg.LLMStatsSyncInterval, Verify: admin.VerifyWithAPI}
+	if transporthttp.RegisterAdmin(router, logger, adminSvc, sources, cfg.AdminSecrets, store, time.Now) {
 		logger.Info("intel admin API enabled")
 	} else {
 		logger.Info("intel admin API disabled: INTEL_ADMIN_HMAC_SECRET not set")
