@@ -38,6 +38,17 @@ class SearchAssetsTest(unittest.TestCase):
             self.assertNotIn('Disallow: /metar-assets', robots)
             self.assertNotIn('Disallow: /questions', robots)
 
+    def test_initial_topnav_matches_app_topbar(self):
+        # The static shell paints before app.js boots; a shorter nav makes entries "load late".
+        shell = (ROOT / 'src/loading-shell.html').read_text()
+        app = (ROOT / 'src/app.js').read_text()
+        initial = re.search(r'<nav class="topnav".*?</nav>', shell, re.S).group(0)
+        topbar = re.search(r'<nav class="topnav".*?</nav>', app, re.S).group(0)
+        tools = re.search(r'const TOOLS = Object.freeze\(\[(.*?)\]\);', app, re.S).group(1)
+        expected = re.findall(r"link\('(/[^']*)'", topbar) + ['/tools'] + re.findall(r"path: '(/[^']*)'", tools)
+        self.assertEqual(sorted(set(expected)), sorted(set(re.findall(r'href="(/[^"]*)"', initial))))
+        self.assertIn('class="topnav-menu"', initial)
+
     def test_render_resources_are_crawlable_but_private_apis_are_not(self):
         rules = []
         for line in (ROOT / 'src/robots.txt').read_text().splitlines():
