@@ -140,6 +140,7 @@ validate_environment
 if (( SKIP_WORKER == 0 )); then
   validate_worker_environment
 fi
+validate_intel_environment
 
 CURRENT_BRANCH="$(git -C "$REPO_ROOT" symbolic-ref --quiet --short HEAD || true)"
 [[ -n "$CURRENT_BRANCH" ]] || die "当前仓库处于 detached HEAD，请先 checkout 一个本地分支后再更新"
@@ -198,6 +199,17 @@ backup_database_if_running forum-mysql "$BACKUP_DIR/forum.sql"
 backup_runtime_keys_if_present pulse-api "$BACKUP_DIR/runtime-keys/api"
 backup_runtime_keys_if_present pulse-worker "$BACKUP_DIR/runtime-keys/worker"
 backup_forum_data "$BACKUP_DIR/forum-data"
+# The model leaderboard is isolated: it is only rolled out when its own data
+# was backed up, and its failures never fail the forum/Pulse update.
+INTEL_ROLLOUT=0
+INTEL_RESULT=disabled
+if intel_enabled; then
+  if backup_intel_database_if_present "$BACKUP_DIR/intel.sql"; then
+    INTEL_ROLLOUT=1
+  else
+    INTEL_RESULT=skipped
+  fi
+fi
 
 if [[ -n "$RELEASE_TAG" ]]; then
   log "核实正式版本：$RELEASE_TAG"
@@ -320,6 +332,32 @@ if (( GATEWAY_ENABLED == 1 )); then
   compose exec -T gateway nginx -s reload
 fi
 
+# Every step is checked explicitly: this runs in a condition, where set -e and
+# the ERR trap are suspended so an Intel failure cannot abort the update.
+intel_rollout() {
+  if (( NO_BUILD == 0 )); then
+    log "构建模型榜服务镜像：intel-api intel-worker"
+    compose build intel-api intel-worker || return 1
+  fi
+  compose up -d intel-mysql || return 1
+  wait_for_service intel-mysql 180 || return 1
+  log "执行模型榜数据库迁移（只前进）"
+  compose run --rm --no-deps --entrypoint metar-intel-tool intel-api migrate up || return 1
+  log "重建模型榜服务：intel-api intel-worker"
+  compose up -d --no-deps intel-api intel-worker || return 1
+  wait_for_service intel-api 120 || return 1
+  wait_for_service intel-worker 60 || return 1
+}
+if (( INTEL_ROLLOUT == 1 )); then
+  if intel_rollout; then
+    INTEL_RESULT=updated
+  else
+    INTEL_RESULT=failed
+    warn "模型榜更新失败；论坛与 Pulse 不受影响，继续完成本次更新。已有的 Intel 容器若未被替换会继续运行"
+    compose logs --tail=80 intel-api intel-worker intel-mysql 2>&1 || true
+  fi
+fi
+
 if [[ -n "$RELEASE_TAG" ]]; then
   for service in pulse-api pulse-worker forum; do
     container="$(compose ps -q "$service")"
@@ -343,6 +381,11 @@ fi
 # No success marker or deletion until every requested acceptance step has passed.
 trap - ERR
 log "更新及验收完成：$(git -C "$REPO_ROOT" rev-parse --short HEAD)"
+case "$INTEL_RESULT" in
+  updated) log "模型榜已更新（备份：$BACKUP_DIR/intel.sql，首次启用时无备份）" ;;
+  failed) warn "模型榜本次未更新成功，请查看上方 intel 日志后重试；其他服务已更新" ;;
+  skipped) warn "模型榜数据无法备份，本次未更新模型榜；其他服务已更新" ;;
+esac
 log "备份目录：$BACKUP_DIR"
 if ! python3 "$SCRIPT_DIR/backup-retention.py" finish "$REPO_ROOT" --name "$BACKUP_NAME" --keep "$BACKUP_KEEP"; then
   warn "更新已成功，但备份保留未完成；请检查上方错误，备份可能超出保留数量"

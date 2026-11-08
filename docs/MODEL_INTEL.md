@@ -214,7 +214,7 @@ services/intel/
 - **独立 MySQL 实例**：与论坛一致使用 `intel-mysql` 容器和 `intel` 账号，而非共用实例。
 - **数据库访问**用 `database/sql` 显式 SQL（窗口函数取最新观测），未引入 GORM。
 - **纠错**：同一生效时间的新记录以更大 id 覆盖展示，暂未单独建 `intel_correction` 表；导入记录在 `intel_import_run`。
-- **服务默认不启动**：`docker compose --profile intel up -d` 显式开启；`update.sh` 尚未纳入 Intel 的迁移、健康检查与备份。
+- **按配置启用**：`.env` 填写真实 `INTEL_DB_PASSWORD` 后，`metar update` 自动带上 `intel` profile：更新前备份 `metar_intel`（`intel.sql`），代码快进后构建 `intel-api`/`intel-worker`、启动 `intel-mysql`、执行前向迁移、重建并检查健康。模型榜任一步失败只告警，论坛与 Pulse 照常完成更新；已有 `intel-mysql` 无法备份时本次跳过模型榜。未填写时更新流程不触碰 Intel。
 
 管理后台（2026-11-08 补充）：
 

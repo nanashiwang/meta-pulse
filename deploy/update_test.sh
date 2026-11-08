@@ -191,6 +191,49 @@ MOCK_GATEWAY=1 MOCK_FETCH_SUCCEED=1 MOCK_COMMUNITY_CHANGED=1 bash "$tmp/repo/dep
 grep -q '^build-community$' "$MOCK_LOG"
 ! grep -q '^build-blog$' "$MOCK_LOG"
 
+# 模型榜默认不启用：未填写 Intel 密码时更新流程不触碰任何 Intel 服务。
+! grep -q 'intel' "$MOCK_LOG"
+# 启用后：先备份 metar_intel，再构建、迁移、重建；Compose 全程带 intel profile。
+(
+  source "$tmp/repo/deploy/lib.sh"
+  set_env_value INTEL_DB_PASSWORD "$(printf 'i%.0s' {1..48})"
+  set_env_value INTEL_DB_ROOT_PASSWORD "$(printf 'r%.0s' {1..48})"
+  set_env_value INTEL_ADMIN_HMAC_SECRET "$(printf 's%.0s' {1..64})"
+)
+: >"$MOCK_LOG"
+MOCK_GATEWAY=1 MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" >"$tmp/output" 2>&1 || { cat "$tmp/output" >&2; exit 1; }
+grep -q -- '--profile intel config' "$MOCK_LOG"
+grep -q 'exec -T intel-mysql sh -c' "$MOCK_LOG"
+intel_backup="$(find "$tmp/repo/.data/deploy-backups" -name intel.sql -type f | head -n 1)"
+[[ -n "$intel_backup" && "$(stat -c %a "$intel_backup" 2>/dev/null || stat -f %Lp "$intel_backup")" == 600 ]]
+awk '
+ /exec -T intel-mysql sh -c/{backed=1}
+ / merge$/ || /^merge$/{if(!backed) exit 1}
+ / build intel-api intel-worker$/{built=1}
+ /entrypoint metar-intel-tool intel-api migrate up$/{if(!built) exit 1; migrated=1}
+ / up -d --no-deps intel-api intel-worker$/{if(!migrated) exit 1; started=1}
+ END {if(!backed || !built || !migrated || !started) exit 1}
+' "$MOCK_LOG"
+grep -q '模型榜已更新' "$tmp/output"
+# 模型榜构建失败只告警：论坛与 Pulse 照常完成，且不会用失败镜像重建 Intel。
+: >"$MOCK_LOG"
+MOCK_DOCKER_FAIL='build intel-api' MOCK_GATEWAY=1 MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" >"$tmp/output" 2>&1 || { echo 'Intel failure aborted the update' >&2; cat "$tmp/output" >&2; exit 1; }
+grep -q '模型榜更新失败' "$tmp/output"
+grep -q '更新及验收完成' "$tmp/output"
+grep -q ' up -d pulse-api' "$MOCK_LOG"
+! grep -q 'up -d --no-deps intel-api intel-worker' "$MOCK_LOG"
+! grep -q 'metar-intel-tool intel-api migrate up' "$MOCK_LOG"
+# 启用但仍是占位 root 密码：在任何备份或拉取前拒绝，且不改写配置。
+( source "$tmp/repo/deploy/lib.sh"; set_env_value INTEL_DB_ROOT_PASSWORD replace-me )
+cp "$tmp/repo/.env" "$tmp/intel-before.env"
+: >"$MOCK_LOG"
+if bash "$tmp/repo/deploy/update.sh" >"$tmp/output" 2>&1; then echo 'Intel placeholder accepted' >&2; exit 1; fi
+grep -q 'INTEL_DB_ROOT_PASSWORD' "$tmp/output"
+cmp "$tmp/intel-before.env" "$tmp/repo/.env"
+! grep -q '^fetch$' "$MOCK_LOG"
+cp "$tmp/original.env" "$tmp/repo/.env"
+printf '模型榜可选启用、备份、迁移顺序与故障隔离回归通过\n'
+
 # Back up private role key mounts even for stopped containers, and never
 # continue an upgrade when an existing key volume cannot be copied.
 : >"$MOCK_LOG"

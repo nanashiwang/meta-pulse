@@ -175,7 +175,7 @@ compose() (
   local key
   for key in $(compgen -e); do
     case "$key" in
-      PULSE_*|NEWAPI_*|FORUM_*|COMPOSE_*|SSL_CERT_FILE|META_PULSE_CA_DIR|META_PULSE_MYSQL_IMAGE|META_PULSE_MYSQL_CLIENT_IMAGE) unset "$key" ;;
+      PULSE_*|NEWAPI_*|FORUM_*|INTEL_*|COMPOSE_*|SSL_CERT_FILE|META_PULSE_CA_DIR|META_PULSE_MYSQL_IMAGE|META_PULSE_MYSQL_CLIENT_IMAGE) unset "$key" ;;
     esac
   done
   local -a compose_files=(-f "$COMPOSE_FILE")
@@ -195,8 +195,60 @@ compose() (
     META_PULSE_VERSION="$(cat "$REPO_ROOT/VERSION")"
     [[ "$META_PULSE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "VERSION 格式无效"
   fi
-  docker compose --env-file "$ENV_FILE" "${compose_files[@]}" "$@"
+  # The model leaderboard is opt-in: its services join every Compose call only
+  # once .env carries a real Intel database password.
+  local -a profiles=()
+  if intel_enabled; then
+    profiles=(--profile intel)
+  fi
+  # ${a[@]+...} keeps bash 3.2 (macOS) happy with an empty array under set -u.
+  docker compose --env-file "$ENV_FILE" "${compose_files[@]}" ${profiles[@]+"${profiles[@]}"} "$@"
 )
+
+intel_enabled() {
+  local value
+  value="$(env_value INTEL_DB_PASSWORD)"
+  [[ -n "$value" && "$value" != replace-me && "$value" != CHANGE_ME && "$value" != __GENERATE__ ]]
+}
+
+# Read-only checks for an enabled leaderboard; never generates credentials.
+validate_intel_environment() {
+  intel_enabled || return 0
+  local root secret
+  root="$(env_value INTEL_DB_ROOT_PASSWORD)"
+  [[ -n "$root" && "$root" != replace-me && "$root" != CHANGE_ME && "$root" != __GENERATE__ ]] \
+    || die "INTEL_DB_ROOT_PASSWORD 缺失或仍为占位密码"
+  secret="$(env_value INTEL_ADMIN_HMAC_SECRET)"
+  [[ -z "$secret" || "${#secret}" -ge 32 ]] || die "INTEL_ADMIN_HMAC_SECRET 必须为空或至少 32 字符"
+}
+
+# Back up metar_intel before the code moves. A first rollout has no database
+# yet, which is fine. Returns 1 when an existing database cannot be backed up,
+# so the caller skips the Intel rollout instead of blocking the whole update.
+backup_intel_database_if_present() {
+  local output_file="$1" container status
+  intel_enabled || return 0
+  if [[ -n "$(env_value INTEL_DB_DSN)" ]]; then
+    warn "INTEL_DB_DSN 指向外部数据库，更新脚本不备份 metar_intel，请使用该数据库自身的备份"
+    return 0
+  fi
+  container="$(compose ps -a -q intel-mysql 2>/dev/null || true)"
+  if [[ -z "$container" ]]; then
+    log "intel-mysql 尚未创建，首次启用模型榜无需备份"
+    return 0
+  fi
+  status="$(docker inspect --format '{{.State.Status}}' "$container" 2>/dev/null || true)"
+  if [[ "$status" != running ]]; then
+    warn "intel-mysql 已存在但未运行（$status），无法备份 metar_intel；本次更新将跳过模型榜"
+    return 1
+  fi
+  log "备份数据库：intel-mysql"
+  : >"$output_file"
+  chmod 600 "$output_file"
+  compose exec -T intel-mysql sh -c \
+    'exec env MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysqldump --single-transaction --no-tablespaces --set-gtid-purged=OFF --routines --events --triggers --hex-blob -uroot "$MYSQL_DATABASE"' \
+    >>"$output_file" || { warn "metar_intel 备份失败；本次更新将跳过模型榜"; return 1; }
+}
 
 validate_compose() {
   log "校验 Docker Compose 配置"
