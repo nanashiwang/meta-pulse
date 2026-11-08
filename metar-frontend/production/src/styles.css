@@ -485,16 +485,38 @@ body:has(.community-discussions, .page-loading[data-layout="feed"]) .topbar .sea
 .topnav .topnav-menu-panel a.topnav-menu-link.active:after{display:none}
 .tool-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
 .tool-card{display:block;color:var(--text)}.tool-card:hover{border-color:var(--green)}
-.tools-page h2{font-size:15px;margin:0 0 10px}
-.tool-rows{margin:8px 0 0;display:grid;gap:8px}
-.tool-row{display:grid;grid-template-columns:180px minmax(0,1fr);gap:12px;align-items:baseline}
+.tool-network{display:grid;gap:14px}
+.tool-hero{padding:20px 22px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px 24px;align-items:start}
+.tool-hero h1{font-size:20px;margin:0 0 6px}.tool-hero-text p{margin:0;max-width:62ch;line-height:1.6}
+.tool-hero-actions{display:grid;justify-items:end;gap:6px;text-align:right}.tool-hero-actions p{margin:0;max-width:260px}
+.tool-summary{grid-column:1/-1;list-style:none;margin:0;padding:12px 0 0;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:8px 20px}
+.tool-summary li{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.tool-check-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.tool-check{padding:16px 18px;display:grid;gap:12px;align-content:start}.tool-check[data-check="env"]{grid-column:1/-1}
+.tool-check-head{display:flex;align-items:center;gap:10px}.tool-check-head h2{font-size:15px;margin:0;flex:1}
+.tool-card-icon{width:20px;height:20px;fill:none;stroke:var(--green);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.tool-check-body{display:grid;gap:10px}.tool-check-body p{margin:0;line-height:1.6}
+.tool-ip{display:flex;align-items:baseline;flex-wrap:wrap;gap:10px}
+.tool-ip-value{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:24px;font-weight:600;letter-spacing:.01em;overflow-wrap:anywhere}
+.tool-ip-value.is-error{font-family:inherit;font-size:14px;font-weight:400;color:var(--muted)}
+.tool-ip-family{font-size:12px;color:var(--muted)}
+.tool-actions{display:flex;gap:8px}.tool-actions [hidden]{display:none}
+.tool-pill{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap;background:var(--soft);color:var(--muted)}
+.tool-pill:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.tool-pill[data-tone="ok"]{color:var(--green);background:color-mix(in srgb,var(--green) 12%,transparent)}
+.tool-pill[data-tone="info"]{color:var(--text)}
+.tool-pill[data-tone="warn"]{color:#b45309;background:#b453091a}
+.tool-pill[data-tone="risk"]{color:#c2410c;background:#c2410c1a}
+.tool-address-list{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.tool-address-list li{display:grid;grid-template-columns:minmax(0,auto) minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 10px;border-radius:8px;background:var(--soft);font-size:13px}
+.tool-address-list code{overflow-wrap:anywhere}
+.tools-page h2{font-size:15px;margin:0}
+.tool-rows{margin:0;display:grid;gap:10px}
+.tool-row{display:grid;grid-template-columns:160px minmax(0,1fr);gap:12px;align-items:baseline}
 .tool-row dt{color:var(--muted);font-size:13px}.tool-row dd{margin:0;display:flex;flex-wrap:wrap;gap:6px;overflow-wrap:anywhere}
-.tool-row code{font-size:13px;padding:1px 6px;border-radius:4px;background:var(--soft)}
-.tool-badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;background:var(--soft);color:var(--text)}
-.tool-badge[data-status="ok"]{color:var(--green)}
-.tool-badge[data-status="leak"]{color:#c2410c;background:#c2410c1a}
-.tool-badge[data-status="notice"]{color:#a16207;background:#a162071a}
-@media (max-width:640px){.tool-row{grid-template-columns:1fr;gap:4px}}
+.tool-row code,.tool-address-list code{font-size:13px;padding:1px 6px;border-radius:4px;background:var(--surface)}
+.tool-row code{background:var(--soft)}
+@media (max-width:760px){.tool-hero{grid-template-columns:1fr;padding:16px}.tool-hero-actions{justify-items:start;text-align:left}.tool-check-grid{grid-template-columns:1fr}.tool-row{grid-template-columns:1fr;gap:4px}.tool-ip-value{font-size:20px}.tool-address-list li{grid-template-columns:1fr auto}.tool-address-list li span.muted{grid-column:1}}
 
 /* Model leaderboard admin (/admin/models). */
 .intel-admin-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:20px}

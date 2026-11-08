@@ -67,28 +67,48 @@ test('network page names the STUN host, shows no score and never stores results'
   assert.match(html, /不会保存或上传/);
   assert.match(html, /<code>en-US<\/code> <code>fr<\/code>/);
   assert.doesNotMatch(html, /分数|score/i);
+  assert.doesNotMatch(html, /Claude/);
+  // Summary strip and three check cards share the same status keys.
+  for (const key of ['egress', 'webrtc', 'env']) {
+    assert.match(html, new RegExp(`data-check="${key}"`));
+    assert.match(html, new RegExp(`data-summary="${key}"`));
+  }
+  assert.match(html, /data-egress-retry hidden/);
 });
 
-test('WebRTC result escapes addresses and handles unsupported browsers', () => {
+test('WebRTC result escapes addresses, labels each one and handles unsupported browsers', () => {
   const tools = load();
   const unsupported = tools.webrtcResult({supported: false, entries: []}, '203.0.113.9');
-  assert.match(unsupported, /不支持或已禁用/);
-  const leak = tools.webrtcResult({supported: true, entries: [{address: '198.51.100.7', scope: 'public'}]}, '203.0.113.9');
-  assert.match(leak, /data-status="leak"/);
-  assert.match(leak, /<code>198\.51\.100\.7<\/code>/);
+  assert.equal(unsupported.status, 'unsupported');
+  assert.match(unsupported.html, /不支持或已禁用/);
+  const leak = tools.webrtcResult({supported: true, entries: [{address: '198.51.100.7', scope: 'public'}, {address: '<b>.local', scope: 'mdns'}]}, '203.0.113.9');
+  assert.equal(leak.status, 'leak');
+  assert.match(leak.html, /<code>198\.51\.100\.7<\/code><span class="muted">与出口 IP 不同<\/span><span class="tool-pill" data-tone="risk">/);
+  assert.match(leak.html, /mDNS 已隐藏/);
+  assert.doesNotMatch(leak.html, /<b>/);
+  const same = tools.webrtcResult({supported: true, entries: [{address: '203.0.113.9', scope: 'public'}]}, '203.0.113.9');
+  assert.equal(same.status, 'clean');
+  assert.match(same.html, /与出口 IP 一致/);
 });
 
-test('egress lookup omits credentials and rejects invalid bodies', async () => {
+test('egress lookup omits credentials and reports why it failed', async () => {
   let seen;
-  const ok = load('zh_CN', {fetch: async (url, options) => { seen = {url, options}; return {ok: true, json: async () => ({ip: '203.0.113.9'})}; }});
+  const ok = load('zh_CN', {AbortController, fetch: async (url, options) => { seen = {url, options}; return {ok: true, json: async () => ({ip: '203.0.113.9'})}; }});
   assert.equal(await ok.fetchEgress(), '203.0.113.9');
   assert.equal(seen.url, '/metar/api/tools/ip');
   assert.equal(seen.options.credentials, 'omit');
   assert.equal(seen.options.cache, 'no-store');
-  const bad = load('zh_CN', {fetch: async () => ({ok: true, json: async () => ({ip: '<script>'})})});
-  await assert.rejects(bad.fetchEgress());
-  const down = load('zh_CN', {fetch: async () => ({ok: false})});
-  await assert.rejects(down.fetchEgress());
+  assert.ok(seen.options.signal);
+  const reason = async (env, timeout) => { try { await load('zh_CN', env).fetchEgress(undefined, timeout); } catch (error) { return [error.reason, error.status]; } return null; };
+  assert.deepEqual(await reason({fetch: async () => ({ok: true, json: async () => ({ip: '<script>'})})}), ['format', 0]);
+  assert.deepEqual(await reason({fetch: async () => ({ok: true, json: async () => { throw SyntaxError('html'); }})}), ['format', 0]);
+  assert.deepEqual(await reason({fetch: async () => ({ok: false, status: 404})}), ['http', 404]);
+  assert.deepEqual(await reason({fetch: async () => { throw TypeError('blocked'); }}), ['network', 0]);
+  const hang = {AbortController, fetch: (url, options) => new Promise((_, reject) => options.signal.addEventListener('abort', () => reject(Object.assign(Error('aborted'), {name: 'AbortError'}))))};
+  assert.deepEqual(await reason(hang, 10), ['timeout', 0]);
+  const tools = load();
+  assert.match(tools.egressErrorText({reason: 'http', status: 502}), /502/);
+  assert.match(tools.egressErrorText({reason: 'network'}), /拦截/);
 });
 
 test('candidate collection closes the peer and reports unsupported WebRTC', async () => {

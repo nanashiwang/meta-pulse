@@ -4,6 +4,7 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const t = (zh, en) => root.MetarI18n?.getLanguage() === 'en_US' ? en : zh;
   const EGRESS_ENDPOINT = '/metar/api/tools/ip';
+  const EGRESS_TIMEOUT_MS = 8000;
   const STUN_URL = 'stun:stun.cloudflare.com:3478';
   const STUN_HOST = 'stun.cloudflare.com';
   const WEBRTC_TIMEOUT_MS = 4000;
@@ -56,7 +57,7 @@
      means WebRTC bypasses the current network path (for example a proxy). */
   function assessWebRTC(entries, egressIP) {
     const seen = new Map();
-    for (const candidate of entries || []) if (candidate && !seen.has(candidate.address)) seen.set(candidate.address, candidate);
+    for (const entry of entries || []) if (entry && !seen.has(entry.address)) seen.set(entry.address, entry);
     const list = [...seen.values()];
     const egress = normalizeIP(egressIP);
     const egressFamily = ipFamily(egress);
@@ -115,36 +116,89 @@
     });
   }
 
-  async function fetchEgress(env = root) {
-    const response = await env.fetch(EGRESS_ENDPOINT, { cache: 'no-store', credentials: 'omit', headers: { Accept: 'application/json' } });
-    if (!response.ok) throw new Error('egress unavailable');
-    const body = await response.json();
+  /* The failure reason is shown to the visitor, so a blocked request, a gateway
+     without the endpoint and a slow network are distinguishable. */
+  class EgressError extends Error {
+    constructor(reason, status = 0) { super(reason); this.reason = reason; this.status = status; }
+  }
+
+  async function fetchEgress(env = root, timeout = EGRESS_TIMEOUT_MS) {
+    const controller = typeof env.AbortController === 'function' ? new env.AbortController() : null;
+    const timer = controller ? env.setTimeout(() => controller.abort(), timeout) : 0;
+    let response;
+    try {
+      response = await env.fetch(EGRESS_ENDPOINT, { cache: 'no-store', credentials: 'omit', headers: { Accept: 'application/json' }, signal: controller?.signal });
+    } catch (error) {
+      throw new EgressError(error?.name === 'AbortError' ? 'timeout' : 'network');
+    } finally {
+      if (controller) env.clearTimeout(timer);
+    }
+    if (!response.ok) throw new EgressError('http', response.status);
+    let body;
+    try { body = await response.json(); } catch (_) { throw new EgressError('format'); }
     const ip = normalizeIP(body?.ip);
-    if (!ipFamily(ip)) throw new Error('egress invalid');
+    if (!ipFamily(ip)) throw new EgressError('format');
     return ip;
   }
 
-  const row = (label, value) => `<div class="tool-row"><dt>${esc(label)}</dt><dd>${value}</dd></div>`;
+  function egressErrorText(error) {
+    switch (error?.reason) {
+      case 'timeout': return t('请求超时，网络较慢或被拦截。', 'The request timed out; the network is slow or blocking it.');
+      case 'network': return t('请求被拦截或网络中断，可检查广告/隐私拦截插件后重试。', 'The request was blocked or the connection dropped. Check ad or privacy blockers and retry.');
+      case 'http': return t(`服务器返回 ${error.status}，服务可能正在更新，请稍后重试。`, `The server returned ${error.status}. It may be updating; retry shortly.`);
+      case 'format': return t('服务器返回的内容无法识别，服务可能正在更新，请稍后重试。', 'The server response was not recognised. It may be updating; retry shortly.');
+      default: return t('暂时无法读取，请稍后重试。', 'Unavailable right now. Retry shortly.');
+    }
+  }
+
+  const STATUS_TEXT = {
+    pending: ['等待检测', 'Not run'],
+    running: ['检测中', 'Checking'],
+    ok: ['正常', 'OK'],
+    clean: ['未发现泄露', 'No leak'],
+    none: ['未获取到地址', 'No addresses'],
+    notice: ['需留意', 'Review'],
+    leak: ['发现差异', 'Mismatch'],
+    error: ['读取失败', 'Failed'],
+    unsupported: ['不可用', 'Unavailable'],
+    info: ['已读取', 'Read'],
+  };
+  const TONE = { ok: 'ok', clean: 'ok', none: 'ok', info: 'info', notice: 'warn', leak: 'risk', error: 'risk', unsupported: 'warn', pending: 'idle', running: 'idle' };
+  const pill = status => `<span class="tool-pill" data-tone="${TONE[status] || 'idle'}">${esc(t(...(STATUS_TEXT[status] || STATUS_TEXT.pending)))}</span>`;
   const code = value => value ? `<code>${esc(value)}</code>` : '<span class="muted">—</span>';
-  const badge = (status, text) => `<span class="tool-badge" data-status="${esc(status)}">${esc(text)}</span>`;
+  const row = (label, value) => `<div class="tool-row"><dt>${esc(label)}</dt><dd>${value}</dd></div>`;
+
+  function addressRows(assessment, egressIP) {
+    const egress = normalizeIP(egressIP);
+    const rows = [];
+    for (const address of assessment.publicAddresses) {
+      const status = assessment.mismatched.includes(address) ? 'leak' : assessment.otherFamily.includes(address) ? 'notice' : 'ok';
+      const note = status === 'leak' ? t('与出口 IP 不同', 'Differs from egress IP') : status === 'notice' ? t('另一协议的公网地址', 'Public address on the other protocol') : address === egress ? t('与出口 IP 一致', 'Matches egress IP') : t('公网地址', 'Public address');
+      rows.push({ address, status, note });
+    }
+    for (const address of assessment.local) rows.push({ address, status: 'notice', note: t('内网地址', 'Local address') });
+    if (assessment.hidden) rows.push({ address: '*.local', status: 'ok', note: t('mDNS 已隐藏真实内网地址', 'mDNS hides the real local address') });
+    return rows.length ? `<ul class="tool-address-list">${rows.map(r => `<li><code>${esc(r.address)}</code><span class="muted">${esc(r.note)}</span>${pill(r.status)}</li>`).join('')}</ul>` : '';
+  }
 
   function webrtcResult(result, egressIP) {
-    if (!result.supported) return `<p>${badge('notice', t('不可用', 'Unavailable'))} ${esc(t('浏览器不支持或已禁用 WebRTC，网页无法通过它获取你的地址。', 'WebRTC is unsupported or disabled, so pages cannot read addresses through it.'))}</p>`;
+    if (!result.supported) return { status: 'unsupported', html: `<p class="muted">${esc(t('浏览器不支持或已禁用 WebRTC，网页无法通过它获取你的地址。', 'WebRTC is unsupported or disabled, so pages cannot read addresses through it.'))}</p>` };
     const assessment = assessWebRTC(result.entries, egressIP);
     const summary = {
-      leak: [badge('leak', t('发现差异', 'Mismatch found')), t('WebRTC 暴露的公网地址与当前出口 IP 不同，可能绕过了代理或 VPN。', 'WebRTC exposes a public address different from your egress IP and may bypass your proxy or VPN.')],
-      notice: [badge('notice', t('需留意', 'Review')), t('未发现与出口不同的同协议公网地址，但 WebRTC 暴露了内网或另一协议的地址。', 'No different public address of the same protocol, but WebRTC exposes a local or other-protocol address.')],
-      clean: [badge('ok', t('未发现泄露', 'No leak found')), t('WebRTC 看到的公网地址与出口 IP 一致，或仅出现隐藏的 mDNS 地址。', 'WebRTC sees the same public address as your egress IP, or only hidden mDNS names.')],
-      none: [badge('ok', t('未获取到地址', 'No addresses')), t('WebRTC 没有返回任何地址，常见于浏览器隐私设置或网络限制。', 'WebRTC returned no addresses, which is common with privacy settings or network restrictions.')],
+      leak: t('WebRTC 暴露的公网地址与出口 IP 不同，可能绕过了代理或 VPN。', 'WebRTC exposes a public address different from your egress IP and may bypass your proxy or VPN.'),
+      notice: t('未发现与出口不同的同协议公网地址，但 WebRTC 暴露了内网或另一协议的地址。', 'No different public address on the same protocol, but WebRTC exposes a local or other-protocol address.'),
+      clean: t('WebRTC 看到的公网地址与出口 IP 一致，或仅出现隐藏的 mDNS 地址。', 'WebRTC sees the same public address as your egress IP, or only hidden mDNS names.'),
+      none: t('WebRTC 没有返回任何地址，常见于浏览器隐私设置或网络限制。', 'WebRTC returned no addresses, which is common with privacy settings or network restrictions.'),
     }[assessment.status];
-    const list = values => values.length ? values.map(code).join(' ') : '<span class="muted">—</span>';
-    return `<p>${summary[0]} ${esc(summary[1])}</p><dl class="tool-rows">
-      ${row(t('WebRTC 公网地址', 'WebRTC public addresses'), list(assessment.publicAddresses))}
-      ${assessment.otherFamily.length ? row(t('另一协议的公网地址', 'Other-protocol public addresses'), list(assessment.otherFamily)) : ''}
-      ${row(t('内网地址', 'Local addresses'), list(assessment.local))}
-      ${row(t('mDNS 隐藏地址', 'mDNS hidden addresses'), assessment.hidden ? esc(t('有（浏览器已隐藏真实内网地址）', 'Yes (the browser hides the real local address)')) : '<span class="muted">—</span>')}
-    </dl>`;
+    return { status: assessment.status, html: `<p>${esc(summary)}</p>${addressRows(assessment, egressIP)}` };
   }
+
+  const ICON = {
+    globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+    signal: '<path d="M5 12a10 10 0 0 1 14 0M8.5 15.5a5 5 0 0 1 7 0"/><circle cx="12" cy="19" r="1"/>',
+    browser: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/>',
+  };
+  const icon = name => `<svg class="tool-card-icon" viewBox="0 0 24 24" aria-hidden="true">${ICON[name]}</svg>`;
 
   class View {
     constructor(tools = []) {
@@ -165,53 +219,96 @@
 
     networkPage() {
       const env = browserEnvironment(root);
-      return `<section class="tools-page stack" data-tool="network">
-        <h1 class="visually-hidden">${esc(t('网络自检', 'Network self-check'))}</h1>
-        <p class="muted">${esc(t('检查当前网络出口和浏览器公开的环境信息。结果只在本页显示，不会保存或上传。', 'Check your network egress and the environment details your browser exposes. Results are shown on this page only and are never stored or uploaded.'))}</p>
-        <section class="card card-pad"><h2>${esc(t('出口 IP', 'Egress IP'))}</h2>
-          <dl class="tool-rows">${row(t('社区服务器看到的地址', 'Address seen by the community server'), `<span data-egress>${esc(t('正在读取…', 'Loading…'))}</span>`)}${row(t('协议', 'Protocol'), '<span data-egress-family>—</span>')}</dl>
-        </section>
-        <section class="card card-pad"><h2>${esc(t('浏览器环境', 'Browser environment'))}</h2>
-          <dl class="tool-rows">
+      const card = (key, name, title, body, status = 'pending') => `<section class="card tool-check" data-check="${key}"><header class="tool-check-head">${icon(name)}<h2>${esc(title)}</h2><span data-pill>${pill(status)}</span></header><div class="tool-check-body">${body}</div></section>`;
+      const summaryItem = (key, label) => `<li data-summary="${key}"><span>${esc(label)}</span><span data-pill>${pill('pending')}</span></li>`;
+      return `<section class="tools-page tool-network" data-tool="network">
+        <header class="card tool-hero">
+          <div class="tool-hero-text">
+            <h1>${esc(t('网络自检', 'Network self-check'))}</h1>
+            <p class="muted">${esc(t('查看当前出口 IP、浏览器公开的环境信息，以及 WebRTC 是否暴露其他地址。结果只在本页显示，不会保存或上传。', 'See your egress IP, the environment details your browser exposes, and whether WebRTC reveals other addresses. Results stay on this page and are never stored or uploaded.'))}</p>
+          </div>
+          <div class="tool-hero-actions">
+            <button type="button" class="btn primary" data-tool-run>${esc(t('开始检测', 'Run checks'))}</button>
+            <p class="muted small">${esc(t(`WebRTC 检测会连接公共 STUN 服务器 ${STUN_HOST}。`, `The WebRTC check contacts the public STUN server ${STUN_HOST}.`))}</p>
+          </div>
+          <ul class="tool-summary" aria-label="${esc(t('检测概览', 'Check overview'))}">
+            ${summaryItem('egress', t('出口 IP', 'Egress IP'))}${summaryItem('webrtc', 'WebRTC')}${summaryItem('env', t('浏览器环境', 'Browser environment'))}
+          </ul>
+        </header>
+        <div class="tool-check-grid">
+          ${card('egress', 'globe', t('出口 IP', 'Egress IP'), `<div class="tool-ip"><span class="tool-ip-value" data-egress>${esc(t('正在读取…', 'Loading…'))}</span><span class="tool-ip-family" data-egress-family></span></div><p class="muted small">${esc(t('社区服务器看到的访问地址。', 'The address the community server sees.'))}</p><div class="tool-actions"><button type="button" class="btn" data-egress-copy hidden>${esc(t('复制', 'Copy'))}</button><button type="button" class="btn" data-egress-retry hidden>${esc(t('重试', 'Retry'))}</button></div>`, 'running')}
+          ${card('webrtc', 'signal', t('WebRTC 泄露', 'WebRTC leak'), `<div data-webrtc-result aria-live="polite"><p class="muted">${esc(t('点击「开始检测」后，与出口 IP 对比 WebRTC 能看到的地址。', 'Select “Run checks” to compare the addresses WebRTC can see with your egress IP.'))}</p></div>`)}
+          ${card('env', 'browser', t('浏览器环境', 'Browser environment'), `<dl class="tool-rows">
             ${row(t('时区', 'Time zone'), code(env.timeZone))}
             ${row(t('UTC 偏移', 'UTC offset'), code(env.offset))}
             ${row(t('语言偏好', 'Language preferences'), env.languages.length ? env.languages.map(code).join(' ') : code(''))}
             ${row(t('日期与数字格式', 'Date and number format'), code(env.locale))}
-          </dl>
-        </section>
-        <section class="card card-pad"><h2>${esc(t('WebRTC 泄露', 'WebRTC leak'))}</h2>
-          <p class="muted">${esc(t(`点击后浏览器会连接公共 STUN 服务器 ${STUN_HOST}，以获取 WebRTC 能看到的地址，并与出口 IP 对比。`, `Your browser will contact the public STUN server ${STUN_HOST} to read the addresses WebRTC can see, then compare them with your egress IP.`))}</p>
-          <div class="mt8"><button type="button" class="btn primary" data-tool-webrtc>${esc(t('开始检测', 'Run check'))}</button></div>
-          <div class="mt8" data-webrtc-result aria-live="polite"></div>
-        </section>
+          </dl>`, 'info')}
+        </div>
         <p class="muted small">${esc(t('DNS 泄露检测需要专用解析服务，暂未提供。', 'DNS leak checks need a dedicated resolver service and are not available yet.'))}</p>
       </section>`;
+    }
+
+    setStatus(page, key, status) {
+      for (const node of page.querySelectorAll(`[data-check="${key}"] [data-pill], [data-summary="${key}"] [data-pill]`)) node.innerHTML = pill(status);
+    }
+
+    loadEgress(page) {
+      const value = page.querySelector('[data-egress]');
+      const family = page.querySelector('[data-egress-family]');
+      const copy = page.querySelector('[data-egress-copy]');
+      const retry = page.querySelector('[data-egress-retry]');
+      value.textContent = t('正在读取…', 'Loading…');
+      value.classList.remove('is-error');
+      family.textContent = '';
+      copy.hidden = true;
+      retry.hidden = true;
+      this.setStatus(page, 'egress', 'running');
+      this.egress = fetchEgress(root).then(ip => {
+        if (this.disposed) return ip;
+        value.textContent = ip;
+        family.textContent = ipFamily(ip) === 6 ? 'IPv6' : 'IPv4';
+        copy.hidden = !root.navigator?.clipboard;
+        this.setStatus(page, 'egress', 'ok');
+        return ip;
+      }).catch(error => {
+        if (!this.disposed) {
+          value.textContent = egressErrorText(error);
+          value.classList.add('is-error');
+          retry.hidden = false;
+          this.setStatus(page, 'egress', 'error');
+        }
+        return '';
+      });
+      return this.egress;
     }
 
     mount(container) {
       const page = container.querySelector('[data-tool="network"]');
       if (!page) return;
-      const target = page.querySelector('[data-egress]');
-      const family = page.querySelector('[data-egress-family]');
-      this.egress = fetchEgress(root).then(ip => {
-        if (this.disposed) return ip;
-        target.innerHTML = code(ip);
-        family.textContent = ipFamily(ip) === 6 ? 'IPv6' : 'IPv4';
-        return ip;
-      }).catch(() => {
-        if (!this.disposed) target.textContent = t('暂时无法读取，请稍后刷新。', 'Unavailable. Refresh later.');
-        return '';
+      this.setStatus(page, 'env', 'info');
+      this.loadEgress(page);
+      page.querySelector('[data-egress-retry]').addEventListener('click', () => this.loadEgress(page));
+      page.querySelector('[data-egress-copy]').addEventListener('click', async event => {
+        const ip = page.querySelector('[data-egress]').textContent;
+        try { await root.navigator.clipboard.writeText(ip); event.target.textContent = t('已复制', 'Copied'); } catch (_) {}
       });
-      const button = page.querySelector('[data-tool-webrtc]');
+      const run = page.querySelector('[data-tool-run]');
       const output = page.querySelector('[data-webrtc-result]');
-      button.addEventListener('click', async () => {
-        button.disabled = true;
-        output.textContent = t('正在检测…', 'Checking…');
+      run.addEventListener('click', async () => {
+        run.disabled = true;
+        this.setStatus(page, 'webrtc', 'running');
+        output.innerHTML = `<p class="muted">${esc(t('正在检测…', 'Checking…'))}</p>`;
         try {
-          const [egressIP, result] = await Promise.all([this.egress, collectIceAddresses(root)]);
-          if (!this.disposed) output.innerHTML = webrtcResult(result, egressIP);
+          const failed = page.querySelector('[data-egress]').classList.contains('is-error');
+          const egressIP = await (failed ? this.loadEgress(page) : this.egress);
+          const result = await collectIceAddresses(root);
+          if (this.disposed) return;
+          const view = webrtcResult(result, egressIP);
+          output.innerHTML = view.html;
+          this.setStatus(page, 'webrtc', view.status);
         } finally {
-          if (!this.disposed) button.disabled = false;
+          if (!this.disposed) { run.disabled = false; run.textContent = t('重新检测', 'Run again'); }
         }
       });
     }
@@ -219,7 +316,7 @@
     dispose() { this.disposed = true; }
   }
 
-  const exports = { View, ipFamily, addressScope, parseCandidate, assessWebRTC, formatOffset, browserEnvironment, collectIceAddresses, fetchEgress, webrtcResult, EGRESS_ENDPOINT, STUN_HOST };
+  const exports = { View, ipFamily, addressScope, parseCandidate, assessWebRTC, formatOffset, browserEnvironment, collectIceAddresses, fetchEgress, egressErrorText, webrtcResult, EGRESS_ENDPOINT, STUN_HOST };
   if (typeof module === 'object' && module.exports) module.exports = exports;
   else root.MetarTools = Object.freeze(exports);
 })(typeof window === 'undefined' ? globalThis : window);

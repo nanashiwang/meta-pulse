@@ -20,6 +20,8 @@ Status: implemented
 - `/tools/network` 由 [tools.js](../../../../metar-frontend/production/src/tools.js) 在浏览器内完成：出口 IP、协议、时区、UTC 偏移、语言偏好与日期格式如实展示，不打分；WebRTC 检测需用户点击，页面写明会连接 `stun.cloudflare.com`，同协议公网地址与出口不同时提示可能绕过代理或 VPN；DNS 泄露检测需要专用解析服务，暂不提供。
 - 出口 IP 由 nginx `location = /metar/api/tools/ip` 直接返回 real_ip 之后的 `$remote_addr`，不经过 Answer、Pulse 或 Intel，不带 Cookie。
 - 结果只在页面展示，不保存、不上传，也不产生 Contribution、Ticket 或 Reward。
+- 页面布局（同日调整）：顶部说明卡含「开始检测」按钮、STUN 说明与三项状态胶囊概览；下方为出口 IP、WebRTC、浏览器环境三张检测卡，各自带状态胶囊；WebRTC 逐个地址标注「与出口一致 / 不同 / 内网 / mDNS 已隐藏」。出口 IP 大字显示并可复制；读取失败时显示原因（超时、被拦截、服务器状态码、响应无法识别）与重试按钮，替代原来笼统的「暂时无法读取」。
+- 用户要求将该页命名为「Claude 检测」并参照 ippure 的 Claude 检测页；名称与定位保持通用「网络自检」，不以规避 Claude 地区限制或风控为目的，只借鉴状态卡片式布局。
 
 ## Alternatives considered
 
@@ -31,7 +33,9 @@ Status: implemented
 
 - 新增 [tools.test.js](../../../../metar-frontend/production/tests/tools.test.js) 覆盖：地址分类、ICE 候选解析、泄露判定（同协议不同地址、映射 IPv6、另一协议、内网、mDNS、未知出口）、UTC 偏移、总览转义、页面不出现评分、出口请求 `credentials: 'omit'`/`no-store` 与非法响应拒绝、对端关闭与 STUN 配置。
 - `make test-community` 中的路由生成检查、前端 node 测试、生产构建与插件测试；`deploy/test.sh` 的 nginx 静态检查。
-- 未在真实浏览器与生产 nginx 中验收 WebRTC 与出口 IP。
+- 出口请求失败原因（格式、HTML 响应、HTTP 状态、网络拦截、超时）与地址标注的单元测试。
+- 生产 metarhub.com：直接打开与经顶栏菜单进入 `/tools/network` 均读到出口 IP，接口连续返回 200 JSON。
+- 本地构建预览：桌面与 375px 手机宽度、深浅主题、WebRTC 检测流程；手机无横向溢出。改版后的页面尚未部署到生产。
 
 ## Consequences
 
