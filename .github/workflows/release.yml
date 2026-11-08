@@ -44,13 +44,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Build only the tagged source
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: ./release/build.sh "$RELEASE_TAG"
-      - name: Upload draft, download and verify, then publish
+      - name: Verify existing release or build and publish missing assets
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: ./release/publish.sh "$RELEASE_TAG"
+        run: ./release/publish.sh "$RELEASE_TAG" --build-if-needed
