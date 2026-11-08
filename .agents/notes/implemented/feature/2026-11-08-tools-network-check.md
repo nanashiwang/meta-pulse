@@ -37,6 +37,8 @@ Status: implemented
 - 生产 metarhub.com：直接打开与经顶栏菜单进入 `/tools/network` 均读到出口 IP，接口连续返回 200 JSON。
 - 本地构建预览：桌面与 375px 手机宽度、深浅主题、WebRTC 检测流程；手机无横向溢出。改版后的页面尚未部署到生产。
 
+本决定中关于“网络自检不评分、保持通用命名”的页面定位已由 [Claude 环境检测面板](2026-11-08-claude-environment-panel.md) 部分取代；工具入口、同源出口接口、WebRTC 的隐私边界和 DNS 不伪造原则仍然适用。
+
 ## Consequences
 
 - 新增工具只需追加 `TOOLS` 条目、页面实现、`routes.json` 路由并重新生成。

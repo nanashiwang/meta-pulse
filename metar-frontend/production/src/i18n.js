@@ -17,6 +17,7 @@
     "工具": "Tools",
     "全部工具": "All tools",
     "网络自检": "Network self-check",
+    "Claude 访问环境检测": "Claude environment check",
     "返回集市": "Back to marketplace",
     "发现项目、在线体验与想法讨论。": "Discover projects, live demos and ideas.",
 "社区账号可以独立使用。绑定元衡 API 后，可通过真实付费调用、每日签到和社区互动获得抽奖券。":"Your community account works independently. Bind your API account to earn draw tickets through paid API usage, daily check-ins and community interactions.",

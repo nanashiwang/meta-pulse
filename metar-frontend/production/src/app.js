@@ -28,7 +28,7 @@
   let growth = null, pulseAdmin = null, chatView = null, chatModeration = null, memberView = null, operationsView = null, marketplaceView = null, modelsView = null, modelsAdminView = null, toolsView = null;
   // Single tool inventory for the top-bar menu and the /tools hub.
   const TOOLS = Object.freeze([
-    {path: '/tools/network', zh: '网络自检', en: 'Network self-check', descriptionZh: '查看出口 IP、浏览器时区与语言，并检查 WebRTC 是否暴露其他地址。', descriptionEn: 'See your egress IP, browser time zone and languages, and check whether WebRTC exposes other addresses.'},
+    {path: '/tools/network', zh: 'Claude 访问环境检测', en: 'Claude environment check', descriptionZh: '六项设备信号评分、Claude 域名出口、WebRTC 与 DNS 状态，以及完整检测说明。', descriptionEn: 'Six local signals, Claude egress probes, WebRTC and DNS status, with a detailed guide.'},
   ]);
   let chatUnreadTimer = 0, chatUnreadBusy = false;
   const featureScripts = new Map();
@@ -221,7 +221,7 @@
     if (path.startsWith('/model/')) return t('模型详情');
     if (path.startsWith('/question/')) return t("问题详情");
     if (path.startsWith('/topic/')) return t("话题");
-    return ({ '/me/drafts': t('我的草稿'), '/events': t('近期活动'), '/admin/operations': t('社区经营'), '/admin/events': t('活动管理'), '/chat': t('聊天'), '/admin/chat': t('聊天举报'), '/latest': t("最新话题"), '/topics': t("类别与标签"), '/admin/taxonomy': t('类别管理'), '/knowledge': t("知识库"), '/search': t("搜索"), '/models': t('AI 模型榜单'), '/models/leaderboard': t('完整模型榜单'), '/models/methodology': t('综合分计算方法'), '/admin/models': t('模型榜管理'), '/tools': t('工具'), '/tools/network': t('网络自检'), '/marketplace': t('Vibe Coding 集市'), '/marketplace/mine': t('我的集市发布'), '/marketplace/publish': t('发布到集市'), '/admin/marketplace': t('集市审核'), '/me': t("个人空间"), '/me/bookmarks': t("我的收藏"), '/me/growth': t('社区成长'), '/me/notifications': t("通知中心"), '/settings/binding': t("账号绑定"), '/pulse': t("Pulse 权益"), '/admin/pulse': t("Pulse 配置"), '/publish': t("发布内容"), '/login': t("登录"), '/register': t("注册"), '/forgot': t("找回密码"), '/status': t("服务状态"), '/support': t("帮助中心"), '/guidelines': t("社区规范") })[path] || t("METAR 社区");
+    return ({ '/me/drafts': t('我的草稿'), '/events': t('近期活动'), '/admin/operations': t('社区经营'), '/admin/events': t('活动管理'), '/chat': t('聊天'), '/admin/chat': t('聊天举报'), '/latest': t("最新话题"), '/topics': t("类别与标签"), '/admin/taxonomy': t('类别管理'), '/knowledge': t("知识库"), '/search': t("搜索"), '/models': t('AI 模型榜单'), '/models/leaderboard': t('完整模型榜单'), '/models/methodology': t('综合分计算方法'), '/admin/models': t('模型榜管理'), '/tools': t('工具'), '/tools/network': t('Claude 访问环境检测'), '/marketplace': t('Vibe Coding 集市'), '/marketplace/mine': t('我的集市发布'), '/marketplace/publish': t('发布到集市'), '/admin/marketplace': t('集市审核'), '/me': t("个人空间"), '/me/bookmarks': t("我的收藏"), '/me/growth': t('社区成长'), '/me/notifications': t("通知中心"), '/settings/binding': t("账号绑定"), '/pulse': t("Pulse 权益"), '/admin/pulse': t("Pulse 配置"), '/publish': t("发布内容"), '/login': t("登录"), '/register': t("注册"), '/forgot': t("找回密码"), '/status': t("服务状态"), '/support': t("帮助中心"), '/guidelines': t("社区规范") })[path] || t("METAR 社区");
   }
 
   function languageControl() {

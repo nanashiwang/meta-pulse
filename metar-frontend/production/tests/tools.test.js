@@ -42,7 +42,7 @@ test('flags a same-family public address that differs from egress as a leak', ()
   assert.equal(tools.assessWebRTC([c('abc.local')], '203.0.113.9').status, 'clean');
   assert.equal(tools.assessWebRTC([], '203.0.113.9').status, 'none');
   // Unknown egress never invents a mismatch.
-  assert.equal(tools.assessWebRTC([c('198.51.100.7')], '').status, 'clean');
+  assert.equal(tools.assessWebRTC([c('198.51.100.7')], '').status, 'notice');
 });
 
 test('formats UTC offsets from getTimezoneOffset minutes', () => {
@@ -60,20 +60,24 @@ test('hub lists the shared tool inventory and escapes it', () => {
   assert.match(html, /Net &lt;b&gt;/);
 });
 
-test('network page names the STUN host, shows no score and never stores results', () => {
-  const tools = load();
-  const html = new tools.View([]).page('/tools/network');
-  assert.match(html, /stun\.cloudflare\.com/);
-  assert.match(html, /不会保存或上传/);
-  assert.match(html, /<code>en-US<\/code> <code>fr<\/code>/);
-  assert.doesNotMatch(html, /分数|score/i);
-  assert.doesNotMatch(html, /Claude/);
-  // Summary strip and three check cards share the same status keys.
-  for (const key of ['egress', 'webrtc', 'env']) {
-    assert.match(html, new RegExp(`data-check="${key}"`));
-    assert.match(html, new RegExp(`data-summary="${key}"`));
+test('complete Claude panel preserves privacy, honest unavailable states and navigation', () => {
+  for (const lang of ['zh_CN', 'en_US']) {
+    const html = new (load(lang).View)([]).page('/tools/network');
+    assert.match(html, /stun\.cloudflare\.com/);
+    assert.match(html, /claude\.com/);
+    assert.match(html, /claude\.ai/);
+    assert.match(html, /U\+0027/);
+    assert.match(html, /U\+2019/);
+    assert.match(html, /ANTHROPIC_BASE_URL/);
+    assert.match(html, /data-egress-retry hidden/);
+    assert.equal((html.match(/data-signal="/g) || []).length, 6);
+    assert.equal((html.match(/class="ce-faq"/g) || []).length, 5);
+    for (const id of ['overview', 'network', 'signals', 'method', 'faq', 'guide']) assert.match(html, new RegExp(`id="ce-${id}"`));
+    for (const key of ['egress', 'webrtc', 'env', 'dns', 'claude-0', 'claude-1']) assert.match(html, new RegExp(`data-check="${key}"`));
+    assert.doesNotMatch(html, /localStorage|sessionStorage|sendBeacon/);
+    assert.match(html, lang === 'zh_CN' ? /不会保存或上传/ : /never stored or uploaded/);
+    assert.match(html, lang === 'zh_CN' ? /尚未接入专用 DNS/ : /dedicated DNS probe is not connected/);
   }
-  assert.match(html, /data-egress-retry hidden/);
 });
 
 test('WebRTC result escapes addresses, labels each one and handles unsupported browsers', () => {
@@ -132,4 +136,130 @@ test('candidate collection closes the peer and reports unsupported WebRTC', asyn
   assert.equal(result.entries[0].address, '198.51.100.7');
   assert.equal(closed, true);
   assert.equal(config.iceServers[0].urls, 'stun:stun.cloudflare.com:3478');
+});
+
+test('six-signal model has exact weights, complete scoring and match threshold', () => {
+  const tools = load();
+  const env = {timeZone: 'Asia/Shanghai', languages: ['zh-CN'], locale: 'zh-CN', offset: 'UTC+08:00'};
+  const full = tools.environmentScore(env, {available: true, fonts: ['PingFang SC']}, {ratio: 0.25, value: 'Apple style'});
+  assert.equal(full.score, 94);
+  assert.equal(full.coverage, 100);
+  assert.equal(full.signals.filter(s => s.hit).length, 6);
+  assert.equal(full.band, 'high');
+  assert.equal(full.complete, true);
+  assert.deepEqual(Array.from(full.signals, s => s.weight), [30, 24, 20, 10, 8, 8]);
+  const language = value => tools.environmentScore({...env, languages: value}, {available: true, fonts: []}, {ratio: 0, value: 'Linux'}).signals[1].points;
+  assert.equal(language(['en-US', 'zh-CN']), 12);
+  assert.equal(language(['zh-TW']), 12);
+  assert.equal(language(['zh-Hans-CN']), 24);
+  assert.equal(language(['zh']), 24);
+  assert.equal(language(['en-US']), 0);
+  const singapore = tools.environmentScore({...env, timeZone: 'Asia/Singapore'}, {available: true, fonts: []}, {ratio: 0, value: 'Linux'});
+  assert.equal(singapore.signals[0].points, 0);
+  assert.equal(singapore.signals[4].points, 8);
+});
+
+test('score boundaries, unknown inputs and partial readings never report safe', () => {
+  const tools = load();
+  const make = (timeZone, languages, fonts, locale, offset, ratio) => tools.environmentScore({timeZone, languages, locale, offset}, {available: true, fonts}, {value: 'Test', ratio});
+  const empty = tools.environmentScore({languages: []}, {available: false, fonts: []}, {value: '', ratio: null});
+  assert.equal(empty.complete, false);
+  assert.equal(empty.coverage, 0);
+  assert.equal(empty.signals.every(s => s.points === null), true);
+  assert.match(tools.scoreMarkup(empty), /检测不完整/);
+  assert.doesNotMatch(tools.scoreMarkup(empty), /低特征分/);
+  const low = make('Asia/Shanghai', ['en'], [], 'en', 'UTC+00:00', 0);
+  assert.equal(low.score, 30); assert.equal(low.band, 'low');
+  const mid = make('Asia/Shanghai', ['en'], [], 'en', 'UTC+00:00', 0.125);
+  assert.equal(mid.score, 31); assert.equal(mid.band, 'medium');
+  assert.equal(mid.signals[5].hit, false);
+  const sixty = make('Asia/Shanghai', ['en'], ['Test'], 'zh', 'UTC+00:00', 0);
+  assert.equal(sixty.score, 60); assert.equal(sixty.band, 'medium');
+  const high = make('Asia/Shanghai', ['en'], ['Test'], 'zh', 'UTC+00:00', 0.125);
+  assert.equal(high.score, 61); assert.equal(high.band, 'high');
+  assert.equal(make('Asia/Shanghai', ['zh'], ['Test'], 'zh', 'UTC+08:00', 1).score, 100);
+  const bad = tools.environmentScore({timeZone: '<img src=x onerror=x>', languages: ['<script>'], locale: '<b>', offset: ''}, {available: false, fonts: []}, {ratio: null, value: ''});
+  assert.doesNotMatch(tools.signalsMarkup(bad), /<img|<script>|<b>/);
+  assert.match(tools.signalsMarkup(bad), /&lt;img/);
+  const unavailable = load('zh_CN', {Intl: {DateTimeFormat() {throw Error('blocked');}}, Date: class {getTimezoneOffset() {return NaN;}}, navigator: {}}).inspectEnvironment();
+  assert.equal(unavailable.coverage, 0);
+});
+
+test('font probing uses width differences, handles unavailable canvas and never uploads pixels', () => {
+  const tools = load();
+  assert.equal(tools.detectFonts({}).available, false);
+  assert.equal(tools.detectFonts({document: {createElement() {throw Error('blocked');}}}).available, false);
+  const context = {font: '', measureText() {return {width: this.font.includes('"PingFang SC"') ? 112 : 100};}};
+  const probe = tools.detectFonts({document: {createElement: () => ({getContext: () => context})}});
+  assert.equal(probe.available, true);
+  assert.deepEqual(Array.from(probe.fonts), ['PingFang SC']);
+  assert.equal(tools.emojiStyle({userAgent:'Macintosh'}).ratio, 0.25);
+  assert.equal(tools.emojiStyle({userAgent:'Windows NT'}).value, 'Windows style');
+  assert.equal(tools.emojiStyle({userAgent:'Linux Android 15'}).value, 'Android style');
+  assert.equal(tools.emojiStyle({userAgent:'Linux'}).ratio, 0);
+  assert.equal(tools.emojiStyle({}).ratio, null);
+});
+
+test('Claude probes use separate fixed hosts, omit credentials, and reject invalid traces', async () => {
+  const seen = [];
+  const tools = load('zh_CN', {AbortController, fetch: async (url, options) => {seen.push({url, options}); return {ok: true, text: async () => 'ip=198.51.100.8\nloc=US\ncolo=LAX\n'};}});
+  for (const host of ['claude.com','claude.ai']) {
+    const result = await tools.fetchClaudeTrace(host);
+    assert.equal(result.ip, '198.51.100.8');
+    assert.equal(result.location, 'US');
+  }
+  assert.equal(seen[0].url, 'https://claude.com/cdn-cgi/trace');
+  assert.equal(seen[1].url, 'https://claude.ai/cdn-cgi/trace');
+  assert.equal(seen[0].options.credentials, 'omit');
+  assert.equal(seen[0].options.mode, 'cors');
+  assert.equal(seen[0].options.referrerPolicy, 'no-referrer');
+  await assert.rejects(tools.fetchClaudeTrace('example.org'));
+  assert.equal(seen.length, 2);
+  for (const text of ['<html>blocked</html>', 'ip=:::', 'ip=999.1.1.1', 'loc=US']) assert.throws(() => tools.parseTrace(text));
+  assert.equal(tools.parseTrace('ip=2001:db8::1\nloc=<script>\ncolo=<img>').location, '');
+  assert.equal(tools.ipFamily('::::'), 0);
+  assert.equal(tools.addressScope('::ffff:c0a8:101'), 'private');
+  assert.equal(tools.addressScope('::'), 'reserved');
+  assert.equal(tools.addressScope('ff02::1'), 'reserved');
+});
+
+test('Claude failure and response-body timeouts remain unknown instead of borrowing community IP', async () => {
+  const fail = async fetch => {
+    const tools = load('zh_CN', {AbortController, fetch});
+    try { await tools.fetchClaudeTrace('claude.ai', undefined, 5); } catch(error) { return error.reason; }
+  };
+  assert.equal(await fail(async () => {throw TypeError('CORS');}), 'network');
+  assert.equal(await fail(async () => ({ok:false, status:403})), 'http');
+  assert.equal(await fail(async () => ({ok:true, text:async () => '<html>challenge</html>'})), 'format');
+  const hangingBody = async (_, options) => ({ok:true, text:() => new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(Object.assign(Error('timeout'), {name:'AbortError'}))))});
+  assert.equal(await fail(hangingBody), 'timeout');
+  const tools = load('zh_CN', {AbortController, fetch:async (_, options) => {
+    const response = await hangingBody(_, options); return {...response, json:response.text};
+  }});
+  await assert.rejects(tools.fetchEgress(undefined, 5), e => e.reason === 'timeout');
+});
+
+test('WebRTC error and navigation cancellation close the peer and never report no leak', async () => {
+  let closed = false;
+  class Peer {
+    createDataChannel() {}
+    async createOffer() {throw Error('blocked');}
+    close() {closed = true;}
+  }
+  const tools = load('zh_CN', {RTCPeerConnection:Peer});
+  const result = await tools.collectIceAddresses();
+  assert.equal(closed, true);
+  assert.equal(result.error, true);
+  assert.equal(tools.webrtcResult(result, '203.0.113.9').status, 'unsupported');
+  closed = false;
+  class WaitingPeer extends Peer {async createOffer() {return {};} async setLocalDescription() {}}
+  const waiting = load('zh_CN', {RTCPeerConnection:WaitingPeer});
+  const controller = new AbortController();
+  const pending = waiting.collectIceAddresses(undefined, 1000, controller.signal);
+  controller.abort();
+  assert.equal((await pending).error, true);
+  assert.equal(closed, true);
+  const noBaseline = tools.webrtcResult({supported:true,entries:[{address:'198.51.100.7',scope:'public'}]}, '');
+  assert.equal(noBaseline.status, 'notice');
+  assert.match(noBaseline.html, /无出口基准/);
 });
