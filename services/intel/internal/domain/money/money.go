@@ -6,6 +6,7 @@ package money
 import (
 	"errors"
 	"math"
+	"math/big"
 	"strings"
 )
 
@@ -71,4 +72,25 @@ func BlendedPrice(input, output int64) (int64, error) {
 		return 0, ErrOverflow
 	}
 	return (3*input + output) / 4, nil
+}
+
+// RoundDecimal renders a JSON number (which may use exponents, e.g. "1e-06")
+// as a plain decimal string with at most scale fractional digits, rounding
+// half away from zero. It is exact: big.Rat never goes through float64.
+func RoundDecimal(number string, scale int) (string, error) {
+	if scale < 0 || scale > 9 {
+		return "", ErrInvalidDecimal
+	}
+	r, ok := new(big.Rat).SetString(strings.TrimSpace(number))
+	if !ok || r.Sign() < 0 {
+		return "", ErrInvalidDecimal
+	}
+	out := r.FloatString(scale)
+	if strings.Contains(out, ".") {
+		out = strings.TrimRight(strings.TrimRight(out, "0"), ".")
+	}
+	if out == "" || out == "-0" {
+		out = "0"
+	}
+	return out, nil
 }

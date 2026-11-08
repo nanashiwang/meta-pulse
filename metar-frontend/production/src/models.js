@@ -168,7 +168,14 @@
     return `<section class="card card-pad intel-state" role="alert"><h2>${t('模型榜单暂时不可用', 'The model leaderboard is temporarily unavailable')}</h2><p class="muted">${t('社区其他功能不受影响，请稍后刷新。', 'The rest of the community is unaffected. Please refresh later.')}</p></section>`;
   }
 
-  const updated = (snap) => `<span class="intel-updated muted">${t('数据更新于 ', 'Updated ')}${fmt.time(snap.computed_at)} · ${t('方法 ', 'Method ')}${esc(snap.method_version)}</span>`;
+  // Required credits for third-party data, keyed by import source slug.
+  // LLM Stats data must be credited with a visible link wherever it shows.
+  const SOURCE_CREDITS = {'llm-stats': ['Data by LLM Stats', 'https://llm-stats.com']};
+  const attribution = sources => {
+    const credits = (Array.isArray(sources) ? sources : []).filter(s => SOURCE_CREDITS[s]).map(s => `<a class="intel-credit" href="${SOURCE_CREDITS[s][1]}" target="_blank" rel="noopener">${esc(SOURCE_CREDITS[s][0])}</a>`);
+    return credits.length ? `<span class="intel-attribution">${t('数据来源：', 'Source: ')}${credits.join(' · ')}</span>` : '';
+  };
+  const updated = (snap) => `<span class="intel-updated muted">${t('数据更新于 ', 'Updated ')}${fmt.time(snap.computed_at)} · ${t('方法 ', 'Method ')}${esc(snap.method_version)}</span>${attribution(snap.sources)}`;
 
   class View {
     constructor(fetcher = defaultFetch) { this.fetch = fetcher; this.generation = 0; }
@@ -244,7 +251,8 @@
         ${b && b.composite_bps == null ? `<p class="intel-note muted">${t(`评测覆盖 ${(b.coverage_bps / 100).toFixed(0)}%，未达到计分要求。`, `Benchmark coverage is ${(b.coverage_bps / 100).toFixed(0)}%, below the scoring threshold.`)}</p>` : ''}
         <section class="card card-pad mt16"><h2>${t('价格', 'Pricing')}</h2>${offerings}</section>
         <section class="card card-pad mt16"><h2>${t('评测结果', 'Benchmark results')}</h2>${results}</section>
-        <section class="card card-pad mt16"><h2>${t('讨论这个模型', 'Discuss this model')}</h2><p class="muted">${t('分享使用体验，或指出数据错误。', 'Share your experience or report a data error.')}</p><div class="intel-side-actions mt16">${link('/publish', t('发起讨论', 'Start a discussion'), 'btn primary small')}${link('/search?q=' + encodeURIComponent(d.name), t('搜索相关讨论', 'Search discussions'), 'btn small')}</div></section>`;
+        <section class="card card-pad mt16"><h2>${t('讨论这个模型', 'Discuss this model')}</h2><p class="muted">${t('分享使用体验，或指出数据错误。', 'Share your experience or report a data error.')}</p><div class="intel-side-actions mt16">${link('/publish', t('发起讨论', 'Start a discussion'), 'btn primary small')}${link('/search?q=' + encodeURIComponent(d.name), t('搜索相关讨论', 'Search discussions'), 'btn small')}</div></section>
+        ${attribution(d.sources) ? `<p class="intel-note">${attribution(d.sources)}</p>` : ''}`;
     }
 
     async methodology() {
@@ -263,7 +271,7 @@
           <li>${t('相同分数并列同名次。', 'Equal scores share a rank.')}</li>
         </ol></section>
         <section class="card card-pad mt16"><h2>${t('价格与速度', 'Price and speed')}</h2><p class="muted">${t(`价格与速度不计入综合分。混合价按输入:输出 = ${m.price_blend.input}:${m.price_blend.output} 计算，取模型厂商标准档，没有时取最低报价。速度为最近 ${m.speed_window_hours} 小时测量样本的中位数。`, `Price and speed do not affect the score. Blended price weights input:output ${m.price_blend.input}:${m.price_blend.output}, using the maker's standard offering or else the cheapest listed. Speed is the median of samples from the last ${m.speed_window_hours} hours.`)}</p></section>
-        <section class="card card-pad mt16"><h2>${t('数据原则', 'Data principles')}</h2><ul class="intel-steps"><li>${t('数据来自厂商官方信息、评测原始发布方和本站自测，每个数值标注来源。', 'Data comes from official provider pages, original benchmark publishers and our own measurements. Every figure is sourced.')}</li><li>${t('历史数据只追加不覆盖；纠错以新记录发布。', 'History is append-only; corrections are published as new records.')}</li><li>${t('发现错误？欢迎在社区发帖指出。', 'Spotted an error? Tell us in the community.')} ${link('/publish', t('发起讨论', 'Start a discussion'), 'textlink')}</li></ul></section>`;
+        <section class="card card-pad mt16"><h2>${t('数据原则', 'Data principles')}</h2><ul class="intel-steps"><li>${t('数据来自第三方数据源、厂商官方信息与评测原始发布方，每个数值标注来源；综合分由本站方法计算，不代表数据源的观点。', 'Data comes from third-party data providers, official provider pages and original benchmark publishers, and every figure is sourced. The score is computed with our own method and does not represent the data providers\' views.')}</li>${attribution(m.sources) ? `<li>${attribution(m.sources)}</li>` : ''}<li>${t('历史数据只追加不覆盖；纠错以新记录发布。', 'History is append-only; corrections are published as new records.')}</li><li>${t('发现错误？欢迎在社区发帖指出。', 'Spotted an error? Tell us in the community.')} ${link('/publish', t('发起讨论', 'Start a discussion'), 'textlink')}</li></ul></section>`;
     }
   }
 

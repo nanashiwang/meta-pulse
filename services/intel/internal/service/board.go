@@ -28,6 +28,9 @@ type Inputs struct {
 	// MedianSpeed maps offering slug → median output tokens/s (milli) over the
 	// recent observation window.
 	MedianSpeed map[string]int64
+	// Sources lists every source slug with stored observations; pages must
+	// credit them (e.g. "llm-stats" → "Data by LLM Stats").
+	Sources []string
 }
 
 type ProviderInfo struct {
@@ -89,6 +92,7 @@ type Snapshot struct {
 	MethodVersion string    `json:"method_version"`
 	Fingerprint   string    `json:"fingerprint"`
 	ComputedAt    time.Time `json:"computed_at"`
+	Sources       []string  `json:"sources"`
 	Rows          []Row     `json:"rows"`
 }
 
@@ -154,13 +158,16 @@ func BuildSnapshot(method score.Method, in Inputs, now time.Time) (Snapshot, err
 	}
 	rankRows(rows)
 
-	snap := Snapshot{MethodVersion: method.Version, ComputedAt: now.UTC(), Rows: rows}
+	sources := append([]string{}, in.Sources...)
+	sort.Strings(sources)
+	snap := Snapshot{MethodVersion: method.Version, ComputedAt: now.UTC(), Sources: sources, Rows: rows}
 	// The fingerprint covers what is shown, not when it was computed, so an
 	// unchanged board is recognised and not stored twice.
 	payload, err := json.Marshal(struct {
 		M string
+		S []string
 		R []Row
-	}{method.Version, rows})
+	}{method.Version, sources, rows})
 	if err != nil {
 		return Snapshot{}, err
 	}

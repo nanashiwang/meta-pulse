@@ -250,3 +250,31 @@ func nullString(v string) any {
 	}
 	return v
 }
+
+// LatestPriceKeys returns the newest effective price per offering, so a sync
+// can skip recording prices that did not change.
+func (s *Store) LatestPriceKeys(ctx context.Context, now time.Time) (map[string][2]int64, error) {
+	out := map[string][2]int64{}
+	err := s.each(ctx, `SELECT offering_slug, input_micro_usd, output_micro_usd FROM (
+			SELECT offering_slug, input_micro_usd, output_micro_usd,
+			  ROW_NUMBER() OVER (PARTITION BY offering_slug ORDER BY effective_at DESC, id DESC) AS rn
+			FROM intel_price_snapshot WHERE effective_at <= ?) p WHERE rn = 1`, []any{now}, func(r *sql.Rows) error {
+		var slug string
+		var in, outPrice int64
+		if err := r.Scan(&slug, &in, &outPrice); err != nil {
+			return err
+		}
+		out[slug] = [2]int64{in, outPrice}
+		return nil
+	})
+	return out, err
+}
+
+// LastImportAt reports when a source last completed an import.
+func (s *Store) LastImportAt(ctx context.Context, source string) (time.Time, bool, error) {
+	var t sql.NullTime
+	if err := s.db.QueryRowContext(ctx, `SELECT MAX(created_at) FROM intel_import_run WHERE source_slug = ?`, source).Scan(&t); err != nil {
+		return time.Time{}, false, err
+	}
+	return t.Time.UTC(), t.Valid, nil
+}

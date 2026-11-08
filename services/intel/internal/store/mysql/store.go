@@ -330,6 +330,18 @@ func (s *Store) LoadInputs(ctx context.Context, now time.Time, speedWindow time.
 	}); err != nil {
 		return in, err
 	}
+	in.Sources = []string{}
+	if err := s.each(ctx, `SELECT source_slug FROM intel_price_snapshot UNION SELECT source_slug FROM intel_benchmark_result
+		UNION SELECT source_slug FROM intel_speed_sample ORDER BY source_slug`, nil, func(r *sql.Rows) error {
+		var src string
+		if err := r.Scan(&src); err != nil {
+			return err
+		}
+		in.Sources = append(in.Sources, src)
+		return nil
+	}); err != nil {
+		return in, err
+	}
 	samples := map[string][]int64{}
 	if err := s.each(ctx, `SELECT offering_slug, output_tokens_per_sec_milli FROM intel_speed_sample WHERE measured_at > ? AND measured_at <= ?`,
 		[]any{now.Add(-speedWindow), now}, func(r *sql.Rows) error {

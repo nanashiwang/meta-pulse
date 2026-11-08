@@ -1,0 +1,7 @@
+{"models":[
+ {"id":"example-lab/Alpha Pro 2","name":"Alpha Pro 2","description":"fictional","organization":{"id":"example-lab","name":"Example Lab"},"family":{"id":"alpha","name":"Alpha"},
+  "license":{"id":"proprietary","name":"Proprietary","allow_commercial":true,"open_source":false},"open_weight":false,"model_type":"llm","modalities":["text","image"],
+  "context_window":1000000,"release_date":"2026-10-20","top_scores":{"code":61.5},"inference":{"available":true},"created_at":"2026-10-20T00:00:00Z","updated_at":"2026-11-01T00:00:00Z","source":"llm-stats","url":"https://llm-stats.com/models/alpha-pro-2",
+  "providers":[{"provider_id":"example-lab","provider_name":"Example Lab","input_price_per_m":3,"output_price_per_m":15,"throughput_tps":85.25,"latency_s":0.62,"status":"active"},
+               {"provider_id":"example-host","provider_name":"Example Host","input_price_per_m":2.5,"output_price_per_m":1.2e1,"throughput_tps":null,"latency_s":null,"status":"active"}]}
+ ],"next_cursor":"c2","total":3}

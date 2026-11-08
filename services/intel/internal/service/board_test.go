@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -200,3 +201,16 @@ func (s stubStore) ModelDetail(context.Context, string, time.Time) (ModelDetail,
 	return ModelDetail{}, ErrNotFound
 }
 func (s stubStore) Benchmarks(context.Context) ([]BenchmarkInfo, error) { return nil, nil }
+
+func TestSourcesAreSortedAndFingerprinted(t *testing.T) {
+	in := fixture()
+	in.Sources = []string{"manual", "llm-stats"}
+	a, _ := BuildSnapshot(score.V1, in, now)
+	if strings.Join(a.Sources, ",") != "llm-stats,manual" {
+		t.Fatalf("sources %v", a.Sources)
+	}
+	b, _ := BuildSnapshot(score.V1, fixture(), now)
+	if a.Fingerprint == b.Fingerprint {
+		t.Fatal("adding a source must change the board fingerprint so attribution updates")
+	}
+}

@@ -29,7 +29,8 @@ type ModelDetail struct {
 	Offerings       []OfferingPrice   `json:"offerings"`
 	Results         []BenchmarkResult `json:"benchmark_results"`
 	// Board is the model's leaderboard row from the current snapshot, if any.
-	Board *Row `json:"board,omitempty"`
+	Board   *Row     `json:"board,omitempty"`
+	Sources []string `json:"sources"`
 }
 
 type OfferingPrice struct {
@@ -119,6 +120,7 @@ func (r *Reader) Snapshot(ctx context.Context) (Snapshot, error) {
 type Home struct {
 	ComputedAt    time.Time `json:"computed_at"`
 	MethodVersion string    `json:"method_version"`
+	Sources       []string  `json:"sources"`
 	ModelCount    int       `json:"model_count"`
 	RankedCount   int       `json:"ranked_count"`
 	Leaders       []Leader  `json:"leaders"`
@@ -141,7 +143,7 @@ func (r *Reader) Home(ctx context.Context) (Home, error) {
 	}
 	now := r.now()
 	return Home{
-		ComputedAt: snap.ComputedAt, MethodVersion: snap.MethodVersion,
+		ComputedAt: snap.ComputedAt, MethodVersion: snap.MethodVersion, Sources: nonNil(snap.Sources),
 		ModelCount: len(snap.Rows), RankedCount: ranked,
 		Leaders: Leaders(snap), Preview: Filter(snap, q, now), Recent: Recent(snap, now, 6),
 	}, nil
@@ -150,6 +152,7 @@ func (r *Reader) Home(ctx context.Context) (Home, error) {
 type Board struct {
 	ComputedAt    time.Time `json:"computed_at"`
 	MethodVersion string    `json:"method_version"`
+	Sources       []string  `json:"sources"`
 	Query         Query     `json:"query"`
 	Page
 }
@@ -162,7 +165,7 @@ func (r *Reader) Leaderboard(ctx context.Context, q Query) (Board, error) {
 	if err != nil {
 		return Board{}, err
 	}
-	return Board{ComputedAt: snap.ComputedAt, MethodVersion: snap.MethodVersion, Query: q, Page: Filter(snap, q, r.now())}, nil
+	return Board{ComputedAt: snap.ComputedAt, MethodVersion: snap.MethodVersion, Sources: nonNil(snap.Sources), Query: q, Page: Filter(snap, q, r.now())}, nil
 }
 
 func (r *Reader) Model(ctx context.Context, slug string) (ModelDetail, error) {
@@ -171,7 +174,9 @@ func (r *Reader) Model(ctx context.Context, slug string) (ModelDetail, error) {
 		return d, err
 	}
 	// A missing snapshot only hides the rank; the model page still renders.
+	d.Sources = []string{}
 	if snap, err := r.Snapshot(ctx); err == nil {
+		d.Sources = nonNil(snap.Sources)
 		for _, row := range snap.Rows {
 			if row.Model == slug {
 				row := row
@@ -190,6 +195,7 @@ type Methodology struct {
 	Benchmarks     []BenchmarkInfo `json:"benchmarks"`
 	PriceBlend     map[string]int  `json:"price_blend"`
 	SpeedWindowH   int             `json:"speed_window_hours"`
+	Sources        []string        `json:"sources"`
 }
 
 type MethodWeight struct {
@@ -204,10 +210,20 @@ func (r *Reader) Methodology(ctx context.Context, speedWindow time.Duration) (Me
 	}
 	m := Methodology{
 		Version: r.method.Version, MinCoverageBps: r.method.MinCoverageBps, Benchmarks: benches,
-		PriceBlend: map[string]int{"input": 3, "output": 1}, SpeedWindowH: int(speedWindow / time.Hour),
+		PriceBlend: map[string]int{"input": 3, "output": 1}, SpeedWindowH: int(speedWindow / time.Hour), Sources: []string{},
+	}
+	if snap, err := r.Snapshot(ctx); err == nil {
+		m.Sources = nonNil(snap.Sources)
 	}
 	for _, w := range r.method.Weights {
 		m.Weights = append(m.Weights, MethodWeight{string(w.Dimension), w.Weight})
 	}
 	return m, nil
+}
+
+func nonNil(v []string) []string {
+	if v == nil {
+		return []string{}
+	}
+	return v
 }

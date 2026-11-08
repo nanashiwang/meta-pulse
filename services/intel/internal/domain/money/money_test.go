@@ -48,3 +48,25 @@ func TestBlendedPrice(t *testing.T) {
 		t.Fatalf("overflow not detected: %v", err)
 	}
 }
+
+func TestRoundDecimal(t *testing.T) {
+	cases := map[string]string{"2.5": "2.5", "15": "15", "1e-06": "0.000001", "0.0000015": "0.000002", "94.2": "94.2", "87.305": "87.31", "0": "0", "1.10": "1.1"}
+	for in, want := range cases {
+		scale := MicroScale
+		if in == "87.305" {
+			scale = BpsScale
+		}
+		got, err := RoundDecimal(in, scale)
+		if err != nil || got != want {
+			t.Errorf("RoundDecimal(%q, %d) = %q, %v; want %q", in, scale, got, err, want)
+		}
+		if _, err := ParseScaled(got, scale); err != nil {
+			t.Errorf("result %q does not parse back: %v", got, err)
+		}
+	}
+	for _, bad := range []string{"-1", "abc", "", "NaN"} {
+		if _, err := RoundDecimal(bad, 2); err == nil {
+			t.Errorf("accepted %q", bad)
+		}
+	}
+}

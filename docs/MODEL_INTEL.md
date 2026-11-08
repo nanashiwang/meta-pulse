@@ -242,3 +242,20 @@ docker compose --profile intel up -d intel-api intel-worker
 ```
 
 导入文件格式见[示例](../services/intel/testdata/example-import.json)（虚构数据，禁止导入生产）。价格写美元/百万 token 的十进制字符串，评测 `percent` 单位最多两位小数，第三方评测结果必须带 `source_url`。
+
+## 自动数据源：LLM Stats（2026-11-08）
+
+`intel-worker` 在配置 `INTEL_LLMSTATS_API_KEY` 后，每 `INTEL_LLMSTATS_SYNC_INTERVAL`（默认 24h，从上次成功导入起算，重启不额外消耗配额）调用 [LLM Stats 数据 API](https://docs.llm-stats.com)（`https://api.llm-stats.com/stats/v1`）：
+
+| 接口 | 用途 |
+|---|---|
+| `/v1/models`（游标分页，200/页） | 模型目录、组织、上下文、许可、开放权重、各服务商价格（`input/output_price_per_m`）与吞吐（`throughput_tps`）、延迟 |
+| `/v1/benchmarks` | 评测定义与分类，分类映射到维度：code→编程，agents/tool-use→Agent，reasoning/math/general/knowledge/science→推理，其余仅在详情页展示 |
+| `/v1/scores`（游标分页，500/页） | 每项成绩，统一换算为满分百分比；标注自报（self-reported） |
+
+- 一次同步约 10–40 次请求，远低于每日配额；遇 429 按 `Retry-After` 重试一次，请求间隔 1.1 秒以低于每分钟突发上限。
+- 转换后整份文档必须通过导入校验才写入，单事务；外部数据不会部分落库。价格未变化不重复记录；速度按同步日记一条样本。
+- 综合分仍由本站 v1 方法计算，不复制 LLM Stats 的品牌综合分。
+- **署名**：快照记录数据来源，任何包含 `llm-stats` 来源的页面自动显示带链接的 “Data by LLM Stats”。
+- **授权**：LLM Stats 网站条款允许署名转载，但数据 API 免费/Builder 计划写明不得再发布，商业合约另议。公开展示前应与对方书面确认。
+- 首次启用前用 `metar-intel-tool sync-llmstats --dry-run` 验证密钥并查看维度分布与未映射分类，再按需调整 [映射](../services/intel/internal/source/llmstats/convert.go)。

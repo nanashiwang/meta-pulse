@@ -4,6 +4,7 @@
 //	metar-intel-tool migrate up|status
 //	metar-intel-tool import [--dry-run] <file.json>
 //	metar-intel-tool score
+//	metar-intel-tool sync-llmstats [--dry-run]
 package main
 
 import (
@@ -18,6 +19,7 @@ import (
 	"github.com/nanashiwang/meta-pulse/services/intel/internal/config"
 	"github.com/nanashiwang/meta-pulse/services/intel/internal/domain/score"
 	"github.com/nanashiwang/meta-pulse/services/intel/internal/service"
+	"github.com/nanashiwang/meta-pulse/services/intel/internal/source/llmstats"
 	mysqlstore "github.com/nanashiwang/meta-pulse/services/intel/internal/store/mysql"
 	"github.com/nanashiwang/meta-pulse/services/intel/migrations"
 )
@@ -31,7 +33,7 @@ func main() {
 
 func run(args []string, out io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("usage: metar-intel-tool migrate up|status | import [--dry-run] <file.json> | score")
+		return errors.New("usage: metar-intel-tool migrate up|status | import [--dry-run] <file.json> | score | sync-llmstats [--dry-run]")
 	}
 	// A dry run validates the file shape without a database, so documents can
 	// be checked locally or in CI.
@@ -49,6 +51,16 @@ func run(args []string, out io.Writer) error {
 		return nil
 	}
 
+	// The llm-stats dry run fetches and validates without a database, to check
+	// a new API key and the category mapping before enabling the sync.
+	if args[0] == "sync-llmstats" && len(args) == 2 && args[1] == "--dry-run" {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+		defer cancel()
+		base := os.Getenv("INTEL_LLMSTATS_BASE_URL")
+		res, err := llmstats.Sync(ctx, llmstats.NewClient(base, os.Getenv("INTEL_LLMSTATS_API_KEY")), nil, time.Now(), true)
+		fmt.Fprintf(out, "requests: %d\n%s\n", res.Requests, res.Report)
+		return err
+	}
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -86,6 +98,13 @@ func run(args []string, out io.Writer) error {
 		fmt.Fprintf(out, "imported from %s: %d catalog rows, %d observations added, %d already present\n", b.Source.Slug, st.CatalogRows, st.Added, st.Skipped)
 		return score1(ctx, out, store, cfg)
 	case args[0] == "score" && len(args) == 1:
+		return score1(ctx, out, store, cfg)
+	case args[0] == "sync-llmstats" && len(args) == 1:
+		res, err := llmstats.Sync(ctx, llmstats.NewClient(cfg.LLMStatsBaseURL, cfg.LLMStatsAPIKey), store, time.Now(), false)
+		fmt.Fprintf(out, "requests: %d\n%s\nadded %d, already present %d\n", res.Requests, res.Report, res.Stats.Added, res.Stats.Skipped)
+		if err != nil {
+			return err
+		}
 		return score1(ctx, out, store, cfg)
 	}
 	return fmt.Errorf("unknown command %q", args)

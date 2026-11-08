@@ -1,0 +1,9 @@
+{"models":[
+ {"id":"open-org/open-7b","name":"Open 7B","description":"fictional","organization":{"id":"open-org","name":"Open Org"},"family":null,
+  "license":{"id":"apache-2.0","name":"Apache 2.0","allow_commercial":true,"open_source":true},"open_weight":true,"model_type":"llm","modalities":["text"],
+  "context_window":null,"release_date":"2026-08-01","top_scores":{},"inference":{"available":false},"created_at":"2026-08-01T00:00:00Z","updated_at":"2026-08-01T00:00:00Z","source":"llm-stats","url":"",
+  "providers":[{"provider_id":"example-host","provider_name":"Example Host","input_price_per_m":0.1,"output_price_per_m":0.2,"throughput_tps":240,"latency_s":0.18,"status":"active"}]},
+ {"id":"example-lab/next","name":"Next Preview","description":"fictional","organization":{"id":"example-lab","name":"Example Lab"},"family":null,
+  "license":{"id":"proprietary","name":"Proprietary","allow_commercial":true,"open_source":false},"open_weight":false,"model_type":"llm","modalities":["text"],
+  "context_window":200000,"release_date":"2027-01-15","top_scores":{},"inference":{"available":false},"created_at":"2026-11-01T00:00:00Z","updated_at":"2026-11-01T00:00:00Z","source":"llm-stats","url":"https://llm-stats.com/models/next","providers":[]}
+ ],"next_cursor":null,"total":3}

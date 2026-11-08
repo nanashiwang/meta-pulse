@@ -260,6 +260,10 @@ services:
       INTEL_ENV: ${PULSE_ENV:-development}
       INTEL_DB_DSN: ${INTEL_DB_DSN:-intel:${INTEL_DB_PASSWORD:-}@tcp(intel-mysql:3306)/metar_intel}
       INTEL_SCORE_INTERVAL: ${INTEL_SCORE_INTERVAL:-5m}
+      # LLM Stats data API (Bearer key). Empty disables the daily sync.
+      INTEL_LLMSTATS_API_KEY: ${INTEL_LLMSTATS_API_KEY:-}
+      INTEL_LLMSTATS_BASE_URL: ${INTEL_LLMSTATS_BASE_URL:-https://api.llm-stats.com/stats}
+      INTEL_LLMSTATS_SYNC_INTERVAL: ${INTEL_LLMSTATS_SYNC_INTERVAL:-24h}
       INTEL_SPEED_WINDOW: ${INTEL_SPEED_WINDOW:-168h}
     depends_on:
       intel-mysql:

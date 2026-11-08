@@ -19,6 +19,10 @@ type Config struct {
 	// AdminSecrets holds the active and optional previous HMAC secret shared
 	// with the forum plugin. Empty disables the admin API entirely.
 	AdminSecrets [][]byte
+	// LLM Stats data API. An empty key disables the automatic sync.
+	LLMStatsAPIKey       string
+	LLMStatsBaseURL      string
+	LLMStatsSyncInterval time.Duration
 }
 
 func Load() (Config, error) {
@@ -49,6 +53,11 @@ func Load() (Config, error) {
 	}
 	if os.Getenv("INTEL_ADMIN_HMAC_SECRET") == "" && len(c.AdminSecrets) > 0 {
 		return c, errors.New("INTEL_ADMIN_HMAC_SECRET_PREVIOUS requires INTEL_ADMIN_HMAC_SECRET")
+	}
+	c.LLMStatsAPIKey = os.Getenv("INTEL_LLMSTATS_API_KEY")
+	c.LLMStatsBaseURL = env("INTEL_LLMSTATS_BASE_URL", "https://api.llm-stats.com/stats")
+	if c.LLMStatsSyncInterval, err = duration("INTEL_LLMSTATS_SYNC_INTERVAL", 24*time.Hour, time.Hour, 7*24*time.Hour); err != nil {
+		return c, err
 	}
 	if c.DBDSN == "" {
 		return c, errors.New("INTEL_DB_DSN is required")

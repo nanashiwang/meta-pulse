@@ -1,0 +1,6 @@
+{"benchmarks":[
+ {"id":"gpqa-diamond","name":"GPQA Diamond","categories":["reasoning","science"],"modality":"text","max_score":100,"language":"en","verified":true,"model_count":2,"source":"llm-stats","url":"https://llm-stats.com/benchmarks/gpqa-diamond"},
+ {"id":"swe-verified","name":"SWE-bench Verified","categories":["code","agents"],"modality":"text","max_score":1,"language":"en","verified":true,"model_count":2,"source":"llm-stats","url":"https://llm-stats.com/benchmarks/swe-verified"},
+ {"id":"tau-retail","name":"Tau Retail","categories":["agents"],"modality":"text","max_score":100,"language":"en","verified":false,"model_count":1,"source":"llm-stats","url":"https://llm-stats.com/benchmarks/tau-retail"},
+ {"id":"poem-arena","name":"Poem Arena","categories":["creative-writing"],"modality":"text","max_score":100,"language":"en","verified":false,"model_count":1,"source":"llm-stats","url":"https://llm-stats.com/benchmarks/poem-arena"}
+]}
