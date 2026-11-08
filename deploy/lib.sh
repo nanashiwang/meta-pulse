@@ -175,7 +175,7 @@ compose() (
   local key
   for key in $(compgen -e); do
     case "$key" in
-      PULSE_*|NEWAPI_*|FORUM_*|INTEL_*|COMPOSE_*|SSL_CERT_FILE|META_PULSE_CA_DIR|META_PULSE_MYSQL_IMAGE|META_PULSE_MYSQL_CLIENT_IMAGE) unset "$key" ;;
+      PULSE_*|NEWAPI_*|FORUM_*|INTEL_*|DNS_PROBE_*|COMPOSE_*|SSL_CERT_FILE|META_PULSE_CA_DIR|META_PULSE_MYSQL_IMAGE|META_PULSE_MYSQL_CLIENT_IMAGE) unset "$key" ;;
     esac
   done
   local -a compose_files=(-f "$COMPOSE_FILE")
@@ -200,6 +200,9 @@ compose() (
   local -a profiles=()
   if intel_enabled; then
     profiles=(--profile intel)
+  fi
+  if dnsprobe_enabled; then
+    profiles+=(--profile dnsprobe)
   fi
   # ${a[@]+...} keeps bash 3.2 (macOS) happy with an empty array under set -u.
   docker compose --env-file "$ENV_FILE" "${compose_files[@]}" ${profiles[@]+"${profiles[@]}"} "$@"
@@ -398,4 +401,31 @@ backup_forum_data() {
   mkdir -p "$destination"
   chmod 700 "$destination"
   docker cp "$container:/data/." "$destination/" >/dev/null
+}
+
+# Fixed zone/origin are intentionally not caller-controlled; production must
+# delegate dnsprobe.metarhub.com to the configured authoritative source IP.
+dnsprobe_enabled() { [[ "$(env_value DNS_PROBE_ENABLED)" == true ]]; }
+validate_dnsprobe_environment() {
+  local enabled
+  enabled="$(env_value DNS_PROBE_ENABLED)"
+  [[ -z "$enabled" || "$enabled" == false || "$enabled" == true ]] || die "DNS_PROBE_ENABLED 必须为 true/false"
+  dnsprobe_enabled || return 0
+  python3 - "$(env_value DNS_PROBE_BIND_IP)" <<'PYDNS'
+import ipaddress, sys
+try:
+    address = ipaddress.ip_address(sys.argv[1])
+    assert address.version == 4 and address.is_global
+except (ValueError, AssertionError):
+    sys.exit('DNS_PROBE_BIND_IP 必须为本机可绑定的公网 IPv4，不能留空或使用 0.0.0.0')
+PYDNS
+}
+# Independent optional module: a probe failure must not stop the community.
+rollout_dnsprobe() {
+  dnsprobe_enabled || return 0
+  validate_dnsprobe_environment || return 1
+  if (( NO_BUILD == 0 )); then compose build dnsprobe || return 1; fi
+  compose up -d --no-deps dnsprobe || return 1
+  wait_for_service dnsprobe 60 || return 1
+  log "DNS 探测进程就绪；仍需实际 NS 委派与公网 UDP/TCP 53 验收"
 }

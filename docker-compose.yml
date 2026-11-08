@@ -1,4 +1,25 @@
 services:
+  dnsprobe:
+    profiles: [dnsprobe]
+    build:
+      context: .
+      dockerfile: services/dnsprobe/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${DNS_PROBE_BIND_IP:-127.0.0.1}:53:5353/udp"
+      - "${DNS_PROBE_BIND_IP:-127.0.0.1}:53:5353/tcp"
+    expose: ["8091"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 128m
+    pids_limit: 64
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1:8091/readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   mysql:
     image: ${META_PULSE_MYSQL_IMAGE:-mysql:8.0}
     restart: unless-stopped

@@ -76,7 +76,7 @@ test('complete Claude panel preserves privacy, honest unavailable states and nav
     for (const key of ['egress', 'webrtc', 'env', 'dns', 'claude-0', 'claude-1']) assert.match(html, new RegExp(`data-check="${key}"`));
     assert.doesNotMatch(html, /localStorage|sessionStorage|sendBeacon/);
     assert.match(html, lang === 'zh_CN' ? /不会保存或上传/ : /never stored or uploaded/);
-    assert.match(html, lang === 'zh_CN' ? /尚未接入专用 DNS/ : /dedicated DNS probe is not connected/);
+    assert.match(html, lang === 'zh_CN' ? /一次性随机域名/ : /one-time hostname/);
   }
 });
 
@@ -286,9 +286,9 @@ test('production CSP permits only fixed Claude trace paths on both shell entries
   const policies = [...nginx.matchAll(/add_header Content-Security-Policy "([^"]+)"/g)].map(m => m[1]);
   assert.equal(policies.length, 2);
   for (const policy of policies) {
-    assert.match(policy, /connect-src 'self' https:\/\/claude\.com\/cdn-cgi\/trace https:\/\/claude\.ai\/cdn-cgi\/trace;/);
+    assert.match(policy, /connect-src 'self' https:\/\/claude\.com\/cdn-cgi\/trace https:\/\/claude\.ai\/cdn-cgi\/trace https:\/\/\*\.dnsprobe\.metarhub\.com;/);
     assert.match(policy, /script-src 'self'; style-src 'self';/);
-    assert.doesNotMatch(policy, /unsafe-inline|connect-src[^;]*\*/);
+    assert.doesNotMatch(policy, /unsafe-inline|connect-src[^;]*https:\/\/\*;/);
   }
 });
 
@@ -315,7 +315,7 @@ test('view rescans all probes, prevents overlapping scans and disposes pending r
   await view.egress;
   const run = node('[data-tool-run]');
   await run.listeners.click();
-  assert.equal(requests.length, 4);
+  assert.equal(requests.length, 5);
   assert.equal(run.disabled, false);
   assert.match(node('[data-claude-result="0"]').innerHTML, /198\.51\.100\.8/);
   assert.match(node('[data-webrtc-result]').innerHTML, /不支持或已禁用/);
@@ -323,11 +323,43 @@ test('view rescans all probes, prevents overlapping scans and disposes pending r
   const scan = run.listeners.click();
   assert.equal(run.disabled, true);
   await run.listeners.click();
-  assert.equal(requests.length, 7);
+  assert.equal(requests.length, 9);
   const markup = node('[data-claude-result="0"]').innerHTML;
   view.dispose();
   await scan;
-  assert.equal(pending.length, 3);
+  assert.equal(pending.length, 4);
   assert.equal(pending.every(signal=>signal.aborted), true);
   assert.equal(node('[data-claude-result="0"]').innerHTML, markup);
+});
+
+test('DNS uses random authoritative name and independent private lookup token', async () => {
+  const requests=[];
+  const token='a'.repeat(32), hostname='b'.repeat(32)+'.dnsprobe.metarhub.com';
+  const tools=load('zh_CN', {AbortController,setTimeout:(fn,ms)=>setTimeout(fn,ms===1000?0:ms),fetch:async(url,options)=>{
+    requests.push({url,options});
+    if(url.endsWith('/start'))return {ok:true,json:async()=>({token,hostname})};
+    if(url.endsWith('/result'))return {ok:true,json:async()=>({resolvers:['1.1.1.1','1.1.1.1','2606:4700:4700::1111']})};
+    throw new TypeError('Expected NXDOMAIN');
+  }});
+  const addresses=await tools.collectDNS();
+  assert.equal(addresses.length,2);
+  assert.equal(requests[1].url,'https://'+hostname+'/');
+  assert.equal(requests[1].options.credentials,'omit');
+  assert.equal(requests[1].options.referrerPolicy,'no-referrer');
+  assert.equal(requests[1].url.includes(token),false);
+  assert.equal(JSON.parse(requests[2].options.body).token,token);
+  assert.equal(tools.dnsResult(addresses).status,'info');
+  assert.match(tools.dnsResult(addresses).html,/地区未核实/);
+  assert.equal(tools.dnsResult([]).status,'none');
+  assert.match(tools.dnsResult([]).html,/不能据此判定没有泄露/);
+});
+test('DNS rejects foreign probe destinations and malformed resolver output',async()=>{
+  for(const hostname of ['evil.example','a.dnsprobe.metarhub.com.evil.test','x'.repeat(32)+'.dnsprobe.metarhub.com']){
+    let count=0;
+    const tools=load('zh_CN',{AbortController,fetch:async()=>{count++;return {ok:true,json:async()=>({token:'a'.repeat(32),hostname})};}});
+    await assert.rejects(tools.collectDNS(),e=>e.reason==='format');assert.equal(count,1);
+  }
+  const controller=new AbortController();controller.abort();
+  const tools=load('zh_CN',{AbortController,fetch:async(_,options)=>{assert.equal(options.signal.aborted,true);throw Object.assign(Error('aborted'),{name:'AbortError'});}});
+  await assert.rejects(tools.collectDNS(undefined,controller.signal));
 });

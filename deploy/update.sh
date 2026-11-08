@@ -137,6 +137,7 @@ fi
 check_host_prerequisites
 require_existing_env_file
 validate_environment
+validate_dnsprobe_environment
 if (( SKIP_WORKER == 0 )); then
   validate_worker_environment
 fi
@@ -357,6 +358,8 @@ if (( INTEL_ROLLOUT == 1 )); then
     compose logs --tail=80 intel-api intel-worker intel-mysql 2>&1 || true
   fi
 fi
+
+if ! rollout_dnsprobe; then warn "DNS 探测服务更新失败，论坛与 Pulse 不受影响"; fi
 
 if [[ -n "$RELEASE_TAG" ]]; then
   for service in pulse-api pulse-worker forum; do

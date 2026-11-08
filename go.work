@@ -3,6 +3,7 @@
 go 1.25.0
 
 use (
+	./services/dnsprobe
 	./services/forum-plugin/user-center-pulse
 	./services/intel
 	./services/pulse

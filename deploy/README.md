@@ -312,3 +312,7 @@ export PATH="$HOME/.local/bin:$PATH"
 ## 基础设施外置与完整恢复集
 
 默认仍使用本地 MySQL/Redis。独立外部模式、TLS/连接池、Answer 连接同步、`metar backup`、加密仓库回读、恢复演练和定时器见 [基础设施操作说明](../docs/INFRASTRUCTURE.md)。外部模式必须使用本项目部署入口组合对应 overlays，不直接执行裸 `docker compose up`。
+
+## 可选 DNS 出口探测
+
+设置 `DNS_PROBE_ENABLED=true` 和本机公网 `DNS_PROBE_BIND_IP` 后，安装/更新脚本独立构建与重建 dnsprobe 服务；失败告警不阻断论坛或 Pulse。必须完成子域 NS 委派、UDP/TCP 53 和浏览器实际回读，详见 [DNS 探测](../docs/DNS_PROBE.md)。仅发布代码不会自动启用服务。

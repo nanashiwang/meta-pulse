@@ -3,8 +3,8 @@
 
 # The repo root is not a Go module, so `./...` does not resolve across the
 # workspace. Every Go target lists module paths explicitly.
-GO_MODULES := ./services/pulse/... ./services/forum-plugin/user-center-pulse/... ./services/intel/...
-GO_DIRS := services/pulse services/forum-plugin services/intel
+GO_MODULES := ./services/dnsprobe/... ./services/pulse/... ./services/forum-plugin/user-center-pulse/... ./services/intel/...
+GO_DIRS := services/dnsprobe services/pulse services/forum-plugin services/intel
 
 help:
 	@echo "Meta Pulse monorepo"
@@ -43,6 +43,7 @@ deploy-test:
 	./deploy/test.sh
 
 deploy-config-test:
+	python3 -m unittest deploy/test_dnsprobe.py -v
 	./deploy/config-test.sh
 
 # Refuse a green run made entirely of skipped database tests.

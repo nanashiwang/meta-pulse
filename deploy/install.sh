@@ -62,6 +62,7 @@ done
 check_host_prerequisites
 ensure_env_file
 validate_environment
+validate_dnsprobe_environment
 if (( SKIP_WORKER == 0 )); then
   validate_worker_environment
 fi
@@ -133,6 +134,8 @@ if (( GATEWAY_ENABLED == 1 )); then
   wait_for_service gateway 120 || die "社区网关未就绪"
   compose exec -T gateway nginx -t
 fi
+
+if ! rollout_dnsprobe; then warn "DNS 探测服务更新失败，论坛与 Pulse 不受影响"; fi
 
 trap - ERR
 log "首次部署完成"

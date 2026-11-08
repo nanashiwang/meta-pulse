@@ -44,3 +44,5 @@ Status: implemented
 - 新增工具只需追加 `TOOLS` 条目、页面实现、`routes.json` 路由并重新生成。
 - WebRTC 检测会向第三方 STUN 服务暴露访客的公网地址，因此保持用户点击触发并在页面说明。
 - 未来提供 DNS 泄露或 IP 归属需要独立服务或第三方数据，届时需单独评审隐私与依赖边界。
+
+DNS 暂不实现的范围由[自建权威 DNS 探测](../architecture/2026-11-09-authoritative-dns-leak-probe.md)部分取代；其他决定继续有效。

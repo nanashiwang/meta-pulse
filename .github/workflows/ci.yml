@@ -46,10 +46,15 @@ jobs:
           fi
 
       - name: Vet
-        run: go vet ./services/pulse/... ./services/forum-plugin/user-center-pulse/...
+        run: go vet ./services/dnsprobe/... ./services/pulse/... ./services/forum-plugin/user-center-pulse/...
 
       - name: Test
         run: make test
+
+      - name: DNS probe race and image checks
+        run: |
+          go test -race ./services/dnsprobe/...
+          docker build -f services/dnsprobe/Dockerfile -t metar-dnsprobe:ci .
 
       - name: Production Compose role configuration
         run: make deploy-config-test

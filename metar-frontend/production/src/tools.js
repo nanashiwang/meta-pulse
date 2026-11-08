@@ -1,4 +1,4 @@
-/* Lightweight community tools. Results stay on this page; nothing is stored or uploaded. */
+/* Local environment signals; DNS observations live in isolated server memory for at most 90 seconds. */
 (function(root) {
   'use strict';
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -292,6 +292,55 @@
     } finally { env.clearTimeout(timer); signal?.removeEventListener('abort', cancel); }
   }
 
+  async function dnsRequest(action, payload, env = root, signal) {
+    const controller = new env.AbortController();
+    const cancel = () => controller.abort();
+    signal?.addEventListener('abort', cancel, {once:true});
+    if (signal?.aborted) cancel();
+    const timer = env.setTimeout(cancel, 5000);
+    try {
+      const response = await env.fetch(`/metar/api/tools/dns/${action}`, {
+        method:'POST', credentials:'omit', cache:'no-store', signal:controller.signal,
+        headers:{'Content-Type':'application/json','X-Metar-DNS-Probe':'1'}, body:JSON.stringify(payload),
+      });
+      if (!response.ok) throw new EgressError('http', response.status);
+      return await response.json();
+    } finally {env.clearTimeout(timer);signal?.removeEventListener('abort',cancel);}
+  }
+  function dnsDelay(env, signal) {
+    return new Promise((resolve,reject) => {
+      const cancel=()=>{env.clearTimeout(timer);signal?.removeEventListener('abort',cancel);reject(new Error('cancelled'));};
+      const timer=env.setTimeout(()=>{signal?.removeEventListener('abort',cancel);resolve();},1000);
+      signal?.addEventListener('abort',cancel,{once:true});if(signal?.aborted)cancel();
+    });
+  }
+  async function collectDNS(env = root, signal) {
+    const session = await dnsRequest('start', {}, env, signal);
+    if (!/^[0-9a-f]{32}$/.test(session?.token || '') || !new RegExp(`^[0-9a-f]{32}\\.dnsprobe\\.metarhub\\.com$`).test(session?.hostname || '')) throw new EgressError('format');
+    const trigger = new env.AbortController();
+    const cancel=()=>trigger.abort();signal?.addEventListener('abort',cancel,{once:true});
+    if(signal?.aborted)cancel();
+    try {
+      // NXDOMAIN is intentional: the authoritative DNS observation is the result.
+      // No credentials/referrer, no content download and no TLS server required.
+      env.fetch(`https://${session.hostname}/`,{mode:'no-cors',credentials:'omit',cache:'no-store',referrerPolicy:'no-referrer',signal:trigger.signal}).catch(()=>{});
+      let addresses=[];
+      for(let i=0;i<12;i++) {
+        await dnsDelay(env,signal);
+        const result=await dnsRequest('result',{token:session.token},env,signal);
+        if (!Array.isArray(result?.resolvers) || result.resolvers.length>32 || result.resolvers.some(ip=>typeof ip!=='string'||!ipFamily(ip))) throw new EgressError('format');
+        addresses=[...new Set(result.resolvers.map(normalizeIP))];
+        // Allow multiple upstreams to arrive, even after the first result.
+        if(addresses.length && i>=3)break;
+      }
+      return addresses;
+    } finally {cancel();signal?.removeEventListener('abort',cancel);}
+  }
+  function dnsResult(addresses) {
+    if(!addresses.length)return {status:'none',html:`<p>${t('未观测到递归查询：可能是 DNS 委派、53 端口、浏览器安全 DNS、缓存或代理解析路径限制。不能据此判定没有泄露。','No recursive query observed. Check delegation, port 53, browser secure DNS, caching or proxy resolution. This does not prove there is no leak.')}</p>`};
+    return {status:'info',html:`<p>${t('已观测到本次浏览器探测的 DNS 递归出口：','Observed recursive DNS egress for this browser probe:')}</p><ul class="tool-address-list">${addresses.map(ip=>`<li><code>${esc(ip)}</code><span class="muted">${t('地区未核实 · 不作安全判定','Region unverified · No safety verdict')}</span></li>`).join('')}</ul><p class="small muted">${t('这是权威端看到的最后一级递归出口，可能来自浏览器 DoH、系统 DNS 或代理。仅适用于本轮浏览器探测，不代表全部应用的 DNS 路径。','This is the final recursive hop seen by the authority. It may belong to browser DoH, system DNS or a proxy; it does not describe every application’s DNS path.')}</p>`};
+  }
+
   const SIGNAL_COPY = [
     ['系统时区', 'System time zone', '读取 Intl.DateTimeFormat 的时区，与 Asia/Shanghai、Asia/Urumqi 等时区比对。浏览器覆盖设置可能与终端不同。', 'Reads the Intl time zone and compares it with Asia/Shanghai, Asia/Urumqi and aliases. Browser overrides can differ from the terminal.', '◷'],
     ['浏览器语言', 'Browser languages', '读取 navigator.languages；首选 zh-CN / zh-Hans / zh 得满分，其他位置的中文偏好得半分。', 'Reads navigator.languages. Primary zh-CN / zh-Hans / zh receives full weight; other Chinese preferences receive half.', '◎'],
@@ -334,21 +383,21 @@
     return `<section class="ce-section ce-method" id="ce-method"><div class="ce-section-heading"><span class="ce-section-number">03</span><div><h2>${t('检测原理', 'How detection works')}</h2><p>${t('把可观察的信号和不可确认的结论分开。', 'Separate observable signals from unverified conclusions.')}</p></div></div>
       ${p('当 Claude Code 通过 <code>ANTHROPIC_BASE_URL</code> 指向中转端点时，部分公开逆向分析认为，它可能读取系统时区与中转 hostname，再把标记编码进 system prompt 的日期分隔符与相似撇号。下面保留这项研究的解释，但本页未独立验证各版本客户端的行为，也无法确认它如何影响账户判定。', 'Some public reverse-engineering reports describe Claude Code reading the time zone and relay hostname when using <code>ANTHROPIC_BASE_URL</code>, then encoding markers in system-prompt dates and apostrophes. This page explains the claim but has not independently verified client versions or account enforcement.')}
       ${p('网页读不到 Claude Code 能读的全部信息，也读不到终端环境变量。本工具读取浏览器暴露的时区，叠加语言、中文字体、Intl locale、UTC+8 偏移与 Emoji 风格六项信号，按 <strong>30 / 24 / 20 / 10 / 8 / 8</strong> 加权。每项系数为 0–1，贡献分四舍五入后相加；系数 ≥0.25 计为命中。分档：<strong>低 0–30、中 31–60、高 61–100</strong>。未知项目保留为未知，不把缺失结果算成安全。', 'A web page cannot read every CLI signal or terminal environment variables. This local model weights time zone, languages, Chinese fonts, Intl locale, UTC+8 offset and emoji style at <strong>30 / 24 / 20 / 10 / 8 / 8</strong>. Each coefficient is 0–1; rounded contributions are summed. Coefficients ≥0.25 count as matches. Bands: <strong>low 0–30, medium 31–60, high 61–100</strong>. Missing results stay unknown, not safe.')}
-      <div class="ce-info-note">${t('隐私边界：环境特征仅在本页计算，不会保存或上传。网络请求会向目标网站和 STUN 服务暴露请求源 IP；本工具不读取 Claude 账号、Cookie、API Key 或对话。', 'Privacy: environment signals are computed locally and never stored or uploaded. Network probes reveal the source IP to their destination and STUN service. No Claude account, cookies, API keys or conversations are read.')}</div>
+      <div class="ce-info-note">${t('隐私边界：环境特征仅在本页计算，不会保存或上传。DNS 服务仅在内存保留随机探测标识与递归出口 IP，最长 90 秒。网络请求会向目标网站和 STUN 服务暴露请求源 IP；本工具不读取 Claude 账号、Cookie、API Key 或对话。', 'Privacy: environment signals are computed locally and never stored or uploaded. DNS probe identifiers and resolver IPs are retained in server memory for up to 90 seconds. Network probes reveal the source IP to their destination and STUN service. No Claude account, cookies, API keys or conversations are read.')}</div>
     </section>
     <section class="ce-section" id="ce-faq"><div class="ce-section-heading"><span class="ce-section-number">04</span><div><h2>${t('常见问题', 'Frequently asked questions')}</h2><p>${t('关于分数、时区和检测范围。', 'About the score, time zone and measurement limits.')}</p></div></div>
       ${faq('Claude 真的会检查我的时区吗？', 'Does Claude really check my time zone?', '公开逆向分析有相关说法，不能据此认定所有版本都如此。本页通过 Intl.DateTimeFormat 读取浏览器报告的时区；通常来自系统，但隐私设置或扩展可以覆盖它，所以不保证与 Claude Code 终端读到的完全一致。', 'Public reverse-engineering reports make this claim, but it is not verified for every version. Intl.DateTimeFormat reports the browser time zone, usually derived from the system. Extensions and privacy settings can override it; it may differ from a terminal.')}
       ${faq('这个分数就是 Claude 的真实判定吗？', 'Is this score Claude’s actual decision?', '不是。它是本页透明、可解释的特征加权，不是官方检测接口，也不是封号概率。中文语言、中文字体或 Apple 设备都不能证明用户的国籍或所在地；网络连通也不代表账号可正常使用。', 'No. It is a transparent local heuristic, not an official API or ban probability. Chinese languages, fonts or an Apple device do not establish nationality or location. Connectivity also does not prove account access.')}
       ${faq('怎么降低分数？', 'How can I lower the score?', '先展开信号看具体命中。调整语言偏好、系统时区或字体可能改变本页分数，但请按实际使用需要设置，不要为了低分删除必要字体。浏览器设置不一定影响终端，低分也不保证稳定或合规。网络隐私应检查代理分流、WebRTC 和 DNS 是否符合你的预期。', 'Review the matched signals first. Language, time-zone or font settings may change the score; configure them for actual needs, not to chase a low number. Browser changes may not affect a CLI, and a low score guarantees neither reliability nor compliance. Check routing, WebRTC and DNS against your intended setup.')}
       ${faq('为什么 Claude 出口显示无法读取？', 'Why is a Claude egress result unavailable?', '本页直接从你的浏览器请求 claude.com 和 claude.ai 的 trace。跨域策略、网络故障、隐私扩展或目标未提供接口都可能使读取失败；这不等于 Claude 不可用，更不能用社区服务器看到的 IP 代替。可以打开对应的原始结果自行查看。', 'The page requests each Claude trace directly from your browser. CORS, connectivity, privacy extensions or an unavailable endpoint can prevent reading. This does not prove Claude is inaccessible; the community egress IP cannot substitute for it. Open the raw trace to inspect manually.')}
-      ${faq('没有 WebRTC 地址，或者 DNS 未检测，就是安全了吗？', 'Are no WebRTC addresses or untested DNS safe?', '不是。WebRTC 没有候选地址可能只是被浏览器拦截；没有公网基准时无法判断出口一致性。DNS 必须通过专用唯一域名和权威日志识别递归解析器；当前未接入这套服务，不显示虚构的解析器 IP、国家或“国外安全 DNS”。', 'No. ICE gathering may be blocked. Without an egress baseline, consistency is unknown. DNS needs unique hostnames and authoritative observations to identify recursive resolvers. That service is not connected, so no resolver IP, country or safe result is invented.')}
+      ${faq('没有 WebRTC 地址，或者 DNS 未检测，就是安全了吗？', 'Are no WebRTC addresses or untested DNS safe?', '不是。WebRTC 没有候选地址可能只是被浏览器拦截；没有公网基准时无法判断出口一致性。DNS 必须通过专用唯一域名和权威日志识别递归解析器；本页以一次性随机域名观测实际递归出口，结果只在内存保留最多 90 秒；未取得地址或地区时显示未知，不等于安全。', 'No. ICE gathering may be blocked. Without an egress baseline, consistency is unknown. DNS needs unique hostnames and authoritative observations to identify recursive resolvers. This page observes actual recursive egress using a one-time hostname. Results expire from memory within 90 seconds. Missing addresses or regions remain unknown, not safe.')}
     </section>
     <article class="ce-section ce-guide" id="ce-guide"><div class="ce-section-heading"><span class="ce-section-number">05</span><div><h2>${t('Claude 访问环境及设备特征检测', 'Claude access environment & device signals')}</h2><p>${t('功能模块 · 公开研究 · 防御性设置', 'Modules · public research · defensive settings')}</p></div></div>
       ${p('除了 <a href="https://ippure.com/" target="_blank" rel="noopener noreferrer">IP 风险信息</a>，设备环境也是隐私自检的重要部分。参考 IPPure 的环境面板，本页把网络出口检测与中文环境特征放在一起，辅助排查访问不稳定、出口分流与隐私暴露问题；不把这些特征直接等同于封禁原因或隐私被窃取的证据。', 'Beyond <a href="https://ippure.com/" target="_blank" rel="noopener noreferrer">IP risk information</a>, device settings matter for privacy. Inspired by IPPure’s panel, this page combines egress checks with Chinese environment signals to investigate access, routing and privacy—not to claim these signals prove bans or data theft.')}
       <h3>${t('一、功能模块', '1. Feature modules')}</h3><div class="ce-guide-columns"><section><h4>${t('Claude 连通性及网络出口检测', 'Claude connectivity & egress')}</h4><ul>
       <li>${t('<strong>访问 Claude 出口 IP：</strong>单独请求 claude.com 与 claude.ai 的 trace，展示可读的实时 IP、国家/地区代码与节点。仅表示该 trace 请求路径，不保证登录、对话或 API 的路由相同。', '<strong>Claude egress IP:</strong> request each domain’s trace independently; show readable live IP, country code and edge. This measures the trace path, not necessarily login, chat or API routing.')}</li>
       <li>${t('<strong>WebRTC 隐私泄露隐患：</strong>读取 ICE 候选并与社区访问出口对比。公网地址差异需检查分流；内网与 mDNS 单独标注。没有 IP 归属数据库，不能断言某地址属于中国运营商；探测不等于拦截。', '<strong>WebRTC privacy:</strong> compare ICE addresses with community egress. Public mismatches warrant routing review; local and mDNS addresses are labeled separately. Without geolocation data, no Chinese carrier attribution is made. Detection does not block traffic.')}</li>
-      <li>${t('<strong>DNS 泄露检测：</strong>用于检查递归解析器的出口和地区。当前面板明确显示未接入专用 DNS 探测，不把普通 DNS 查询或网站 IP 当作泄露结果。', '<strong>DNS leaks:</strong> inspect recursive-resolver egress and location. Dedicated DNS probing is not connected; ordinary DNS queries or website IPs are not leak measurements.')}</li></ul></section><section><h4>${t('中文环境识别', 'Chinese environment signals')}</h4><ol>
+      <li>${t('<strong>DNS 泄露检测：</strong>用于检查递归解析器的出口和地区。本页用自有权威 DNS 观测一次性随机域名的递归出口，展示实际 IP；IP 地区未经核实，不据此断言国内或国外安全。', '<strong>DNS leaks:</strong> inspect recursive-resolver egress and location. Self-hosted authoritative DNS observes recursive egress for a one-time hostname and reports IPs. Regions are unverified; no domestic/foreign safety claim is made.')}</li></ul></section><section><h4>${t('中文环境识别', 'Chinese environment signals')}</h4><ol>
       <li>${t('<strong>语言偏好：</strong>检索 zh-CN、zh-Hans、zh 等浏览器语言列表。', '<strong>Languages:</strong> inspect preferences such as zh-CN, zh-Hans and zh.')}</li>
       <li>${t('<strong>国际化时区：</strong>展示 Asia/Shanghai、Asia/Urumqi 等时区与分钟偏移对应的 UTC 值。', '<strong>Time zone:</strong> report the browser time zone and UTC offset.')}</li>
       <li>${t('<strong>Emoji 国旗渲染差异：</strong>参考资料讨论 Canvas 像素探测。本页采用较保守的 UA 系统风格估计，不把单色国旗当作地区或审查证明。', '<strong>Emoji flag rendering:</strong> reference materials discuss canvas pixels. This page uses a conservative UA-based style estimate, not a claim of censorship or location from monochrome flags.')}</li>
@@ -400,12 +449,12 @@
       return `<section class="tools-page tool-network ce-page" data-tool="network">
         <header class="ce-heading"><div><span class="ce-eyebrow">METAR LAB / ENVIRONMENT CHECK</span><h1>${t('Claude 访问环境检测', 'Claude access environment check')}</h1><p>${t('看清网络出口，读懂设备信号。让每一个检测结果都有据可查。', 'See your network path. Understand your device signals. Inspect the evidence behind each result.')}</p></div><span class="ce-local-badge">${t('本地计算 · 无需登录', 'Local analysis · No sign-in')}</span></header>
         <nav class="ce-nav" aria-label="${t('本页导航', 'On this page')}"><a href="#ce-overview">${t('检测概览', 'Overview')}</a><a href="#ce-network">${t('网络与隐私', 'Network')}</a><a href="#ce-signals">${t('环境信号', 'Signals')}</a><a href="#ce-method">${t('检测原理', 'Method')}</a><a href="#ce-faq">FAQ</a><a href="#ce-guide">${t('完整说明', 'Guide')}</a></nav>
-        <section class="ce-overview" id="ce-overview"><header class="ce-overview-head"><span>${t('Claude 中文用户环境检测', 'Chinese environment signal check')}</span><span class="ce-model-label">HEURISTIC v1</span></header><div data-score aria-live="polite">${scoreMarkup(result)}</div><footer class="ce-scan-footer"><div><button type="button" class="ce-scan-button" data-tool-run>${t('开始完整检测', 'Run full scan')} <span aria-hidden="true">↗</span></button><span data-scan-time role="status">${t('本地环境已读取 · 网络探测等待开始', 'Local signals read · Network probes not started')}</span></div><p>${t(`点击后将连接 claude.com、claude.ai 与 ${STUN_HOST}；目标服务会看到请求源 IP。`, `Scanning contacts claude.com, claude.ai and ${STUN_HOST}; those services see the request source IP.`)}</p></footer></section>
+        <section class="ce-overview" id="ce-overview"><header class="ce-overview-head"><span>${t('Claude 中文用户环境检测', 'Chinese environment signal check')}</span><span class="ce-model-label">HEURISTIC v1</span></header><div data-score aria-live="polite">${scoreMarkup(result)}</div><footer class="ce-scan-footer"><div><button type="button" class="ce-scan-button" data-tool-run>${t('开始完整检测', 'Run full scan')} <span aria-hidden="true">↗</span></button><span data-scan-time role="status">${t('本地环境已读取 · 网络探测等待开始', 'Local signals read · Network probes not started')}</span></div><p>${t(`点击后将连接 claude.com、claude.ai 与 ${STUN_HOST}，并向 *.dnsprobe.metarhub.com 发起 DNS 探测；目标服务会看到请求源 IP。`, `Scanning contacts claude.com, claude.ai and ${STUN_HOST}, and triggers DNS for *.dnsprobe.metarhub.com; those services see the request source IP.`)}</p></footer></section>
         <section class="ce-section" id="ce-network"><div class="ce-section-heading"><span class="ce-section-number">01</span><div><h2>${t('Claude 连通性及网络出口', 'Claude connectivity & egress')}</h2><p>${t('实时请求 · 按域名独立检测 · 未知不等于安全', 'Live requests · Separate domain probes · Unknown is not safe')}</p></div></div><div class="ce-network-grid">
           ${CLAUDE_HOSTS.map((host, i) => card(`claude-${i}`, `${host} ${t('出口 IP', 'egress IP')}`, `<div data-claude-result="${i}"><p class="ce-probe-value">${t('等待检测', 'Not tested')}</p><p class="muted small">${t('读取浏览器直连该域名的 trace 结果', 'Read this domain’s trace directly from your browser')}</p></div><a class="ce-raw-link" href="https://${host}/cdn-cgi/trace" target="_blank" rel="noopener noreferrer">${t('打开原始结果', 'Open raw trace')} ↗</a>`)).join('')}
           ${card('egress', t('当前社区访问出口', 'Community egress'), `<div class="tool-ip"><span class="tool-ip-value" data-egress>${t('正在读取…', 'Loading…')}</span><span class="tool-ip-family" data-egress-family></span></div><p class="muted small">${t('社区服务器看到的地址，不代表 Claude 域名出口。', 'The address seen by this community, not the Claude domains.')}</p><div class="tool-actions"><button type="button" class="btn" data-egress-copy hidden>${t('复制', 'Copy')}</button><button type="button" class="btn" data-egress-retry hidden>${t('重试', 'Retry')}</button></div>`, 'running')}
           ${card('webrtc', t('WebRTC 隐私泄露隐患', 'WebRTC privacy exposure'), `<div data-webrtc-result aria-live="polite"><p class="muted">${t('点击上方按钮，通过 ICE 候选检查是否出现其他公网或内网地址。', 'Run a scan to inspect ICE addresses for additional public or local addresses.')}</p></div>`)}
-        </div><section class="ce-dns" data-check="dns"><header><div><span class="ce-eyebrow">DNS LEAK</span><h3>${t('DNS 区域泄露隐患', 'DNS resolver exposure')}</h3></div>${pill('unsupported')}</header><p>${t('未检测：尚未接入专用 DNS 探测服务。网页不能直接读取系统递归解析器，也不能用网站 IP 或普通 DoH 查询代替。', 'Not tested: a dedicated DNS probe is not connected. A page cannot directly read the system’s recursive resolver; website IPs or ordinary DoH queries are not substitutes.')}</p><span class="ce-dns-caption">${t('不展示虚构的解析器地址、地区或安全结论', 'No invented resolver addresses, regions or safety claims')}</span></section></section>
+        </div><section class="ce-dns" data-check="dns"><header><div><span class="ce-eyebrow">DNS LEAK</span><h3>${t('DNS 区域泄露隐患', 'DNS resolver exposure')}</h3></div><span data-pill>${pill('pending')}</span></header><div data-dns-result aria-live="polite"><p>${t('点击完整检测，通过一次性随机域名观测实际递归 DNS 出口。','Run a full scan to observe recursive DNS egress using a one-time hostname.')}</p></div><span class="ce-dns-caption">${t('自有权威 DNS · 结果保留最多 90 秒 · IP 地区未核实', 'Self-hosted authoritative DNS · Results expire within 90 seconds · IP regions unverified')}</span></section></section>
         <section class="ce-section" id="ce-signals" data-check="env"><div class="ce-section-heading"><span class="ce-section-number">02</span><div><h2>${t('检测哪些信号', 'Which signals are checked')}</h2><p>${t('六项环境指纹，加权得出 0–100 参考分。点击重新扫描可更新。', 'Six environment signals form a 0–100 reference score. Scan again to refresh.')}</p></div><span data-pill>${pill('info')}</span></div><ol class="ce-signal-list" data-signals>${signalsMarkup(result)}</ol></section>
         ${environmentGuide()}
       </section>`;
@@ -491,7 +540,18 @@
               this.setStatus(page, `claude-${i}`, 'unsupported');
             }
           });
-          await Promise.allSettled([webRTC, ...probes]);
+          this.setStatus(page, 'dns', 'running');
+          const dnsOutput=page.querySelector('[data-dns-result]');
+          dnsOutput.innerHTML=`<p>${t('正在等待随机域名的递归查询…','Waiting for recursive queries to the random hostname…')}</p>`;
+          const dnsProbe=collectDNS(root,this.controller?.signal).then(addresses=>{
+            if(this.disposed)return;
+            const view=dnsResult(addresses);dnsOutput.innerHTML=view.html;this.setStatus(page,'dns',view.status);
+          }).catch(error=>{
+            if(this.disposed)return;
+            dnsOutput.innerHTML=`<p>${esc(t('DNS 探测未完成。请稍后重试；若持续失败，管理员需检查探测服务、NS 委派和 UDP/TCP 53。','DNS probing did not complete. Retry later; persistent failures require checking the probe service, NS delegation and UDP/TCP 53.'))}</p><p class="small muted">${esc(egressErrorText(error))}</p>`;
+            this.setStatus(page,'dns','unsupported');
+          });
+          await Promise.allSettled([webRTC, ...probes, dnsProbe]);
         } finally {
           if (!this.disposed) {
             run.disabled = false;
@@ -505,7 +565,7 @@
     dispose() { this.disposed = true; this.controller?.abort(); }
   }
 
-  const exports = { View, environmentScore, detectFonts, emojiStyle, inspectEnvironment, parseTrace, fetchClaudeTrace, SIGNAL_WEIGHTS, FONT_NAMES, scoreMarkup, signalsMarkup, ipFamily, addressScope, parseCandidate, assessWebRTC, formatOffset, browserEnvironment, collectIceAddresses, fetchEgress, egressErrorText, webrtcResult, EGRESS_ENDPOINT, STUN_HOST };
+  const exports = { View, collectDNS, dnsRequest, dnsResult, environmentScore, detectFonts, emojiStyle, inspectEnvironment, parseTrace, fetchClaudeTrace, SIGNAL_WEIGHTS, FONT_NAMES, scoreMarkup, signalsMarkup, ipFamily, addressScope, parseCandidate, assessWebRTC, formatOffset, browserEnvironment, collectIceAddresses, fetchEgress, egressErrorText, webrtcResult, EGRESS_ENDPOINT, STUN_HOST };
   if (typeof module === 'object' && module.exports) module.exports = exports;
   else root.MetarTools = Object.freeze(exports);
 })(typeof window === 'undefined' ? globalThis : window);

@@ -48,7 +48,7 @@ grep -A12 'location /blog/' "$config" | grep -q 'Strict-Transport-Security' || d
 grep -q 'location = / {' "$config" || die 'METAR exact homepage route is missing'
 grep -A14 'location = / {' "$config" | grep -q 'try_files /blog/metar/index.html =404;' || die 'METAR homepage does not fail closed on missing production build'
 grep -A14 'location = / {' "$config" | grep -q 'Content-Security-Policy' || die 'METAR homepage CSP is missing'
-[ "$(grep -c "connect-src 'self' https://claude.com/cdn-cgi/trace https://claude.ai/cdn-cgi/trace;" "$config")" -eq 2 ] || die 'both shell entry CSPs must permit only the two fixed Claude trace endpoints'
+[ "$(grep -Fc "connect-src 'self' https://claude.com/cdn-cgi/trace https://claude.ai/cdn-cgi/trace https://*.dnsprobe.metarhub.com;" "$config")" -eq 2 ] || die 'both shell entry CSPs must permit only Claude trace endpoints and the DNS probe zone'
 
 grep -A14 'location = / {' "$config" | grep -q "style-src 'self';" || die 'METAR homepage CSP must allow only self-hosted styles'
 if grep -A14 'location = / {' "$config" | grep -q 'unsafe-inline'; then
