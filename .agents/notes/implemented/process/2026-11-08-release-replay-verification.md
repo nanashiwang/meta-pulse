@@ -18,7 +18,7 @@ Status: implemented
 
 ## Verification
 
-30 项发布回归覆盖重复核验、不同 gzip 字节、缺件、下载损坏、manifest/tag 来源冲突、只读失败路径、draft 补传与并发恢复。`./deploy/test.sh`、shell/Python 语法检查、能力地图与决策笔记门禁通过。真实下载 `v0.2.89` 六件附件后，远端标签提交、manifest、asset digest/size 和 `SHA256SUMS` 全部核验通过。GitHub Actions 运行 `42404170536` 的失败 job `128499034540` 确认落在旧脚本“已发布版本不可覆盖”分支。
+31 项发布回归覆盖重复核验、不同 gzip 字节、缺件、下载损坏、manifest/tag 来源冲突、只读失败路径、draft 补传、并发恢复和 draft 列表延迟可见。`./deploy/test.sh`、shell/Python 语法检查、能力地图与决策笔记门禁通过。真实下载 `v0.2.89` 六件附件后，远端标签提交、manifest、asset digest/size 和 `SHA256SUMS` 全部核验通过。GitHub Actions 运行 `42404170536` 的失败 job `128499034540` 确认落在旧脚本“已发布版本不可覆盖”分支。
 
 ## Consequences
 
@@ -26,9 +26,9 @@ Status: implemented
 
 ## Release validation follow-up
 
-v0.2.90 全套 CI 和归档构建通过；首次真实草稿创建证明按 tag 查询返回 404，草稿仅在授权列表可见。因此 404 后必须成功读完分页集合才能认定不存在；重复项、列表权限或网络失败均停止。回归中的 CLI 替身按此真实行为返回草稿 404 和多页结果。该版本空草稿与标签保留，使用 v0.2.91 验证并发布修复，最终结果以 GitHub 工作流及资产回读为准。
+v0.2.90 全套 CI 和归档构建通过；首次真实草稿创建后，按 tag 查询短暂返回 404，分页列表稍后可见。404 后成功读取并分页核对才能认定 Release 存在或不存在；列表权限/网络错误直接停止。v0.2.91 CI、笔记门禁和构建通过，但 draft 刚创建后仍出现状态读取未命中并停止；无附件的 draft 与 tag 保留。v0.2.92 增加最多五次、有间隔的只读查找，并以延迟可见模拟回归；最终发布结果以 v0.2.92 的 workflow 和资产回读为准。
 
-独立笔记工作流在 Ubuntu 26.04 runner 安装 Python 3.9 时失败，尚未运行笔记检查；固定 ubuntu-24.04 以保持原 Python 版本，避免同时改变工具运行语义。自动工具哈希不变。
+独立笔记工作流曾在 Ubuntu 26.04 runner 安装 Python 3.9 时失败；固定 ubuntu-24.04 后 v0.2.91 笔记门禁通过。保持既有 Python 版本和工具哈希。
 
 ## Existing capabilities and note audit
 

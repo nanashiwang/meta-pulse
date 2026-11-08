@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import time
 
 from published import verify
 
@@ -43,6 +44,18 @@ def require_release(repo, tag):
     if state is None or type(state.get('draft')) is not bool:
         raise ValueError('Release 消失或状态无效，停止发布')
     return state
+
+
+def wait_for_release(repo, tag):
+    for attempt in range(5):
+        state = release_state(repo, tag)
+        if state is not None:
+            if type(state.get('draft')) is not bool:
+                raise ValueError('Release 状态无效，停止发布')
+            return state
+        if attempt < 4:
+            time.sleep(attempt + 1)
+    raise ValueError('新建 Release 尚未可读，停止写入并等待人工重试')
 
 
 def tag_commit(repo, tag):
@@ -115,15 +128,16 @@ def publish(tag, build_if_needed=False):
                                 '--verify-tag', '--draft', '--title', f'Meta Pulse {tag}',
                                 '--notes-file', str(ROOT / 'releases' / f'{tag}.md')], check=True)
             except subprocess.CalledProcessError:
-                state = release_state(repo, tag)
-                if state is None:
-                    raise
+                state = wait_for_release(repo, tag)
                 if state.get('draft') is False:
                     verify_remote(repo, tag, commit, state)
                     return
                 if state.get('draft') is not True:
                     raise ValueError('并发创建后 Release 状态无效')
-        state = require_release(repo, tag)
+            else:
+                state = wait_for_release(repo, tag)
+        else:
+            state = require_release(repo, tag)
         if state.get('draft') is False:
             verify_remote(repo, tag, commit, state)
             return

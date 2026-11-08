@@ -23,6 +23,7 @@ args = sys.argv[1:]
 with (root / 'calls').open('a') as f: f.write(json.dumps(args) + '\n')
 state = json.loads((root / 'state.json').read_text())
 mode = os.environ.get('FAKE_MODE', '')
+list_calls = int((root / 'list_calls').read_text()) if (root / 'list_calls').exists() else 0
 def save(): (root / 'state.json').write_text(json.dumps(state))
 def fail(message): print(message, file=sys.stderr); sys.exit(1)
 if args[0] == 'api':
@@ -35,7 +36,15 @@ if args[0] == 'api':
         print(json.dumps({'object': {'type': 'commit', 'sha': os.environ['FAKE_COMMIT']}}))
     elif '/releases?per_page=' in path:
         if mode == 'draft-list-error': fail('gh: Forbidden (HTTP 403)')
+        if mode == 'create-delay-list' and state is not None and state['tag_name'] == 'v0.1.0' and list_calls < 2:
+            list_calls += 1
+            (root / 'list_calls').write_text(str(list_calls))
+            print(json.dumps([[], []]))
+            sys.exit(0)
         print(json.dumps([[], [] if state is None else [state]]))
+        if mode == 'create-delay-list':
+            list_calls += 1
+            (root / 'list_calls').write_text(str(list_calls))
     elif '/releases/tags/' in path:
         if mode in ('403', '500', 'network'):
             fail('gh: ' + ('TLS handshake timeout' if mode == 'network' else '(HTTP ' + mode + ')'))
@@ -230,6 +239,16 @@ class PublishTests(unittest.TestCase):
         self.save_state()
         calls = self.run_publish('create-race')
         self.assertFalse(any(c[:2] in (['release', 'upload'], ['release', 'edit']) for c in calls))
+
+    def test_new_release_waits_for_draft_to_become_listed(self):
+        self.local_build()
+        for p in self.bundle.iterdir(): p.unlink()
+        self.state = None
+        self.save_state()
+        calls = self.run_publish('create-delay-list')
+        self.assertEqual(sum(c[:2] == ['release', 'upload'] for c in calls), 6)
+        self.assertEqual(sum(c[:2] == ['release', 'edit'] for c in calls), 1)
+        self.assertEqual(len(list(self.bundle.iterdir())), 6)
 
     def test_upload_race_reconciles_published_bundle(self):
         self.local_build()
