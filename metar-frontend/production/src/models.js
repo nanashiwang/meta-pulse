@@ -193,6 +193,8 @@
 
     async home() {
       const h = await this.fetch('/home');
+      h.leaders = Array.isArray(h.leaders) ? h.leaders : [];
+      h.recent = Array.isArray(h.recent) ? h.recent : [];
       const recent = h.recent.length ? `<ul class="intel-recent">${h.recent.map(r => `<li>${link('/model/' + encodeURIComponent(r.model), esc(r.name))}<span class="muted">${esc(r.provider_name || r.provider)} · ${fmt.date(r.release_date)}</span></li>`).join('')}</ul>` : `<p class="muted">${t('近 15 天没有新收录的模型。', 'No models released in the last 15 days.')}</p>`;
       return `${subnav('/models')}
         <header class="intel-hero"><h1>${t('AI 模型榜单', 'AI model leaderboard')}</h1><p class="muted">${t(`收录 ${h.model_count} 个语言模型，其中 ${h.ranked_count} 个有足够评测数据参与综合排名。每个数值都标注来源，缺失数据显示为「—」。`, `${h.model_count} language models listed, ${h.ranked_count} with enough benchmark coverage to be ranked. Every figure is sourced; missing data shows as "—".`)}</p>${updated(h)}</header>

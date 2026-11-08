@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -177,3 +178,25 @@ func models(rows []Row) []string {
 	}
 	return out
 }
+
+func TestEmptyBoardEncodesArraysAndIsNotReady(t *testing.T) {
+	empty, err := BuildSnapshot(score.V1, Inputs{}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if Leaders(empty) == nil || Recent(empty, now, 5) == nil {
+		t.Fatal("leaders/recent must encode as [] not null")
+	}
+	r := NewReader(stubStore{snap: empty}, score.V1, time.Minute)
+	if _, err := r.Home(context.Background()); err != ErrNoSnapshot {
+		t.Fatalf("empty board must read as not ready, got %v", err)
+	}
+}
+
+type stubStore struct{ snap Snapshot }
+
+func (s stubStore) LatestSnapshot(context.Context, string) (Snapshot, error) { return s.snap, nil }
+func (s stubStore) ModelDetail(context.Context, string, time.Time) (ModelDetail, error) {
+	return ModelDetail{}, ErrNotFound
+}
+func (s stubStore) Benchmarks(context.Context) ([]BenchmarkInfo, error) { return nil, nil }

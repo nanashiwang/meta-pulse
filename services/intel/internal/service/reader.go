@@ -101,6 +101,11 @@ func (r *Reader) Snapshot(ctx context.Context) (Snapshot, error) {
 		return r.cached, nil
 	}
 	snap, err := r.store.LatestSnapshot(ctx, r.method.Version)
+	// A board with no models (nothing imported yet) is "not ready", so the
+	// page says data is being prepared instead of rendering an empty table.
+	if err == nil && len(snap.Rows) == 0 {
+		err = ErrNoSnapshot
+	}
 	if err != nil {
 		if r.ok && !errors.Is(err, ErrNoSnapshot) {
 			return r.cached, nil

@@ -137,7 +137,7 @@ type Leader struct {
 // Leaders derives the home cards from the same snapshot as the table, so the
 // cards and rows can never disagree. A category with no data is omitted.
 func Leaders(s Snapshot) []Leader {
-	var out []Leader
+	out := []Leader{}
 	pick := func(category, unit string, rows []Row, value func(Row) *int64, largerBest bool) {
 		var best *Row
 		var bestValue int64
@@ -174,7 +174,7 @@ func Leaders(s Snapshot) []Leader {
 
 // Recent lists models released within the last 15 days, newest first.
 func Recent(s Snapshot, now time.Time, limit int) []Row {
-	var out []Row
+	out := []Row{}
 	for _, r := range s.Rows {
 		if r.ReleaseDate != nil && !r.ReleaseDate.After(now) && now.Sub(*r.ReleaseDate) <= newModelWindow {
 			out = append(out, r)

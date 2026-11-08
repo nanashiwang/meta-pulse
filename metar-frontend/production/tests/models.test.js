@@ -121,3 +121,12 @@ test('default fetch sends no credentials or referrer and maps errors', async () 
   window.fetch = async () => { throw Error('offline'); };
   assert.match(await new api.View().page('/models'), /暂时不可用/);
 });
+
+test('home tolerates null leaders and recent from older API responses', async () => {
+  const {api} = setup();
+  const h = home([row()]);
+  h.leaders = null; h.recent = null;
+  const html = await new api.View(fetcher({'/home': h})).page('/models', new URLSearchParams());
+  assert.match(html, /AI 模型榜单/);
+  assert.doesNotMatch(html, /暂时不可用/);
+});
