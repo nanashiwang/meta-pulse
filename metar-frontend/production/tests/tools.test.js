@@ -263,3 +263,54 @@ test('WebRTC error and navigation cancellation close the peer and never report n
   assert.equal(noBaseline.status, 'notice');
   assert.match(noBaseline.html, /无出口基准/);
 });
+
+test('production CSP permits only fixed Claude trace paths on both shell entries', () => {
+  const nginx = fs.readFileSync(require.resolve('../../../deploy/nginx/meta-pulse.conf'), 'utf8');
+  const policies = [...nginx.matchAll(/add_header Content-Security-Policy "([^"]+)"/g)].map(m => m[1]);
+  assert.equal(policies.length, 2);
+  for (const policy of policies) {
+    assert.match(policy, /connect-src 'self' https:\/\/claude\.com\/cdn-cgi\/trace https:\/\/claude\.ai\/cdn-cgi\/trace;/);
+    assert.match(policy, /script-src 'self'; style-src 'self';/);
+    assert.doesNotMatch(policy, /unsafe-inline|connect-src[^;]*\*/);
+  }
+});
+
+test('view rescans all probes, prevents overlapping scans and disposes pending requests', async () => {
+  const elements = new Map();
+  const node = key => {
+    if (!elements.has(key)) elements.set(key, {textContent:'', innerHTML:'', hidden:false, disabled:false,
+      classList:{add(){},remove(){}}, listeners:{}, addEventListener(type, fn){this.listeners[type]=fn;}});
+    return elements.get(key);
+  };
+  const page = {querySelector: node, querySelectorAll: () => []};
+  let requests = [], pending = [], stalled = false;
+  const tools = load('zh_CN', {AbortController, fetch: async (url, options) => {
+    requests.push(url);
+    if (stalled) return new Promise((resolve, reject) => {
+      pending.push(options.signal);
+      const abort = () => reject(Object.assign(Error('aborted'), {name:'AbortError'}));
+      if (options.signal.aborted) abort(); else options.signal.addEventListener('abort', abort, {once:true});
+    });
+    return {ok:true,json:async()=>({ip:'203.0.113.9'}),text:async()=> 'ip=198.51.100.8\nloc=US\ncolo=LAX'};
+  }});
+  const view = new tools.View([]);
+  view.mount({querySelector:()=>page});
+  await view.egress;
+  const run = node('[data-tool-run]');
+  await run.listeners.click();
+  assert.equal(requests.length, 4);
+  assert.equal(run.disabled, false);
+  assert.match(node('[data-claude-result="0"]').innerHTML, /198\.51\.100\.8/);
+  assert.match(node('[data-webrtc-result]').innerHTML, /不支持或已禁用/);
+  stalled = true;
+  const scan = run.listeners.click();
+  assert.equal(run.disabled, true);
+  await run.listeners.click();
+  assert.equal(requests.length, 7);
+  const markup = node('[data-claude-result="0"]').innerHTML;
+  view.dispose();
+  await scan;
+  assert.equal(pending.length, 3);
+  assert.equal(pending.every(signal=>signal.aborted), true);
+  assert.equal(node('[data-claude-result="0"]').innerHTML, markup);
+});

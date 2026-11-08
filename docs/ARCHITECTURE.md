@@ -1341,3 +1341,11 @@ Item 的 `entry_json` 保存当前投稿，`live_json` 保存审核通过的运�
 站内体验只主动加载服务端审核的外部 HTTPS Demo，iframe 使用 `sandbox="allow-scripts allow-forms"`、no-referrer，禁用相机、麦克风、定位、支付和剪贴板写权限；不授予 same-origin、顶层导航、弹窗或下载。METAR 不向 iframe 传递论坛会话、Authorization、API Key 或余额授权。外站自身 Cookie 策略由浏览器决定。加载事件不能证明调用成功，拒绝嵌入始终可外站打开；更高权限应用应使用外站演示。壳层 CSP 仅新增 HTTPS frame-src，其他脚本、连接与表单来源约束保持。
 
 集市浏览、投稿、收藏、运行及关联不创建 Contribution/Ticket/Reward；关联原帖的有效互动仅按现有社区任务采集一次。建表在独立 Answer pool 的首次使用中加锁执行，失败只影响集市；表随现有论坛数据库备份。部署仍经 `deploy/update.sh` 的备份、构建、迁移与健康检查，不修改 new-api。
+
+## Claude 环境工具隐私与外部请求边界
+
+`/tools/network` 在浏览器本地计算六项环境特征参考分，不识别用户国籍，不产生账户风控事实，也不写入 Answer/Pulse/Intel 数据或经济账本。Canvas 只测字体宽度，Emoji 风格来自 UA 启发式；缺失信号使结果标为不完整。页面不采集 Claude 账号、API Key、Cookie、对话或终端环境变量。
+
+社区出口仍由 nginx `/metar/api/tools/ip` 直接返回访问源地址。用户点击扫描后才由浏览器向 `https://claude.com/cdn-cgi/trace`、`https://claude.ai/cdn-cgi/trace` 发起无凭据、无 referrer 的请求，并使用 `stun.cloudflare.com` 收集 WebRTC 地址。结果不持久化或上报；这些网络目标会看到请求源 IP。首页及 History 壳层 CSP 的 connect-src 仅额外允许两个固定 trace 路径，以支持 SPA 导航；不开放通配第三方域名、内联脚本或服务端代理。离开工具页会取消未完成探测。
+
+CORS、超时与无效响应显示未知，不能借社区出口冒充 Claude 出口；WebRTC 无候选或缺少基准不能视为安全。DNS 没有专用唯一域名/权威观测服务，因此明确未接入，不显示虚构解析器或地区。参考文献的 Unicode 隐写主张与本页可观测结果分开呈现，未验证的客户端行为不当作事实。
