@@ -1,10 +1,10 @@
-.PHONY: help fmt vet verify-notes test build build-pulse build-forum build-blog build-community test-community \
+.PHONY: help fmt vet verify-notes test build build-pulse build-intel build-forum build-blog build-community test-community \
         run-api run-worker migrate-up migrate-status up down deploy-install deploy-update deploy-test deploy-config-test test-integration test-forum-integration test-growth-integration test-chat-integration clean
 
 # The repo root is not a Go module, so `./...` does not resolve across the
 # workspace. Every Go target lists module paths explicitly.
-GO_MODULES := ./services/pulse/... ./services/forum-plugin/user-center-pulse/...
-GO_DIRS := services/pulse services/forum-plugin
+GO_MODULES := ./services/pulse/... ./services/forum-plugin/user-center-pulse/... ./services/intel/...
+GO_DIRS := services/pulse services/forum-plugin services/intel
 
 help:
 	@echo "Meta Pulse monorepo"
@@ -69,13 +69,19 @@ test-chat-integration:
 	@test -n "$$CHAT_INTEGRATION_DSN" || { echo "请设置以 _chat_test 结尾的专用聊天测试库" >&2; exit 1; }
 	go test -count=1 -race ./services/forum-plugin/user-center-pulse/chat -run TestMySQL -timeout 5m
 
-build: build-pulse build-blog build-community
+build: build-pulse build-intel build-blog build-community
 
 build-pulse:
 	mkdir -p bin
 	go build -o bin/meta-pulse-api ./services/pulse/cmd/api
 	go build -o bin/meta-pulse-worker ./services/pulse/cmd/worker
 	go build -o bin/meta-pulse-tool ./services/pulse/cmd/tool
+
+build-intel:
+	mkdir -p bin
+	go build -o bin/metar-intel-api ./services/intel/cmd/api
+	go build -o bin/metar-intel-worker ./services/intel/cmd/worker
+	go build -o bin/metar-intel-tool ./services/intel/cmd/tool
 
 # Rebuilds Answer with the Pulse user center plugin compiled in.
 build-forum:

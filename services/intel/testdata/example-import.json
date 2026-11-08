@@ -1,0 +1,36 @@
+{
+  "source": {"slug": "example-fixture", "note": "Fictional example data for format reference and tests. Never import into production."},
+  "providers": [
+    {"slug": "example-lab", "name": "Example Lab", "website": "https://lab.example"},
+    {"slug": "example-host", "name": "Example Host", "website": "https://host.example"}
+  ],
+  "models": [
+    {"slug": "example-large", "name": "Example Large", "provider": "example-lab", "family": "example", "release_date": "2026-10-01", "context_tokens": 400000, "max_output_tokens": 64000, "source_url": "https://lab.example/models/large"},
+    {"slug": "example-open-7b", "name": "Example Open 7B", "provider": "example-lab", "family": "example-open", "release_date": "2026-08-15", "context_tokens": 128000, "license": "apache-2.0", "open_weights": true}
+  ],
+  "benchmarks": [
+    {"slug": "example-reasoning", "name": "Example Reasoning Suite", "dimension": "reasoning", "unit": "percent", "higher_is_better": true, "source_url": "https://bench.example/reasoning"},
+    {"slug": "example-coding", "name": "Example Coding Suite", "dimension": "coding", "unit": "percent", "higher_is_better": true, "source_url": "https://bench.example/coding"},
+    {"slug": "example-agent", "name": "Example Agent Suite", "dimension": "agent", "unit": "percent", "higher_is_better": true, "source_url": "https://bench.example/agent"}
+  ],
+  "offerings": [
+    {"slug": "example-lab-large", "provider": "example-lab", "model": "example-large"},
+    {"slug": "example-host-open-7b", "provider": "example-host", "model": "example-open-7b"}
+  ],
+  "prices": [
+    {"offering": "example-lab-large", "input_usd_per_mtok": "3.00", "output_usd_per_mtok": "12.00", "cache_read_usd_per_mtok": "0.30", "effective_at": "2026-10-01", "source_url": "https://lab.example/pricing"},
+    {"offering": "example-host-open-7b", "input_usd_per_mtok": "0.10", "output_usd_per_mtok": "0.20", "effective_at": "2026-08-15", "source_url": "https://host.example/pricing"}
+  ],
+  "benchmark_results": [
+    {"model": "example-large", "benchmark": "example-reasoning", "value": "80.0", "published_at": "2026-10-01", "source_url": "https://bench.example/reasoning"},
+    {"model": "example-large", "benchmark": "example-coding", "value": "70.0", "published_at": "2026-10-01", "source_url": "https://bench.example/coding"},
+    {"model": "example-large", "benchmark": "example-agent", "value": "60.0", "published_at": "2026-10-01", "source_url": "https://bench.example/agent"},
+    {"model": "example-open-7b", "benchmark": "example-reasoning", "value": "50.0", "published_at": "2026-08-15", "source_url": "https://bench.example/reasoning"},
+    {"model": "example-open-7b", "benchmark": "example-coding", "value": "40.0", "published_at": "2026-08-15", "source_url": "https://bench.example/coding"},
+    {"model": "example-open-7b", "benchmark": "example-agent", "value": "30.0", "settings": "0-shot, self-run", "self_run": true, "published_at": "2026-08-20"}
+  ],
+  "speed_samples": [
+    {"offering": "example-lab-large", "output_tokens_per_sec": "85.5", "ttft_ms": 620, "measured_at": "2026-11-07T08:00:00Z"},
+    {"offering": "example-host-open-7b", "output_tokens_per_sec": "240.0", "ttft_ms": 180, "measured_at": "2026-11-07T08:00:00Z"}
+  ]
+}

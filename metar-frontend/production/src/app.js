@@ -25,7 +25,11 @@
   const taxonomy = window.MetarTaxonomy;
   let taxonomyBusy = false;
   const pulse = new PulseAdapter(answer);
-  let growth = null, pulseAdmin = null, chatView = null, chatModeration = null, memberView = null, operationsView = null, marketplaceView = null;
+  let growth = null, pulseAdmin = null, chatView = null, chatModeration = null, memberView = null, operationsView = null, marketplaceView = null, modelsView = null, modelsAdminView = null, toolsView = null;
+  // Single tool inventory for the top-bar menu and the /tools hub.
+  const TOOLS = Object.freeze([
+    {path: '/tools/network', zh: '网络自检', en: 'Network self-check', descriptionZh: '查看出口 IP、浏览器时区与语言，并检查 WebRTC 是否暴露其他地址。', descriptionEn: 'See your egress IP, browser time zone and languages, and check whether WebRTC exposes other addresses.'},
+  ]);
   let chatUnreadTimer = 0, chatUnreadBusy = false;
   const featureScripts = new Map();
   function loadFeatureScript(name, globalName) {
@@ -214,9 +218,10 @@
   function currentTitle() {
     const path = route().path;
     if (path.startsWith('/marketplace/item/')) return t('Vibe Coding 集市');
+    if (path.startsWith('/model/')) return t('模型详情');
     if (path.startsWith('/question/')) return t("问题详情");
     if (path.startsWith('/topic/')) return t("话题");
-    return ({ '/me/drafts': t('我的草稿'), '/events': t('近期活动'), '/admin/operations': t('社区经营'), '/admin/events': t('活动管理'), '/chat': t('聊天'), '/admin/chat': t('聊天举报'), '/latest': t("最新话题"), '/topics': t("类别与标签"), '/admin/taxonomy': t('类别管理'), '/knowledge': t("知识库"), '/search': t("搜索"), '/marketplace': t('Vibe Coding 集市'), '/marketplace/mine': t('我的集市发布'), '/marketplace/publish': t('发布到集市'), '/admin/marketplace': t('集市审核'), '/me': t("个人空间"), '/me/bookmarks': t("我的收藏"), '/me/growth': t('社区成长'), '/me/notifications': t("通知中心"), '/settings/binding': t("账号绑定"), '/pulse': t("Pulse 权益"), '/admin/pulse': t("Pulse 配置"), '/publish': t("发布内容"), '/login': t("登录"), '/register': t("注册"), '/forgot': t("找回密码"), '/status': t("服务状态"), '/support': t("帮助中心"), '/guidelines': t("社区规范") })[path] || t("METAR 社区");
+    return ({ '/me/drafts': t('我的草稿'), '/events': t('近期活动'), '/admin/operations': t('社区经营'), '/admin/events': t('活动管理'), '/chat': t('聊天'), '/admin/chat': t('聊天举报'), '/latest': t("最新话题"), '/topics': t("类别与标签"), '/admin/taxonomy': t('类别管理'), '/knowledge': t("知识库"), '/search': t("搜索"), '/models': t('AI 模型榜单'), '/models/leaderboard': t('完整模型榜单'), '/models/methodology': t('综合分计算方法'), '/admin/models': t('模型榜管理'), '/tools': t('工具'), '/tools/network': t('网络自检'), '/marketplace': t('Vibe Coding 集市'), '/marketplace/mine': t('我的集市发布'), '/marketplace/publish': t('发布到集市'), '/admin/marketplace': t('集市审核'), '/me': t("个人空间"), '/me/bookmarks': t("我的收藏"), '/me/growth': t('社区成长'), '/me/notifications': t("通知中心"), '/settings/binding': t("账号绑定"), '/pulse': t("Pulse 权益"), '/admin/pulse': t("Pulse 配置"), '/publish': t("发布内容"), '/login': t("登录"), '/register': t("注册"), '/forgot': t("找回密码"), '/status': t("服务状态"), '/support': t("帮助中心"), '/guidelines': t("社区规范") })[path] || t("METAR 社区");
   }
 
   function languageControl() {
@@ -229,7 +234,7 @@
     return `<details class="account-menu"><summary class="icon-btn" aria-label="${t('账号菜单')}">${avatar(currentUser)}</summary><nav class="account-menu-panel" aria-label="${t('账号菜单')}">
       <div class="account-menu-profile">${avatar(currentUser)}<div><strong>${esc(displayName(currentUser))}</strong><span class="account-menu-level" data-account-level></span></div></div>
       <div class="account-menu-group"><div class="account-menu-label">${t("我的空间")}</div>${item('/chat', t('聊天'), 'chat')}${item('/me', t("个人空间"), 'user')}${item('/marketplace/mine', t('我的集市发布'), 'code')}${item('/me/growth', t('社区成长'), 'target')}${item('/me/bookmarks', t("我的收藏"), 'bookmark')}${item('/settings/binding', t("账号绑定"), 'link')}${external(config.answerSettingsPath, I('settings') + `<span>${t("账号设置")}</span>`, 'account-menu-link')}</div>
-      ${currentUserState === 'ready' && isCommunityAdministrator(currentUser) ? `<div class="account-menu-group"><div class="account-menu-label">${t('管理')}</div>${item('/admin/pulse', t('Pulse 配置'), 'settings')}${item('/admin/growth', t('成长管理'), 'target')}${item('/admin/taxonomy', t('类别管理'), 'flag')}${item('/admin/marketplace', t('集市审核'), 'code')}${item('/admin/chat', t('聊天举报'), 'chat')}${item('/admin/events', t('活动管理'), 'calendar')}${item('/admin/operations', t('社区经营'), 'target')}${external('/admin/dashboard', I('shield') + `<span>${t('社区管理')}</span>`, 'account-menu-link')}${external('/admin/pulse_user_center', I('link') + `<span>${t('社区连接配置')}</span>`, 'account-menu-link')}</div>` : ''}
+      ${currentUserState === 'ready' && isCommunityAdministrator(currentUser) ? `<div class="account-menu-group"><div class="account-menu-label">${t('管理')}</div>${item('/admin/pulse', t('Pulse 配置'), 'settings')}${item('/admin/growth', t('成长管理'), 'target')}${item('/admin/taxonomy', t('类别管理'), 'flag')}${item('/admin/marketplace', t('集市审核'), 'code')}${item('/admin/models', t('模型榜管理'), 'target')}${item('/admin/chat', t('聊天举报'), 'chat')}${item('/admin/events', t('活动管理'), 'calendar')}${item('/admin/operations', t('社区经营'), 'target')}${external('/admin/dashboard', I('shield') + `<span>${t('社区管理')}</span>`, 'account-menu-link')}${external('/admin/pulse_user_center', I('link') + `<span>${t('社区连接配置')}</span>`, 'account-menu-link')}</div>` : ''}
       <div class="account-menu-group">${external('/users/logout', I('external') + `<span>${t('退出登录')}</span>`, 'account-menu-link')}</div>
     </nav></details>`;
   }
@@ -243,7 +248,7 @@
     return `<header class="topbar">
       <button class="icon-btn mobile-menu" type="button" data-action="menu" aria-label="${t("打开导航")}" aria-controls="community-sidebar" aria-expanded="false">${I('menu')}</button>
       ${link('/latest', LOGO + `<span class="brand-word" aria-hidden="true">${esc(config.siteName.toLowerCase())}</span>`, 'brand')}
-      <nav class="topnav" aria-label="${t("主导航")}">${link('/latest', t("社区"), active('/latest') || active('/question') || active('/topic') || active('/topics') ? 'active' : '')}${link('/marketplace', t('集市'), active('/marketplace') ? 'active' : '')}${link('/pulse', 'Pulse', active('/pulse') ? 'active' : '')}</nav>
+      <nav class="topnav" aria-label="${t("主导航")}">${link('/latest', t("社区"), active('/latest') || active('/question') || active('/topic') || active('/topics') ? 'active' : '')}${link('/marketplace', t('集市'), active('/marketplace') ? 'active' : '')}${link('/models', t('模型榜'), active('/models') || active('/model') ? 'active' : '')}${link('/pulse', 'Pulse', active('/pulse') ? 'active' : '')}${toolsMenu(active('/tools'))}</nav>
       <form class="searchbox" data-form="search" role="search">${I('search')}<input type="search" name="q" aria-label="${t("搜索社区")}" placeholder="${t("搜索真实问题与回答…")}" value="${path === '/search' ? esc(route().query.get('q') || '') : ''}" autocomplete="off"><kbd>⌘ K</kbd></form>
       <div class="header-actions">${languageControl()}<button type="button" class="icon-btn theme-btn" data-action="theme" aria-label="${document.documentElement.dataset.theme === 'dark' ? t("切换到浅色主题") : t("切换到深色主题")}">${I(document.documentElement.dataset.theme === 'dark' ? 'sun' : 'moon')}</button>${currentUserState === 'loading' ? `<span class="identity-loading" role="status">${t("正在确认身份…")}</span>` : identityUnavailableState ? link('/me', I('server', 'sm') + `<span>${t("身份服务暂不可用")}</span>`, 'btn ghost identity-status') : logged ? (activeUser ? external('/users/notifications/inbox', I('bell') + `<span class="visually-hidden">${t("通知中心")}</span><span class="account-unread-dot" data-account-unread hidden></span>`, 'icon-btn account-notifications') + `<a href="${esc(window.MetarRouter.href('/chat'))}" data-router class="icon-btn header-chat" title="${t('聊天')}">${I('chat')}<span class="visually-hidden">${t('聊天')}</span><span class="chat-unread" data-chat-unread hidden></span></a>` : external('/users/login?status=inactive', t("激活账号"), 'btn primary')) + accountMenu() : external(config.answerLoginPath, t("登录"), 'btn ghost') + external(config.answerRegisterPath, t("加入社区"), 'btn primary guest-register')}</div>
     </header>`;
@@ -263,13 +268,18 @@
     if (node.matches?.('[data-taxonomy-group]') && node.isConnected) taxonomyCollapsed[node.dataset.taxonomyGroup] = !node.open;
   }, true);
 
+  function toolsMenu(isActive) {
+    const items = TOOLS.map(tool => link(tool.path, esc(getLanguage() === 'en_US' ? tool.en : tool.zh), 'topnav-menu-link')).join('');
+    return `<details class="topnav-menu${isActive ? ' active' : ''}"><summary>${t('工具')}</summary><div class="topnav-menu-panel" role="group" aria-label="${t('工具')}">${items}${link('/tools', t('全部工具'), 'topnav-menu-link')}</div></details>`;
+  }
+
   function sidebar() {
     const { path, query } = route();
     const item = (url, label, icon) => link(url, I(icon) + `<span>${esc(label)}</span>`, `nav-item ${routeMatchesNavigation(path, query.toString(), url) ? 'active' : ''}`);
     return `<aside class="sidebar" id="community-sidebar" aria-label="${t("社区导航")}">
       <div class="nav-group"><div class="nav-label">${t("社区")}</div>${item('/latest', t("全部讨论"), 'chat')}${item('/me/drafts', t('我的草稿'), 'edit')}${link('/chat', I('inbox') + `<span>${t('我的消息')}</span><span class="member-unread" data-chat-unread hidden></span>`, 'nav-item')}${item('/events', t('近期活动'), 'calendar')}${item('/latest?order=unanswered', t("待回答"), 'target')}</div>
       <div data-taxonomy-navigation>${taxonomy.navigation(null, '', taxonomyCollapsed)}</div>
-      <div class="side-bottom">${item('/pulse', t("Pulse 权益"), 'pulse')}<div class="side-footer">${link('/guidelines', t("社区规范"))}${external('/sitemap.xml', t("站点地图"))}</div></div>
+      <div class="side-bottom">${item('/tools', t('工具'), 'server')}${item('/pulse', t("Pulse 权益"), 'pulse')}<div class="side-footer">${link('/guidelines', t("社区规范"))}${external('/sitemap.xml', t("站点地图"))}</div></div>
     </aside>`;
   }
 
@@ -344,6 +354,8 @@
     if (['/me/drafts', '/events', '/admin/events'].includes(route().path)) memberView?.mount(view);
     if (route().path === '/admin/operations') operationsView?.mount(view);
     if (route().path.startsWith('/marketplace') || route().path === '/admin/marketplace') marketplaceView?.mount(view);
+    if (route().path === '/admin/models') modelsAdminView?.mount(view);
+    if (route().path === '/tools' || route().path.startsWith('/tools/')) toolsView?.mount(view);
     const chatRoot = document.querySelector('[data-chat-root]');
     if (chatRoot && chatView) chatView.mount(chatRoot, route().query.get('room') || '');
     const core = document.querySelector('[data-pulse-core]');
@@ -749,6 +761,27 @@
   async function resolveView() {
     const { path } = route();
     if (/^\/(?:me|settings|admin|pulse|chat)(?:\/|$)/.test(path)) await identityReady;
+    if (path === '/admin/models') {
+      const title = currentTitle();
+      if (currentUserState === 'unavailable') return identityUnavailable(title);
+      if (!currentUser) return loginRequired(title, t('请先登录社区账号。'));
+      if (!isCommunityAdministrator(currentUser)) return empty(t('需要管理员权限'), '', link('/models', t('返回榜单'), 'btn'), 'shield');
+      await loadFeatureScript('admin-models', 'MetarModelsAdmin');
+      modelsAdminView = new window.MetarModelsAdmin.View(answer);
+      return await modelsAdminView.page(currentUser);
+    }
+    if (path === '/models' || path.startsWith('/models/') || path.startsWith('/model/')) {
+      // Anonymous public data: no identity wait, no Answer adapter.
+      await loadFeatureScript('models', 'MetarModels');
+      modelsView = new window.MetarModels.View();
+      return await modelsView.page(path, route().query);
+    }
+    if (path === '/tools' || path.startsWith('/tools/')) {
+      // Public client-side tools: no identity wait and no Answer, Pulse or Intel dependency.
+      await loadFeatureScript('tools', 'MetarTools');
+      toolsView = new window.MetarTools.View(TOOLS);
+      return toolsView.page(path);
+    }
     if (path === '/marketplace' || path.startsWith('/marketplace/') || path === '/admin/marketplace') {
       await identityReady;
       if (['/marketplace/mine', '/marketplace/publish', '/admin/marketplace'].includes(path)) {
@@ -982,6 +1015,13 @@
     if (restoreFocus) menu.querySelector('summary')?.focus();
   }
 
+  function closeToolsMenu(restoreFocus = false) {
+    const menu = document.querySelector('.topnav-menu[open]');
+    if (!menu) return;
+    menu.open = false;
+    if (restoreFocus) menu.querySelector('summary')?.focus();
+  }
+
   async function refreshAccountExtras() {
     const user = currentUser;
     if (!user || currentUserState !== 'ready' || Date.now() - extrasUpdatedAt < 30000) return;
@@ -1043,6 +1083,9 @@
     chatView?.dispose();
     memberView?.dispose();
     marketplaceView?.dispose();
+    modelsView?.dispose();
+    modelsAdminView?.dispose();
+    toolsView?.dispose();
     const sequence = ++navigationSequence;
     const key = location.pathname + location.search;
     const session = answer.token();
@@ -1187,6 +1230,7 @@
   document.addEventListener('click', (event) => {
     if (!event.target.closest('.account-menu')) closeAccountMenu();
     else if (event.target.closest('a')) closeAccountMenu();
+    if (!event.target.closest('.topnav-menu') || event.target.closest('.topnav-menu a')) closeToolsMenu();
     if (router.follow(event)) { navigate(); return; }
     if (event.defaultPrevented) { closeMobileMenu(); return; }
     const growthButton = event.target.closest('[data-growth]');
@@ -1229,11 +1273,12 @@
       search?.focus();
     }
     if (event.key === 'Escape' && taxonomyDrawer) return;
-    if (event.key === 'Escape') { closeMobileMenu(); closeAccountMenu(true); }
+    if (event.key === 'Escape') { closeMobileMenu(); closeAccountMenu(true); closeToolsMenu(true); }
   });
 
   document.addEventListener('focusin', (event) => {
     if (!event.target.closest('.account-menu')) closeAccountMenu();
+    if (!event.target.closest('.topnav-menu')) closeToolsMenu();
   });
 
   window.addEventListener('popstate', () => navigate({restore:router.position(), preservePublicView:true}));

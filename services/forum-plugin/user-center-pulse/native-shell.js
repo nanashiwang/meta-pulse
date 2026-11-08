@@ -18,7 +18,9 @@ export function installNativeShell(language, host = window) {
   const links = [
     ['/latest', '社区', 'Community'],
     ['/marketplace', '集市', 'Marketplace'],
+    ['/models', '模型榜', 'Models'],
     ['/pulse', 'Pulse', 'Pulse'],
+    ['/tools', '工具', 'Tools'],
   ].map(([href, zh, en]) => {
     const link = doc.createElement('a');
     link.href = href;

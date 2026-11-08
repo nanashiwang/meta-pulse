@@ -179,6 +179,9 @@ services:
       # one-to-one immutable binding constraints. The DSN never reaches Pulse.
       FORUM_BINDING_GUARD_DSN: ${FORUM_BINDING_GUARD_DSN:-forum:${FORUM_DB_PASSWORD:-}@tcp(forum-mysql:3306)/meta_pulse_forum?charset=utf8mb4&parseTime=True&loc=Local}
       FORUM_DB_MODE: ${FORUM_DB_MODE:-local}
+      # /admin/models BFF → intel-api. Empty secret leaves the admin unavailable.
+      METAR_INTEL_ADMIN_URL: ${METAR_INTEL_ADMIN_URL:-http://intel-api:8090}
+      METAR_INTEL_ADMIN_HMAC_SECRET: ${INTEL_ADMIN_HMAC_SECRET:-}
       SSL_CERT_FILE: ${SSL_CERT_FILE:-}
     # Internal-only: the HTTPS gateway is the sole public Answer entry.
     expose:
@@ -188,6 +191,78 @@ services:
       - ${META_PULSE_CA_DIR:-./deploy/certs}:/etc/meta-pulse-ca:ro
     depends_on:
       forum-mysql:
+        condition: service_healthy
+
+  # Model leaderboard (services/intel). Opt-in with `--profile intel` until the
+  # production database and gateway rollout are accepted. Own MySQL instance and
+  # account, like the forum: Intel never reaches Pulse, Answer or new-api data.
+  intel-mysql:
+    image: ${META_PULSE_MYSQL_IMAGE:-mysql:8.0}
+    profiles: [intel]
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: metar_intel
+      MYSQL_USER: intel
+      MYSQL_PASSWORD: ${INTEL_DB_PASSWORD:-}
+      MYSQL_ROOT_PASSWORD: ${INTEL_DB_ROOT_PASSWORD:-}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_bin
+    volumes:
+      - intel_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${INTEL_DB_ROOT_PASSWORD:-}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  intel-api:
+    build:
+      context: .
+      dockerfile: services/intel/Dockerfile
+      args:
+        META_PULSE_REVISION: ${META_PULSE_REVISION:-unknown}
+        META_PULSE_VERSION: ${META_PULSE_VERSION:-dev}
+    profiles: [intel]
+    restart: unless-stopped
+    environment:
+      INTEL_ENV: ${PULSE_ENV:-development}
+      INTEL_HTTP_ADDR: :8090
+      INTEL_DB_DSN: ${INTEL_DB_DSN:-intel:${INTEL_DB_PASSWORD:-}@tcp(intel-mysql:3306)/metar_intel}
+      INTEL_CACHE_TTL: ${INTEL_CACHE_TTL:-30s}
+      # Shared only with the forum plugin's admin BFF. Unset disables the admin API.
+      INTEL_ADMIN_HMAC_SECRET: ${INTEL_ADMIN_HMAC_SECRET:-}
+      INTEL_ADMIN_HMAC_SECRET_PREVIOUS: ${INTEL_ADMIN_HMAC_SECRET_PREVIOUS:-}
+      INTEL_SPEED_WINDOW: ${INTEL_SPEED_WINDOW:-168h}
+    # Reached only through the gateway's read-only /metar/api/intel/ location.
+    expose:
+      - "8090"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1:8090/readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    depends_on:
+      intel-mysql:
+        condition: service_healthy
+
+  intel-worker:
+    build:
+      context: .
+      dockerfile: services/intel/Dockerfile
+      args:
+        META_PULSE_REVISION: ${META_PULSE_REVISION:-unknown}
+        META_PULSE_VERSION: ${META_PULSE_VERSION:-dev}
+    profiles: [intel]
+    restart: unless-stopped
+    entrypoint: ["metar-intel-worker"]
+    environment:
+      INTEL_ENV: ${PULSE_ENV:-development}
+      INTEL_DB_DSN: ${INTEL_DB_DSN:-intel:${INTEL_DB_PASSWORD:-}@tcp(intel-mysql:3306)/metar_intel}
+      INTEL_SCORE_INTERVAL: ${INTEL_SCORE_INTERVAL:-5m}
+      INTEL_SPEED_WINDOW: ${INTEL_SPEED_WINDOW:-168h}
+    depends_on:
+      intel-mysql:
         condition: service_healthy
 
   # Explicitly invoked maintenance client; never started by normal up/start.
@@ -207,3 +282,4 @@ volumes:
   pulse_mysql_data:
   forum_mysql_data:
   forum_data:
+  intel_mysql_data:

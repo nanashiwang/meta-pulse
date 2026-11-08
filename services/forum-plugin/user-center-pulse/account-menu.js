@@ -19,6 +19,7 @@ export function accountLinks(user, english = false, canReview = false) {
     management.push(item('/admin/events', '活动管理', 'Manage events', 'calendar-event'));
     management.push(item('/admin/taxonomy', '类别管理', 'Category settings', 'tags'));
     management.push(item('/admin/marketplace', '集市审核', 'Marketplace review', 'code-slash'));
+    management.push(item('/admin/models', '模型榜管理', 'Leaderboard admin', 'bar-chart'));
     management.push(item('/admin/dashboard', '社区管理', 'Community admin', 'gear'));
     management.push(item('/admin/pulse_user_center', '社区连接配置', 'Community connections', 'link-45deg'));
   }

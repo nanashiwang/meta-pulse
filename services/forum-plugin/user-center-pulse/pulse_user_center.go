@@ -374,6 +374,7 @@ func (uc *UserCenter) RegisterAuthAdminRouter(r *gin.RouterGroup) {
 	uc.registerChat(r, answerAdminSessionUserID, true, plugin.SiteURL)
 	uc.registerEvents(r, answerAdminSessionUserID, true, plugin.SiteURL)
 	uc.registerMarketplaceAdmin(r, answerAdminSessionUserID, plugin.SiteURL)
+	uc.registerIntelAdmin(r, answerAdminSessionUserID, plugin.SiteURL)
 	r.GET("/pulse/health", func(ctx *gin.Context) {
 		config := uc.configSnapshot()
 		ctx.JSON(http.StatusOK, gin.H{"pulse_base_url": config.PulseBaseURL})

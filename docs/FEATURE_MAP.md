@@ -40,6 +40,13 @@ Before adding a feature, inspect adjacent flows and the current source of truth;
 | `/marketplace/publish`、`/marketplace/mine` | 原生介绍帖 + 本人投稿；草稿、提交、需修改、已发布、下架；Answer 实时激活和所有权检查、版本与请求幂等；不要求 API 绑定 | `make test-marketplace-integration`，专用 `_market_test` 库；并发重放、丢响应、审核快照、治理可见性 |
 | `/admin/marketplace`、站内体验 | Answer 管理员会话 + MySQL 当前角色；审核来源、费用、隐私与嵌入许可；只有已审核 live 地址可主动加载受限 iframe，始终保留外站回退 | 无源码托管、模型代理或新增赠券；[使用与边界](VIBE_CODING_MARKETPLACE.md)，浏览器/生产验收另列 |
 
+## 模型榜（2026-11-08，未部署）
+
+| 入口 | 能力、权限与事实源 | 验证 |
+|---|---|---|
+| 顶部导航「模型榜」→ `/models`、`/models/leaderboard`、`/model/:slug`、`/models/methodology` | 匿名只读；独立 `services/intel` 与 `metar_intel` 库；综合分 v1、领先卡片、筛选排序分页；缺失数据显示「—」 | `go test ./services/intel/...`、[页面测试](../metar-frontend/production/tests/models.test.js) |
+| 管理员头像菜单 → `/admin/models` | 校验后导入 JSON、导出、立即重算、导入审计；论坛插件 [admin BFF](../services/forum-plugin/user-center-pulse/intel_admin_bff.go) 实时核对 Answer 管理员后 HMAC 签名转发；导入幂等 | [BFF 测试](../services/forum-plugin/user-center-pulse/intel_admin_bff_test.go)、[页面测试](../metar-frontend/production/tests/admin-models.test.js)；MySQL 集成与生产验收未做，见 [设计](MODEL_INTEL.md#m1-实现状态2026-11-08) |
+
 ## 2026-10-17 代码核对与测试索引
 
 以下是本仓库源码和已有测试的导航索引，不把页面原型、跨仓库文档或生产配置视为实现证据。上表保留具体交互说明；本表补齐身份、数据来源和验证入口。未改动业务代码，也未在本次工具接入中完成新的生产浏览器/真实到账验收。
@@ -89,3 +96,9 @@ new-api 接收端与实际到账、生产普通账号流程、邮件与跨实例
 后续取消 API 消费获券：v0.2.82 停止兑换券；2026-11-08 进一步停止全部贡献摄入与游标续采，保留清零历史与旧游标审计，详见[渠道移除决策](../.agents/notes/implemented/simplification/2026-11-06-stop-usage-tickets.md)。
 
 规则发布、抽奖与社区赠券共用预建的规则守卫；v0.2.83 迁移 00018 保留原幂等身份并改为直接锁行，避免并发赠券的重复键插入死锁。验收覆盖 MySQL 双版本的 100 路重放与周期重叠竞争。
+
+## 顶栏工具分组（2026-11-08）
+
+| 入口 | 能力、权限与事实源 | 验证 |
+|---|---|---|
+| 顶栏「工具」下拉、手机侧栏底部「工具」、Answer 原生页头 → `/tools`、`/tools/network` | 工具清单仅在 [app.js](../metar-frontend/production/src/app.js) `TOOLS` 定义；[tools.js](../metar-frontend/production/src/tools.js) 浏览器内展示出口 IP、时区、语言与 WebRTC 地址对比，不打分、不保存；出口 IP 由 nginx `/metar/api/tools/ip` 返回，无 Answer/Pulse/Intel 依赖；WebRTC 需用户点击并说明 STUN 主机；DNS 泄露暂不提供 | [tools.test.js](../metar-frontend/production/tests/tools.test.js)、`make test-community`；[决策](../.agents/notes/implemented/feature/2026-11-08-tools-network-check.md) |
