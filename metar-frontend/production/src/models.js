@@ -260,7 +260,7 @@
       const total = m.weights.reduce((s, w) => s + w.weight, 0) || 1;
       const byDim = {};
       for (const b of m.benchmarks) (byDim[b.dimension] ||= []).push(b);
-      const benchList = d => (byDim[d] || []).map(b => `<li>${esc(b.name)}${source(b.source_url, t('来源', 'Source'))}</li>`).join('') || `<li class="muted">${t('暂未配置评测', 'No benchmarks configured')}</li>`;
+      const benchList = d => (byDim[d] || []).map(b => `<li>${esc(b.name)}</li>`).join('') || `<li class="muted">${t('暂未配置评测', 'No benchmarks configured')}</li>`;
       return `${subnav('/models/methodology')}
         <header class="intel-hero"><h1>${t('综合分计算方法', 'Scoring methodology')}</h1><p class="muted">${t('当前版本 ', 'Current version ')}${esc(m.version)}${t('。方法调整只会发布新版本，不改写历史结果。', '. Changes are published as new versions; past results are never rewritten.')}</p></header>
         <section class="card card-pad"><h2>${t('维度与权重', 'Dimensions and weights')}</h2><div class="intel-weights">${m.weights.map(w => `<div class="intel-weight"><div class="intel-weight-head"><strong>${dimLabel(w.dimension)}</strong><span>${Math.round(w.weight * 100 / total)}%</span></div><div class="intel-weight-bar" aria-hidden="true"><span style="width:${Math.round(w.weight * 100 / total)}%"></span></div><ul class="intel-bench-list">${benchList(w.dimension)}</ul></div>`).join('')}</div></section>

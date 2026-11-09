@@ -50,7 +50,7 @@ Before adding a feature, inspect adjacent flows and the current source of truth;
 
 | 入口 | 能力、权限与事实源 | 验证 |
 |---|---|---|
-| 顶部导航「模型榜」→ `/models`、`/models/leaderboard`、`/model/:slug`、`/models/methodology` | 匿名只读；独立 `services/intel` 与 `metar_intel` 库；综合分 v1、领先卡片、筛选排序分页；缺失数据显示「—」；nginx 公开代理仅允许 GET/HEAD 并清除浏览器凭据头 | `go test ./services/intel/...`、[页面测试](../metar-frontend/production/tests/models.test.js)、[网关凭据隔离回归](../deploy/nginx/test-seo.py) |
+| 顶部导航「模型榜」→ `/models`、`/models/leaderboard`、`/model/:slug`、`/models/methodology` | 匿名只读；独立 `services/intel` 与 `metar_intel` 库；综合分 v1、领先卡片、筛选排序分页；计算方法页评测列表仅展示名称，不附来源跳转；缺失数据显示「—」；nginx 公开代理仅允许 GET/HEAD 并清除浏览器凭据头 | `go test ./services/intel/...`、[页面测试](../metar-frontend/production/tests/models.test.js)、[网关凭据隔离回归](../deploy/nginx/test-seo.py) |
 | 管理员头像菜单 → `/admin/models` | 校验后导入 JSON、导出、立即重算、导入审计；论坛插件 [admin BFF](../services/forum-plugin/user-center-pulse/intel_admin_bff.go) 实时核对 Answer 管理员后 HMAC 签名转发；数据源 Key 支持后台加密保存或环境变量托管，论坛 Answer 的 Brotli 压缩响应不得错误声明原始 Content-Length；导入幂等 | [BFF 与传输测试](../services/forum-plugin/user-center-pulse/intel_admin_bff_test.go)、[Brotli 代理回归](../services/forum-plugin/user-center-pulse/intel_admin_transport_test.go)、[页面测试](../metar-frontend/production/tests/admin-models.test.js)；修复理由见[响应完整性记录](../.agents/notes/implemented/bug-fix/2026-11-10-intel-admin-compressed-response.md)，生产浏览器验收随 v0.2.104 部署 |
 
 ## 2026-10-17 代码核对与测试索引
