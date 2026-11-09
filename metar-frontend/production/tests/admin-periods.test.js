@@ -88,27 +88,27 @@ test('quota expectation includes experience weight and avoids unsafe products',(
  assert.match(context.MetarPeriodAdmin.quotaExpectation([{type:'newapi_quota',amount:Number.MAX_SAFE_INTEGER,weight:Number.MAX_SAFE_INTEGER}]),/9007199254740991\.0000$/);
 });
 
-test('50% pool preserves the approved 0.25-unit expectation across quota conversion rates',()=>{
+test('5-unit pool gives exactly 5 ⚡️ expected per eligible ticket across quota conversion rates',()=>{
  const {context}=harness();
  const {recommendedRewards,rewardPreview}=context.MetarPeriodAdmin;
- for (const unit of [100000,500000,4]) {
+ for (const unit of [100000,500000,3]) {
   const rows=recommendedRewards(unit);
-  assert.equal(rows.length,7);
-  assert.equal(rows.map(r=>r.weight).join(','),'44000,5000,800,200,28000,12000,10000');
-  assert.equal(rows.slice(0,4).map(r=>r.amount).join(','),[unit/4,unit,unit*5,unit*25].join(','));
-  assert.equal(rows.slice(4).map(r=>r.amount).join(','),'1,4,20');
+  assert.equal(rows.length,9);
+  assert.equal(rows.map(r=>r.weight).join(','),'425,325,100,40,9,1,50,30,20');
+  assert.equal(rows.slice(0,6).map(r=>r.amount).join(','),[1,3,10,30,100,500].map(n=>unit*n).join(','));
+  assert.equal(rows.slice(6).map(r=>r.amount).join(','),'1,4,20');
   const stats=context.MetarAdapters.pulseRewardStats(rows);
-  assert.equal(stats.total,100000n);assert.equal(stats.quotaWeight,50000n);
-  assert.equal(stats.quotaAmount*4n,BigInt(unit)*stats.total);
-  assert.equal(stats.expAmount*100n,276n*stats.total);
-  assert.equal(stats.expAmount*100n,552n*stats.expWeight);
+  assert.equal(stats.total,1000n);assert.equal(stats.quotaWeight,900n);
+  assert.equal(stats.quotaAmount,5n*BigInt(unit)*stats.total);
+  assert.equal(stats.expAmount*100n,57n*stats.total);
+  assert.equal(stats.expAmount*10n,57n*stats.expWeight);
   const html=rewardPreview(rows,unit);
-  for(const v of ['44%','5%','0.8%','0.2%','28%','12%','10%','56%','24%','20%','0.25 ⚡️','2.76 EXP','5.52 EXP']) assert.ok(html.includes(v),v);
+  for(const v of ['42.5%','32.5%','10%','4%','0.9%','0.1%','5%','3%','2%','50%','30%','20%','90%','5 ⚡️','0.57 EXP','5.7 EXP']) assert.ok(html.includes(v),v);
  }
- for(const unit of [0,-4,3,1.5,Number.MAX_SAFE_INTEGER-3]) assert.equal(recommendedRewards(unit),null);
+ for(const unit of [0,-4,1.5,Math.floor(Number.MAX_SAFE_INTEGER/499)]) assert.equal(recommendedRewards(unit),null);
  // Mutating a returned form must not change the next preset.
- recommendedRewards(4)[4].amount=999;
- assert.equal(recommendedRewards(4)[4].amount,1);
+ recommendedRewards(4)[6].amount=999;
+ assert.equal(recommendedRewards(4)[6].amount,1);
 });
 test('loading the pool changes only prizes and reason, preserving validity and pending requests',()=>{
  const h=harness();
@@ -116,8 +116,8 @@ test('loading the pool changes only prizes and reason, preserving validity and p
  for(const [key,value] of Object.entries(original))h.form.querySelector(`[name="${key}"]`).value=value;
  h.view.action('admin-period-preset');
  for(const [key,value] of Object.entries(original))assert.equal(h.form.querySelector(`[name="${key}"]`).value,value);
- assert.match(h.form.querySelector('[data-period-prizes]').innerHTML,/value="44000"/);
- assert.match(h.form.querySelector('[data-period-expectation]').innerHTML,/2.76 EXP/);
+ assert.match(h.form.querySelector('[data-period-prizes]').innerHTML,/value="425"/);
+ assert.match(h.form.querySelector('[data-period-expectation]').innerHTML,/0.57 EXP/);
  assert.equal(h.view.pending,null);assert.equal(h.storage.size,0);
  const html=h.form.querySelector('[data-period-prizes]').innerHTML;
  h.view.pending={key:'original',body:{rewards:[]}};

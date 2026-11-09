@@ -20,21 +20,19 @@
       code: "invalid_period",
     });
   const storageKey = "metar-continuous-rules-pending-v1";
+  // Weights sum to 1000, so each point is 0.1%. Quota expectation: 5000/1000 = 5 ⚡️ per eligible ticket.
   const recommendedExpRewards = [
-    { key: "exp-basic", reward_type: "community_exp", amount: 1, weight: 28000 },
-    { key: "exp-middle", reward_type: "community_exp", amount: 4, weight: 12000 },
-    { key: "exp-high", reward_type: "community_exp", amount: 20, weight: 10000 },
+    { key: "exp-basic", reward_type: "community_exp", amount: 1, weight: 50 },
+    { key: "exp-middle", reward_type: "community_exp", amount: 4, weight: 30 },
+    { key: "exp-high", reward_type: "community_exp", amount: 20, weight: 20 },
   ];
+  const recommendedQuotaTiers = [[1, 425], [3, 325], [10, 100], [30, 40], [100, 9], [500, 1]];
   function recommendedRewards(quotaPerUnit) {
     const unit = Number(quotaPerUnit);
-    if (!Number.isSafeInteger(unit) || unit <= 0 || unit % 4 !== 0) return null;
-    if (BigInt(unit) * 25n > BigInt(Number.MAX_SAFE_INTEGER)) return null;
-    const quarter = unit / 4;
+    if (!Number.isSafeInteger(unit) || unit <= 0) return null;
+    if (BigInt(unit) * 500n > BigInt(Number.MAX_SAFE_INTEGER)) return null;
     return [
-      { key: "api-participation", amount: quarter, weight: 44000 },
-      { key: "api-third", amount: unit, weight: 5000 },
-      { key: "api-second", amount: unit * 5, weight: 800 },
-      { key: "api-first", amount: unit * 25, weight: 200 },
+      ...recommendedQuotaTiers.map(([units, weight]) => ({ key: `api-${units}`, amount: unit * units, weight })),
       ...recommendedExpRewards.map(r => ({...r})),
     ];
   }
@@ -163,7 +161,7 @@
           <label>${t("额度奖励有效天数")}<input name="quota_validity_days" type="number" min="1" max="3650" step="1" value="${this.current?.quota_validity_days || 30}" required><span class="prod-field-help">${t("从每张券获得时起计算，默认 30 天；到期后仅抽取经验。")}</span></label>
         </div>
         <h3 class="mt24">${t("统一抽奖规则")}</h3><p class="prod-field-help">${t("每次独立抽取，中奖不减少奖项权重，纯按概率发放，不设额度与经验奖池预算。至少设置一个经验奖项。保存不会开启抽奖。")}</p>
-        <p class="prod-field-help">${t("实际支出随券量与概率波动，请通过奖项数量和权重控制平均成本。")}</p><div data-period-prizes>${initialRewards.map(rewardRow).join('')}</div><button class="btn mt16" type="button" data-action="admin-period-add">${t("添加奖项")}</button><button class="btn mt16" type="button" data-action="admin-period-preset">${t("载入 50% 额度概率方案")}</button><p class="prod-field-help">${t("推荐方案：额度中奖率 50%，每券期望 0.25 ⚡️ 与 2.76 EXP；到期券平均 5.52 EXP。额度奖项按当前换算比例生成。")}</p>
+        <p class="prod-field-help">${t("实际支出随券量与概率波动，请通过奖项数量和权重控制平均成本。")}</p><div data-period-prizes>${initialRewards.map(rewardRow).join('')}</div><button class="btn mt16" type="button" data-action="admin-period-add">${t("添加奖项")}</button><button class="btn mt16" type="button" data-action="admin-period-preset">${t("载入 5 ⚡️ 期望方案")}</button><p class="prod-field-help">${t("推荐方案：额度中奖率 90%，奖励 1/3/10/30/100/500 ⚡️，每券期望 5 ⚡️ 与 0.57 EXP；到期券平均 5.7 EXP。额度奖项按当前换算比例生成。")}</p>
         <p class="prod-field-help mt16">${t("奖项概率 = 该奖项权重 ÷ 所有奖项权重之和。到期券仅在经验奖项之间按权重抽取。")}</p>
         <button class="btn mt16" type="button" data-action="admin-period-expectation">${t("预览概率与期望")}</button><div class="prod-field-help mt8" data-period-expectation role="status"></div><label class="prod-admin-field mt24">${t("修改原因")}<textarea name="reason" required minlength="3" maxlength="500" rows="2"></textarea></label>
         <label class="prod-check mt16"><input name="confirm" type="checkbox" required> ${t("我已确认新奖项和概率适用于所有未用券；已有券原有效期保持不变。")}</label>
@@ -292,11 +290,11 @@
       if (action === "admin-period-preset") {
         const rewards = recommendedRewards(this.quotaPerUnit);
         if (!rewards) {
-          form.querySelector("[data-period-expectation]").textContent = t("当前额度换算比例无法精确生成安全的整数奖项，请核对 quota_per_unit（须为 4 的倍数且不能过大）。");
+          form.querySelector("[data-period-expectation]").textContent = t("当前额度换算比例无法生成安全的整数奖项，请核对 quota_per_unit（须为正整数且不能过大）。");
           return;
         }
         form.querySelector('[data-period-prizes]').innerHTML = rewards.map(rewardRow).join('');
-        form.querySelector('[name="reason"]').value = t("采用 50% 额度概率方案：每券期望 0.25 ⚡️，经验奖励为 1 / 4 / 20 EXP。");
+        form.querySelector('[name="reason"]').value = t("采用 5 ⚡️ 期望方案：额度中奖率 90%，每券期望 5 ⚡️，最高 500 ⚡️。");
         form.querySelector("[data-period-expectation]").innerHTML = `<p>${t("已载入奖项；有效期设置保持原值。核对后保存才会生效。")}</p>${rewardPreview(rewards, this.quotaPerUnit)}`;
         return;
       }

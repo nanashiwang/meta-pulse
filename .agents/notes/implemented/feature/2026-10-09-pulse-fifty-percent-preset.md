@@ -35,3 +35,5 @@ Status: implemented
 ## Display scope update
 
 [紧凑奖励记录入口](../simplification/2026-10-09-pulse-compact-history.md)替代本篇用户奖池概率展示决定；管理员配置与预览、规则查询及执行/恢复语义继续有效。
+
+后续[5 ⚡️ 期望方案](2026-11-08-pulse-probability-only-rewards.md)替代本篇奖项参数；加载、预览与不自动生效的机制保留。
