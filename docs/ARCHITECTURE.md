@@ -1355,3 +1355,9 @@ Item 的 `entry_json` 保存当前投稿，`live_json` 保存审核通过的运�
 社区出口仍由 nginx `/metar/api/tools/ip` 直接返回访问源地址。用户点击扫描后才由浏览器向 `https://claude.com/cdn-cgi/trace`、`https://claude.ai/cdn-cgi/trace` 发起无凭据、无 referrer 的请求，并使用 `stun.cloudflare.com` 收集 WebRTC 地址。环境特征不持久化或上报；DNS 探测标识和递归 IP 在独立服务临时保留；这些网络目标会看到请求源 IP。首页及 History 壳层 CSP 的 connect-src 仅额外允许两个固定 trace 路径及 *.dnsprobe.metarhub.com，以支持 SPA 导航；不开放通配第三方域名、内联脚本或服务端代理。离开工具页会取消未完成探测。
 
 CORS、超时与无效响应显示未知，不能借社区出口冒充 Claude 出口；WebRTC 无候选或缺少基准不能视为安全。DNS 使用独立可选 services/dnsprobe 权威服务，随机域名与独立回读凭据隔离，浏览器触发 A/AAAA/HTTPS 查询后轮询递归出口；只返回 IP，不猜测地区或作安全判定。默认不启动，公网 NS 委派及 UDP/TCP 53 必须单独验收，见 [部署说明](DNS_PROBE.md)。结果无数据库，仅在内存保留最多 90 秒并每秒清理；不记录查询日志，不读取论坛 Cookie/Authorization，不提供区外递归。参考文献的 Unicode 隐写主张与本页可观测结果分开呈现，未验证的客户端行为不当作事实。
+
+## 社区注册人机验证（2026-11-09）
+
+forum 编入独立 `metar_turnstile` Captcha 插件，复用 Answer 注册 API、原生表单与 email action。管理员配置并启用后，匿名注册必须提交 Cloudflare Turnstile token，后端固定 Siteverify 校验 success、允许域名和 `answer_captcha` action，错误、超时或缺配置时拒绝。token 的单次使用及有效期由 Cloudflare 验证，服务端不缓存成功结果；公开配置只返回 Site Key 和 action，Secret Key 保留在 Answer 管理配置。浏览器成功回调不能作为服务端可信证据。
+
+验证码启用范围沿用 Answer：email action 每次验证，普通登录及其他写操作保留原生阈值，管理员权限例外沿用上游。禁用插件恢复 Answer 无验证码策略；发布不代表已启用，必须按[启用与验收](../services/forum-plugin/captcha-turnstile/README.md)完成域名密钥配置和生产验收。Cloudflare 故障仅拒绝需要验证的操作，不成为 Pulse、资金或普通浏览的依赖。

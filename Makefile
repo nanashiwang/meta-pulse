@@ -3,7 +3,7 @@
 
 # The repo root is not a Go module, so `./...` does not resolve across the
 # workspace. Every Go target lists module paths explicitly.
-GO_MODULES := ./services/dnsprobe/... ./services/pulse/... ./services/forum-plugin/user-center-pulse/... ./services/intel/...
+GO_MODULES := ./services/forum-plugin/captcha-turnstile/... ./services/dnsprobe/... ./services/pulse/... ./services/forum-plugin/user-center-pulse/... ./services/intel/...
 GO_DIRS := services/dnsprobe services/pulse services/forum-plugin services/intel
 
 help:
@@ -36,7 +36,7 @@ verify-notes:
 vet:
 	go vet $(GO_MODULES)
 
-test: deploy-test test-community test-forum-session test-forum-optional-email
+test: deploy-test test-community test-forum-session test-forum-optional-email test-forum-captcha
 	go test $(GO_MODULES)
 
 deploy-test:
@@ -109,6 +109,7 @@ test-community: test-editor-images
 	node --test metar-frontend/production/tests/*.test.js
 	node --test services/forum/customization/*.test.js
 	node --test services/forum-plugin/user-center-pulse/*.test.js
+	node --test services/forum-plugin/captcha-turnstile/*.test.js
 
 run-api:
 	go run ./services/pulse/cmd/api
@@ -169,3 +170,7 @@ test-forum-session:
 .PHONY: test-forum-optional-email
 test-forum-optional-email:
 	bash services/forum/test-optional-admin-email.sh
+
+.PHONY: test-forum-captcha
+test-forum-captcha:
+	bash services/forum/test-captcha.sh

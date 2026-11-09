@@ -36,11 +36,13 @@ ENV ANSWER_MODULE=/build/answer
 
 WORKDIR /build
 COPY services/forum-plugin/user-center-pulse ./user-center-pulse
+COPY services/forum-plugin/captcha-turnstile ./captcha-turnstile
 
 # Build from the local plugin source rather than a published module, so the
 # forum image always matches this commit.
 RUN answer build \
     --with github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse@v0.1.0=/build/user-center-pulse \
+    --with github.com/nanashiwang/meta-pulse/services/forum-plugin/captcha-turnstile@v0.1.0=/build/captcha-turnstile \
     --output /out/answer
 
 RUN cd /build/user-center-pulse && CGO_ENABLED=0 go build -o /out/forum-config ./cmd/forum-config

@@ -51,6 +51,8 @@ Meta Pulse 负责社区任务脉冲券、长期经济规则快照、Reward、Bud
 
 社区网页登录采用 30 天滑动有效期，每次有效认证访问续期；已有未到期会话下次访问自动沿用新期限。需部署新版 forum 才生效，详见[社区会话说明](docs/ARCHITECTURE.md#社区会话滑动保留)。
 
+社区注册支持 Cloudflare Turnstile，部署后需在 Answer 后台配置并启用，见[验证码配置与验收](services/forum-plugin/captcha-turnstile/README.md)。
+
 ## 技术栈
 
 - Go 1.22+

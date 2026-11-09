@@ -46,7 +46,7 @@ jobs:
           fi
 
       - name: Vet
-        run: go vet ./services/dnsprobe/... ./services/pulse/... ./services/forum-plugin/user-center-pulse/...
+        run: go vet ./services/forum-plugin/captcha-turnstile/... ./services/dnsprobe/... ./services/pulse/... ./services/forum-plugin/user-center-pulse/...
 
       - name: Test
         run: make test
