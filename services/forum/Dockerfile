@@ -29,9 +29,11 @@ RUN mkdir -p /tmp/answer-source /build \
     && chmod -R u+w /build/answer
 COPY services/forum/answer-session-retention.patch /build/answer-session-retention.patch
 COPY services/forum/answer-optional-admin-email.patch /build/answer-optional-admin-email.patch
+COPY services/forum/answer-admin-privileges-compact.patch /build/answer-admin-privileges-compact.patch
 RUN cd /build/answer \
     && patch -p1 --fuzz=0 < /build/answer-session-retention.patch \
-    && patch -p1 --fuzz=0 < /build/answer-optional-admin-email.patch
+    && patch -p1 --fuzz=0 < /build/answer-optional-admin-email.patch \
+    && patch -p1 --fuzz=0 < /build/answer-admin-privileges-compact.patch
 ENV ANSWER_MODULE=/build/answer
 
 WORKDIR /build

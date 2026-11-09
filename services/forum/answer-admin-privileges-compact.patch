@@ -1,0 +1,122 @@
+diff --git a/ui/src/pages/Admin/Privileges/index.scss b/ui/src/pages/Admin/Privileges/index.scss
+new file mode 100644
+index 0000000..25e6f34
+--- /dev/null
++++ b/ui/src/pages/Admin/Privileges/index.scss
+@@ -0,0 +1,50 @@
++/* METAR: show the reputation thresholds as a dense grid instead of one long column. */
++.metar-privileges form {
++  display: grid;
++  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
++  gap: 8px 12px;
++}
++
++.metar-privileges .metar-privilege-level {
++  grid-column: 1 / -1;
++  max-width: 420px;
++  margin-bottom: 8px;
++}
++
++.metar-privileges .metar-privilege-field {
++  display: flex;
++  flex-wrap: wrap;
++  align-items: center;
++  gap: 4px 10px;
++  margin: 0;
++  padding: 6px 8px 6px 12px;
++  border: 1px solid var(--bs-border-color);
++  border-radius: 6px;
++}
++
++.metar-privileges .metar-privilege-field .form-label {
++  flex: 1 1 0;
++  min-width: 0;
++  margin: 0;
++  font-size: 0.875rem;
++  line-height: 1.3;
++}
++
++.metar-privileges .metar-privilege-field .form-control {
++  flex: none;
++  width: 88px;
++  padding: 2px 8px;
++  font-size: 0.875rem;
++  text-align: right;
++}
++
++.metar-privileges .metar-privilege-field .invalid-feedback {
++  flex-basis: 100%;
++  margin-top: 0;
++}
++
++.metar-privileges form > .btn {
++  grid-column: 1 / -1;
++  justify-self: start;
++  margin-top: 8px;
++}
+diff --git a/ui/src/pages/Admin/Privileges/index.tsx b/ui/src/pages/Admin/Privileges/index.tsx
+index f0930c7..2e28f80 100644
+--- a/ui/src/pages/Admin/Privileges/index.tsx
++++ b/ui/src/pages/Admin/Privileges/index.tsx
+@@ -32,6 +32,8 @@ import {
+ import { handleFormError, scrollToElementTop } from '@/utils';
+ import { ADMIN_PRIVILEGE_CUSTOM_LEVEL } from '@/common/constants';
+ 
++import './index.scss';
++
+ const Index: FC = () => {
+   const { t } = useTranslation('translation', {
+     keyPrefix: 'admin.privilege',
+@@ -45,6 +47,9 @@ const Index: FC = () => {
+   const [uiSchema, setUiSchema] = useState<UISchema>({
+     level: {
+       'ui:widget': 'select',
++      'ui:options': {
++        field_class_name: 'metar-privilege-level',
++      },
+     },
+   });
+   const [formData, setFormData] = useState<FormDataType>(initFormData(schema));
+@@ -79,6 +84,7 @@ const Index: FC = () => {
+       };
+       uiState[li.key] = {
+         'ui:options': {
++          field_class_name: 'metar-privilege-field',
+           readOnly: curLevel.level !== ADMIN_PRIVILEGE_CUSTOM_LEVEL,
+           validator: (value: string) => {
+             const val = Number(value);
+@@ -188,13 +194,15 @@ const Index: FC = () => {
+   return (
+     <>
+       <h3 className="mb-4">{t('title')}</h3>
+-      <SchemaForm
+-        schema={schema}
+-        uiSchema={uiSchema}
+-        formData={formData}
+-        onSubmit={onSubmit}
+-        onChange={handleOnChange}
+-      />
++      <div className="metar-privileges">
++        <SchemaForm
++          schema={schema}
++          uiSchema={uiSchema}
++          formData={formData}
++          onSubmit={onSubmit}
++          onChange={handleOnChange}
++        />
++      </div>
+     </>
+   );
+ };
+diff --git a/ui/src/pages/Admin/index.tsx b/ui/src/pages/Admin/index.tsx
+index 2750329..23aaa98 100644
+--- a/ui/src/pages/Admin/index.tsx
++++ b/ui/src/pages/Admin/index.tsx
+@@ -36,6 +36,7 @@ const g10Paths = [
+   'badges',
+   'flags',
+   'installed-plugins',
++  'privileges',
+ ];
+ const Index: FC = () => {
+   const { t } = useTranslation('translation', { keyPrefix: 'page_title' });
