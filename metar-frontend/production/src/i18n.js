@@ -47,6 +47,7 @@
 
     "社区经营": "Community operations",
     "元衡 API": "YuanHeng API",
+    "元衡API": "YuanHeng API",
     "查看更多": "View more",
     "用户": "User",
     "社区中奖动态": "Community rewards",

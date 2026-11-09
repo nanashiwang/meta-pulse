@@ -212,7 +212,7 @@
   }
 
   function footer() {
-    return `<footer class="prod-footer"><span>© 2026 ${esc(config.siteName)}</span><nav>${link('/tos', t("服务条款"))}${link('/privacy', t("隐私政策"))}${external('/users/register', t("加入社区"))}${link('/guidelines', t("社区规范"))}</nav></footer>`;
+    return `<footer class="prod-footer"><span>© 2026 ${esc(config.siteName)}</span><nav>${link('/tos', t("服务条款"))}${link('/privacy', t("隐私政策"))}${outbound(config.consoleUrl, t('元衡API'))}${external('/users/register', t("加入社区"))}${link('/guidelines', t("社区规范"))}</nav></footer>`;
   }
 
   function currentTitle() {

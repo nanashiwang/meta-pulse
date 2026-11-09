@@ -1,0 +1,38 @@
+.metar-avatar-cropper {
+  box-sizing: border-box;
+  width: min(440px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid var(--bs-border-color, #d8dee4);
+  border-radius: 12px;
+  background: var(--bs-body-bg, #fff);
+  color: var(--bs-body-color, #24292f);
+  box-shadow: 0 20px 70px #0003;
+}
+.metar-avatar-cropper::backdrop { background: #0008; }
+.metar-avatar-cropper h2 { margin: 0 0 8px; font-size: 1.25rem; }
+.metar-avatar-help { margin: 0 0 16px; font-size: .9rem; }
+.metar-avatar-images { display: flex; align-items: center; flex-direction: column; gap: 16px; }
+.metar-avatar-editor {
+  display: block;
+  width: 280px;
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  touch-action: none;
+  cursor: grab;
+  background: #fff;
+  border: 1px solid var(--bs-border-color, #d8dee4);
+}
+.metar-avatar-editor:active { cursor: grabbing; }
+.metar-avatar-preview { width: 80px; height: 80px; border-radius: 50%; border: 1px solid var(--bs-border-color, #d8dee4); }
+.metar-avatar-zoom { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+.metar-avatar-zoom input { flex: 1; min-width: 0; }
+.metar-avatar-status, .metar-avatar-error { margin: 12px 0 0; font-size: .9rem; }
+.metar-avatar-error { color: var(--bs-danger, #b42318); }
+.metar-avatar-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.metar-avatar-actions button { padding: 7px 12px; border: 1px solid var(--bs-border-color, #d8dee4); border-radius: 6px; background: var(--bs-body-bg, #fff); color: inherit; cursor: pointer; }
+.metar-avatar-actions button[data-action="confirm"] { background: var(--bs-primary, #0969da); border-color: transparent; color: #fff; }
+.metar-avatar-actions button:disabled { opacity: .5; cursor: default; }
+.metar-avatar-cropper :focus-visible { outline: 2px solid var(--bs-primary, #0969da); outline-offset: 3px; }

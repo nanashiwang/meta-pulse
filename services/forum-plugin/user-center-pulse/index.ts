@@ -3,6 +3,8 @@ import { installNativeFavicon } from './native-favicon';
 import './analytics-client.js';
 import ImageImportEditor from './image-import-editor';
 import './drafts-store.js';
+import './avatar-cropper.js';
+import './avatar-cropper.css';
 import storageExpires from '@/utils/storageWithExpires';
 import './growth-presentation.js';
 import i18n from '@/i18n/init';
@@ -34,6 +36,8 @@ installPasswordVisibility({
   getLanguage: () => i18n.language,
   onLanguageChanged: (handler) => i18n.on('languageChanged', handler),
 });
+
+(window as any).MetarAvatarCropper.install({ getLanguage: () => i18n.language });
 
 installNativeFavicon();
 installLocalRegistration(userCenterStore);

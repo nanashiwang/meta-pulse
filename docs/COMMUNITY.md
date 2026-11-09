@@ -49,6 +49,8 @@ Go 无动态插件机制，因此 Answer 升级后必须重新编译并做真实
 
 头像使用 Answer 官方外观扩展：默认设为系统头像，并安装 [`avatar-head.html`](../services/forum/customization/avatar-head.html)，将默认/失败头像显示为本地生成的用户名首字符。用户仍通过 Answer「编辑资料 → 头像 → 自定义」上传更换；不会修改头像数据库字段或关闭外部媒体保护。安装、升级与回退见[头像定制说明](../services/forum/customization/README.md)。METAR 静态首页同样支持同源上传头像和首字符回退。
 
+启用 UserCenter 插件并重建 forum 后，资料页自定义头像先在浏览器裁剪：选择 JPEG/PNG/WebP → 拖动与 1–4 倍缩放 → 圆形预览 → 确认。输出为 512×512、白底 JPEG，逐级压缩至不超过 200 KiB，再交回 Answer 原生上传；上传后仍需点击“保存资料”才更新账号。原图上限 20 MiB，解码后上限 4000 万像素；HEIC 等格式明确拒绝。取消或离开资料页不上传，其他图片上传入口不受影响。实现位于 [avatar-cropper.js](../services/forum-plugin/user-center-pulse/avatar-cropper.js)，随插件 Go embed 打包，无额外上游补丁。依赖原生 dialog、createImageBitmap、DataTransfer；Answer 升级需回归资料表单 `select[name="avatar.type"]` 与原始文件 change 上传链路。Node 回归验证事件交接，不替代真实浏览器上传和保存验收。
+
 ### 3.1 中英文界面
 
 原生论坛和 METAR 静态首页右上角均提供「中文 / English」。用户显式选择后，偏好保存在同源浏览器的 `metar-language`（`zh_CN` / `en_US`），刷新、切换页面、登录或退出后保留；浏览器存储禁用时当页仍可切换。静态首页默认中文，原生论坛未显式选择前沿用 Answer 账号/站点默认语言。该偏好只控制界面，帖子正文、标题、用户名和用户资料保持原文。
