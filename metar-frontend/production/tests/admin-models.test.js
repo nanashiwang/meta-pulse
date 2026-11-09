@@ -106,7 +106,8 @@ test('default fetch targets the admin BFF with session token and marker header',
   window.fetch = async (url, opts) => { seenAll.push({url, opts}); return {ok: false, status: 422, json: async () => ({error: 'invalid_document', problems: ['models[0].name bad']})}; };
   const v = new api.View({token: () => 'abc'});
   await v.page({id: '7'});
-  assert.deepEqual(seenAll.map(c => c.url), ['/answer/admin/api/metar/intel/overview', '/answer/admin/api/metar/intel/sources']);
+  // A failed sources load is retried once.
+  assert.deepEqual(seenAll.map(c => c.url), ['/answer/admin/api/metar/intel/overview', '/answer/admin/api/metar/intel/sources', '/answer/admin/api/metar/intel/sources']);
   const seen = seenAll[0];
   assert.equal(seen.opts.headers.Authorization, 'Bearer abc');
   assert.equal(seen.opts.headers['X-Metar-Request'], '1');
@@ -184,4 +185,15 @@ test('data source card is the first section, even when the overview fails', asyn
   const failed = await new api.View(null, fetcher({overview: new api.AdminError('unavailable', 503), sources: srcState()})).page({id: '7'});
   assert.match(failed, /data-intel-source-key/, 'key can be configured while the overview is down');
   assert.match(failed, /无法读取模型榜状态/);
+});
+
+test('a single failed data source load is retried, and a reload button remains', async () => {
+  const {api} = setup();
+  let attempts = 0;
+  const flaky = fetcher({overview, sources: () => { attempts++; if (attempts === 1) throw new api.AdminError('unavailable', 0); return srcState(); }});
+  const html = await new api.View(null, flaky).page({id: '7'});
+  assert.equal(attempts, 2);
+  assert.match(html, /data-intel-source-key/, 'retry recovers the key form');
+  const down = await new api.View(null, fetcher({overview, sources: new api.AdminError('unavailable', 0)})).page({id: '7'});
+  assert.match(down, /data-intel-source="reload"/);
 });

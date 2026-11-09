@@ -83,7 +83,9 @@
       }
       this.sourceMessage = '';
       this.sourceKind = '';
-      await this.refreshSources().catch(() => {});
+      // One quiet retry: a single failed load (e.g. while services restart
+      // during a deploy) must not leave the key form unreachable.
+      await this.refreshSources().catch(() => new Promise(r => setTimeout(r, 1500)).then(() => this.refreshSources()).catch(() => {}));
       return this.render();
     }
 
@@ -156,7 +158,7 @@
 
     sourcesSection() {
       const title = `<h2>${t('数据源 · LLM Stats', 'Data source · LLM Stats')}</h2>`;
-      if (!this.sources) return `<section class="card card-pad mt16 intel-admin-sources">${title}<p class="muted">${esc(errorText(this.sourcesError))}</p></section>`;
+      if (!this.sources) return `<section class="card card-pad mt16 intel-admin-sources">${title}<p class="muted">${esc(errorText(this.sourcesError))}</p><div class="intel-side-actions mt16"><button class="btn small primary" data-intel-source="reload">${t('重新加载', 'Reload')}</button></div></section>`;
       const s = this.sources.llm_stats || {};
       const status = s.origin === 'env' ? t(`已配置（服务器环境变量，末四位 ${s.key_hint || '—'}）`, `Configured in the server environment (…${s.key_hint || '—'})`)
         : !s.configured ? t('未配置', 'Not configured')
@@ -286,6 +288,7 @@
         if (sourceButton && container.contains(sourceButton)) {
           const op = sourceButton.dataset.intelSource;
           if (op === 'save') runSource(async input => { await this.saveSourceKey(input?.value); this.sourceMessage = t('key 验证通过并已加密保存，正在发起首次同步。', 'Key verified and stored encrypted; the first sync has been requested.'); });
+          if (op === 'reload') runSource(async () => { await this.refreshSources(); this.sourceMessage = ''; });
           if (op === 'sync') runSource(async () => { await this.requestSourceSync(); this.sourceMessage = t('已请求同步。', 'Sync requested.'); });
           if (op === 'enable' || op === 'disable') runSource(async () => { await this.setSourceEnabled(op === 'enable'); this.sourceMessage = op === 'enable' ? t('已启用。', 'Enabled.') : t('已停用，不再自动同步。', 'Disabled; automatic sync stopped.'); });
           if (op === 'clear' && root.confirm(t('确定清除已保存的 API key？清除后停止自动同步，已有数据保留。', 'Remove the saved API key? Automatic sync stops; existing data stays.'))) runSource(async () => { await this.clearSourceKey(); this.sourceMessage = t('已清除 key。', 'Key removed.'); });
