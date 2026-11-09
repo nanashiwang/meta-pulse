@@ -621,7 +621,7 @@
     if (!isActiveUser(currentUser)) return accountUnavailable(t("Pulse 权益"));
     const userId = currentUser.id;
     const binding = await answer.getBindingState();
-    if (binding.status === 'unbound') return `${pageTitle(t("Pulse 权益"))}<section class="pulse-hero"><div><div class="eyebrow">${t("社区互动回馈计划")}</div><h1>${t("先完成可选账号绑定")}</h1><p>${t("社区账号可以独立使用。绑定元衡 API 后，可通过每日签到和社区互动获得抽奖券。")}</p><div class="actions">${link('/settings/binding', t("了解并开始绑定 ") + I('arrow', 'sm'), 'btn light')}${link('/latest', t("继续浏览社区"), 'btn outline-light')}</div></div>${I('pulse')}</section>${footer()}`;
+    if (binding.status === 'unbound') return pulseUnboundPage(sequence, userId);
     if (binding.status === 'unavailable') throw new AdapterError(t("绑定状态暂时不可查询，Pulse 页面不会据此猜测身份。"), { code: 'binding_unavailable' });
     const [summary, catalog, history, coreReady] = await Promise.all([pulse.summary(), pulse.rules(), deferHistory ? {rewards:[]} : pulse.rewards(), loadPulseCore()]);
     if (sequence !== navigationSequence || currentUser?.id !== userId) return '';
@@ -673,6 +673,22 @@
       <dialog id="pulse-winners" class="prod-pulse-dialog" aria-labelledby="pulse-winners-title">${dialogHeader('pulse-winners', '社区中奖动态')}<p class="prod-page-note">${t('最近 30 天，最多显示 20 条已到账奖励。')}</p>${pulseFeedTable('full')}</dialog>
       <dialog id="pulse-benefits" class="prod-pulse-dialog prod-pulse-benefits-dialog" aria-labelledby="pulse-benefits-title">${dialogHeader('pulse-benefits', '我的权益')}<div data-pulse-benefits-body>${benefits}</div></dialog>
       <dialog id="pulse-history" class="prod-pulse-dialog" data-pulse-history aria-labelledby="pulse-history-title">${dialogHeader('pulse-history', '奖励记录')}<p data-pulse-history-error role="status" class="prod-page-note" hidden></p><div class="prod-pulse-table" tabindex="0" role="region" aria-label="${t('奖励记录')}"><table><thead><tr><th>${t('奖励')}</th><th>${t('到账状态')}</th><th>${t('时间')}</th><th>${t('奖励编号')}</th></tr></thead><tbody data-pulse-history-rows>${pulseHistoryRows(rewards, rules.quota_per_unit)}</tbody></table></div></dialog>${footer()}`;
+  }
+
+  // Unbound members see the same draw stage with zero tickets and a bind prompt.
+  // No Pulse/BFF request is made: tickets and rewards belong to the API account.
+  async function pulseUnboundPage(sequence, userId) {
+    const coreReady = await loadPulseCore();
+    if (sequence !== navigationSequence || currentUser?.id !== userId) return '';
+    const reason = t('绑定元衡 API 账号后即可获得抽奖券并抽奖');
+    pulseHasPendingRewards = false;
+    pulseCoreState = { unbound: true, tickets: number(0), canDraw: false, canDrawFive: false, selection: null, pending: false, busy: false, quotaPerUnit: undefined, result: null, message: '', reason };
+    const dialogHeader = (id, title) => `<div class="prod-pulse-dialog-header"><h2 id="${id}-title">${t(title)}</h2><form method="dialog"><button type="submit" class="prod-pulse-dialog-close" aria-label="${t('关闭窗口')}" autofocus>×</button></form></div>`;
+    const bind = link('/settings/binding', t('去绑定元衡 API 账号 ') + I('arrow', 'sm'), 'btn primary');
+    return `${coreReady ? window.MetarPulseCore.markup({ t }) : `<section class="card card-pad"><h1>${esc(t('可用脉冲券：{count}', { count: number(0) }))}</h1><div class="actions"><button type="button" class="btn primary" disabled>${t('开启一次脉冲 · 1 券')}</button><button type="button" class="btn primary" disabled>${t('五连抽 · 5 券')}</button></div></section>`}
+      <div data-pulse-details><section class="card card-pad mt24 prod-pulse-bind" data-pulse-bind role="status"><div class="between wrap"><h2>${I('link')} ${t('尚未绑定元衡 API 账号')}</h2>${badge(t('未绑定'))}</div><p class="muted mt8">${t('抽奖券、额度奖励和抽奖记录都归属你的元衡 API 账号。完成一次绑定后，每日签到和社区互动即可获得抽奖券，额度奖励直接到账 API 账号。社区账号仍可独立使用。')}</p><div class="actions mt16">${bind}${link('/latest', t('继续浏览社区'), 'btn')}</div></section></div>
+      <section class="card card-pad mt24"><h2>${t('获取抽奖券')}</h2><ul class="mini-list"><li>${t('帖子每收到 10 次评论 +1 券，每天最多 2 券。')}</li><li>${t('给别人点赞每 40 次或评论每 20 次 +1 券，分别累计，合计每天最多 3 券。')}</li><li>${t('每日签到 +1 券；社区任务每天最多 6 券。')}</li></ul><p class="prod-page-note">${t('以上赠券需先绑定元衡 API 账号；绑定前的互动不补发。')}</p></section>
+      <dialog id="pulse-benefits" class="prod-pulse-dialog prod-pulse-benefits-dialog" aria-labelledby="pulse-benefits-title">${dialogHeader('pulse-benefits', '我的权益')}<div data-pulse-benefits-body><p>${t('尚未绑定元衡 API 账号，暂无抽奖券和权益。')}</p><div class="actions mt16">${bind}</div></div></dialog>${footer()}`;
   }
 
   function communityTasksMarkup() {
@@ -956,7 +972,7 @@
       pulseRefreshing = false;
       // Eligibility is ready independently of the history/settlement service.
       // This read may remain slow or fail without holding either draw button.
-      if (sequence === navigationSequence && presentation === pulseView) void refreshPulseStatus();
+      if (sequence === navigationSequence && presentation === pulseView && !pulseCoreState?.unbound) void refreshPulseStatus();
     }
   }
 

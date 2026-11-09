@@ -582,3 +582,17 @@ test('a successful empty list replaces old rows with the explicit empty state',a
   assert.match(view.nodes.view.innerHTML,/order=hot" data-router class="discussion-tab active"/);
   assert.equal(view.nodes.app.attributes['aria-busy'],'false');
 });
+
+test('unbound members see the draw entry with zero tickets and a bind prompt, without Pulse requests', async () => {
+  for (const language of ['zh_CN', 'en_US']) {
+    const view = await shell({ language, user: pulseUser, binding: 'unbound' });
+    await view.navigate('/pulse');
+    const html = view.html();
+    assert.match(html, /data-pulse-core|data-action="pulse-draw"|disabled>/);
+    assert.match(html, /data-pulse-bind/);
+    assert.match(html, /href="\/settings\/binding"/);
+    assert.match(html, language === 'zh_CN' ? /尚未绑定元衡 API 账号/ : /Metar API account not linked/);
+    assert.equal(view.requests.filter(r => new URL(r.url, 'https://metarhub.com').pathname.startsWith('/metar/api/pulse/')).length, 0);
+    if (language === 'en_US') assertEnglish(view, '/pulse unbound');
+  }
+});
