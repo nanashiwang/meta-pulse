@@ -13,7 +13,7 @@ function setup(responses = []) {
     fetch:async(url,options)=>{calls.push({url,options});const next=responses.shift();if(next instanceof Error) throw next;return typeof next==='function'?next():next;},
   };
   window.localStorage.setItem('_a_ltk_','admin');
-  vm.runInNewContext(source,{window,URL});
+  vm.runInNewContext(source,{window,URL,URLSearchParams});
   return {window,calls,alerts,moves,api:window.MetarAccountSwitch};
 }
 const ok = data => ({ok:true,json:async()=>({data})});
@@ -113,4 +113,21 @@ test('ticket gift rejects bad counts locally and explains unbound accounts',asyn
  prompts=['3','测试'];
  await f.api.grantTickets('uno');
  assert.equal(f.calls.length,1);assert.match(f.alerts.at(-1),/尚未绑定 API 账号/);
+});
+test('admin user list gets CSS row numbers offset by page and a filter-aware total',async()=>{
+ const f=setup([ok({count:37,list:[]})]);
+ const el=tag=>({tagName:tag.toUpperCase(),attrs:{},id:'',textContent:'',className:'',style:{},setAttribute(k,v){this.attrs[k]=v},hasAttribute(k){return k in this.attrs},remove(){this.removed=true}});
+ const tbody=el('tbody'),head=[],byId={};
+ const wrap={...el('div'),before(n){byId[n.id]=n;n.nextElementSibling=wrap;n.remove=()=>{delete byId[n.id]}}};
+ const table={...el('table'),querySelector:s=>s==='tbody'?tbody:null,closest:()=>wrap};
+ Object.assign(f.window.document,{querySelector:s=>s==='table'?table:null,querySelectorAll:()=>[],getElementById:id=>byId[id]||null,createElement:el,head:{append(n){byId[n.id]=n;head.push(n)}}});
+ Object.assign(f.window.location,{pathname:'/admin/users',search:'?filter=normal&query=bo&page=3'});
+ f.window.MutationObserver=class{observe(){}};f.window.requestAnimationFrame=fn=>fn();f.window.addEventListener=()=>{};
+ f.api.install(()=>({role_id:2,username:'admin'}));
+ assert.equal(table.attrs['data-metar-seq'],'');assert.equal(tbody.style.counterReset,'metar-row 20');
+ assert.match(head[0].textContent,/counter\(metar-row\)/);
+ assert.equal(f.calls[0].url,'/answer/admin/api/users/page?page=1&page_size=1&query=bo&status=normal');
+ assert.equal(f.calls[0].options.headers.Authorization,'Bearer admin');
+ await new Promise(r=>setImmediate(r));
+ assert.equal(byId['metar-user-total'].textContent,'当前筛选共 37 名用户');
 });
