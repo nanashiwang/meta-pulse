@@ -204,11 +204,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
@@ -216,11 +211,11 @@ jobs:
 
       - name: Install
         working-directory: sites/blog
-        run: pnpm install --no-frozen-lockfile
+        run: npm ci --ignore-scripts
 
       - name: Build
         working-directory: sites/blog
-        run: pnpm build
+        run: npm run build
 
       - name: Search discovery and gateway regression
         run: |
