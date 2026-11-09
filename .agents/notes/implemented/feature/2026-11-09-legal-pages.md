@@ -8,7 +8,7 @@ Status: implemented
 
 ## Decision
 
-正文写在 `metar-frontend/production/src/seo-pages.json` 的 `/tos`、`/privacy` 条目，作为唯一来源：`seo.py` 生成无脚本/SEO 页面并收入站点地图，`build.py` 从同一条目生成 `legal.js` 按需加载给 METAR 壳渲染。两路由加入前端、论坛插件和 Nginx 的 METAR 路由白名单及 SEO 文档映射，页脚改为站内路由。正文仅提供中文，英文界面显示“以中文版本为准”提示。
+正文写在 `metar-frontend/production/src/seo-pages.json` 的 `/tos`、`/privacy` 条目，作为唯一来源：`seo.py` 生成无脚本/SEO 页面并收入站点地图，`build.py` 从同一条目生成 `legal.js` 按需加载给 METAR 壳渲染。两路由登记在 `metar-frontend/shared/routes.json`，再由 `generate-routes.py` 生成浏览器、论坛插件和 Nginx 的路由白名单；SEO 文档映射与页脚站内路由同步。生成产物不能手改，CI 的 `--check` 必须通过。正文仅提供中文，英文界面显示“以中文版本为准”提示。
 
 内容依据仓库现状核对：Answer 账号与 `visit` 会话、可选一对一绑定只取 new-api 标识/用户名/显示名、社区任务赠券与无现金价值的奖励、`metar_ops` 90 天哈希访客标识及 DNT/GPC、网关日志不含查询参数和 Referer、聊天非端到端加密且不自动清理、账本只追加不删除、工具页本地计算与 DNS 探测内存 90 秒。
 
