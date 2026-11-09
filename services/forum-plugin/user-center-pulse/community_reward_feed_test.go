@@ -1,7 +1,9 @@
 package pulse_user_center
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -69,5 +71,62 @@ func TestCommunityRewardFeedRejectsMalformedUpstream(t *testing.T) {
 		if w.Code != 503 {
 			t.Fatal("malformed response accepted", body, w.Code)
 		}
+	}
+}
+
+type namedFeedGuard struct {
+	adminTestGuard
+	calls int
+}
+
+func (g *namedFeedGuard) CommunityUsernames(_ context.Context, ids []uint64) (map[uint64]string, error) {
+	g.calls++
+	if len(ids) != 1 || ids[0] != 42 {
+		return nil, fmt.Errorf("wrong external identity")
+	}
+	return map[uint64]string{42: "winner-name"}, nil
+}
+func TestAdminRewardFeedIdentityBoundary(t *testing.T) {
+	for _, denied := range []bool{false, true} {
+		calls := 0
+		router, uc, _ := adminTestRouter(t, func(w http.ResponseWriter, r *http.Request) {
+			calls++
+			if r.URL.Path != "/v1/internal/admin/community/rewards" || r.Header.Get(pulseHeaderRole) != "admin" || r.Header.Get(pulseHeaderUserID) != "7" {
+				t.Error("wrong admin principal")
+			}
+			_, _ = w.Write([]byte(`{"quota_per_unit":500000,"rewards":[{"user_id":42,"username":"upstream-name","grant_id":"private","reward_type":"community_exp","amount":10,"won_at":"2026-11-09T00:00:59Z"}]}`))
+		}, nil)
+		guard := &namedFeedGuard{}
+		if denied {
+			guard.err = errAdminForbidden
+		}
+		uc.Guard = guard
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, adminTestRequest("GET", "winners", ""))
+		if denied {
+			if w.Code != 403 || calls != 0 || guard.calls != 0 {
+				t.Fatal("demoted administrator read names", w.Code)
+			}
+			continue
+		}
+		if w.Code != 200 || !strings.Contains(w.Body.String(), "winner-name") || strings.Contains(w.Body.String(), "user_id") || strings.Contains(w.Body.String(), "upstream-name") || strings.Contains(w.Body.String(), "private") || w.Header().Get("Cache-Control") != "no-store" {
+			t.Fatal(w.Code, w.Body.String())
+		}
+	}
+}
+func TestAdminRewardFeedRejectsSessionAndQuery(t *testing.T) {
+	for _, sessionErr := range []error{errAdminForbidden, errCommunityUnauthenticated} {
+		router, _, _ := adminTestRouter(t, func(http.ResponseWriter, *http.Request) { t.Fatal("unauthorized upstream call") }, sessionErr)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, adminTestRequest("GET", "winners", ""))
+		if w.Code != 401 && w.Code != 403 {
+			t.Fatal(w.Code)
+		}
+	}
+	router, _, _ := adminTestRouter(t, func(http.ResponseWriter, *http.Request) { t.Fatal("query upstream call") }, nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, adminTestRequest("GET", "winners?user_id=42", ""))
+	if w.Code != 400 {
+		t.Fatal(w.Code)
 	}
 }

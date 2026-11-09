@@ -92,6 +92,9 @@ func NewRouterWithRoutes(logger *slog.Logger, readiness ReadinessChecker, routes
 	}
 	if routes.RewardFeed != nil {
 		transporthttp.RewardFeedRoute(internal, routes.RewardFeed, routes.Auth)
+		if adminFeed, ok := routes.RewardFeed.(transporthttp.AdminRewardFeedReader); ok {
+			transporthttp.AdminRewardFeedRoute(internal, adminFeed, routes.Auth)
+		}
 	}
 	if routes.History != nil {
 		transporthttp.RewardHistoryRoute(internal, routes.History, routes.Auth)

@@ -12,17 +12,18 @@ import (
 )
 
 type feedUnit struct {
-	rows         []ports.RewardFeedRow
-	err          error
-	since, until time.Time
-	limit        int
+	adminRows []ports.AdminRewardFeedRow
+	rows      []ports.RewardFeedRow
+	err       error
+	until     time.Time
+	limit     int
 }
 
 func (u *feedUnit) Do(_ context.Context, fn func(ports.Repositories) error) error {
 	return fn(ports.Repositories{RewardFeed: u})
 }
-func (u *feedUnit) ListSettledDraws(_ context.Context, since, until time.Time, limit int) ([]ports.RewardFeedRow, error) {
-	u.since = since
+func (u *feedUnit) ListSettledDraws(_ context.Context, until time.Time, limit int) ([]ports.RewardFeedRow, error) {
+
 	u.until = until
 	u.limit = limit
 	return u.rows, u.err
@@ -38,7 +39,7 @@ func TestRewardFeedProjectionAndBoundedWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if unit.limit != 20 || !unit.until.Equal(now) || !unit.since.Equal(now.Add(-30*24*time.Hour)) {
+	if unit.limit != 100 || !unit.until.Equal(now) {
 		t.Fatal("unbounded query")
 	}
 	body, _ := json.Marshal(result)
@@ -63,7 +64,7 @@ func TestRewardFeedRejectsMalformedAndFailedReads(t *testing.T) {
 	cases[0].RewardType = "cash"
 	cases[1].Amount = 0
 	cases[2].Amount = 1 << 53
-	cases[3].CreatedAt = now.Add(-31 * 24 * time.Hour)
+	cases[3].Amount = -1
 	cases[4].CreatedAt = now.Add(time.Second)
 	for _, row := range cases {
 		u := &feedUnit{rows: []ports.RewardFeedRow{row}}
@@ -72,7 +73,7 @@ func TestRewardFeedRejectsMalformedAndFailedReads(t *testing.T) {
 			t.Fatal("invalid row accepted")
 		}
 	}
-	u := &feedUnit{rows: make([]ports.RewardFeedRow, 21)}
+	u := &feedUnit{rows: make([]ports.RewardFeedRow, 101)}
 	s, _ := NewRewardFeedService(u, 500000, func() time.Time { return now })
 	if _, err := s.Recent(context.Background()); err == nil {
 		t.Fatal("unbounded feed accepted")
@@ -80,5 +81,30 @@ func TestRewardFeedRejectsMalformedAndFailedReads(t *testing.T) {
 	u.err = errors.New("database unavailable")
 	if _, err := s.Recent(context.Background()); err == nil {
 		t.Fatal("failed read accepted")
+	}
+}
+
+func (u *feedUnit) ListSettledDrawsForAdmin(_ context.Context, until time.Time, limit int) ([]ports.AdminRewardFeedRow, error) {
+	u.until = until
+	u.limit = limit
+	return u.adminRows, u.err
+}
+
+func TestAdminFeedRetainsOldRewardsAndIdentityOnlyInAdminProjection(t *testing.T) {
+	now := time.Now().UTC()
+	old := now.Add(-90 * 24 * time.Hour)
+	u := &feedUnit{adminRows: []ports.AdminRewardFeedRow{{UserID: 42, RewardType: "community_exp", Amount: 10, CreatedAt: old}}, rows: []ports.RewardFeedRow{{RewardType: "community_exp", Amount: 10, CreatedAt: old}}}
+	s, _ := NewRewardFeedService(u, 500000, func() time.Time { return now })
+	admin, err := s.RecentForAdmin(context.Background())
+	if err != nil || len(admin.Rewards) != 1 || admin.Rewards[0].UserID != 42 || u.limit != 100 {
+		t.Fatal(admin, err)
+	}
+	ordinary, err := s.Recent(context.Background())
+	if err != nil || len(ordinary.Rewards) != 1 {
+		t.Fatal(ordinary, err)
+	}
+	u.adminRows[0].UserID = 0
+	if _, err = s.RecentForAdmin(context.Background()); err == nil {
+		t.Fatal("zero identity accepted")
 	}
 }

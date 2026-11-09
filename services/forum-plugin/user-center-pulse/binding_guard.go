@@ -79,6 +79,52 @@ func (g *mysqlBindingGuard) Close() error {
 	return g.db.Close()
 }
 
+type communityUsernameReader interface {
+	CommunityUsernames(context.Context, []uint64) (map[uint64]string, error)
+}
+
+func (g *mysqlBindingGuard) CommunityUsernames(ctx context.Context, ids []uint64) (map[uint64]string, error) {
+	result := make(map[uint64]string, len(ids))
+	if len(ids) == 0 {
+		return result, nil
+	}
+	if len(ids) > 100 {
+		return nil, errors.New("too many reward feed users")
+	}
+	if err := g.Ready(ctx); err != nil {
+		return nil, err
+	}
+	args := make([]any, len(ids))
+	placeholders := make([]string, len(ids))
+	for i, id := range ids {
+		if id == 0 {
+			return nil, errors.New("invalid reward feed user id")
+		}
+		args[i] = id
+		placeholders[i] = "?"
+	}
+	rows, err := g.db.QueryContext(ctx, "SELECT b.external_id, u.username FROM user_external_login b JOIN `user` u ON u.id=b.user_id WHERE b.provider=? AND b.external_id IN ("+strings.Join(placeholders, ",")+")", append([]any{pluginSlug}, args...)...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uint64
+		var username string
+		if err := rows.Scan(&id, &username); err != nil {
+			return nil, err
+		}
+		if _, exists := result[id]; exists {
+			return nil, errors.New("ambiguous winner binding")
+		}
+		result[id] = username
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 func (g *mysqlBindingGuard) Ensure(ctx context.Context) error {
 	if g == nil || g.db == nil || ctx == nil {
 		return errors.New("forum binding guard is not configured")

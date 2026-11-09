@@ -37,6 +37,7 @@ func (uc *UserCenter) registerAdminSettingsRoutes(r *gin.RouterGroup, session fu
 	r.GET("/metar/pulse/settings", uc.adminSettingsHandler("settings", session, siteURL))
 	r.PUT("/metar/pulse/settings", uc.adminSettingsHandler("settings", session, siteURL))
 	r.POST("/metar/pulse/secret", uc.adminSettingsHandler("secret", session, siteURL))
+	r.GET("/metar/pulse/winners", uc.adminRewardFeedHandler(session))
 }
 
 func (uc *UserCenter) adminSettingsHandler(operation string, session func(*gin.Context) (string, error), siteURL func() string) gin.HandlerFunc {

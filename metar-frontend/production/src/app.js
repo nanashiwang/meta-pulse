@@ -668,9 +668,9 @@
       ${communityTasksMarkup()}
       <div class="prod-pulse-overview">
         <section class="prod-pulse-panel prod-pulse-recent" aria-labelledby="pulse-recent-title"><header><h2 id="pulse-recent-title">${I('clock')} ${t('我的抽奖记录')}</h2><button type="button" class="prod-pulse-link" data-action="pulse-history" aria-haspopup="dialog" aria-controls="pulse-history">${t('查看全部记录')} <span aria-hidden="true">→</span></button></header><p data-pulse-history-error role="status" class="prod-page-note" hidden></p><div class="prod-pulse-recent-table"><table><thead><tr><th>${t('时间')}</th><th>${t('获得奖励')}</th><th>${t('到账状态')}</th></tr></thead><tbody data-pulse-recent-rows>${pulseRecentRows(rewards, rules.quota_per_unit)}</tbody></table></div></section>
-        <section class="prod-pulse-panel prod-pulse-community" data-pulse-feed aria-labelledby="pulse-community-title"><header><h2 id="pulse-community-title">${I('trophy')} ${t('社区中奖动态')}</h2><button type="button" class="prod-pulse-link" data-action="pulse-winners" aria-haspopup="dialog" aria-controls="pulse-winners">${t('查看更多')} <span aria-hidden="true">→</span></button></header><p class="prod-pulse-feed-note">${t('展示近 30 天已到账的抽奖奖励，用户信息已匿名处理。')}</p>${pulseFeedTable('preview')}</section>
+        <section class="prod-pulse-panel prod-pulse-community" data-pulse-feed aria-labelledby="pulse-community-title"><header><h2 id="pulse-community-title">${I('trophy')} ${t('社区中奖动态')}</h2><button type="button" class="prod-pulse-link" data-action="pulse-winners" aria-haspopup="dialog" aria-controls="pulse-winners">${t('查看更多')} <span aria-hidden="true">→</span></button></header><p class="prod-pulse-feed-note">${t('普通用户匿名展示，管理员可查看中奖用户名。')}</p>${pulseFeedTable('preview')}</section>
       </div>
-      <dialog id="pulse-winners" class="prod-pulse-dialog" aria-labelledby="pulse-winners-title">${dialogHeader('pulse-winners', '社区中奖动态')}<p class="prod-page-note">${t('最近 30 天，最多显示 20 条已到账奖励。')}</p>${pulseFeedTable('full')}</dialog>
+      <dialog id="pulse-winners" class="prod-pulse-dialog" aria-labelledby="pulse-winners-title">${dialogHeader('pulse-winners', '社区中奖动态')}<p class="prod-page-note">${t('仅显示最近 100 条已到账的抽奖奖励。')}</p>${pulseFeedTable('full')}</dialog>
       <dialog id="pulse-benefits" class="prod-pulse-dialog prod-pulse-benefits-dialog" aria-labelledby="pulse-benefits-title">${dialogHeader('pulse-benefits', '我的权益')}<div data-pulse-benefits-body>${benefits}</div></dialog>
       <dialog id="pulse-history" class="prod-pulse-dialog" data-pulse-history aria-labelledby="pulse-history-title">${dialogHeader('pulse-history', '奖励记录')}<p data-pulse-history-error role="status" class="prod-page-note" hidden></p><div class="prod-pulse-table" tabindex="0" role="region" aria-label="${t('奖励记录')}"><table><thead><tr><th>${t('奖励')}</th><th>${t('到账状态')}</th><th>${t('时间')}</th><th>${t('奖励编号')}</th></tr></thead><tbody data-pulse-history-rows>${pulseHistoryRows(rewards, rules.quota_per_unit)}</tbody></table></div></dialog>${footer()}`;
   }
@@ -740,12 +740,13 @@
     const root = document.querySelector('[data-pulse-feed]');
     if (!root) return;
     const sequence = navigationSequence, userId = currentUser?.id, token = answer.token();
-    const current = () => sequence === navigationSequence && route().path === '/pulse' && currentUserState === 'ready' && currentUser?.id === userId && isActiveUser(currentUser) && answer.token() === token;
+    const administrator = isCommunityAdministrator(currentUser);
+    const current = () => administrator === isCommunityAdministrator(currentUser) && sequence === navigationSequence && route().path === '/pulse' && currentUserState === 'ready' && currentUser?.id === userId && isActiveUser(currentUser) && answer.token() === token;
     try {
       await loadFeatureScript('pulse-feed', 'MetarRewardFeed');
       if (!current()) return;
       pulseFeedView?.dispose();
-      pulseFeedView = new window.MetarRewardFeed.View(root, document.getElementById('pulse-winners'), {client:pulse, t, displayReward:pulseResultDisplay, locale, current});
+      pulseFeedView = new window.MetarRewardFeed.View(root, document.getElementById('pulse-winners'), {client:administrator ? {winners:() => new PulseAdminAdapter(answer).request('winners')} : pulse, administrator, t, displayReward:pulseResultDisplay, locale, current});
     } catch (_) {
       if (!current()) return;
       [root, document.getElementById('pulse-winners')].filter(Boolean).forEach(container => {

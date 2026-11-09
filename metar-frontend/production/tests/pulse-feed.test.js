@@ -4,7 +4,7 @@ const source=fs.readFileSync(path.join(__dirname,'../src/pulse-feed.js'),'utf8')
 const payload={quota_per_unit:500000,rewards:[{reward_type:'newapi_quota',amount:625000,won_at:'2026-10-15T01:15:49Z',user_id:999,username:'private',grant_id:'private'}]};
 const displayReward=row=>({amount:String(row.amount),unit:'⚡️',tier:'purple'});
 const opts={t:x=>x,displayReward,locale:()=> 'en-US'};
-function harness(){
+function harness(administrator=false){
  const listeners=new Map(),timers=new Map(),pending=[];let id=0,current=true;
  const node=()=>({innerHTML:'',textContent:'',hidden:false,disabled:false,onclick:null,dataset:{},setAttribute(){}});
  const makeRoot=kind=>{const row=node(),message=node(),button=node();row.dataset.pulseFeedRows=kind;return {...node(),row,message,button,querySelectorAll:sel=>sel==='[data-pulse-feed-rows]'?[row]:sel==='[data-pulse-feed-message]'?[message]:[button],addEventListener(){},removeEventListener(){}}};
@@ -14,7 +14,7 @@ function harness(){
  context.window=context;context.addEventListener=(name,fn)=>listeners.set(name,fn);context.removeEventListener=name=>listeners.delete(name);
  vm.runInContext(source,context);
  const client={winners:()=>new Promise((resolve,reject)=>pending.push({resolve,reject}))};
- const view=new context.MetarRewardFeed.View(root,dialog,{...opts,client,current:()=>current});
+ const view=new context.MetarRewardFeed.View(root,dialog,{...opts,client,administrator,current:()=>current});
  return {api:context.MetarRewardFeed,root,dialog,view,document,listeners,timers,pending,setCurrent:value=>{current=value;}};
 }
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
@@ -23,7 +23,7 @@ test('feed validation strips identity fields, rounds seconds and bounds records 
  assert.deepEqual(JSON.parse(JSON.stringify(safe)),{quota_per_unit:500000,rewards:[{reward_type:'newapi_quota',amount:625000,won_at:'2026-10-15T01:15:00.000Z'}]});
  const html=h.api.rows(safe,{...opts,displayReward:()=>({amount:'<script>',unit:'EXP',tier:'white'})});
  assert.doesNotMatch(html,/private|user_id|grant_id|<script>/);assert.match(html,/&lt;script&gt;/);
- for(const bad of [null,{...payload,rewards:Array(21).fill(payload.rewards[0])},{...payload,quota_per_unit:-1},...['cash',null].map(reward_type=>({...payload,rewards:[{...payload.rewards[0],reward_type}]})),...[-1,0,1.5,Number.MAX_SAFE_INTEGER+1].map(amount=>({...payload,rewards:[{...payload.rewards[0],amount}]}))]) assert.throws(()=>h.api.validatedFeed(bad));
+ for(const bad of [null,{...payload,rewards:Array(101).fill(payload.rewards[0])},{...payload,quota_per_unit:-1},...['cash',null].map(reward_type=>({...payload,rewards:[{...payload.rewards[0],reward_type}]})),...[-1,0,1.5,Number.MAX_SAFE_INTEGER+1].map(amount=>({...payload,rewards:[{...payload.rewards[0],amount}]}))]) assert.throws(()=>h.api.validatedFeed(bad));
  assert.match(h.api.rows({rewards:[],quota_per_unit:1},opts),/暂无社区中奖动态/);h.view.dispose();
 });
 test('feed failures retain confirmed rows; permission refusal clears both previews and stops polling',async()=>{
@@ -43,5 +43,18 @@ test('hidden pages do not poll and late responses cannot cross a disposed or cha
 });
 test('one in-flight request is shared, previews show five rows and full dialog stays bounded',async()=>{
  const h=harness();await h.view.refresh();assert.equal(h.pending.length,1);
- h.pending[0].resolve({...payload,rewards:Array(20).fill(payload.rewards[0])});await flush();assert.equal((h.root.row.innerHTML.match(/<tr>/g)||[]).length,5);assert.equal((h.dialog.row.innerHTML.match(/<tr>/g)||[]).length,20);h.view.dispose();
+ h.pending[0].resolve({...payload,rewards:Array(100).fill(payload.rewards[0])});await flush();assert.equal((h.root.row.innerHTML.match(/<tr>/g)||[]).length,5);assert.equal((h.dialog.row.innerHTML.match(/<tr>/g)||[]).length,100);h.view.dispose();
+});
+test('only administrator projection includes escaped usernames; ordinary feed strips them',()=>{
+ const h=harness(); const raw={...payload,rewards:[{...payload.rewards[0],username:'<img src=x onerror=alert(1)>'}]};
+ const admin=h.api.validatedFeed(raw,true), ordinary=h.api.validatedFeed(raw);
+ assert.match(h.api.rows(admin,opts),/&lt;img/);assert.doesNotMatch(h.api.rows(admin,opts),/<img/);
+ assert.match(h.api.rows(ordinary,opts),/匿名用户/);assert.doesNotMatch(h.api.rows(ordinary,opts),/onerror|user_id/);h.view.dispose();
+});
+
+test('admin names are cleared on temporary failure, role change and page hide',async()=>{
+ const h=harness(true);h.pending[0].resolve(payload);await flush();assert.match(h.root.row.innerHTML,/private/);
+ const refresh=h.view.refresh();h.pending[1].reject(new Error('offline'));await refresh;assert.equal(h.root.row.innerHTML,'');
+ const again=h.view.refresh();h.pending[2].resolve(payload);await again;h.listeners.get('pagehide')();assert.equal(h.root.row.innerHTML,'');h.view.dispose();
+ const other=harness(true);other.pending[0].resolve(payload);await flush();other.setCurrent(false);await other.view.refresh();assert.equal(other.root.row.innerHTML,'');other.view.dispose();
 });

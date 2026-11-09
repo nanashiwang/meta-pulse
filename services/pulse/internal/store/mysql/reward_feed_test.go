@@ -60,25 +60,29 @@ func TestMySQLRewardFeedFiltersAndStableOrder(t *testing.T) {
 	insert(999, "settled", "pulse", "newapi_quota", now.Add(-31*24*time.Hour), nil)
 	insert(999, "settled", "pulse", "newapi_quota", now.Add(time.Second), nil)
 	insert(999, "settled", "pulse", "newapi_quota", now, &now)
-	for i := 0; i < 25; i++ {
+	for i := 0; i < 105; i++ {
 		insert(int64(i+1), "settled", "pulse", "community_exp", now.Add(-time.Duration(i+1)*time.Minute), nil)
 	}
 	insert(100, "settled", "pulse", "community_exp", now, nil)
 	insert(625000, "settled", "pulse", "newapi_quota", now, nil)
 	repo := &rewardFeedRepository{db: tx}
-	rows, err := repo.ListSettledDraws(ctx, now.Add(-30*24*time.Hour), now, 20)
-	if err != nil || len(rows) != 20 {
+	rows, err := repo.ListSettledDraws(ctx, now, 100)
+	if err != nil || len(rows) != 100 {
 		t.Fatalf("rows=%d err=%v", len(rows), err)
 	}
-	if rows[0].Amount != 625000 || rows[1].Amount != 100 || rows[2].Amount != 1 || rows[19].Amount != 18 {
+	if rows[0].Amount != 625000 || rows[1].Amount != 100 || rows[2].Amount != 1 || rows[99].Amount != 98 {
 		t.Fatalf("incorrect order/filter: %+v", rows)
 	}
 	if err = tx.Model(&rewardGrantModel{}).Where("grant_id = ?", fmt.Sprintf("private-feed-%d", sequence)).Update("status", "reversed").Error; err != nil {
 		t.Fatal(err)
 	}
-	rows, err = repo.ListSettledDraws(ctx, now.Add(-30*24*time.Hour), now, 20)
+	rows, err = repo.ListSettledDraws(ctx, now, 100)
 	if err != nil || rows[0].Amount != 100 {
 		t.Fatal("reversed reward still visible", err)
+	}
+	adminRows, err := repo.ListSettledDrawsForAdmin(ctx, now, 100)
+	if err != nil || len(adminRows) != 100 || adminRows[0].UserID == 0 || adminRows[0].Amount != rows[0].Amount {
+		t.Fatal("admin projection mismatch", err)
 	}
 	var count int64
 	if err = tx.Raw("SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name='pulse_reward_grant' AND index_name='idx_reward_feed'").Scan(&count).Error; err != nil || count != 4 {

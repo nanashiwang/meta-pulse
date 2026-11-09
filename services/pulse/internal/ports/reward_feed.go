@@ -5,13 +5,22 @@ import (
 	"time"
 )
 
-// RewardFeedRow deliberately has no identity, grant, action or audit fields.
+// RewardFeedRow is the anonymous public projection.
 type RewardFeedRow struct {
 	RewardType string
 	Amount     int64
 	CreatedAt  time.Time
 }
 
+// AdminRewardFeedRow is used only behind the signed admin-only endpoint.
+type AdminRewardFeedRow struct {
+	UserID     uint64
+	RewardType string
+	Amount     int64
+	CreatedAt  time.Time
+}
+
 type RewardFeedRepository interface {
-	ListSettledDraws(context.Context, time.Time, time.Time, int) ([]RewardFeedRow, error)
+	ListSettledDraws(context.Context, time.Time, int) ([]RewardFeedRow, error)
+	ListSettledDrawsForAdmin(context.Context, time.Time, int) ([]AdminRewardFeedRow, error)
 }

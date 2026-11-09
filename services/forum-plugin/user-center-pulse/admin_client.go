@@ -29,6 +29,8 @@ func (c *PulseClient) adminSettingsRequest(ctx context.Context, method, operatio
 		path = "/v1/internal/admin/periods"
 	} else if operation == "secret" && method == http.MethodPost {
 		path += "/secret"
+	} else if operation == "reward-feed" && method == http.MethodGet {
+		path = "/v1/internal/admin/community/rewards"
 	} else if operation != "settings" || (method != http.MethodGet && method != http.MethodPut) {
 		return nil, 0, errors.New("unsupported admin settings operation")
 	}

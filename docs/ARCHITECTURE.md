@@ -1128,13 +1128,13 @@ Pulse 侧 M7 已具备实现和回归测试；Answer v1.7.1 表结构、绑定�
 
 ### 匿名社区中奖动态
 
-`GET /v1/internal/community/rewards` 仅接受独立 `community-bff` 角色，不接受 new-api/forum/admin 角色或任何查询参数。外部 `/metar/api/pulse/winners` 由 Answer 官方认证路由处理，并实时校验账号激活/封禁和保护绑定；访客和未绑定用户不能读取。它是经用户授权的跨用户匿名投影，不使用本人历史接口扩权。
+普通接口 `/v1/internal/community/rewards` 仅允许 community-bff 签名，外部 `/metar/api/pulse/winners` 保留 Answer 激活状态和保护绑定校验。普通响应仅含奖励类型、整数金额、分钟级时间和 quota_per_unit，不含任何身份字段，统一显示匿名用户。
 
-事实源仍为 Pulse `pulse_reward_grant`。独立只读 Repository 仅选择 `reward_type`、整数 `amount`、`created_at`，过滤 `trigger_type=pulse`、`status=settled`、未撤销、正且浏览器可安全表示的金额，以及最近 30 天且不晚于当前时间的奖励；按 created_at/id 倒序最多 20 条。`00017` 为 trigger_type/status/created_at/id 添加组合索引，不修改历史奖励和账本。
+管理员使用独立 `/metar/api/admin/pulse/winners` → Answer admin 路由；每次复核 Answer 实时角色、状态和邮箱激活，再经独立 Admin HMAC 调用 `/v1/internal/admin/community/rewards`。Pulse 仅向 admin 返回最小 user_id 投影，论坛按受保护 user_external_login 的 provider/external_id 映射 Answer 用户名，浏览器只得到 username 而非 user_id。该名称不作为经济主键，映射缺失时仍匿名。不得用浏览器声明的角色或用户 ID 授权。
 
-响应只有 `rewards` 和当前配置的 `quota_per_unit`，每条只有奖励类型、整数金额与取整到分钟的 `won_at`。不查用户名/头像，不携带用户、Grant、Action、source_ref、随机值、精确秒时间或稳定化名。BFF 再次按字段白名单投影，浏览器统一显示匿名用户。待到账、shadow、撤销/冲突奖励、内容及周期奖励不进入动态；状态变化在下一次读取时反映，不在动态查询中交付经验或触发结算。
+两种查询都从 Pulse Grant 读取全局最新 100 条已结算、未撤销、正金额的 pulse 抽奖，按 created_at/id 倒序；不再设 30 天窗口。100 是展示记录上限，同一用户多次中奖保留独立记录，不删除历史账本或奖励。继续复用 00017 索引，不新增迁移或结算副作用。
 
-动态接口为 no-store，无历史游标、金额/用户筛选或免登录公开入口。前端预览五条、弹窗最多二十条，独立加载，不成为抽奖依赖；可见页面每分钟读取，隐藏/离开时停止。临时失败明确提示并保留旧记录，权限失败清空，迟到响应不能越过身份、语言或导航边界。仅保存在当前 View 内存，不写入页面快照或持久缓存。
+接口无筛选分页且 no-store。页面预览五条、弹窗最多百条，独立轮询，可见时每分钟刷新。普通临时错误可保留匿名记录；管理员读取失败清空含名数据，权限失败停止轮询，身份或角色变化不能接收旧响应；不写入持久缓存。
 
 ## 39. 周期开局与游标运营命令
 

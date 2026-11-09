@@ -30,7 +30,7 @@ pulse_content_award
 pulse_content_award_limit_guard
 ```
 
-`00017_reward_feed_index.sql` 为匿名中奖动态增加 trigger_type/status/created_at/id 查询索引；只增加索引，不回填或改写任何 Grant、金额、状态和 Ledger。动态始终使用当前已到账状态，按近 30 天和最多二十条限制读取。
+`00017_reward_feed_index.sql` 为匿名中奖动态增加 trigger_type/status/created_at/id 查询索引；只增加索引，不回填或改写任何 Grant、金额、状态和 Ledger。动态始终使用当前已到账状态，按全局最新 100 条限制读取（v0.2.98 起），不删除历史账本。
 
 ## Migration 规则
 

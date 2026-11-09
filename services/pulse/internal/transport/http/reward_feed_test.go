@@ -61,3 +61,24 @@ func TestRewardFeedFailureDoesNotExposeStoreErrors(t *testing.T) {
 		t.Fatal(w.Code, w.Body.String())
 	}
 }
+
+func (r *feedReader) RecentForAdmin(context.Context) (service.AdminRewardFeed, error) {
+	r.calls++
+	return service.AdminRewardFeed{Rewards: []service.AdminRewardFeedItem{{UserID: 42, RewardType: "community_exp", Amount: 10}}}, r.err
+}
+func TestAdminRewardFeedRequiresIndependentAdminRole(t *testing.T) {
+	for _, role := range []string{"admin", "community-bff", "new-api", "forum", ""} {
+		reader := &feedReader{}
+		router := gin.New()
+		AdminRewardFeedRoute(router.Group("/v1/internal"), reader, func(c *gin.Context) { c.Set(PrincipalContextKey, security.Principal{UserID: 7, Role: role}); c.Next() })
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest("GET", "/v1/internal/admin/community/rewards", nil))
+		if role == "admin" {
+			if w.Code != 200 || !strings.Contains(w.Body.String(), `"user_id":42`) {
+				t.Fatal(w.Code, w.Body.String())
+			}
+		} else if w.Code != 401 || reader.calls != 0 {
+			t.Fatal("role accessed identity", role, w.Code)
+		}
+	}
+}

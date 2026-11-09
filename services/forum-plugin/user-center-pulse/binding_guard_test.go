@@ -152,8 +152,13 @@ CREATE TABLE user_external_login (
 	// including when Answer's session cache still reports an available user.
 	mustExec("DROP TABLE IF EXISTS `user`")
 	t.Cleanup(func() { _, _ = db.Exec("DROP TABLE IF EXISTS `user`") })
-	mustExec("CREATE TABLE `user` (id BIGINT NOT NULL PRIMARY KEY, status INT NOT NULL, mail_status INT NOT NULL)")
-	mustExec("INSERT INTO `user` VALUES (10,1,1),(11,1,1)")
+	mustExec("CREATE TABLE `user` (id BIGINT NOT NULL PRIMARY KEY, status INT NOT NULL, mail_status INT NOT NULL, username VARCHAR(100) NOT NULL DEFAULT '')")
+	mustExec("INSERT INTO `user` (id,status,mail_status) VALUES (10,1,1),(11,1,1)")
+	mustExec("UPDATE `user` SET username='community-winner' WHERE id=10")
+	names, nameErr := guard.(communityUsernameReader).CommunityUsernames(ctx, []uint64{101, 10, 101})
+	if nameErr != nil || names[101] != "community-winner" || names[10] != "" {
+		t.Fatalf("winner binding mapping: %v %v", names, nameErr)
+	}
 	identityReader := guard.(communityIdentityReader)
 	if id, err := identityReader.CommunityIdentity(ctx, "10"); err != nil || id != "101" {
 		t.Fatalf("community bound identity=%q err=%v", id, err)
