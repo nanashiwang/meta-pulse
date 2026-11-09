@@ -130,10 +130,10 @@ func TestConvertProducesAValidDocument(t *testing.T) {
 	for _, x := range b.Benchmarks {
 		dims[x.Slug] = string(x.Dimension)
 	}
-	if dims["gpqa-diamond"] != "reasoning" || dims["swe-verified"] != "coding" || dims["poem-arena"] != "other" {
+	if dims["raw-gpqa-diamond"] != "reasoning" || dims["raw-swe-verified"] != "coding" || dims["raw-poem-arena"] != "other" {
 		t.Fatalf("dimensions %v", dims)
 	}
-	if _, ok := dims["tau-retail"]; ok {
+	if _, ok := dims["raw-tau-retail"]; ok {
 		t.Fatal("benchmark with only a future score must be left out")
 	}
 	if strings.Join(rep.UnmappedCategories, ",") != "creative-writing" {
@@ -145,10 +145,10 @@ func TestConvertProducesAValidDocument(t *testing.T) {
 		values[r.Model+"/"+r.Benchmark] = r.Value
 		self[r.Model+"/"+r.Benchmark] = r.Settings
 	}
-	if values["example-lab-alpha-pro-2/gpqa-diamond"] != 8731 || values["example-lab-alpha-pro-2/swe-verified"] != 6150 {
-		t.Fatalf("percent conversion %v", values)
+	if values["example-lab-alpha-pro-2/raw-gpqa-diamond"] != 87305 || values["example-lab-alpha-pro-2/raw-swe-verified"] != 615 {
+		t.Fatalf("raw score preservation %v", values)
 	}
-	if self["example-lab-alpha-pro-2/gpqa-diamond"] != "self-reported" {
+	if self["example-lab-alpha-pro-2/raw-gpqa-diamond"] != "self-reported" {
 		t.Fatal("self-reported flag lost")
 	}
 	prices := map[string][2]int64{}
@@ -196,5 +196,27 @@ func TestSlug(t *testing.T) {
 	}
 	if s := Slug("！！"); !slugCheck.MatchString(s) {
 		t.Fatalf("empty slug %q", s)
+	}
+}
+
+func TestTopScoresAreImportedWithoutScalingAgainstPeers(t *testing.T) {
+	ds, _ := fetch(t, map[string]int{})
+	ds.Models[0].TopScores["overall"] = "59.9"
+	doc, _ := Convert(ds, now, nil)
+	b, err := catalog.Validate(doc, catalog.Known{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, r := range b.Results {
+		if r.Benchmark == "llmstats-rating-overall" {
+			found = true
+			if r.Value != 59900 {
+				t.Fatal(r.Value)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("source overall score missing")
 	}
 }

@@ -39,6 +39,8 @@ type DimensionWeight struct {
 
 // V1 scores quality only. Price and speed stay separate columns so a cheap
 // model is never ranked above a stronger one by an opaque trade-off.
+var Source = Method{Version: "source-v2", Weights: []DimensionWeight{{Reasoning, 1}}}
+
 var V1 = Method{
 	Version: "v1",
 	Weights: []DimensionWeight{

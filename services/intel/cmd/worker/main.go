@@ -80,7 +80,7 @@ func main() {
 func (w *worker) recompute(ctx context.Context) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	snap, stored, err := service.Recompute(ctx, w.store, score.V1, time.Now(), w.cfg.SpeedWindow)
+	snap, stored, err := service.Recompute(ctx, w.store, score.Source, time.Now(), w.cfg.SpeedWindow)
 	if err != nil {
 		w.logger.Error("recompute leaderboard", "error", err)
 		return

@@ -1361,3 +1361,7 @@ CORS、超时与无效响应显示未知，不能借社区出口冒充 Claude �
 forum 编入独立 `metar_turnstile` Captcha 插件，复用 Answer 注册 API、原生表单与 email action。管理员配置并启用后，匿名注册必须提交 Cloudflare Turnstile token，后端固定 Siteverify 校验 success、允许域名和 `answer_captcha` action，错误、超时或缺配置时拒绝。token 的单次使用及有效期由 Cloudflare 验证，服务端不缓存成功结果；公开配置只返回 Site Key 和 action，Secret Key 保留在 Answer 管理配置。浏览器成功回调不能作为服务端可信证据。
 
 验证码启用范围沿用 Answer：email action 每次验证，普通登录及其他写操作保留原生阈值，管理员权限例外沿用上游。禁用插件恢复 Answer 无验证码策略；发布不代表已启用，必须按[启用与验收](../services/forum-plugin/captcha-turnstile/README.md)完成域名密钥配置和生产验收。Cloudflare 故障仅拒绝需要验证的操作，不成为 Pulse、资金或普通浏览的依赖。
+
+## 模型情报原始评分（2026-11-10）
+
+Intel 的来源观测为评分事实，快照仅用于查询。当前 `source-v2` 读取 LLM Stats `top_scores`，不再从评测做 min-max 或加权合成；无 overall 就无综合分。单项原始 score 使用 raw- 标识追加，不改写旧百分比观测。API、worker 与离线重算统一使用新版本，不回退历史 v1。独立服务边界不变，详见 [模型情报](MODEL_INTEL.md)。

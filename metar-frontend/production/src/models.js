@@ -96,7 +96,7 @@
       <td class="intel-rank">${r.rank ?? DASH}</td>
       <th scope="row" class="intel-model-cell">${link('/model/' + encodeURIComponent(r.model), esc(r.name), 'intel-model-name')}<span class="intel-badges">${badges(r)}</span></th>
       <td class="intel-provider">${esc(r.provider_name || r.provider)}</td>
-      <td class="intel-num intel-score">${r.composite_bps == null ? `<span class="muted" title="${t('评测覆盖不足，暂不计分', 'Not enough benchmark coverage to score')}">${DASH}</span>` : fmt.bps(r.composite_bps)}</td>
+      <td class="intel-num intel-score">${r.composite_bps == null ? `<span class="muted" title="${t('来源未提供综合评分', 'Source has no overall score')}">${DASH}</span>` : fmt.bps(r.composite_bps)}</td>
       <td class="intel-num">${fmt.bps(r.reasoning_bps)}</td>
       <td class="intel-num">${fmt.bps(r.coding_bps)}</td>
       <td class="intel-num">${fmt.bps(r.agent_bps)}</td>
@@ -158,7 +158,7 @@
       ['open', '最强的开放权重模型是哪个？', 'What is the best open-weights model?', l => `${l.row.name}，综合分 ${fmt.bps(l.value)}。`, l => `${l.row.name}, scoring ${fmt.bps(l.value)}.`],
     ];
     for (const [c, qz, qe, az, ae] of pairs) { const l = find(c); if (l) items.push([t(qz, qe), esc(t(az(l), ae(l)))]); }
-    items.push([t('综合分怎么计算？', 'How is the score calculated?'), esc(t('对推理、编程、Agent 三个维度的公开评测做全榜归一化后加权平均；价格和速度单独展示，不计入综合分。评测覆盖不足的模型暂不计分。', 'Public benchmarks in reasoning, coding and agent work are normalised across the board and weighted. Price and speed are shown separately and do not affect the score. Models without enough coverage are not scored.')) + ' ' + link('/models/methodology', t('查看计算方法', 'Read the methodology'), 'textlink')]);
+    items.push([t('综合分怎么计算？', 'How is the score calculated?'), esc(t('直接展示来源评分，不归一化、不加权、不推算。缺失分数显示「—」。', 'Display source scores directly, without normalisation, weighting or synthesis. Missing scores show “—”.')) + ' ' + link('/models/methodology', t('查看计算方法', 'Read the methodology'), 'textlink')]);
     return `<section class="card card-pad intel-faq"><h2>${t('常见问题', 'FAQ')}</h2>${items.map(([q, html]) => `<details><summary>${esc(q)}</summary><p class="muted">${html}</p></details>`).join('')}</section>`;
   }
 
@@ -204,13 +204,13 @@
       h.recent = Array.isArray(h.recent) ? h.recent : [];
       const recent = h.recent.length ? `<ul class="intel-recent">${h.recent.map(r => `<li>${link('/model/' + encodeURIComponent(r.model), esc(r.name))}<span class="muted">${esc(r.provider_name || r.provider)} · ${fmt.date(r.release_date)}</span></li>`).join('')}</ul>` : `<p class="muted">${t('近 15 天没有新收录的模型。', 'No models released in the last 15 days.')}</p>`;
       return `${subnav('/models')}
-        <header class="intel-hero"><h1>${t('AI 模型榜单', 'AI model leaderboard')}</h1><p class="muted">${t(`收录 ${h.model_count} 个语言模型，其中 ${h.ranked_count} 个有足够评测数据参与综合排名。每个数值都标注来源，缺失数据显示为「—」。`, `${h.model_count} language models listed, ${h.ranked_count} with enough benchmark coverage to be ranked. Every figure is sourced; missing data shows as "—".`)}</p>${updated(h)}</header>
+        <header class="intel-hero"><h1>${t('AI 模型榜单', 'AI model leaderboard')}</h1><p class="muted">${t(`收录 ${h.model_count} 个语言模型，其中 ${h.ranked_count} 个有来源综合评分参与排名。每个数值都标注来源，缺失数据显示为「—」。`, `${h.model_count} language models listed, ${h.ranked_count} with source overall scores to be ranked. Every figure is sourced; missing data shows as "—".`)}</p>${updated(h)}</header>
         ${leaderCards(h.leaders)}
         <div class="intel-layout">
           <section class="intel-main"><div class="intel-section-head"><h2>${t('综合榜', 'Overall ranking')}</h2><div class="intel-window">${link('/models/leaderboard?window=90d', t('近 90 天', 'Last 90 days'), 'btn small')}${link('/models/leaderboard?window=30d', t('近 30 天', 'Last 30 days'), 'btn small')}${link('/models/leaderboard', t('完整榜单 →', 'Full leaderboard →'), 'btn small primary')}</div></div>${table(h.preview.rows, {}, false)}</section>
           <aside class="intel-side">
             <section class="card card-pad"><h2>${t('近期新模型', 'Recently released')}</h2>${recent}</section>
-            <section class="card card-pad"><h2>${t('综合分说明', 'About the score')}</h2><p class="muted">${t('推理、编程、Agent 三维度公开评测的加权结果，价格与速度单独展示。', 'A weighted result of public reasoning, coding and agent benchmarks. Price and speed are shown separately.')}</p><div class="mt16">${link('/models/methodology', t('计算方法', 'Methodology'), 'textlink')}</div></section>
+            <section class="card card-pad"><h2>${t('综合分说明', 'About the score')}</h2><p class="muted">${t('直接展示来源原始评分，价格与速度单独展示。', 'Original source scores. Price and speed are shown separately.')}</p><div class="mt16">${link('/models/methodology', t('计算方法', 'Methodology'), 'textlink')}</div></section>
             <section class="card card-pad"><h2>${t('一起讨论', 'Discuss')}</h2><p class="muted">${t('对排名或数据有疑问？在社区发帖讨论或指出错误。', 'Questions about a ranking or a number? Start a discussion or report an error.')}</p><div class="intel-side-actions mt16">${link('/publish', t('发起讨论', 'Start a discussion'), 'btn primary small')}${link('/latest', t('社区讨论', 'Community'), 'btn small')}</div></section>
           </aside>
         </div>
@@ -248,7 +248,7 @@
           ${stat(t('输出速度', 'Output speed'), fmt.speed(b?.output_tokens_per_sec_milli))}
           ${stat(t('混合价 $/1M', 'Blended $/1M'), fmt.usd(b?.blended_micro_usd))}
         </section>
-        ${b && b.composite_bps == null ? `<p class="intel-note muted">${t(`评测覆盖 ${(b.coverage_bps / 100).toFixed(0)}%，未达到计分要求。`, `Benchmark coverage is ${(b.coverage_bps / 100).toFixed(0)}%, below the scoring threshold.`)}</p>` : ''}
+        ${b && b.composite_bps == null ? `<p class="intel-note muted">${t('来源未提供综合评分，本站不自行合成。', 'The source has no overall score; we do not synthesize one.')}</p>` : ''}
         <section class="card card-pad mt16"><h2>${t('价格', 'Pricing')}</h2>${offerings}</section>
         <section class="card card-pad mt16"><h2>${t('评测结果', 'Benchmark results')}</h2>${results}</section>
         <section class="card card-pad mt16"><h2>${t('讨论这个模型', 'Discuss this model')}</h2><p class="muted">${t('分享使用体验，或指出数据错误。', 'Share your experience or report a data error.')}</p><div class="intel-side-actions mt16">${link('/publish', t('发起讨论', 'Start a discussion'), 'btn primary small')}${link('/search?q=' + encodeURIComponent(d.name), t('搜索相关讨论', 'Search discussions'), 'btn small')}</div></section>
@@ -257,21 +257,7 @@
 
     async methodology() {
       const m = await this.fetch('/methodology');
-      const total = m.weights.reduce((s, w) => s + w.weight, 0) || 1;
-      const byDim = {};
-      for (const b of m.benchmarks) (byDim[b.dimension] ||= []).push(b);
-      const benchList = d => (byDim[d] || []).map(b => `<li>${esc(b.name)}</li>`).join('') || `<li class="muted">${t('暂未配置评测', 'No benchmarks configured')}</li>`;
-      return `${subnav('/models/methodology')}
-        <header class="intel-hero"><h1>${t('综合分计算方法', 'Scoring methodology')}</h1><p class="muted">${t('当前版本 ', 'Current version ')}${esc(m.version)}${t('。方法调整只会发布新版本，不改写历史结果。', '. Changes are published as new versions; past results are never rewritten.')}</p></header>
-        <section class="card card-pad"><h2>${t('维度与权重', 'Dimensions and weights')}</h2><div class="intel-weights">${m.weights.map(w => `<div class="intel-weight"><div class="intel-weight-head"><strong>${dimLabel(w.dimension)}</strong><span>${Math.round(w.weight * 100 / total)}%</span></div><div class="intel-weight-bar" aria-hidden="true"><span style="width:${Math.round(w.weight * 100 / total)}%"></span></div><ul class="intel-bench-list">${benchList(w.dimension)}</ul></div>`).join('')}</div></section>
-        <section class="card card-pad mt16"><h2>${t('计算步骤', 'How it works')}</h2><ol class="intel-steps">
-          <li>${t('每项评测取各模型最新的公开结果，在全榜内按最小值–最大值归一化到 0–100；越低越好的评测会反转。只有一个模型报告、或所有模型结果相同的评测不提供排名信息，跳过。', 'For each benchmark, take each model\'s latest public result and min-max normalise across the board to 0–100, inverting lower-is-better benchmarks. Benchmarks reported by a single model, or where all models tie, carry no ranking signal and are skipped.')}</li>
-          <li>${t('同一维度内取已有评测的平均值，作为维度分。', 'Average the available benchmarks within each dimension.')}</li>
-          <li>${t(`按权重对有数据的维度加权平均。覆盖权重不足 ${(m.min_coverage_bps / 100).toFixed(0)}% 的模型不计综合分，显示「—」并排在已计分模型之后，缺失维度不按 0 处理。`, `Weight the dimensions that have data. Models covering less than ${(m.min_coverage_bps / 100).toFixed(0)}% of the weight get no score, show "—" and sort after scored models; missing dimensions are never counted as zero.`)}</li>
-          <li>${t('相同分数并列同名次。', 'Equal scores share a rank.')}</li>
-        </ol></section>
-        <section class="card card-pad mt16"><h2>${t('价格与速度', 'Price and speed')}</h2><p class="muted">${t(`价格与速度不计入综合分。混合价按输入:输出 = ${m.price_blend.input}:${m.price_blend.output} 计算，取模型厂商标准档，没有时取最低报价。速度为最近 ${m.speed_window_hours} 小时测量样本的中位数。`, `Price and speed do not affect the score. Blended price weights input:output ${m.price_blend.input}:${m.price_blend.output}, using the maker's standard offering or else the cheapest listed. Speed is the median of samples from the last ${m.speed_window_hours} hours.`)}</p></section>
-        <section class="card card-pad mt16"><h2>${t('数据原则', 'Data principles')}</h2><ul class="intel-steps"><li>${t('数据来自第三方数据源、厂商官方信息与评测原始发布方，每个数值标注来源；综合分由本站方法计算，不代表数据源的观点。', 'Data comes from third-party data providers, official provider pages and original benchmark publishers, and every figure is sourced. The score is computed with our own method and does not represent the data providers\' views.')}</li>${attribution(m.sources) ? `<li>${attribution(m.sources)}</li>` : ''}<li>${t('历史数据只追加不覆盖；纠错以新记录发布。', 'History is append-only; corrections are published as new records.')}</li><li>${t('发现错误？欢迎在社区发帖指出。', 'Spotted an error? Tell us in the community.')} ${link('/publish', t('发起讨论', 'Start a discussion'), 'textlink')}</li></ul></section>`;
+      return `${subnav('/models/methodology')}<header class="intel-hero"><h1>${t('评分来源', 'Score source')}</h1><p>${esc(m.version)}</p></header><section class="card card-pad"><h2>Data by LLM Stats</h2><p>${t('直接展示 LLM Stats 提供的原始分类评分。本站不进行归一化、加权平均、可信度扣分或总分推算。来源未提供的评分显示「—」。', 'Scores are supplied directly by LLM Stats. We do not normalise, weight, penalise or synthesize scores. Missing scores show “—”.')}</p><p>${t('单项评测保留原始数值与来源单位口径；不同评测不可直接横向比较。历史 v1 本地分不再用于当前排名。', 'Individual benchmarks retain raw values. Different benchmarks are not directly comparable. Historical local v1 scores are no longer used for current rankings.')}</p>${attribution(m.sources)}</section>`;
     }
   }
 

@@ -137,26 +137,6 @@ func dimensionFor(categories []string) (string, bool) {
 	return "other", false
 }
 
-func percentOf(score, max json.Number) (string, bool) {
-	s, ok := new(big.Rat).SetString(score.String())
-	if !ok || s.Sign() < 0 {
-		return "", false
-	}
-	if m, ok := new(big.Rat).SetString(max.String()); ok && m.Sign() > 0 {
-		s.Quo(s, m)
-		s.Mul(s, big.NewRat(100, 1))
-	}
-	if s.Cmp(big.NewRat(100, 1)) > 0 {
-		return "", false
-	}
-	out, err := money.RoundDecimal(s.RatString(), money.BpsScale)
-	if err != nil {
-		// RatString may be "a/b"; FloatString through RoundDecimal needs a decimal.
-		out = s.FloatString(money.BpsScale)
-	}
-	return out, true
-}
-
 func scaled(n *json.Number, scale int) (string, int64, bool) {
 	if n == nil {
 		return "", 0, false
@@ -237,6 +217,23 @@ func Convert(ds Dataset, now time.Time, latest map[string]PriceKey) (catalog.Doc
 			Status: status, ContextTokens: ctxTokens, License: license, OpenWeights: m.OpenWeight, SourceURL: modelURL,
 		})
 
+		for category, value := range m.TopScores {
+			if category != "overall" && category != "reasoning" && category != "code" && category != "agent" {
+				continue
+			}
+			raw, _, ok := scaled(&value, money.MilliScale)
+			if !ok {
+				continue
+			}
+			slug := "llmstats-rating-" + category
+			yes := true
+			doc.Benchmarks = append(doc.Benchmarks, catalog.BenchmarkDoc{Slug: slug, Name: "LLM Stats " + category, Dimension: "other", Unit: "points", HigherIsBetter: &yes, SourceURL: modelURL})
+			published := m.UpdatedAt
+			if _, err := time.Parse(time.RFC3339, published); err != nil {
+				continue
+			}
+			doc.Results = append(doc.Results, catalog.ResultDoc{Model: Slug(m.ID), Benchmark: slug, Value: raw, PublishedAt: published, SourceURL: modelURL})
+		}
 		seenOfferings := map[string]bool{}
 		for _, p := range m.Providers {
 			if strings.TrimSpace(p.ProviderID+p.ProviderName) == "" {
@@ -286,10 +283,10 @@ func Convert(ds Dataset, now time.Time, latest map[string]PriceKey) (catalog.Doc
 				unmapped[strings.ToLower(strings.TrimSpace(c))] = true
 			}
 		}
-		slug := Slug(b.ID)
+		slug := Slug("raw-" + b.ID)
 		benchSlugs[b.ID] = slug
 		benchDocs[slug] = catalog.BenchmarkDoc{
-			Slug: slug, Name: clip(b.Name, 120), Dimension: dim, Unit: "percent", HigherIsBetter: &yes,
+			Slug: slug, Name: clip(b.Name, 120), Dimension: dim, Unit: "points", HigherIsBetter: &yes,
 			SourceURL: httpsURL(b.URL, "https://llm-stats.com/benchmarks/"+url.PathEscape(b.ID)),
 		}
 	}
@@ -303,7 +300,7 @@ func Convert(ds Dataset, now time.Time, latest map[string]PriceKey) (catalog.Doc
 			rep.SkippedScores++
 			continue
 		}
-		value, ok := percentOf(s.Score, s.MaxScore)
+		value, _, ok := scaled(&s.Score, money.MilliScale)
 		published, err := time.Parse(time.RFC3339, strings.TrimSpace(s.ScoredAt))
 		if !ok || err != nil || published.After(now) {
 			rep.SkippedScores++
@@ -339,6 +336,20 @@ func Convert(ds Dataset, now time.Time, latest map[string]PriceKey) (catalog.Doc
 		}
 	}
 	sort.Strings(rep.UnmappedCategories)
+	unique := map[string]bool{}
+	defs := doc.Benchmarks[:0]
+	for _, b := range doc.Benchmarks {
+		if !unique[b.Slug] {
+			unique[b.Slug] = true
+			defs = append(defs, b)
+		}
+	}
+	doc.Benchmarks = defs
+	sort.Slice(doc.Benchmarks, func(i, j int) bool { return doc.Benchmarks[i].Slug < doc.Benchmarks[j].Slug })
+	sort.Slice(doc.Results, func(i, j int) bool {
+		a, b := doc.Results[i], doc.Results[j]
+		return a.Model+"/"+a.Benchmark < b.Model+"/"+b.Benchmark
+	})
 	rep.Models, rep.Providers, rep.Offerings, rep.Benchmarks = len(doc.Models), len(doc.Providers), len(doc.Offerings), len(doc.Benchmarks)
 	rep.Prices, rep.Results, rep.Speeds = len(doc.Prices), len(doc.Results), len(doc.Speeds)
 	return doc, rep

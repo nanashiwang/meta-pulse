@@ -34,9 +34,9 @@ func main() {
 	}
 	defer store.Close()
 
-	reader := service.NewReader(store, score.V1, cfg.CacheTTL)
+	reader := service.NewReader(store, score.Source, cfg.CacheTTL)
 	router := transporthttp.NewRouter(logger, reader, store, cfg.SpeedWindow)
-	adminSvc := &admin.Service{Store: store, Method: score.V1, SpeedWindow: cfg.SpeedWindow}
+	adminSvc := &admin.Service{Store: store, Method: score.Source, SpeedWindow: cfg.SpeedWindow}
 	var box *settings.Box
 	if len(cfg.AdminSecrets) > 0 {
 		box, _ = settings.NewBox(cfg.AdminSecrets[0])

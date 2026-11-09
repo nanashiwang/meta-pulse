@@ -216,6 +216,9 @@ func (r *Reader) Methodology(ctx context.Context, speedWindow time.Duration) (Me
 		m.Sources = nonNil(snap.Sources)
 	}
 	for _, w := range r.method.Weights {
+		if r.method.Version == score.Source.Version {
+			break
+		}
 		m.Weights = append(m.Weights, MethodWeight{string(w.Dimension), w.Weight})
 	}
 	return m, nil

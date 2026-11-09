@@ -89,7 +89,7 @@ test('model detail shows sourced prices and results, and only https sources beco
   assert.match(html, /87\.3%/);
   assert.match(html, /lower is better/);
   assert.match(html, /Self-run/);
-  assert.match(html, /coverage is 40%/);
+  assert.match(html, /source has no overall score/);
   assert.match(html, /href="https:\/\/lab\.example\/pricing"[^>]*rel="noopener noreferrer nofollow"/);
   assert.doesNotMatch(html, /javascript:/);
 });

@@ -214,3 +214,22 @@ func TestSourcesAreSortedAndFingerprinted(t *testing.T) {
 		t.Fatal("adding a source must change the board fingerprint so attribution updates")
 	}
 }
+
+func TestSourceScoresRemainOriginalAndMissingStayMissing(t *testing.T) {
+	in := Inputs{Models: []ModelInfo{{Slug: "opus", Modality: "llm"}, {Slug: "qwen", Modality: "llm"}}, Results: map[string]map[string]int64{"opus": {"llmstats-rating-overall": 59900, "llmstats-rating-code": 61250}, "qwen": {"raw-bench": 100000}}}
+	snap, err := BuildSnapshot(score.Source, in, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *snap.Rows[0].Composite != 5990 || *snap.Rows[0].Coding != 6125 {
+		t.Fatalf("source scores changed: %+v", snap.Rows[0])
+	}
+	if snap.Rows[1].Composite != nil || snap.Rows[1].Reasoning != nil {
+		t.Fatal("missing source score was synthesized")
+	}
+	in.Models = append(in.Models, ModelInfo{Slug: "extra", Modality: "llm"})
+	again, _ := BuildSnapshot(score.Source, in, time.Now())
+	if *again.Rows[0].Composite != 5990 {
+		t.Fatal("other models changed source score")
+	}
+}

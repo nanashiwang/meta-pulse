@@ -456,7 +456,8 @@ func (s *Store) ModelDetail(ctx context.Context, slug string, now time.Time) (se
 	err = s.each(ctx, `SELECT b.slug, b.name, b.dimension, b.unit, b.higher_is_better, x.value, x.settings, x.self_run, x.published_at, x.source_url FROM (
 			SELECT benchmark_slug, value, settings, self_run, published_at, source_url,
 			  ROW_NUMBER() OVER (PARTITION BY benchmark_slug ORDER BY published_at DESC, id DESC) AS rn
-			FROM intel_benchmark_result WHERE model_slug = ? AND published_at <= ?) x
+			FROM intel_benchmark_result WHERE model_slug = ? AND published_at <= ?
+              AND (source_slug <> 'llm-stats' OR benchmark_slug LIKE 'raw-%' OR benchmark_slug LIKE 'llmstats-rating-%')) x
 		JOIN intel_benchmark b ON b.slug = x.benchmark_slug WHERE x.rn = 1 ORDER BY b.dimension, b.slug`, []any{slug, now}, func(r *sql.Rows) error {
 		var b service.BenchmarkResult
 		if err := r.Scan(&b.Benchmark, &b.Name, &b.Dimension, &b.Unit, &b.HigherIsBetter, &b.Value, &b.Settings, &b.SelfRun, &b.PublishedAt, &b.SourceURL); err != nil {

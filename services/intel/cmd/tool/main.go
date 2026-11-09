@@ -111,7 +111,7 @@ func run(args []string, out io.Writer) error {
 }
 
 func score1(ctx context.Context, out io.Writer, store *mysqlstore.Store, cfg config.Config) error {
-	snap, stored, err := service.Recompute(ctx, store, score.V1, time.Now(), cfg.SpeedWindow)
+	snap, stored, err := service.Recompute(ctx, store, score.Source, time.Now(), cfg.SpeedWindow)
 	if err != nil {
 		return err
 	}

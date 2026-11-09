@@ -148,18 +148,20 @@ type ProviderPricing struct {
 }
 
 type Model struct {
-	ID            string            `json:"id"`
-	Name          string            `json:"name"`
-	Organization  Ref               `json:"organization"`
-	Family        *Ref              `json:"family"`
-	License       License           `json:"license"`
-	OpenWeight    bool              `json:"open_weight"`
-	ModelType     string            `json:"model_type"`
-	Modalities    []string          `json:"modalities"`
-	ContextWindow *int64            `json:"context_window"`
-	ReleaseDate   *string           `json:"release_date"`
-	Providers     []ProviderPricing `json:"providers"`
-	URL           string            `json:"url"`
+	TopScores     map[string]json.Number `json:"top_scores"`
+	UpdatedAt     string                 `json:"updated_at"`
+	ID            string                 `json:"id"`
+	Name          string                 `json:"name"`
+	Organization  Ref                    `json:"organization"`
+	Family        *Ref                   `json:"family"`
+	License       License                `json:"license"`
+	OpenWeight    bool                   `json:"open_weight"`
+	ModelType     string                 `json:"model_type"`
+	Modalities    []string               `json:"modalities"`
+	ContextWindow *int64                 `json:"context_window"`
+	ReleaseDate   *string                `json:"release_date"`
+	Providers     []ProviderPricing      `json:"providers"`
+	URL           string                 `json:"url"`
 }
 
 type Benchmark struct {

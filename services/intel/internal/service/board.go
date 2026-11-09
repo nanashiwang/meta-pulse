@@ -116,7 +116,28 @@ func BuildSnapshot(method score.Method, in Inputs, now time.Time) (Snapshot, err
 	for _, m := range models {
 		scoreInputs = append(scoreInputs, score.Input{Model: m.Slug, Results: in.Results[m.Slug]})
 	}
-	scored, err := score.Compute(method, in.Benchmarks, scoreInputs)
+	var scored []score.Result
+	var err error
+	if method.Version == score.Source.Version {
+		scored = nil
+		for _, m := range models {
+			r := score.Result{Model: m.Slug, Dimensions: map[score.Dimension]int64{}}
+			raw := in.Results[m.Slug]
+			if v, ok := raw["llmstats-rating-overall"]; ok {
+				v = v / 10
+				r.Composite = &v
+			}
+			for d, k := range map[score.Dimension]string{score.Reasoning: "reasoning", score.Coding: "code", score.Agent: "agent"} {
+				if v, ok := raw["llmstats-rating-"+k]; ok {
+					r.Dimensions[d] = v / 10
+				}
+			}
+			scored = append(scored, r)
+		}
+	}
+	if method.Version != score.Source.Version {
+		scored, err = score.Compute(method, in.Benchmarks, scoreInputs)
+	}
 	if err != nil {
 		return Snapshot{}, err
 	}
