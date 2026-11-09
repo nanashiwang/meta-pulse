@@ -146,7 +146,7 @@ Meta Pulse = 调用之后的增长与权益系统
 
 ### 社区会话滑动保留
 
-Answer 1.7.1 构建保留固定版本的小型会话补丁（`services/forum/answer-session-retention.patch`），不维护独立上游仓库。另有仅改样式的特权页紧凑补丁（`answer-admin-privileges-compact.patch`：`/admin/privileges` 全宽、声望门槛多栏网格），在其他 Answer 补丁之后应用。社区原生 bearer 会话与 visit 映射保存 30 天；通过有效 bearer 认证的访问刷新缓存、用户撤销索引和浏览器 visit Cookie。浏览器 `_a_ltk_` 继续使用 Answer 原生 localStorage，无独立客户端 TTL。匿名访问不会签发会话，连续 30 天无有效访问后必须重新登录。
+Answer 1.7.1 构建保留固定版本的小型会话补丁（`services/forum/answer-session-retention.patch`），不维护独立上游仓库。另有按顺序应用的管理员可选邮箱补丁与管理员用户列表补丁（`answer-admin-user-list.patch`：分页大小、跳页、列设置、最近登录与提问/回答数，服务端每页上限 100），以及仅改样式的特权页紧凑补丁（`answer-admin-privileges-compact.patch`：`/admin/privileges` 全宽、声望门槛多栏网格）；列表中的 API 绑定列只经插件只读接口复核实时管理员后读取 `user_external_login`，不改变身份与绑定边界。社区原生 bearer 会话与 visit 映射保存 30 天；通过有效 bearer 认证的访问刷新缓存、用户撤销索引和浏览器 visit Cookie。浏览器 `_a_ltk_` 继续使用 Answer 原生 localStorage，无独立客户端 TTL。匿名访问不会签发会话，连续 30 天无有效访问后必须重新登录。
 
 会话缓存由 Answer 管理，默认是可落盘的内存缓存，不等同于 Pulse Redis。当前单 Answer 进程中，续期、注销和批量撤销使用同一仓库锁，防止读取后写回恢复已撤销 token；续期合并账号状态，封禁和删除不续期，状态变更缓存覆盖完整 30 天窗口。多进程共享缓存部署须先提供跨进程原子续期/撤销机制，不能仅复用进程锁。补丁不接入 Pulse、新 API 资金或 SSO 票据生命周期。
 

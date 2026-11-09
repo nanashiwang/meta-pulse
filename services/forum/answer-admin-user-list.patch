@@ -1,0 +1,729 @@
+diff --git a/i18n/en_US.yaml b/i18n/en_US.yaml
+index 5183c50..b69ff38 100644
+--- a/i18n/en_US.yaml
++++ b/i18n/en_US.yaml
+@@ -1977,6 +1977,31 @@ ui:
+       change_role: Change role
+       show_logs: Show logs
+       add_user: Add user
++      metar_search_placeholder: "Username / email / user:ID"
++      metar_total: "{{total}} users in total"
++      metar_total_filtered: "{{total}} users match this filter"
++      metar_range: "Showing {{start}}–{{end}} of {{total}}"
++      metar_page_size: Per page
++      metar_jump_to: Go to
++      metar_go: Go
++      metar_compact: Compact
++      metar_columns: Columns
++      metar_show_all_columns: Show all columns
++      metar_col_user_id: ID
++      metar_col_email: Email
++      metar_col_reputation: Reputation
++      metar_col_posts: Questions / answers
++      metar_col_api_account: API account
++      metar_col_login_methods: Sign-in methods
++      metar_col_created_at: Registered
++      metar_col_last_login: Last sign-in
++      metar_col_role: Role
++      metar_unbound: Not linked
++      metar_binding_unavailable: Binding data unavailable
++      metar_local: Local
++      metar_never: Never
++      metar_copy_email: Copy email
++      metar_copied: Copied
+       deactivate_user:
+         title: Deactivate user
+         content: An inactive user must re-validate their email.
+diff --git a/i18n/zh_CN.yaml b/i18n/zh_CN.yaml
+index 9db4efa..4ec8172 100644
+--- a/i18n/zh_CN.yaml
++++ b/i18n/zh_CN.yaml
+@@ -1938,6 +1938,31 @@ ui:
+       change_role: 更改角色
+       show_logs: 显示日志
+       add_user: 添加用户
++      metar_search_placeholder: "用户名 / 邮箱 / user:ID"
++      metar_total: "共 {{total}} 名用户"
++      metar_total_filtered: "当前筛选共 {{total}} 名用户"
++      metar_range: "显示第 {{start}}–{{end}} 条，共 {{total}} 条"
++      metar_page_size: 每页
++      metar_jump_to: 跳至
++      metar_go: 跳转
++      metar_compact: 紧凑
++      metar_columns: 列设置
++      metar_show_all_columns: 显示全部列
++      metar_col_user_id: ID
++      metar_col_email: 邮箱
++      metar_col_reputation: 声望
++      metar_col_posts: 提问 / 回答
++      metar_col_api_account: API 账号
++      metar_col_login_methods: 登录方式
++      metar_col_created_at: 注册时间
++      metar_col_last_login: 最近登录
++      metar_col_role: 角色
++      metar_unbound: 未绑定
++      metar_binding_unavailable: 绑定信息暂不可用
++      metar_local: 本地
++      metar_never: 从未登录
++      metar_copy_email: 复制邮箱
++      metar_copied: 已复制
+       deactivate_user:
+         title: 停用用户
+         content: 未激活的用户必须重新验证他们的邮箱。
+diff --git a/internal/schema/backyard_user_schema.go b/internal/schema/backyard_user_schema.go
+index 50222bc..c5660d9 100644
+--- a/internal/schema/backyard_user_schema.go
++++ b/internal/schema/backyard_user_schema.go
+@@ -126,6 +126,10 @@ type GetUserPageResp struct {
+ 	RoleID int `json:"role_id"`
+ 	// role name
+ 	RoleName string `json:"role_name"`
++	// METAR: denser admin list columns
++	LastLoginDate int64 `json:"last_login_date"`
++	QuestionCount int   `json:"question_count"`
++	AnswerCount   int   `json:"answer_count"`
+ }
+ 
+ // GetUserInfoReq get user request
+diff --git a/internal/service/user_admin/metar_admin_user_list_test.go b/internal/service/user_admin/metar_admin_user_list_test.go
+new file mode 100644
+index 0000000..c8c1a38
+--- /dev/null
++++ b/internal/service/user_admin/metar_admin_user_list_test.go
+@@ -0,0 +1,11 @@
++package user_admin
++
++import "testing"
++
++func TestMetarAdminUserPageSizeClamp(t *testing.T) {
++	for in, want := range map[int]int{0: 0, 10: 10, 50: 50, 100: 100, 101: 100, 100000: 100} {
++		if got := metarAdminUserPageSize(in); got != want {
++			t.Fatalf("metarAdminUserPageSize(%d) = %d, want %d", in, got, want)
++		}
++	}
++}
+diff --git a/internal/service/user_admin/user_backyard.go b/internal/service/user_admin/user_backyard.go
+index bff87c9..48be397 100644
+--- a/internal/service/user_admin/user_backyard.go
++++ b/internal/service/user_admin/user_backyard.go
+@@ -511,6 +511,7 @@ func (us *UserAdminService) GetUserPage(ctx context.Context, req *schema.GetUser
+ 		}
+ 	}
+ 
++	req.PageSize = metarAdminUserPageSize(req.PageSize)
+ 	users, total, err := us.userRepo.GetUserPage(ctx, req.Page, req.PageSize, user, req.Query, req.Staff)
+ 	if err != nil {
+ 		return
+@@ -527,6 +528,12 @@ func (us *UserAdminService) GetUserPage(ctx context.Context, req *schema.GetUser
+ 			Rank:        u.Rank,
+ 			DisplayName: u.DisplayName,
+ 			Avatar:      avatarMapping[u.ID].GetURL(),
++			// METAR: denser admin list columns
++			QuestionCount: u.QuestionCount,
++			AnswerCount:   u.AnswerCount,
++		}
++		if !u.LastLoginDate.IsZero() {
++			t.LastLoginDate = u.LastLoginDate.Unix()
+ 		}
+ 		switch {
+ 		case u.Status == entity.UserStatusDeleted:
+@@ -670,3 +677,14 @@ func (us *UserAdminService) CheckAndUnsuspendExpiredUsers(ctx context.Context) e
+ 
+ 	return nil
+ }
++
++// METAR: the admin list offers 10/20/50/100 rows per page; larger requests are
++// clamped so a crafted page_size cannot load the whole user table at once.
++const metarAdminUserMaxPageSize = 100
++
++func metarAdminUserPageSize(size int) int {
++	if size > metarAdminUserMaxPageSize {
++		return metarAdminUserMaxPageSize
++	}
++	return size
++}
+diff --git a/ui/src/pages/Admin/Users/index.tsx b/ui/src/pages/Admin/Users/index.tsx
+index 7e8e4fd..ebebda0 100644
+--- a/ui/src/pages/Admin/Users/index.tsx
++++ b/ui/src/pages/Admin/Users/index.tsx
+@@ -17,8 +17,15 @@
+  * under the License.
+  */
+ 
+-import { FC, useEffect, useState } from 'react';
+-import { Form, Table, Button, Stack } from 'react-bootstrap';
++import { FC, useEffect, useMemo, useState } from 'react';
++import {
++  Form,
++  Table,
++  Button,
++  Stack,
++  Dropdown,
++  InputGroup,
++} from 'react-bootstrap';
+ import { useSearchParams } from 'react-router-dom';
+ import { useTranslation } from 'react-i18next';
+ 
+@@ -32,8 +39,10 @@ import {
+   Empty,
+   QueryGroup,
+   Modal,
++  Icon,
+ } from '@/components';
+ import * as Type from '@/common/interface';
++import { LOGGED_TOKEN_STORAGE_KEY } from '@/common/constants';
+ import { useUserModal } from '@/hooks';
+ import { toastStore, loggedUserInfoStore, userCenterStore } from '@/stores';
+ import {
+@@ -45,6 +54,7 @@ import {
+   deletePermanently,
+ } from '@/services';
+ import { formatCount } from '@/utils';
++import Storage from '@/utils/storage';
+ 
+ import DeleteUserModal from './components/DeleteUserModal';
+ import Action from './components/Action';
+@@ -65,7 +75,70 @@ const bgMap = {
+   inactive: 'text-bg-secondary',
+ };
+ 
+-const PAGE_SIZE = 10;
++// METAR: denser admin list. The server clamps page_size to 100 as well.
++const PAGE_SIZES = [10, 20, 50, 100];
++const PAGE_SIZE_KEY = 'metar_admin_users_page_size';
++const COLUMNS_KEY = 'metar_admin_users_hidden_columns';
++const COMPACT_KEY = 'metar_admin_users_compact';
++const OPTIONAL_COLUMNS = [
++  'user_id',
++  'email',
++  'reputation',
++  'posts',
++  'api_account',
++  'login_methods',
++  'created_at',
++  'last_login',
++  'role',
++] as const;
++type OptionalColumn = (typeof OPTIONAL_COLUMNS)[number];
++
++type BindingInfo = { api_user_id?: string; providers?: string[] };
++
++const readStored = (key: string) => {
++  try {
++    return Storage.get(key);
++  } catch {
++    return undefined;
++  }
++};
++const writeStored = (key: string, value: any) => {
++  try {
++    Storage.set(key, value);
++  } catch {
++    // Preferences are a convenience; the list works without storage.
++  }
++};
++const validPageSize = (value: unknown) => {
++  const size = Number(value);
++  return PAGE_SIZES.includes(size) ? size : 0;
++};
++
++// Binding data comes from the METAR plugin. A plain fetch keeps a missing or
++// disabled plugin from triggering Answer's global 403/50X admin error page.
++const fetchBindings = async (
++  ids: string[],
++): Promise<Record<string, BindingInfo>> => {
++  const token = String(readStored(LOGGED_TOKEN_STORAGE_KEY) || '');
++  const response = await fetch('/answer/admin/api/metar/accounts/bindings', {
++    method: 'POST',
++    credentials: 'same-origin',
++    cache: 'no-store',
++    headers: {
++      Authorization: token,
++      'Content-Type': 'application/json',
++      'X-Metar-Request': '1',
++    },
++    body: JSON.stringify({ user_ids: ids }),
++  });
++  if (!response.ok) throw new Error(String(response.status));
++  const result = await response.json();
++  if (!result || typeof result.data !== 'object' || result.data === null) {
++    throw new Error('invalid bindings response');
++  }
++  return result.data;
++};
++
+ const Users: FC = () => {
+   const { t } = useTranslation('translation', { keyPrefix: 'admin.users' });
+   const [deleteUserModalState, setDeleteUserModalState] = useState({
+@@ -78,8 +151,29 @@ const Users: FC = () => {
+   });
+   const [urlSearchParams, setUrlSearchParams] = useSearchParams();
+   const curFilter = urlSearchParams.get('filter') || UserFilterKeys[0];
+-  const curPage = Number(urlSearchParams.get('page') || '1');
++  const curPage = Math.max(
++    1,
++    Math.floor(Number(urlSearchParams.get('page') || '1')) || 1,
++  );
+   const curQuery = urlSearchParams.get('query') || '';
++  const pageSize =
++    validPageSize(urlSearchParams.get('page_size')) ||
++    validPageSize(readStored(PAGE_SIZE_KEY)) ||
++    PAGE_SIZES[0];
++  const [hiddenColumns, setHiddenColumns] = useState<OptionalColumn[]>(() => {
++    const stored = readStored(COLUMNS_KEY);
++    return Array.isArray(stored)
++      ? stored.filter((key) => OPTIONAL_COLUMNS.includes(key))
++      : [];
++  });
++  const [compact, setCompact] = useState<boolean>(
++    () => String(readStored(COMPACT_KEY)) === 'true',
++  );
++  const [jumpPage, setJumpPage] = useState('');
++  const [bindings, setBindings] = useState<Record<string, BindingInfo> | null>(
++    null,
++  );
++  const [bindingsFailed, setBindingsFailed] = useState(false);
+   const currentUser = loggedUserInfoStore((state) => state.user);
+   const { agent: ucAgent } = userCenterStore();
+   const [adminUcAgent, setAdminUcAgent] = useState<AdminUcAgent>({
+@@ -95,7 +189,7 @@ const Users: FC = () => {
+     mutate: refreshUsers,
+   } = useQueryUsers({
+     page: curPage,
+-    page_size: PAGE_SIZE,
++    page_size: pageSize,
+     query: curQuery,
+     ...(curFilter === 'all'
+       ? {}
+@@ -103,6 +197,41 @@ const Users: FC = () => {
+         ? { staff: true }
+         : { status: curFilter }),
+   });
++  const total = Number(data?.count) || 0;
++  const totalPages = Math.max(1, Math.ceil(total / pageSize));
++  const rangeStart = total === 0 ? 0 : (curPage - 1) * pageSize + 1;
++  const rangeEnd = Math.min(
++    total,
++    (curPage - 1) * pageSize + (data?.list?.length || 0),
++  );
++  const idsKey = useMemo(
++    () => (data?.list || []).map((user) => String(user.user_id)).join(','),
++    [data],
++  );
++
++  useEffect(() => {
++    if (!idsKey) {
++      setBindings({});
++      setBindingsFailed(false);
++      return undefined;
++    }
++    let active = true;
++    setBindings(null);
++    fetchBindings(idsKey.split(','))
++      .then((result) => {
++        if (!active) return;
++        setBindings(result);
++        setBindingsFailed(false);
++      })
++      .catch(() => {
++        if (!active) return;
++        setBindings(null);
++        setBindingsFailed(true);
++      });
++    return () => {
++      active = false;
++    };
++  }, [idsKey]);
+ 
+   const userModal = useUserModal({
+     onConfirm: (userModel) => {
+@@ -126,6 +255,46 @@ const Users: FC = () => {
+     urlSearchParams.delete('page');
+     setUrlSearchParams(urlSearchParams);
+   };
++  const handlePageSize = (e) => {
++    const size = validPageSize(e.target.value) || PAGE_SIZES[0];
++    writeStored(PAGE_SIZE_KEY, String(size));
++    urlSearchParams.set('page_size', String(size));
++    urlSearchParams.delete('page');
++    setUrlSearchParams(urlSearchParams);
++  };
++  const handleJump = (e?) => {
++    e?.preventDefault();
++    const target = Math.floor(Number(jumpPage));
++    if (!Number.isFinite(target) || target < 1) {
++      setJumpPage('');
++      return;
++    }
++    urlSearchParams.set('page', String(Math.min(target, totalPages)));
++    setUrlSearchParams(urlSearchParams);
++    setJumpPage('');
++  };
++  const toggleColumn = (key: OptionalColumn) => {
++    const next = hiddenColumns.includes(key)
++      ? hiddenColumns.filter((item) => item !== key)
++      : [...hiddenColumns, key];
++    setHiddenColumns(next);
++    writeStored(COLUMNS_KEY, next);
++  };
++  const toggleCompact = () => {
++    setCompact(!compact);
++    writeStored(COMPACT_KEY, String(!compact));
++  };
++  const show = (key: OptionalColumn) => !hiddenColumns.includes(key);
++  const copyEmail = (email: string) => {
++    navigator.clipboard?.writeText(email).then(
++      () =>
++        toastStore
++          .getState()
++          .show({ msg: t('metar_copied'), variant: 'success' }),
++      () => undefined,
++    );
++  };
++
+   useEffect(() => {
+     if (ucAgent?.enabled) {
+       getAdminUcAgent().then((resp) => {
+@@ -199,17 +368,56 @@ const Users: FC = () => {
+     !ucAgent?.enabled ||
+     (ucAgent?.enabled && adminUcAgent?.allow_update_user_status);
+   const showAction = showActionPassword || showActionRole || showActionStatus;
++  const showRoleColumn =
++    curFilter !== 'suspended' && curFilter !== 'deleted' && show('role');
++  const filtered = curFilter !== UserFilterKeys[0] || curQuery !== '';
++
++  const renderBinding = (userId: string) => {
++    if (bindingsFailed) {
++      return (
++        <span className="text-secondary" title={t('metar_binding_unavailable')}>
++          —
++        </span>
++      );
++    }
++    if (!bindings) return <span className="text-secondary">…</span>;
++    const id = bindings[userId]?.api_user_id;
++    return id ? (
++      <span className="badge text-bg-primary bg-opacity-75">#{id}</span>
++    ) : (
++      <span className="text-secondary small">{t('metar_unbound')}</span>
++    );
++  };
++  const renderLoginMethods = (userId: string) => {
++    if (bindingsFailed || !bindings) {
++      return <span className="text-secondary">—</span>;
++    }
++    const providers = bindings[userId]?.providers || [];
++    return (
++      <div className="d-flex flex-wrap gap-1">
++        <span className="badge text-bg-light">{t('metar_local')}</span>
++        {providers.map((provider) => (
++          <span
++            key={provider}
++            className="badge text-bg-info bg-opacity-25 text-body">
++            {provider}
++          </span>
++        ))}
++      </div>
++    );
++  };
+ 
+   return (
+     <>
+       <h3 className="mb-4">{t('title')}</h3>
+       <div className="d-flex flex-wrap justify-content-between align-items-center">
+-        <Stack direction="horizontal" gap={3} className="mb-3">
++        <Stack direction="horizontal" gap={3} className="mb-3 flex-wrap">
+           <QueryGroup
+             data={UserFilterKeys}
+             currentSort={curFilter}
+             sortKey="filter"
+             i18nKeyPrefix="admin.users"
++            maxBtnCount={UserFilterKeys.length}
+           />
+           {curFilter === 'deleted' && Number(data?.count) > 0 ? (
+             <Button
+@@ -234,70 +442,172 @@ const Users: FC = () => {
+           type="search"
+           value={curQuery}
+           onChange={handleFilter}
+-          placeholder={t('filter.placeholder')}
+-          style={{ width: '12.25rem' }}
++          placeholder={t('metar_search_placeholder')}
++          style={{ width: '16rem' }}
+           className="mb-3"
+         />
+       </div>
+-      <Table responsive="md">
++      <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
++        <div className="small text-secondary" id="metar-user-total">
++          {filtered
++            ? t('metar_total_filtered', { total })
++            : t('metar_total', { total })}
++        </div>
++        <Stack direction="horizontal" gap={2}>
++          <Button
++            variant={compact ? 'secondary' : 'outline-secondary'}
++            size="sm"
++            onClick={toggleCompact}
++            aria-pressed={compact}>
++            {t('metar_compact')}
++          </Button>
++          <Dropdown align="end" autoClose="outside">
++            <Dropdown.Toggle variant="outline-secondary" size="sm">
++              <Icon type="bi" name="layout-three-columns" className="me-1" />
++              {t('metar_columns')}
++            </Dropdown.Toggle>
++            <Dropdown.Menu>
++              {OPTIONAL_COLUMNS.map((key) => (
++                <Dropdown.ItemText key={key} className="py-1">
++                  <Form.Check
++                    type="switch"
++                    id={`metar-col-${key}`}
++                    label={t(`metar_col_${key}`)}
++                    checked={show(key)}
++                    onChange={() => toggleColumn(key)}
++                  />
++                </Dropdown.ItemText>
++              ))}
++              {hiddenColumns.length > 0 ? (
++                <>
++                  <Dropdown.Divider />
++                  <Dropdown.Item
++                    as="button"
++                    onClick={() => {
++                      setHiddenColumns([]);
++                      writeStored(COLUMNS_KEY, []);
++                    }}>
++                    {t('metar_show_all_columns')}
++                  </Dropdown.Item>
++                </>
++              ) : null}
++            </Dropdown.Menu>
++          </Dropdown>
++        </Stack>
++      </div>
++      <Table
++        responsive
++        hover
++        size={compact ? 'sm' : undefined}
++        className="text-nowrap">
+         <thead>
+           <tr>
+-            <th>{t('name')}</th>
+-            <th style={{ width: '12%' }}>{t('reputation')}</th>
+-            <th style={{ width: '15%' }} className="min-w-15">
+-              {t('email')}
+-            </th>
+-            <th className="text-nowrap" style={{ width: '12%' }}>
+-              {t('created_at')}
++            <th className="text-secondary" style={{ width: '1%' }}>
++              #
+             </th>
++            {show('user_id') && <th style={{ width: '1%' }}>ID</th>}
++            <th>{t('name')}</th>
++            {show('email') && <th>{t('email')}</th>}
++            {show('reputation') && <th>{t('reputation')}</th>}
++            {show('posts') && <th>{t('metar_col_posts')}</th>}
++            {show('api_account') && <th>{t('metar_col_api_account')}</th>}
++            {show('login_methods') && <th>{t('metar_col_login_methods')}</th>}
++            {show('created_at') && <th>{t('created_at')}</th>}
++            {show('last_login') && <th>{t('metar_col_last_login')}</th>}
+             {(curFilter === 'deleted' || curFilter === 'suspended') && (
+-              <th className="text-nowrap" style={{ width: '12%' }}>
++              <th>
+                 {curFilter === 'deleted' ? t('delete_at') : t('suspend_at')}
+               </th>
+             )}
+-            {curFilter === 'suspended' && (
+-              <th className="text-nowrap" style={{ width: '12%' }}>
+-                {t('suspend_until')}
+-              </th>
+-            )}
++            {curFilter === 'suspended' && <th>{t('suspend_until')}</th>}
+ 
+-            <th style={{ width: '12%' }}>{t('status')}</th>
+-            {curFilter !== 'suspended' && curFilter !== 'deleted' && (
+-              <th style={{ width: '12%' }}>{t('role')}</th>
+-            )}
++            <th>{t('status')}</th>
++            {showRoleColumn && <th>{t('role')}</th>}
+             {curFilter !== 'deleted' ? (
+-              <th style={{ width: '8%' }} className="text-end">
++              <th style={{ width: '1%' }} className="text-end">
+                 {t('action')}
+               </th>
+             ) : null}
+           </tr>
+         </thead>
+         <tbody className="align-middle">
+-          {data?.list.map((user) => {
++          {data?.list.map((user, index) => {
+             return (
+               <tr key={user.user_id}>
++                <td className="text-secondary small">{rangeStart + index}</td>
++                {show('user_id') && (
++                  <td className="text-secondary small">{user.user_id}</td>
++                )}
+                 <td>
+                   <BaseUserCard
+                     data={user}
+                     className="fs-6"
+-                    avatarSize="32px"
++                    avatarSize={compact ? '24px' : '32px'}
+                     avatarSearchStr="s=48"
+                     avatarClass="me-2"
+                     showReputation={false}
+                     nameMaxWidth="160px"
+                   />
+                 </td>
+-                <td>{formatCount(user.rank)}</td>
+-                <td className="text-break">{user.e_mail}</td>
+-                <td>
+-                  <FormatTime time={user.created_at} />
+-                </td>
++                {show('email') && (
++                  <td>
++                    {user.e_mail ? (
++                      <div className="d-flex align-items-center gap-1">
++                        <span
++                          className="text-truncate d-inline-block"
++                          style={{ maxWidth: '14rem' }}
++                          title={user.e_mail}>
++                          {user.e_mail}
++                        </span>
++                        <Button
++                          variant="link"
++                          size="sm"
++                          className="p-0 link-secondary"
++                          title={t('metar_copy_email')}
++                          aria-label={t('metar_copy_email')}
++                          onClick={() => copyEmail(user.e_mail)}>
++                          <Icon type="bi" name="copy" />
++                        </Button>
++                      </div>
++                    ) : (
++                      <span className="text-secondary">—</span>
++                    )}
++                  </td>
++                )}
++                {show('reputation') && <td>{formatCount(user.rank)}</td>}
++                {show('posts') && (
++                  <td>
++                    {formatCount(user.question_count || 0)}
++                    <span className="text-secondary"> / </span>
++                    {formatCount(user.answer_count || 0)}
++                  </td>
++                )}
++                {show('api_account') && (
++                  <td>{renderBinding(String(user.user_id))}</td>
++                )}
++                {show('login_methods') && (
++                  <td>{renderLoginMethods(String(user.user_id))}</td>
++                )}
++                {show('created_at') && (
++                  <td className="small">
++                    <FormatTime time={user.created_at} />
++                  </td>
++                )}
++                {show('last_login') && (
++                  <td className="small">
++                    {user.last_login_date > 0 ? (
++                      <FormatTime time={user.last_login_date} />
++                    ) : (
++                      <span className="text-secondary">{t('metar_never')}</span>
++                    )}
++                  </td>
++                )}
+                 {curFilter === 'suspended' && (
+                   <>
+-                    <td className="text-nowrap">
++                    <td className="small">
+                       <FormatTime time={user.suspended_at} />
+                     </td>
+-                    <td className="text-nowrap">
++                    <td className="small">
+                       {user.suspended_until <= 0 ||
+                       Number(
+                         dayjs(user.suspended_until * 1000).format('YYYY'),
+@@ -310,7 +620,7 @@ const Users: FC = () => {
+                   </>
+                 )}
+                 {curFilter === 'deleted' && (
+-                  <td className="text-nowrap">
++                  <td className="small">
+                     <FormatTime time={user.deleted_at} />
+                   </td>
+                 )}
+@@ -319,7 +629,7 @@ const Users: FC = () => {
+                     {t(user.status)}
+                   </span>
+                 </td>
+-                {curFilter !== 'suspended' && curFilter !== 'deleted' && (
++                {showRoleColumn && (
+                   <td>
+                     <span className="badge text-bg-light">
+                       {t(user.role_name)}
+@@ -338,6 +648,8 @@ const Users: FC = () => {
+                     showDeleteModal={changeDeleteUserModalState}
+                     showSuspenseModal={handleSuspenseUserModalState}
+                   />
++                ) : curFilter !== 'deleted' ? (
++                  <td />
+                 ) : null}
+               </tr>
+             );
+@@ -345,12 +657,48 @@ const Users: FC = () => {
+         </tbody>
+       </Table>
+       {Number(data?.count) <= 0 && !isLoading && <Empty />}
+-      <div className="mt-4 mb-2 d-flex justify-content-center">
+-        <Pagination
+-          currentPage={curPage}
+-          totalSize={data?.count || 0}
+-          pageSize={PAGE_SIZE}
+-        />
++      <div className="mt-3 mb-2 d-flex flex-wrap justify-content-between align-items-center gap-3">
++        <div className="small text-secondary">
++          {t('metar_range', { start: rangeStart, end: rangeEnd, total })}
++        </div>
++        <div className="d-flex flex-wrap align-items-center gap-3">
++          <Pagination
++            currentPage={curPage}
++            totalSize={total}
++            pageSize={pageSize}
++          />
++          <Form
++            className="d-flex align-items-center gap-2"
++            onSubmit={handleJump}>
++            <InputGroup size="sm" style={{ width: '9rem' }}>
++              <InputGroup.Text>{t('metar_jump_to')}</InputGroup.Text>
++              <Form.Control
++                type="number"
++                min={1}
++                max={totalPages}
++                value={jumpPage}
++                onChange={(e) => setJumpPage(e.target.value)}
++                aria-label={t('metar_jump_to')}
++              />
++            </InputGroup>
++            <Button type="submit" size="sm" variant="outline-secondary">
++              {t('metar_go')}
++            </Button>
++          </Form>
++          <InputGroup size="sm" style={{ width: 'auto' }}>
++            <InputGroup.Text>{t('metar_page_size')}</InputGroup.Text>
++            <Form.Select
++              value={pageSize}
++              onChange={handlePageSize}
++              aria-label={t('metar_page_size')}>
++              {PAGE_SIZES.map((size) => (
++                <option key={size} value={size}>
++                  {size}
++                </option>
++              ))}
++            </Form.Select>
++          </InputGroup>
++        </div>
+       </div>
+ 
+       <DeleteUserModal

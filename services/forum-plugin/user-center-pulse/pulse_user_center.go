@@ -369,6 +369,7 @@ func (uc *UserCenter) RegisterAuthUserRouter(r *gin.RouterGroup) {
 func (uc *UserCenter) RegisterAuthAdminRouter(r *gin.RouterGroup) {
 	uc.registerAccountSwitch(r, answerAdminSessionUserID, plugin.SiteURL)
 	uc.registerAdminTicketGrant(r, answerAdminSessionUserID, plugin.SiteURL)
+	uc.registerAdminUserBindings(r, answerAdminSessionUserID, plugin.SiteURL)
 	uc.registerAdminSettingsRoutes(r, answerAdminSessionUserID, plugin.SiteURL)
 	uc.registerOperations(r, answerAdminSessionUserID, true)
 	uc.registerExperience(r, answerAdminSessionUserID, true, plugin.SiteURL)

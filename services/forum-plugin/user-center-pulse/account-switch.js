@@ -156,7 +156,8 @@
   function mountRows(getUser) {
     if (host.location.pathname !== '/admin/users' || getUser()?.role_id !== 2 || saved()) return;
     host.document.querySelectorAll('tbody tr').forEach((row) => {
-      const link = row.querySelector('td:first-child a[href^="/users/"]');
+      // The patched list leads with row number/ID cells; the user card holds the first profile link.
+      const link = row.querySelector('td a[href^="/users/"]');
       if (!link) return;
       const path = new URL(link.href, host.location.origin).pathname;
       if (!/^\/users\/[^/]+$/.test(path)) return;
@@ -170,54 +171,9 @@
       menuItem(menu, 'data-metar-switch', text('切换登录', 'Sign in as'), () => start(username));
     });
   }
-  // Row numbers come from a CSS counter so React-owned rows never gain foreign
-  // cells; Answer 1.7.1 pages the admin user list 10 at a time without a total.
-  const PAGE_SIZE = 10, SEQ_CSS = 'table[data-metar-seq]>thead>tr::before{content:"#";display:table-cell;padding:.5rem;font-weight:700;white-space:nowrap;border-style:solid;border-color:inherit;border-width:0 0 var(--bs-border-width,1px)}'
-    + 'table[data-metar-seq]>tbody>tr{counter-increment:metar-row}'
-    + 'table[data-metar-seq]>tbody>tr::before{content:counter(metar-row);display:table-cell;vertical-align:middle;padding:.5rem;width:1%;white-space:nowrap;color:var(--bs-secondary-color,#6c757d);border-style:solid;border-color:inherit;border-width:0 0 var(--bs-border-width,1px)}';
-  let totalKey = '', totalCount = null;
-  function userQuery(params) {
-    const query = new URLSearchParams({ page: '1', page_size: '1' });
-    const filter = params.get('filter') || 'all', keyword = params.get('query') || '';
-    if (keyword) query.set('query', keyword);
-    if (filter === 'staff') query.set('staff', 'true'); else if (filter !== 'all') query.set('status', filter);
-    return query.toString();
-  }
-  async function loadTotal(key) {
-    try {
-      const response = await host.fetch(`/answer/admin/api/users/page?${key}`, { credentials: 'same-origin', cache: 'no-store', headers: headers(token()) });
-      const count = Number((await response.json())?.data?.count);
-      if (key === totalKey && response.ok && Number.isInteger(count) && count >= 0) { totalCount = count; mountIndex(); }
-    } catch (_) { /* the total is informational; numbering still works */ }
-  }
-  function mountIndex() {
-    const doc = host.document, table = doc.querySelector?.('table');
-    if (!table || !table.querySelector('tbody')) return;
-    if (!doc.getElementById('metar-user-seq-style')) {
-      const style = doc.createElement('style'); style.id = 'metar-user-seq-style'; style.textContent = SEQ_CSS; doc.head.append(style);
-    }
-    const params = new URLSearchParams(host.location.search || '');
-    const page = Math.max(1, Math.floor(Number(params.get('page')) || 1));
-    if (!table.hasAttribute('data-metar-seq')) table.setAttribute('data-metar-seq', '');
-    const tbody = table.querySelector('tbody'), reset = `metar-row ${(page - 1) * PAGE_SIZE}`;
-    if (tbody.style.counterReset !== reset) tbody.style.counterReset = reset;
-    const key = userQuery(params);
-    if (key !== totalKey) { totalKey = key; totalCount = null; loadTotal(key); }
-    const anchor = table.closest('[class*="table-responsive"]') || table;
-    let label = doc.getElementById('metar-user-total');
-    if (totalCount === null) { label?.remove(); return; }
-    if (!label || label.nextElementSibling !== anchor) {
-      label?.remove(); label = doc.createElement('div'); label.id = 'metar-user-total'; label.className = 'small text-secondary mb-2';
-      anchor.before(label);
-    }
-    const filtered = key !== 'page=1&page_size=1';
-    const content = filtered ? text(`当前筛选共 ${totalCount} 名用户`, `${totalCount} users match this filter`) : text(`共 ${totalCount} 名用户`, `${totalCount} users in total`);
-    if (label.textContent !== content) label.textContent = content;
-  }
   function install(getUser = () => null) {
     if (installed) return; installed = true;
     const run = () => { mountBanner(); mountRows(getUser);
-      if (host.location.pathname === '/admin/users' && getUser()?.role_id === 2 && !saved()) mountIndex(); else totalKey = '';
       host.document.querySelectorAll('a[href$="/connector/login/metar_admin_switch"]').forEach((a) => { a.hidden = true; });
     };
     let pending = false;

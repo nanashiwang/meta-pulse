@@ -67,7 +67,7 @@ test('admin user switching is an item in each row three-dot menu, not an extra r
  const menuItems=[];
  const menu={querySelector:s=>menuItems.find(x=>!x.removed&&`[${Object.keys(x.attrs).find(k=>k.startsWith('data-metar'))}]`===s)||null,append(x){menuItems.push(x)}};
  const link={href:'https://forum.test/users/member'};
- const row={querySelector(s){if(s==='td:first-child a[href^="/users/"]')return link;if(s==='[data-metar-switch]')return item;if(s==='td:last-child .dropdown-menu')return menu;return null}};
+ const row={querySelector(s){if(s==='td a[href^="/users/"]')return link;if(s==='[data-metar-switch]')return item;if(s==='td:last-child .dropdown-menu')return menu;return null}};
  const f=setup();let confirmed='';f.window.confirm=message=>{confirmed=message;return false};
  f.window.location.pathname='/admin/users';
  f.window.document.querySelectorAll=s=>s==='tbody tr'?[row]:[];
@@ -113,21 +113,4 @@ test('ticket gift rejects bad counts locally and explains unbound accounts',asyn
  prompts=['3','测试'];
  await f.api.grantTickets('uno');
  assert.equal(f.calls.length,1);assert.match(f.alerts.at(-1),/尚未绑定 API 账号/);
-});
-test('admin user list gets CSS row numbers offset by page and a filter-aware total',async()=>{
- const f=setup([ok({count:37,list:[]})]);
- const el=tag=>({tagName:tag.toUpperCase(),attrs:{},id:'',textContent:'',className:'',style:{},setAttribute(k,v){this.attrs[k]=v},hasAttribute(k){return k in this.attrs},remove(){this.removed=true}});
- const tbody=el('tbody'),head=[],byId={};
- const wrap={...el('div'),before(n){byId[n.id]=n;n.nextElementSibling=wrap;n.remove=()=>{delete byId[n.id]}}};
- const table={...el('table'),querySelector:s=>s==='tbody'?tbody:null,closest:()=>wrap};
- Object.assign(f.window.document,{querySelector:s=>s==='table'?table:null,querySelectorAll:()=>[],getElementById:id=>byId[id]||null,createElement:el,head:{append(n){byId[n.id]=n;head.push(n)}}});
- Object.assign(f.window.location,{pathname:'/admin/users',search:'?filter=normal&query=bo&page=3'});
- f.window.MutationObserver=class{observe(){}};f.window.requestAnimationFrame=fn=>fn();f.window.addEventListener=()=>{};
- f.api.install(()=>({role_id:2,username:'admin'}));
- assert.equal(table.attrs['data-metar-seq'],'');assert.equal(tbody.style.counterReset,'metar-row 20');
- assert.match(head[0].textContent,/counter\(metar-row\)/);
- assert.equal(f.calls[0].url,'/answer/admin/api/users/page?page=1&page_size=1&query=bo&status=normal');
- assert.equal(f.calls[0].options.headers.Authorization,'Bearer admin');
- await new Promise(r=>setImmediate(r));
- assert.equal(byId['metar-user-total'].textContent,'当前筛选共 37 名用户');
 });
