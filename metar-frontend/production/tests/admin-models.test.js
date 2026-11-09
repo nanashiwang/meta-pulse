@@ -175,3 +175,13 @@ test('data source errors are explained and do not break the rest of the page', a
   assert.match(api.errorText({code: 'invalid_api_key'}), /无效/);
   assert.match(api.errorText({code: 'verify_unavailable'}), /未保存/);
 });
+
+test('data source card is the first section, even when the overview fails', async () => {
+  const {api} = setup();
+  const html = await new api.View(null, fetcher({overview, sources: srcState()})).page({id: '7'});
+  const at = s => html.indexOf(s);
+  assert.ok(at('intel-admin-sources') > 0 && at('intel-admin-sources') < at('intel-stats') && at('intel-stats') < at('intel-admin-import'), 'order: sources, stats, import');
+  const failed = await new api.View(null, fetcher({overview: new api.AdminError('unavailable', 503), sources: srcState()})).page({id: '7'});
+  assert.match(failed, /data-intel-source-key/, 'key can be configured while the overview is down');
+  assert.match(failed, /无法读取模型榜状态/);
+});

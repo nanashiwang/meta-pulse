@@ -184,7 +184,7 @@
 
     render() {
       const head = `<div class="page-title intel-admin-head"><div><h1>${t('模型榜管理', 'Model leaderboard admin')}</h1><p class="muted">${t('导入与修正模型、价格、评测和速度数据，所有导入记录操作人。', 'Import and correct models, prices, benchmarks and speeds. Every import records who ran it.')}</p></div><div class="intel-side-actions"><a data-router class="btn" href="/models">${t('查看榜单', 'View leaderboard')}</a></div></div>`;
-      if (!this.overview) return `${head}<section class="card card-pad intel-state" role="alert"><h2>${t('无法读取模型榜状态', 'Unable to load the leaderboard status')}</h2><p class="muted">${esc(errorText(this.loadError))}</p></section>`;
+      if (!this.overview) return `${head}${this.sourcesSection()}<section class="card card-pad intel-state mt16" role="alert"><h2>${t('无法读取模型榜状态', 'Unable to load the leaderboard status')}</h2><p class="muted">${esc(errorText(this.loadError))}</p></section>`;
       const o = this.overview, c = o.counts || {};
       const stat = (label, v) => `<div class="card intel-stat"><span class="muted">${label}</span><strong>${Number(v || 0).toLocaleString()}</strong></div>`;
       const snap = o.snapshot ? `${t('当前榜单：', 'Current board: ')}${esc(o.snapshot.rows)} ${t('个模型', 'models')} · ${t('方法 ', 'method ')}${esc(o.snapshot.method_version)} · ${t('计算于 ', 'computed ')}${time(o.snapshot.computed_at)}` : t('尚未生成榜单。导入数据后会自动计算。', 'No board yet. It is computed automatically after an import.');
@@ -194,10 +194,12 @@
       const pending = this.pending ? `<div class="card card-pad intel-admin-pending" role="status"><p>${esc(errorText({code: 'pending'}))}</p><div class="intel-side-actions mt16"><button class="btn primary small" data-intel-admin="retry">${t('重试原操作', 'Retry original operation')}</button><button class="btn small" data-intel-admin="discard">${t('放弃', 'Discard')}</button></div></div>` : '';
       const runs = (o.imports || []).map(r => `<tr><td>${esc(r.id)}</td><td>${time(r.created_at)}</td><td><code>${esc(r.source)}</code></td><td>${esc(r.actor_id || t('命令行', 'CLI'))}</td><td class="intel-num">${esc(r.catalog_rows)}</td><td class="intel-num">${esc(r.observations_added)}</td><td class="intel-num">${esc(r.observations_skipped)}</td></tr>`).join('') || `<tr><td colspan="7" class="intel-empty-row">${t('还没有导入记录', 'No imports yet')}</td></tr>`;
       const canImport = !!this.pending || (this.validated && this.validated.text === this.text);
+      // The data source card leads: configuring the key is the first step and
+      // must be found without scrolling past counters and import tools.
       return `${head}
-        <section class="intel-stats">${stat(t('厂商', 'Providers'), c.providers)}${stat(t('模型', 'Models'), c.models)}${stat(t('评测', 'Benchmarks'), c.benchmarks)}${stat(t('售卖条目', 'Offerings'), c.offerings)}${stat(t('价格记录', 'Price records'), c.prices)}${stat(t('评测结果', 'Results'), c.benchmark_results)}</section>
-        <section class="card card-pad mt16"><div class="intel-section-head"><p class="muted">${snap}</p><div class="intel-side-actions"><button class="btn small" data-intel-admin="recompute">${t('立即重算', 'Recompute now')}</button><button class="btn small" data-intel-admin="export">${t('导出当前数据', 'Export current data')}</button></div></div></section>
         ${this.sourcesSection()}
+        <section class="intel-stats mt16">${stat(t('厂商', 'Providers'), c.providers)}${stat(t('模型', 'Models'), c.models)}${stat(t('评测', 'Benchmarks'), c.benchmarks)}${stat(t('售卖条目', 'Offerings'), c.offerings)}${stat(t('价格记录', 'Price records'), c.prices)}${stat(t('评测结果', 'Results'), c.benchmark_results)}</section>
+        <section class="card card-pad mt16"><div class="intel-section-head"><p class="muted">${snap}</p><div class="intel-side-actions"><button class="btn small" data-intel-admin="recompute">${t('立即重算', 'Recompute now')}</button><button class="btn small" data-intel-admin="export">${t('导出当前数据', 'Export current data')}</button></div></div></section>
         ${pending}
         <section class="card card-pad mt16 intel-admin-import"><h2>${t('导入数据', 'Import data')}</h2>
           <p class="muted">${t('上传或粘贴导入文件（JSON，最大 1 MiB）。先校验，通过后再导入。导出文件可直接修改后重新导入；修改前请先改 source.slug。', 'Upload or paste an import document (JSON, up to 1 MiB). Validate first, then import. An export can be edited and imported again; change source.slug first.')}</p>
