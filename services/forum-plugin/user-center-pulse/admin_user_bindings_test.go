@@ -59,15 +59,19 @@ func TestAdminUserBindingsRejectsBeforeLookup(t *testing.T) {
 		mutate func(*http.Request, *bindingTestGuard)
 		status int
 	}{
-		"empty":         {`{"user_ids":[]}`, nil, 400},
-		"too many":      {many, nil, 400},
-		"not canonical": {`{"user_ids":["012"]}`, nil, 400},
-		"not numeric":   {`{"user_ids":["1 OR 1"]}`, nil, 400},
-		"unknown field": {`{"user_ids":["1"],"all":true}`, nil, 400},
-		"cross origin":  {`{"user_ids":["1"]}`, func(r *http.Request, _ *bindingTestGuard) { r.Header.Set("Origin", "https://evil.example") }, 403},
-		"no marker":     {`{"user_ids":["1"]}`, func(r *http.Request, _ *bindingTestGuard) { r.Header.Del("X-Metar-Request") }, 403},
-		"query":         {`{"user_ids":["1"]}`, func(r *http.Request, _ *bindingTestGuard) { r.URL.RawQuery = "x=1" }, 403},
-		"stale admin":   {`{"user_ids":["1"]}`, func(_ *http.Request, g *bindingTestGuard) { g.err = errAdminForbidden }, 403},
+		"trailing object":      {`{"user_ids":["12"]} {"extra":true}`, nil, 400},
+		"trailing bracket":     {`{"user_ids":["12"]}]`, nil, 400},
+		"trailing brace":       {`{"user_ids":["12"]}}`, nil, 400},
+		"oversized whitespace": {`{"user_ids":["12"]}` + strings.Repeat(" ", 4096), nil, 400},
+		"empty":                {`{"user_ids":[]}`, nil, 400},
+		"too many":             {many, nil, 400},
+		"not canonical":        {`{"user_ids":["012"]}`, nil, 400},
+		"not numeric":          {`{"user_ids":["1 OR 1"]}`, nil, 400},
+		"unknown field":        {`{"user_ids":["1"],"all":true}`, nil, 400},
+		"cross origin":         {`{"user_ids":["1"]}`, func(r *http.Request, _ *bindingTestGuard) { r.Header.Set("Origin", "https://evil.example") }, 403},
+		"no marker":            {`{"user_ids":["1"]}`, func(r *http.Request, _ *bindingTestGuard) { r.Header.Del("X-Metar-Request") }, 403},
+		"query":                {`{"user_ids":["1"]}`, func(r *http.Request, _ *bindingTestGuard) { r.URL.RawQuery = "x=1" }, 403},
+		"stale admin":          {`{"user_ids":["1"]}`, func(_ *http.Request, g *bindingTestGuard) { g.err = errAdminForbidden }, 403},
 	} {
 		t.Run(name, func(t *testing.T) {
 			guard := &bindingTestGuard{}

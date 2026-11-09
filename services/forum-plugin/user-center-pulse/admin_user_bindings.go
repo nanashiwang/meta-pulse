@@ -3,6 +3,7 @@ package pulse_user_center
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"sort"
 	"strconv"
@@ -48,7 +49,12 @@ func (uc *UserCenter) registerAdminUserBindings(r *gin.RouterGroup, session func
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 4096)
 		decoder := json.NewDecoder(c.Request.Body)
 		decoder.DisallowUnknownFields()
-		if decoder.Decode(&body) != nil || decoder.More() || len(body.UserIDs) == 0 || len(body.UserIDs) > maxAdminBindingLookup {
+		if decoder.Decode(&body) != nil {
+			communityError(c, http.StatusBadRequest, "invalid_request")
+			return
+		}
+		var trailing any
+		if decoder.Decode(&trailing) != io.EOF || len(body.UserIDs) == 0 || len(body.UserIDs) > maxAdminBindingLookup {
 			communityError(c, http.StatusBadRequest, "invalid_request")
 			return
 		}
