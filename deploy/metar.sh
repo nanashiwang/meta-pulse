@@ -10,7 +10,7 @@ usage() {
 用法：metar [--env-file PATH] [命令]
 不带命令打开数字菜单。
 
-  update [升级参数]   备份、拉取、构建、迁移和检查（复用 update.sh）
+  update [升级参数]   先检查版本，有更新才备份、构建、迁移和检查（--force 强制部署）
   backup [参数]      创建/验证备份或隔离恢复演练（backup.py --help）
   start              启动整套 METAR 服务，使用现有镜像
   restart            重启整套 METAR 服务并检查健康状态

@@ -1,5 +1,10 @@
 # 更新记录
 
+## v0.2.103
+
+- `metar update` 在备份前检查远程提交，代码无更新时直接退出；新增 `--force` 支持同提交重新部署。
+- 完整说明见 [v0.2.103](releases/v0.2.103.md)。
+
 ## v0.2.102
 
 - 修复云端 Blog 构建忽略 `package-lock.json`、动态解析出不存在的 Algolia 依赖版本的问题；CI 改为 `npm ci`。

@@ -46,14 +46,8 @@ for arg in "$@"; do
       while [[ ! -e "$MOCK_REPO/fetch-release" ]]; do sleep 0.05; done
     fi
     if [[ "${MOCK_TERMINATE:-0}" == 1 ]]; then kill -TERM "$PPID"; exit 42; fi
-    if [[ "${MOCK_FETCH_SUCCEED:-0}" == 1 ]]; then exit 0; fi
-    exit 42  # Stop before any real network/Git update.
-  fi
-done
-if [[ "${MOCK_FETCH_SUCCEED:-0}" == 1 ]]; then
-  case " $* " in
-    *' show-ref --verify --quiet refs/remotes/origin/'*) exit 0 ;;
-    *' merge --ff-only origin/'*)
+    if [[ "${MOCK_FETCH_SUCCEED:-0}" == 1 ]]; then
+      before="$("$REAL_GIT" -C "$MOCK_REPO" rev-parse HEAD)"
       changed=0
       if [[ "${MOCK_NGINX_CHANGED:-0}" == 1 ]]; then
         printf '# updated\n' >>"$MOCK_REPO/deploy/nginx/meta-pulse.conf"
@@ -67,8 +61,19 @@ if [[ "${MOCK_FETCH_SUCCEED:-0}" == 1 ]]; then
         "$REAL_GIT" -C "$MOCK_REPO" add deploy/nginx/meta-pulse.conf metar-frontend/src/styles.css
         "$REAL_GIT" -C "$MOCK_REPO" -c user.name=Test -c user.email=test@example.invalid -c commit.gpgsign=false commit -qm fixture-update
       fi
-      printf 'merge\n' >>"$MOCK_LOG"
+      "$REAL_GIT" -C "$MOCK_REPO" rev-parse "${MOCK_TARGET:-HEAD}" >"$MOCK_REPO/.git/FETCH_HEAD"
+      "$REAL_GIT" -C "$MOCK_REPO" reset --hard "$before" >/dev/null
       exit 0
+    fi
+    exit 42  # Stop before any real network/Git update.
+  fi
+done
+if [[ "${MOCK_FETCH_SUCCEED:-0}" == 1 ]]; then
+  case " $* " in
+    *' show-ref --verify --quiet refs/remotes/origin/'*) exit 0 ;;
+    *' merge --ff-only '*)
+      printf 'merge\n' >>"$MOCK_LOG"
+      exec "$REAL_GIT" "$@"
       ;;
   esac
 fi
@@ -110,7 +115,7 @@ MOCK
 chmod +x "$tmp/mock/"*
 export PATH="$tmp/mock:$PATH"
 # Missing configuration must not be silently recreated.
-if bash "$tmp/repo/deploy/update.sh" --skip-worker >"$tmp/output" 2>&1; then
+if bash "$tmp/repo/deploy/update.sh" --force --skip-worker >"$tmp/output" 2>&1; then
   echo 'missing configuration accepted' >&2; exit 1
 fi
 [[ ! -e "$tmp/repo/.env" ]]
@@ -129,30 +134,48 @@ for entry in 'PULSE_REWARD_RANDOM_SECRET=' 'PULSE_DB_PASSWORD=replace-me'; do
   key="${entry%%=*}"; value="${entry#*=}"
   ( source "$tmp/repo/deploy/lib.sh"; set_env_value "$key" "$value" )
   cp "$tmp/repo/.env" "$tmp/before.env"
-  if bash "$tmp/repo/deploy/update.sh" >"$tmp/output" 2>&1; then echo 'invalid config accepted' >&2; exit 1; fi
+  if bash "$tmp/repo/deploy/update.sh" --force >"$tmp/output" 2>&1; then echo 'invalid config accepted' >&2; exit 1; fi
   cmp "$tmp/before.env" "$tmp/repo/.env"
   [[ ! -d "$tmp/repo/.data" ]]
   cp "$tmp/original.env" "$tmp/repo/.env"
 done
 
 # A competing updater must exit before any config/backup mutation.
-if MOCK_FLOCK_FAIL=1 bash "$tmp/repo/deploy/update.sh" >"$tmp/output" 2>&1; then echo 'lock failure ignored' >&2; exit 1; fi
+if MOCK_FLOCK_FAIL=1 bash "$tmp/repo/deploy/update.sh" --force >"$tmp/output" 2>&1; then echo 'lock failure ignored' >&2; exit 1; fi
 grep -q '已有另一个' "$tmp/output"
 cmp "$tmp/original.env" "$tmp/repo/.env"
 [[ ! -d "$tmp/repo/.data" ]]
 
 # Shell values cannot replace the file or leak into effective Compose config.
 : >"$MOCK_LOG"
-if NEWAPI_LOG_DSN='untrusted-shell-dsn' PULSE_DB_PASSWORD='untrusted-shell-password' bash "$tmp/repo/deploy/update.sh" >"$tmp/output" 2>&1; then
+if NEWAPI_LOG_DSN='untrusted-shell-dsn' PULSE_DB_PASSWORD='untrusted-shell-password' bash "$tmp/repo/deploy/update.sh" --force >"$tmp/output" 2>&1; then
   echo 'mock fetch failure ignored' >&2; exit 1
 fi
 grep -q '^fetch$' "$MOCK_LOG"
-backup="$(find "$tmp/repo/.data/deploy-backups" -name .env -type f)"
-[[ -n "$backup" ]]
-cmp "$tmp/original.env" "$backup"
+[[ ! -d "$tmp/repo/.data" ]]
+! grep -q mysqldump "$MOCK_LOG"
 cmp "$tmp/original.env" "$tmp/repo/.env"
 # The lock precedes the first Compose config rendering (not just Git fetch).
 awk '/^lock$/{locked=1} / config$/{if(!locked) exit 1}' "$MOCK_LOG"
+# A successful same-commit check must have no backup or rollout side effects.
+: >"$MOCK_LOG"
+MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" >"$tmp/output" 2>&1 || { cat "$tmp/output"; exit 1; }
+grep -q '当前代码已是最新版本' "$tmp/output"
+[[ ! -d "$tmp/repo/.data" ]]
+! grep -Eq 'mysqldump| build | migrate| stop | up -d|^merge$' "$MOCK_LOG"
+# A stale/ahead/diverged checkout fails before backup even with --force.
+current="$("$REAL_GIT" -C "$tmp/repo" rev-parse HEAD)"
+tree="$("$REAL_GIT" -C "$tmp/repo" rev-parse 'HEAD^{tree}')"
+other="$(printf 'unrelated\n' | "$REAL_GIT" -C "$tmp/repo" -c user.name=Test -c user.email=test@example.invalid commit-tree "$tree")"
+: >"$MOCK_LOG"
+if MOCK_TARGET="$other" MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" --force >"$tmp/output" 2>&1; then
+  echo 'divergent target accepted' >&2; exit 1
+fi
+[[ ! -d "$tmp/repo/.data" ]]
+[[ "$("$REAL_GIT" -C "$tmp/repo" rev-parse HEAD)" == "$current" ]]
+! grep -Eq 'mysqldump|^merge$' "$MOCK_LOG"
+# A failed fetch above has likewise left no backup directory.
+
 # Successful rollout must include the host-local Compose override and drain all
 # old API writers before migration/restart.
 cat >"$tmp/repo/docker-compose.override.yml" <<'OVERRIDE'
@@ -167,7 +190,7 @@ mkdir -p "$tmp/repo/sites/blog/docs/.vitepress/dist/metar"
 printf '<!doctype html>' >"$tmp/repo/sites/blog/docs/.vitepress/dist/index.html"
 printf '<!doctype html>' >"$tmp/repo/sites/blog/docs/.vitepress/dist/metar/index.html"
 : >"$MOCK_LOG"
-MOCK_GATEWAY=1 MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" >"$tmp/output" 2>&1 || { cat "$tmp/output" >&2; exit 1; }
+MOCK_GATEWAY=1 MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" --force >"$tmp/output" 2>&1 || { cat "$tmp/output" >&2; exit 1; }
 grep -Eq -- '-f .*/docker-compose\.yml -f .*/docker-compose\.override\.yml config' "$MOCK_LOG"
 cmp "$tmp/original.env" "$tmp/repo/.env"
 awk '
@@ -184,10 +207,11 @@ grep -q 'exec -T gateway nginx -s reload' "$MOCK_LOG"
 MOCK_GATEWAY=1 MOCK_FETCH_SUCCEED=1 MOCK_NGINX_CHANGED=1 bash "$tmp/repo/deploy/update.sh" >"$tmp/output" 2>&1 || { cat "$tmp/output" >&2; exit 1; }
 grep -q 'up -d --force-recreate --no-deps gateway' "$MOCK_LOG"
 grep -q '检测到网关配置或博客目录变更' "$tmp/output"
+awk '/^fetch$/{fetched=1} /mysqldump/{if(!fetched) exit 1; backed=1} /^merge$/{if(!backed) exit 1; merged=1} END {if(!fetched || !backed || !merged) exit 1}' "$MOCK_LOG"
 
 # 正式前端复用原型视觉 CSS；该文件变化也必须触发 METAR 重建。
 : >"$MOCK_LOG"
-MOCK_GATEWAY=1 MOCK_FETCH_SUCCEED=1 MOCK_COMMUNITY_CHANGED=1 bash "$tmp/repo/deploy/update.sh" >"$tmp/output" 2>&1 || { cat "$tmp/output" >&2; exit 1; }
+MOCK_GATEWAY=1 MOCK_FETCH_SUCCEED=1 MOCK_COMMUNITY_CHANGED=1 bash "$tmp/repo/deploy/update.sh" --force >"$tmp/output" 2>&1 || { cat "$tmp/output" >&2; exit 1; }
 grep -q '^build-community$' "$MOCK_LOG"
 ! grep -q '^build-blog$' "$MOCK_LOG"
 
@@ -201,7 +225,7 @@ grep -q '^build-community$' "$MOCK_LOG"
   set_env_value INTEL_ADMIN_HMAC_SECRET "$(printf 's%.0s' {1..64})"
 )
 : >"$MOCK_LOG"
-MOCK_GATEWAY=1 MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" >"$tmp/output" 2>&1 || { cat "$tmp/output" >&2; exit 1; }
+MOCK_GATEWAY=1 MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" --force >"$tmp/output" 2>&1 || { cat "$tmp/output" >&2; exit 1; }
 grep -q -- '--profile intel config' "$MOCK_LOG"
 grep -q 'exec -T intel-mysql sh -c' "$MOCK_LOG"
 intel_backup="$(find "$tmp/repo/.data/deploy-backups" -name intel.sql -type f | head -n 1)"
@@ -217,7 +241,7 @@ awk '
 grep -q '模型榜已更新' "$tmp/output"
 # 模型榜构建失败只告警：论坛与 Pulse 照常完成，且不会用失败镜像重建 Intel。
 : >"$MOCK_LOG"
-MOCK_DOCKER_FAIL='build intel-api' MOCK_GATEWAY=1 MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" >"$tmp/output" 2>&1 || { echo 'Intel failure aborted the update' >&2; cat "$tmp/output" >&2; exit 1; }
+MOCK_DOCKER_FAIL='build intel-api' MOCK_GATEWAY=1 MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" --force >"$tmp/output" 2>&1 || { echo 'Intel failure aborted the update' >&2; cat "$tmp/output" >&2; exit 1; }
 grep -q '模型榜更新失败' "$tmp/output"
 grep -q '更新及验收完成' "$tmp/output"
 grep -q ' up -d pulse-api' "$MOCK_LOG"
@@ -227,7 +251,7 @@ grep -q ' up -d pulse-api' "$MOCK_LOG"
 ( source "$tmp/repo/deploy/lib.sh"; set_env_value INTEL_DB_ROOT_PASSWORD replace-me )
 cp "$tmp/repo/.env" "$tmp/intel-before.env"
 : >"$MOCK_LOG"
-if bash "$tmp/repo/deploy/update.sh" >"$tmp/output" 2>&1; then echo 'Intel placeholder accepted' >&2; exit 1; fi
+if bash "$tmp/repo/deploy/update.sh" --force >"$tmp/output" 2>&1; then echo 'Intel placeholder accepted' >&2; exit 1; fi
 grep -q 'INTEL_DB_ROOT_PASSWORD' "$tmp/output"
 cmp "$tmp/intel-before.env" "$tmp/repo/.env"
 ! grep -q '^fetch$' "$MOCK_LOG"
@@ -237,11 +261,11 @@ printf '模型榜可选启用、备份、迁移顺序与故障隔离回归通过
 # Back up private role key mounts even for stopped containers, and never
 # continue an upgrade when an existing key volume cannot be copied.
 : >"$MOCK_LOG"
-MOCK_RUNTIME_KEYS=1 MOCK_GATEWAY=1 MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" >"$tmp/output" 2>&1 || { cat "$tmp/output" >&2; exit 1; }
+MOCK_RUNTIME_KEYS=1 MOCK_GATEWAY=1 MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" --force >"$tmp/output" 2>&1 || { cat "$tmp/output" >&2; exit 1; }
 grep -q 'runtime-keys/api/' "$MOCK_LOG"
 grep -q 'runtime-keys/worker/' "$MOCK_LOG"
 : >"$MOCK_LOG"
-if MOCK_RUNTIME_KEYS=1 MOCK_RUNTIME_COPY_FAIL=1 bash "$tmp/repo/deploy/update.sh" >"$tmp/output" 2>&1; then
+if MOCK_RUNTIME_KEYS=1 MOCK_RUNTIME_COPY_FAIL=1 bash "$tmp/repo/deploy/update.sh" --force >"$tmp/output" 2>&1; then
   echo 'runtime key backup failure ignored' >&2; exit 1
 fi
 ! grep -q '^fetch$' "$MOCK_LOG"
@@ -259,7 +283,7 @@ printf '0.1.0\n' >"$tmp/repo/VERSION"
 "$REAL_GIT" -C "$tmp/repo" -c user.name=Test -c user.email=test@example.invalid -c commit.gpgsign=false commit -qm release-fixture
 "$REAL_GIT" -C "$tmp/repo" tag v0.1.0
 : >"$MOCK_LOG"
-MOCK_GATEWAY=1 MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" --release v0.1.0 >"$tmp/output" 2>&1 || { cat "$tmp/output" >&2; exit 1; }
+MOCK_GATEWAY=1 MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" --force --release v0.1.0 >"$tmp/output" 2>&1 || { cat "$tmp/output" >&2; exit 1; }
 grep -q '^verify-release$' "$MOCK_LOG"
 grep -q '^build-blog$' "$MOCK_LOG"
 grep -q '^build-community$' "$MOCK_LOG"
@@ -270,7 +294,7 @@ grep -q 'up -d --force-recreate --no-deps gateway' "$MOCK_LOG"
 cmp "$tmp/original.env" "$tmp/repo/.env"
 for failure in MOCK_RELEASE_FAIL MOCK_WRONG_REVISION; do
   : >"$MOCK_LOG"
-  if env "$failure=1" MOCK_GATEWAY=1 MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" --release v0.1.0 >"$tmp/output" 2>&1; then
+  if env "$failure=1" MOCK_GATEWAY=1 MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" --force --release v0.1.0 >"$tmp/output" 2>&1; then
     echo "release validation ignored: $failure" >&2; exit 1
   fi
   if [[ "$failure" == MOCK_RELEASE_FAIL ]]; then ! grep -q ' stop -t 15 pulse-api' "$MOCK_LOG"; fi
@@ -279,7 +303,7 @@ printf '0.1.1\n' >"$tmp/repo/VERSION"
 "$REAL_GIT" -C "$tmp/repo" add VERSION
 "$REAL_GIT" -C "$tmp/repo" -c user.name=Test -c user.email=test@example.invalid -c commit.gpgsign=false commit -qm next-fixture
 before="$("$REAL_GIT" -C "$tmp/repo" rev-parse HEAD)"
-if MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" --release v0.1.0 >"$tmp/output" 2>&1; then
+if MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" --force --release v0.1.0 >"$tmp/output" 2>&1; then
   echo 'release silently accepted a newer checkout' >&2; exit 1
 fi
 grep -q '当前代码超前或分叉' "$tmp/output"
@@ -302,7 +326,7 @@ for stage in 'mysqldump' ' build ' 'migrate-up' health 'nginx -t'; do
     ' build ') stage='build pulse-api' ;;
     ' exec -T pulse-api ') stage='exec -T pulse-api' ;;
   esac
-  if MOCK_DOCKER_FAIL="$stage" MOCK_GATEWAY=1 MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" --backup-keep 1 >"$tmp/output" 2>&1; then
+  if MOCK_DOCKER_FAIL="$stage" MOCK_GATEWAY=1 MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" --force --backup-keep 1 >"$tmp/output" 2>&1; then
     echo "rollout failure ignored: $stage" >&2; cat "$tmp/output"; exit 1
   fi
   [[ -f "$old_backup/pulse.sql" ]]
@@ -310,27 +334,27 @@ for stage in 'mysqldump' ' build ' 'migrate-up' health 'nginx -t'; do
 done
 # Retired acceptance fails before starting deployment or deleting backups.
 : >"$MOCK_LOG"
-if bash "$tmp/repo/deploy/update.sh" --accept-ingest >"$tmp/output" 2>&1; then
+if bash "$tmp/repo/deploy/update.sh" --force --accept-ingest >"$tmp/output" 2>&1; then
   echo 'retired ingestion acceptance accepted' >&2; exit 1
 fi
 grep -q 'API 消费摄入已退役' "$tmp/output"
 ! grep -Eq '^(docker|fetch)' "$MOCK_LOG"
 [[ -f "$old_backup/pulse.sql" ]]
 # TERM is classified as failed, and never triggers retention.
-if MOCK_TERMINATE=1 bash "$tmp/repo/deploy/update.sh" --backup-keep 1 >"$tmp/output" 2>&1; then
+if MOCK_TERMINATE=1 bash "$tmp/repo/deploy/update.sh" --force --backup-keep 1 >"$tmp/output" 2>&1; then
   echo 'TERM ignored' >&2; exit 1
 fi
 [[ -f "$old_backup/pulse.sql" ]]
 # Preview bypasses config/Docker/Git fetch and changes no backup files.
 mv "$tmp/repo/.env" "$tmp/preview.env"
 : >"$MOCK_LOG"
-bash "$tmp/repo/deploy/update.sh" --backup-preview --backup-keep 1 >"$tmp/output" 2>&1
+bash "$tmp/repo/deploy/update.sh" --force --backup-preview --backup-keep 1 >"$tmp/output" 2>&1
 [[ -f "$old_backup/pulse.sql" ]]
 grep -q "^DELETE $old_name$" "$tmp/output"
 ! grep -Eq '^(docker|fetch)' "$MOCK_LOG"
 mv "$tmp/preview.env" "$tmp/repo/.env"
 # Real flock ownership spans the whole update; both update and preview are blocked.
-MOCK_FETCH_WAIT=1 bash "$tmp/repo/deploy/update.sh" >"$tmp/holding-output" 2>&1 &
+MOCK_FETCH_WAIT=1 bash "$tmp/repo/deploy/update.sh" --force >"$tmp/holding-output" 2>&1 &
 holder=$!
 for ((attempt=0; attempt<200; attempt++)); do
   [[ ! -e "$tmp/repo/fetch-waiting" ]] || break
@@ -338,7 +362,7 @@ for ((attempt=0; attempt<200; attempt++)); do
 done
 [[ -e "$tmp/repo/fetch-waiting" ]]
 for option in --backup-preview --no-build; do
-  if bash "$tmp/repo/deploy/update.sh" "$option" >"$tmp/output" 2>&1; then
+  if bash "$tmp/repo/deploy/update.sh" --force "$option" >"$tmp/output" 2>&1; then
     touch "$tmp/repo/fetch-release"; wait "$holder" || true
     echo 'concurrent updater accepted' >&2; exit 1
   fi
@@ -348,13 +372,13 @@ touch "$tmp/repo/fetch-release"
 wait "$holder" && exit 1
 [[ -f "$old_backup/pulse.sql" ]]
 # A successful acceptance can finally remove eligible old successes, not failures.
-MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" --backup-keep 1 >"$tmp/output" 2>&1 || { cat "$tmp/output"; exit 1; }
+MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" --force --backup-keep 1 >"$tmp/output" 2>&1 || { cat "$tmp/output"; exit 1; }
 [[ ! -e "$old_backup" ]]
 python3 - "$tmp/repo/.data/deploy-backups" <<'CHECK'
 import json, pathlib, sys
 states = [json.loads(p.read_text())['status'] for p in pathlib.Path(sys.argv[1]).glob('*/.update-state.json')]
 assert states.count('success') == 1, states
-assert states.count('failed') >= 7, states
+assert states.count('failed') >= 6, states
 assert 'running' not in states, states
 CHECK
 printf '备份保留、预览、更新/验收失败、TERM 与真实并发互斥回归通过\n'

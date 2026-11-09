@@ -134,14 +134,17 @@ cd /opt/meta-pulse
 常用选项：
 
 ```bash
+./deploy/update.sh --force          # 同提交重新部署：失败重试或应用配置变更
 ./deploy/update.sh --ref main       # 指定远程分支
 ./deploy/update.sh --skip-forum    # 只更新 Pulse，不重建 Answer；new-api 始终独立更新
 ./deploy/update.sh --no-build      # 仅使用已有镜像（仅适合已预构建场景）
 ```
 
-更新顺序是：加锁 → 只读校验配置 → 备份原 `.env` 和 Compose → 备份运行中的 Pulse/Forum 数据库 → 拉取代码 → 校验 Compose → 构建新镜像 → 排空/停止旧 Pulse API → `migrate-up` → 重建服务 → API/Worker `/readyz`。`.env` 填写 `INTEL_DB_PASSWORD` 启用模型榜后，同一次更新还会先备份 `metar_intel`，并在 Pulse 与论坛就绪后构建、迁移、重建 `intel-api`/`intel-worker`；模型榜失败只告警，不影响其他服务的更新结果。迁移只前进，不执行 down；失败时会输出容器日志、原 commit 和备份位置，不会伪造成功。若 `deploy/nginx/meta-pulse.conf` 发生变更，脚本会强制重建网关容器，避免直接文件挂载因 inode 未更新而继续使用旧配置；无网关配置变更时仅执行常规启动与 reload。
+更新顺序是：加锁 → 只读校验配置 → fetch 并固定目标 SHA、检查快进关系（同分支同提交默认退出）→ 备份原 `.env` 和 Compose → 备份运行中的 Pulse/Forum 数据库 → 快进合并目标提交 → 校验 Compose → 构建新镜像 → 排空/停止旧 Pulse API → `migrate-up` → 重建服务 → API/Worker `/readyz`。`.env` 填写 `INTEL_DB_PASSWORD` 启用模型榜后，同一次更新还会先备份 `metar_intel`，并在 Pulse 与论坛就绪后构建、迁移、重建 `intel-api`/`intel-worker`；模型榜失败只告警，不影响其他服务的更新结果。迁移只前进，不执行 down；失败时会输出容器日志、原 commit 和备份位置，不会伪造成功。若 `deploy/nginx/meta-pulse.conf` 发生变更，脚本会强制重建网关容器，避免直接文件挂载因 inode 未更新而继续使用旧配置；无网关配置变更时仅执行常规启动与 reload。
 
-每次更新的 `.env`、更新前 Compose 配置和数据库 dump 位于：
+同分支同提交时只报告代码已是最新版本，不执行备份、构建、迁移、重启或清理；这不代表运行服务已验收。上次部署失败、手动拉取代码或修改 `.env` 后需要重新部署时，使用 `metar update --force` 并保留原有选项。显式 `--release` 仍核验并完整重建。首次通过旧脚本升级到本版仍会备份，下一次调用才采用新检查。
+
+每次实际部署的 `.env`、更新前 Compose 配置和数据库 dump 位于：
 
 ```text
 .data/deploy-backups/<UTC 时间>-<旧 commit>-<PID>/
@@ -283,7 +286,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 | 命令 | 行为 |
 | --- | --- |
-| `metar update` | 复用升级脚本：锁、备份、Git 快进、构建、迁移、健康检查 |
+| `metar update` | 复用升级脚本：锁、远程版本检查、按需备份、Git 快进、构建、迁移、健康检查 |
 | `metar update --ref main --skip-forum` | 指定分支升级，跳过论坛重建 |
 | `metar start` | 用现有镜像启动整套服务；也可恢复保留数据的卸载 |
 | `metar restart` | 重启整套服务，随后检查各容器和 Pulse `/readyz` |

@@ -7,6 +7,7 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "$SCRIPT_DIR/lib.sh"
 
+FORCE=0
 NO_BUILD=0
 SKIP_FORUM=0
 SKIP_WORKER=0
@@ -20,7 +21,7 @@ usage() {
   cat <<'USAGE'
 用法：deploy/update.sh [选项]
 
-默认将当前分支以 fast-forward 方式更新，然后构建、迁移、重启服务。
+默认先检查远程分支；提交相同则直接退出，有更新才备份、快进、构建、迁移、重启服务。
 .env 只读校验，不会初始化或轮换凭据；缺失配置时停止。脚本使用 Git 锁避免并发更新。
 
 选项：
@@ -30,6 +31,7 @@ usage() {
   --env-file PATH   使用指定生产配置文件（默认：.env）
   --ref BRANCH      更新指定远程分支（默认：当前分支）
   --release vX.Y.Z  部署已发布版本，核对清单并完整重建所有服务
+  --force           提交相同也备份并重新部署（失败重试或应用配置变更）
   --no-build        不构建镜像，仅使用已有镜像
   --skip-forum      不构建/重启 Apache Answer
   --skip-worker     不构建/重启 worker
@@ -83,6 +85,10 @@ while (($# > 0)); do
     --release=*)
       RELEASE_TAG="${1#*=}"
       [[ -n "$RELEASE_TAG" ]] || die "--release 需要版本号"
+      shift
+      ;;
+    --force)
+      FORCE=1
       shift
       ;;
     --no-build)
@@ -155,6 +161,32 @@ git -C "$REPO_ROOT" diff --cached --quiet || die "存在已暂存的 tracked 修
 OLD_COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD)"
 OLD_BRANCH="$CURRENT_BRANCH"
 
+if [[ -n "$RELEASE_TAG" ]]; then
+  log "核实正式版本：$RELEASE_TAG"
+  git -C "$REPO_ROOT" fetch --no-tags origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+  TARGET_COMMIT="$(git -C "$REPO_ROOT" rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+  python3 "$SCRIPT_DIR/verify-release.py" "$RELEASE_TAG" "$TARGET_COMMIT"
+  [[ "v$(git -C "$REPO_ROOT" show "$TARGET_COMMIT:VERSION")" == "$RELEASE_TAG" ]] || die "标签与 VERSION 不一致"
+  # Refuse a no-op merge when the checkout is ahead of the requested version.
+  # Production Git history is never reset by the updater.
+  git -C "$REPO_ROOT" merge-base --is-ancestor HEAD "$TARGET_COMMIT" || die "当前代码超前或分叉，不能快进到指定版本"
+else
+  git -C "$REPO_ROOT" check-ref-format "refs/heads/$REF" >/dev/null || die "无效的远程分支名"
+  log "检查远程分支：origin/$REF"
+  git -C "$REPO_ROOT" fetch --prune origin "+refs/heads/$REF:refs/remotes/origin/$REF"
+  # Pin the fetched commit; do not trust a stale remote-tracking ref.
+  TARGET_COMMIT="$(git -C "$REPO_ROOT" rev-parse 'FETCH_HEAD^{commit}')"
+  git -C "$REPO_ROOT" merge-base --is-ancestor HEAD "$TARGET_COMMIT" || die "当前代码超前或分叉，不能快进到远程分支"
+  if [[ "$CURRENT_BRANCH" != "$REF" ]] && git -C "$REPO_ROOT" show-ref --verify --quiet "refs/heads/$REF"; then
+    git -C "$REPO_ROOT" merge-base --is-ancestor "refs/heads/$REF" "$TARGET_COMMIT" || die "目标本地分支超前或分叉，不能快进到远程分支"
+  fi
+  if [[ "$OLD_COMMIT" == "$TARGET_COMMIT" && "$CURRENT_BRANCH" == "$REF" ]] && (( FORCE == 0 )); then
+    log "当前代码已是最新版本：${OLD_COMMIT:0:7}（origin/${REF}），跳过备份和部署。"
+    log "如需重试失败部署或应用配置变更，请执行 metar update --force（并保留原有选项）。"
+    exit 0
+  fi
+fi
+
 BACKUP_NAME="$(date -u +%Y%m%dT%H%M%SZ)-$OLD_COMMIT-$$"
 BACKUP_DIR="$REPO_ROOT/.data/deploy-backups/$BACKUP_NAME"
 python3 "$SCRIPT_DIR/backup-retention.py" create "$REPO_ROOT" --name "$BACKUP_NAME" --keep "$BACKUP_KEEP"
@@ -212,34 +244,16 @@ if intel_enabled; then
   fi
 fi
 
-if [[ -n "$RELEASE_TAG" ]]; then
-  log "核实正式版本：$RELEASE_TAG"
-  git -C "$REPO_ROOT" fetch --no-tags origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
-  TARGET_COMMIT="$(git -C "$REPO_ROOT" rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
-  python3 "$SCRIPT_DIR/verify-release.py" "$RELEASE_TAG" "$TARGET_COMMIT"
-  [[ "v$(git -C "$REPO_ROOT" show "$TARGET_COMMIT:VERSION")" == "$RELEASE_TAG" ]] || die "标签与 VERSION 不一致"
-  # Refuse a no-op merge when the checkout is ahead of the requested version.
-  # Production Git history is never reset by the updater.
-  git -C "$REPO_ROOT" merge-base --is-ancestor HEAD "$TARGET_COMMIT" || die "当前代码超前或分叉，不能快进到指定版本"
-  git -C "$REPO_ROOT" merge --ff-only "$TARGET_COMMIT"
-  [[ "$(git -C "$REPO_ROOT" rev-parse HEAD)" == "$TARGET_COMMIT" ]] || die "部署提交与发布版本不一致"
-else
-  log "拉取远程分支：origin/$REF"
-  git -C "$REPO_ROOT" fetch --prune origin "$REF"
-  if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/remotes/origin/$REF"; then
-    if [[ "$CURRENT_BRANCH" != "$REF" ]]; then
-      if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/heads/$REF"; then
-        git -C "$REPO_ROOT" checkout "$REF"
-      else
-        git -C "$REPO_ROOT" checkout --track -b "$REF" "origin/$REF"
-      fi
-    fi
-    git -C "$REPO_ROOT" merge --ff-only "origin/$REF"
+if [[ -z "$RELEASE_TAG" && "$CURRENT_BRANCH" != "$REF" ]]; then
+  if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/heads/$REF"; then
+    git -C "$REPO_ROOT" checkout "$REF"
   else
-    printf '[meta-pulse] 找不到远程分支 origin/%s\n' "$REF" >&2
-    false
+    git -C "$REPO_ROOT" checkout -b "$REF" "$TARGET_COMMIT"
+    git -C "$REPO_ROOT" branch --set-upstream-to="origin/$REF" "$REF"
   fi
 fi
+git -C "$REPO_ROOT" merge --ff-only "$TARGET_COMMIT"
+[[ "$(git -C "$REPO_ROOT" rev-parse HEAD)" == "$TARGET_COMMIT" ]] || die "部署提交与目标版本不一致"
 
 validate_compose
 GATEWAY_ENABLED=0

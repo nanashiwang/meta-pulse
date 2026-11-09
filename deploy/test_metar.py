@@ -62,10 +62,10 @@ print(json.dumps({'args': sys.argv[1:], 'env': os.environ.get('META_PULSE_ENV_FI
         return [json.loads(line)['args'] for line in self.log.read_text().splitlines()] if self.log.exists() else []
 
     def test_update_forwards_arguments_and_custom_env(self):
-        result = self.run_cli('--env-file', 'custom.env', 'update', '--ref', 'main', '--skip-forum')
+        result = self.run_cli('--env-file', 'custom.env', 'update', '--ref', 'main', '--skip-forum', '--force')
         self.assertEqual(result.returncode, 0, result.stderr)
         data = json.loads(result.stdout)
-        self.assertEqual(data['args'], ['--ref', 'main', '--skip-forum'])
+        self.assertEqual(data['args'], ['--ref', 'main', '--skip-forum', '--force'])
         self.assertEqual(data['env'], str(self.base / 'custom.env'))
         self.assertFalse(self.calls())
 
