@@ -268,3 +268,7 @@ docker compose --profile intel up -d intel-api intel-worker
 - key 以 AES-256-GCM 加密存入 `intel_source_state`，密钥由 `INTEL_ADMIN_HMAC_SECRET` 派生（API 与 worker 共用），任何接口只返回末四位；管理密钥轮换后显示「无法解密，请重新填写」。
 - 支持停用、启用、清除与立即同步；展示上次同步时间、结果、请求数、错误与摘要。失败后自动同步退避 1 小时，手动同步不受限。
 - 服务器 `.env` 设置了 `INTEL_LLMSTATS_API_KEY` 时以环境变量为准，后台只读。
+
+## 2026-11-10 页面精简
+
+首页、完整榜与开放权重榜不再展示顶部标题、统计介绍、更新时点、方法版本及来源行。计算方法页面和全部入口移除，旧地址 `/models/methodology` 兼容跳回 `/models`；详情来源与服务端方法元数据保留。此前文档中的方法页描述仅为历史阶段记录。

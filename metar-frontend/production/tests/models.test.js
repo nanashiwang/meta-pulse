@@ -127,21 +127,33 @@ test('home tolerates null leaders and recent from older API responses', async ()
   const h = home([row()]);
   h.leaders = null; h.recent = null;
   const html = await new api.View(fetcher({'/home': h})).page('/models', new URLSearchParams());
-  assert.match(html, /AI 模型榜单/);
+  assert.match(html, /综合榜/);
   assert.doesNotMatch(html, /暂时不可用/);
 });
 
-test('LLM Stats data is credited with a visible link wherever it is shown', async () => {
+test('model details retain source attribution', async () => {
   const {api} = setup();
-  const h = home([row()]); h.sources = ['llm-stats', 'manual'];
-  const board = {computed_at: '2026-11-08T00:00:00Z', method_version: 'v1', sources: ['llm-stats'], rows: [row()], total: 1, page: 1, page_size: 15};
   const detail = {slug: 'alpha', name: 'Alpha', provider: 'lab', provider_name: 'Lab', provider_website: '', family: '', modality: 'llm', status: 'available', license: 'proprietary', open_weights: false, release_date: null, context_tokens: 0, max_output_tokens: 0, source_url: '', offerings: [], benchmark_results: [], board: row(), sources: ['llm-stats']};
-  const method = {version: 'v1', weights: [{dimension: 'reasoning', weight: 40}], min_coverage_bps: 6000, benchmarks: [], price_blend: {input: 3, output: 1}, speed_window_hours: 168, sources: ['llm-stats']};
-  const v = new api.View(fetcher({'/home': h, '/leaderboard': board, '/models/alpha': detail, '/methodology': method}));
-  for (const path of ['/models', '/models/leaderboard', '/model/alpha', '/models/methodology']) {
+  const v = new api.View(fetcher({'/models/alpha': detail}));
+  for (const path of ['/model/alpha']) {
     const html = await v.page(path, new URLSearchParams());
     assert.match(html, /<a class="intel-credit" href="https:\/\/llm-stats\.com" target="_blank" rel="noopener">Data by LLM Stats<\/a>/, path);
   }
   const plain = await new api.View(fetcher({'/home': home([row()])})).page('/models', new URLSearchParams());
   assert.doesNotMatch(plain, /Data by LLM Stats/, 'no credit without llm-stats data');
+});
+
+
+test('ranking pages omit intros and methodology links in both languages', async () => {
+  for (const lang of ['zh_CN', 'en_US']) {
+    const {api} = setup(lang);
+    const h = home([row()]); h.sources = ['llm-stats'];
+    const board = {...h, rows: [row()], total: 1, page: 1, page_size: 15};
+    const v = new api.View(fetcher({'/home': h, '/leaderboard': board, '/leaderboard?open=1': board}));
+    for (const [path, query] of [['/models', ''], ['/models/leaderboard', ''], ['/models/leaderboard', 'open=1'], ['/models/methodology', '']]) {
+      const html = await v.page(path, new URLSearchParams(query));
+      assert.doesNotMatch(html, /intel-hero|intel-updated|intel-attribution|models\/methodology/);
+      assert.match(html, /Alpha/);
+    }
+  }
 });

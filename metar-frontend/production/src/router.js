@@ -69,6 +69,7 @@
       if (typeof value !== 'string' || !/^\/(?!\/)/.test(value) || /[\\\u0000-\u0020]/.test(value)) return null;
       try {
         const url = new URL(legacy ? href(value) : value, browser.location.origin);
+        if (url.pathname.replace(/\/$/, '') === '/models/methodology') return '/models';
         if (url.origin !== browser.location.origin || (!legacy && url.hash) || !policy.target(url.href, browser.location.origin)) return null;
         return url.pathname + url.search + (legacy ? url.hash : '');
       } catch (_) { return null; }
@@ -82,7 +83,8 @@
         return true;
       }
       const trimmed = pathname === '/' ? '/' : pathname.replace(/\/$/, '');
-      if (trimmed === '/discover') browser.history.replaceState(null, '', '/latest' + search + hash);
+      if (trimmed === '/models/methodology') browser.history.replaceState(null, '', '/models');
+      else if (trimmed === '/discover') browser.history.replaceState(null, '', '/latest' + search + hash);
       else if (trimmed !== pathname && owns(trimmed)) browser.history.replaceState(null, '', trimmed + search + hash);
       return false;
     }

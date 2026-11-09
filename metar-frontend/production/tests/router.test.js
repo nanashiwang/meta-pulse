@@ -139,3 +139,15 @@ test('重复点击当前页面不刷新、不增加历史项，仍阻止浏览�
   assert.equal(event.prevented, true);
   assert.equal(host.pushes, 0);
 });
+
+test('移除的方法页旧路径、尾斜杠和 hash 链接均回到模型榜首页', () => {
+  for (const path of ['/models/methodology', '/models/methodology/?old=1', '/#/models/methodology']) {
+    const host = browser('https://metarhub.com' + path);
+    create(host).migrate();
+    assert.equal(host.location.pathname + host.location.search + host.location.hash, '/models');
+    assert.equal(host.pushes, 0);
+  }
+  const host = browser('https://metarhub.com/latest');
+  assert.equal(create(host).go('/models/methodology'), true);
+  assert.equal(host.location.pathname, '/models');
+});

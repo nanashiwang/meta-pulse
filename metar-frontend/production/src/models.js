@@ -123,7 +123,7 @@
 
   function subnav(active) {
     const item = (path, label) => link(path, label, 'intel-subnav-item' + (active === path ? ' active' : ''));
-    return `<nav class="intel-subnav" aria-label="${t('榜单导航', 'Leaderboard navigation')}">${item('/models', t('榜单首页', 'Overview'))}${item('/models/leaderboard', t('完整榜单', 'Full leaderboard'))}${item('/models/leaderboard?open=1', t('开放权重', 'Open weights'))}${item('/models/methodology', t('计算方法', 'Methodology'))}</nav>`;
+    return `<nav class="intel-subnav" aria-label="${t('榜单导航', 'Leaderboard navigation')}">${item('/models', t('榜单首页', 'Overview'))}${item('/models/leaderboard', t('完整榜单', 'Full leaderboard'))}${item('/models/leaderboard?open=1', t('开放权重', 'Open weights'))}</nav>`;
   }
 
   const LEADERS = {
@@ -149,7 +149,7 @@
     const top = home.preview.rows.find(r => r.rank === 1);
     const items = [];
     // Every answer is stored as HTML: data-derived text is escaped here, and
-    // only the fixed methodology answer carries markup.
+    // FAQ answers are escaped before rendering.
     if (top) items.push([t('当前综合排名第一的模型是哪个？', 'Which model ranks first overall?'), esc(t(`${top.name}（${top.provider_name}），综合分 ${fmt.bps(top.composite_bps)}。`, `${top.name} by ${top.provider_name}, scoring ${fmt.bps(top.composite_bps)}.`))]);
     const pairs = [
       ['value', '前十名中最便宜的是哪个？', 'What is the cheapest model in the top 10?', l => `${l.row.name}：${fmt.usd(l.value)} / 1M tokens（3:1 输入输出混合价）。`, l => `${l.row.name} at ${fmt.usd(l.value)} per 1M tokens (3:1 input/output blend).`],
@@ -158,7 +158,7 @@
       ['open', '最强的开放权重模型是哪个？', 'What is the best open-weights model?', l => `${l.row.name}，综合分 ${fmt.bps(l.value)}。`, l => `${l.row.name}, scoring ${fmt.bps(l.value)}.`],
     ];
     for (const [c, qz, qe, az, ae] of pairs) { const l = find(c); if (l) items.push([t(qz, qe), esc(t(az(l), ae(l)))]); }
-    items.push([t('综合分怎么计算？', 'How is the score calculated?'), esc(t('直接展示来源评分，不归一化、不加权、不推算。缺失分数显示「—」。', 'Display source scores directly, without normalisation, weighting or synthesis. Missing scores show “—”.')) + ' ' + link('/models/methodology', t('查看计算方法', 'Read the methodology'), 'textlink')]);
+    items.push([t('综合分怎么计算？', 'How is the score calculated?'), esc(t('直接展示来源评分，不归一化、不加权、不推算。缺失分数显示「—」。', 'Display source scores directly, without normalisation, weighting or synthesis. Missing scores show “—”.'))]);
     return `<section class="card card-pad intel-faq"><h2>${t('常见问题', 'FAQ')}</h2>${items.map(([q, html]) => `<details><summary>${esc(q)}</summary><p class="muted">${html}</p></details>`).join('')}</section>`;
   }
 
@@ -175,7 +175,6 @@
     const credits = (Array.isArray(sources) ? sources : []).filter(s => SOURCE_CREDITS[s]).map(s => `<a class="intel-credit" href="${SOURCE_CREDITS[s][1]}" target="_blank" rel="noopener">${esc(SOURCE_CREDITS[s][0])}</a>`);
     return credits.length ? `<span class="intel-attribution">${t('数据来源：', 'Source: ')}${credits.join(' · ')}</span>` : '';
   };
-  const updated = (snap) => `<span class="intel-updated muted">${t('数据更新于 ', 'Updated ')}${fmt.time(snap.computed_at)} · ${t('方法 ', 'Method ')}${esc(snap.method_version)}</span>${attribution(snap.sources)}`;
 
   class View {
     constructor(fetcher = defaultFetch) { this.fetch = fetcher; this.generation = 0; }
@@ -184,9 +183,8 @@
     async page(path, params) {
       this.dispose();
       try {
-        if (path === '/models') return await this.home();
+        if (path === '/models' || path === '/models/methodology') return await this.home();
         if (path === '/models/leaderboard') return await this.board(readQuery(params));
-        if (path === '/models/methodology') return await this.methodology();
         if (path.startsWith('/model/')) {
           const slug = decodeURIComponent(path.slice('/model/'.length));
           if (!slugOK(slug)) throw new IntelError('not_found', 404);
@@ -204,13 +202,12 @@
       h.recent = Array.isArray(h.recent) ? h.recent : [];
       const recent = h.recent.length ? `<ul class="intel-recent">${h.recent.map(r => `<li>${link('/model/' + encodeURIComponent(r.model), esc(r.name))}<span class="muted">${esc(r.provider_name || r.provider)} · ${fmt.date(r.release_date)}</span></li>`).join('')}</ul>` : `<p class="muted">${t('近 15 天没有新收录的模型。', 'No models released in the last 15 days.')}</p>`;
       return `${subnav('/models')}
-        <header class="intel-hero"><h1>${t('AI 模型榜单', 'AI model leaderboard')}</h1><p class="muted">${t(`收录 ${h.model_count} 个语言模型，其中 ${h.ranked_count} 个有来源综合评分参与排名。每个数值都标注来源，缺失数据显示为「—」。`, `${h.model_count} language models listed, ${h.ranked_count} with source overall scores to be ranked. Every figure is sourced; missing data shows as "—".`)}</p>${updated(h)}</header>
         ${leaderCards(h.leaders)}
         <div class="intel-layout">
           <section class="intel-main"><div class="intel-section-head"><h2>${t('综合榜', 'Overall ranking')}</h2><div class="intel-window">${link('/models/leaderboard?window=90d', t('近 90 天', 'Last 90 days'), 'btn small')}${link('/models/leaderboard?window=30d', t('近 30 天', 'Last 30 days'), 'btn small')}${link('/models/leaderboard', t('完整榜单 →', 'Full leaderboard →'), 'btn small primary')}</div></div>${table(h.preview.rows, {}, false)}</section>
           <aside class="intel-side">
             <section class="card card-pad"><h2>${t('近期新模型', 'Recently released')}</h2>${recent}</section>
-            <section class="card card-pad"><h2>${t('综合分说明', 'About the score')}</h2><p class="muted">${t('直接展示来源原始评分，价格与速度单独展示。', 'Original source scores. Price and speed are shown separately.')}</p><div class="mt16">${link('/models/methodology', t('计算方法', 'Methodology'), 'textlink')}</div></section>
+            <section class="card card-pad"><h2>${t('综合分说明', 'About the score')}</h2><p class="muted">${t('直接展示来源原始评分，价格与速度单独展示。', 'Original source scores. Price and speed are shown separately.')}</p></section>
             <section class="card card-pad"><h2>${t('一起讨论', 'Discuss')}</h2><p class="muted">${t('对排名或数据有疑问？在社区发帖讨论或指出错误。', 'Questions about a ranking or a number? Start a discussion or report an error.')}</p><div class="intel-side-actions mt16">${link('/publish', t('发起讨论', 'Start a discussion'), 'btn primary small')}${link('/latest', t('社区讨论', 'Community'), 'btn small')}</div></section>
           </aside>
         </div>
@@ -222,7 +219,6 @@
       const b = await this.fetch('/leaderboard' + (params ? '?' + params : ''));
       const windowLink = (w, label) => link(boardURL({...q, window: w, page: ''}), label, 'intel-chip' + ((q.window || 'all') === w ? ' active' : ''));
       return `${subnav(q.open ? '/models/leaderboard?open=1' : '/models/leaderboard')}
-        <header class="intel-hero"><h1>${q.open ? t('开放权重模型榜', 'Open-weights leaderboard') : t('完整模型榜单', 'Full model leaderboard')}</h1>${updated(b)}</header>
         <div class="intel-filters" role="group" aria-label="${t('筛选', 'Filters')}">
           <span class="intel-filter-label muted">${t('发布时间', 'Released')}</span>${windowLink('all', t('全部', 'All'))}${windowLink('90d', t('近 90 天', '90 days'))}${windowLink('30d', t('近 30 天', '30 days'))}
           <span class="intel-filter-label muted">${t('许可', 'License')}</span>${link(boardURL({...q, open: '', page: ''}), t('全部', 'All'), 'intel-chip' + (!q.open ? ' active' : ''))}${link(boardURL({...q, open: '1', page: ''}), t('开放权重', 'Open weights'), 'intel-chip' + (q.open ? ' active' : ''))}
@@ -255,10 +251,6 @@
         ${attribution(d.sources) ? `<p class="intel-note">${attribution(d.sources)}</p>` : ''}`;
     }
 
-    async methodology() {
-      const m = await this.fetch('/methodology');
-      return `${subnav('/models/methodology')}<header class="intel-hero"><h1>${t('评分来源', 'Score source')}</h1><p>${esc(m.version)}</p></header><section class="card card-pad"><h2>Data by LLM Stats</h2><p>${t('直接展示 LLM Stats 提供的原始分类评分。本站不进行归一化、加权平均、可信度扣分或总分推算。来源未提供的评分显示「—」。', 'Scores are supplied directly by LLM Stats. We do not normalise, weight, penalise or synthesize scores. Missing scores show “—”.')}</p><p>${t('单项评测保留原始数值与来源单位口径；不同评测不可直接横向比较。历史 v1 本地分不再用于当前排名。', 'Individual benchmarks retain raw values. Different benchmarks are not directly comparable. Historical local v1 scores are no longer used for current rankings.')}</p>${attribution(m.sources)}</section>`;
-    }
   }
 
   const api = {View, readQuery, encode, fmt, IntelError};
