@@ -20,6 +20,46 @@
     }
     return result.data;
   }
+  // Manual ticket gift: the server resolves the bound API account from the
+  // username and rechecks the administrator; one key covers retries of a submission.
+  async function grantTickets(username) {
+    if (busy) return;
+    const raw = host.prompt(text(`赠送给 @${username} 的抽奖券数量（1–100）：`, `Number of draw tickets for @${username} (1–100):`), '10');
+    if (raw === null) return;
+    const count = Number(String(raw).trim());
+    if (!Number.isInteger(count) || count < 1 || count > 100) { host.alert(text('数量须为 1–100 的整数。', 'Enter a whole number from 1 to 100.')); return; }
+    const reason = (host.prompt(text('赠送原因（必填，将写入审计）：', 'Reason (required, recorded in the audit log):'), text('管理员赠送', 'Administrator gift')) || '').trim();
+    if (reason.length < 2) { host.alert(text('请填写至少 2 个字的原因。', 'Enter a reason of at least 2 characters.')); return; }
+    if (!host.confirm(text(`确认赠送 ${count} 张抽奖券给 @${username}？`, `Give ${count} draw tickets to @${username}?`))) return;
+    const key = host.crypto.randomUUID();
+    busy = true;
+    try {
+      for (;;) {
+        let response, result;
+        try {
+          response = await host.fetch('/answer/admin/api/metar/accounts/tickets', {
+            method: 'POST', credentials: 'same-origin', cache: 'no-store',
+            headers: { ...headers(token()), 'Idempotency-Key': key }, body: JSON.stringify({ username, count, reason }),
+          });
+          result = await response.json().catch(() => ({}));
+        } catch (_) { response = null; }
+        if (response?.ok && result?.data?.count === count) {
+          const until = new Date(result.data.quota_expires_at);
+          host.alert(text(`已赠送 ${count} 张抽奖券给 @${username}。额度资格有效至 ${until.toLocaleString()}。`, `Gave ${count} draw tickets to @${username}. Credit eligibility until ${until.toLocaleString()}.`));
+          return;
+        }
+        const code = JSON.stringify(result || {});
+        if (response && response.status < 500) {
+          if (code.includes('binding_required')) host.alert(text(`@${username} 尚未绑定 API 账号，无法发放抽奖券。`, `@${username} has no linked API account, so tickets cannot be issued.`));
+          else if (code.includes('account_unavailable')) host.alert(text('目标账号不存在或未激活。', 'The target account does not exist or is not active.'));
+          else host.alert(text('赠送失败：请检查管理员登录状态与输入。', 'Gift failed. Check the administrator session and input.'));
+          return;
+        }
+        // Unknown outcome: retrying with the same key cannot issue twice.
+        if (!host.confirm(text('暂时无法确认赠送结果。重试同一请求？（不会重复发放）', 'Could not confirm the result. Retry the same request? (It will not issue twice.)'))) return;
+      }
+    } finally { busy = false; }
+  }
   function changed(expected) {
     if (token() !== expected) throw new Error(text('登录账号已在其他页面改变，请刷新后重试。', 'The account changed in another page. Reload and retry.'));
   }
@@ -103,6 +143,16 @@
     }
   }
 
+  function menuItem(menu, attr, label, onclick) {
+    let item = menu.querySelector(`[${attr}]`);
+    if (!item) {
+      item = host.document.createElement('button'); item.type = 'button'; item.className = 'dropdown-item';
+      item.setAttribute(attr, ''); item.setAttribute('data-rr-ui-dropdown-item', ''); item.tabIndex = 0;
+      menu.append(item);
+    }
+    if (item.textContent !== label) item.textContent = label;
+    item.onclick = onclick;
+  }
   function mountRows(getUser) {
     if (host.location.pathname !== '/admin/users' || getUser()?.role_id !== 2 || saved()) return;
     host.document.querySelectorAll('tbody tr').forEach((row) => {
@@ -113,17 +163,11 @@
       const username = decodeURIComponent(path.slice(7));
       const existing = row.querySelector('[data-metar-switch]');
       if (existing?.tagName === 'BUTTON' && !existing.hasAttribute('data-rr-ui-dropdown-item')) existing.remove();
-      if (username === getUser()?.username) return;
       const menu = row.querySelector('td:last-child .dropdown-menu');
       if (!menu) return;
-      let item = menu.querySelector('[data-metar-switch]');
-      if (!item) {
-        item = host.document.createElement('button'); item.type = 'button'; item.className = 'dropdown-item';
-        item.setAttribute('data-metar-switch', ''); item.setAttribute('data-rr-ui-dropdown-item', ''); item.tabIndex = 0;
-        menu.append(item);
-      }
-      const label = text('切换登录', 'Sign in as'); if (item.textContent !== label) item.textContent = label;
-      item.onclick = () => start(username);
+      menuItem(menu, 'data-metar-tickets', text('赠送抽奖券', 'Give draw tickets'), () => grantTickets(username));
+      if (username === getUser()?.username) { menu.querySelector('[data-metar-switch]')?.remove(); return; }
+      menuItem(menu, 'data-metar-switch', text('切换登录', 'Sign in as'), () => start(username));
     });
   }
   function install(getUser = () => null) {
@@ -139,7 +183,7 @@
     host.addEventListener('pageshow', () => { if (token() !== initialToken) host.location.reload(); });
     run();
   }
-  host.MetarAccountSwitch = { install, start, restore };
+  host.MetarAccountSwitch = { install, start, restore, grantTickets };
   if (!host.__metarNativeAccountSwitch) {
     if (host.document.readyState === 'loading') host.document.addEventListener('DOMContentLoaded', () => { if (!host.__metarNativeAccountSwitch) install(); }, { once: true });
     else host.setTimeout(() => { if (!host.__metarNativeAccountSwitch) install(); }, 0);

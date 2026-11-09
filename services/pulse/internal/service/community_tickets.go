@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/nanashiwang/meta-pulse/internal/domain/ledger"
 	"github.com/nanashiwang/meta-pulse/internal/domain/period"
@@ -94,3 +96,87 @@ func (s *CommunityTicketService) Grant(ctx context.Context, user uint64, task Co
 	})
 	return result, err
 }
+
+// AdminTicketGrant is a reviewed manual gift from a community administrator.
+// It mints one ticket lot through the same ledger, lot and audit path as task
+// tickets; the community-task daily caps do not apply to manual gifts.
+type AdminTicketGrant struct {
+	UserID uint64 `json:"user_id"`
+	Count  int64  `json:"count"`
+	Reason string `json:"reason"`
+}
+
+type AdminTicketGrantResult struct {
+	EntryID        uint64    `json:"entry_id"`
+	Count          int64     `json:"count"`
+	QuotaExpiresAt time.Time `json:"quota_expires_at"`
+}
+
+const MaxAdminTicketGrant = 100
+
+func (s *CommunityTicketService) AdminGrant(ctx context.Context, actor, requestID string, grant AdminTicketGrant) (AdminTicketGrantResult, error) {
+	reason := strings.TrimSpace(grant.Reason)
+	if actor == "" || requestID == "" || grant.UserID == 0 || grant.Count < 1 || grant.Count > MaxAdminTicketGrant || utf8.RuneCountInString(reason) < 2 || utf8.RuneCountInString(reason) > 200 {
+		return AdminTicketGrantResult{}, ErrInvalidAdminTicketGrant
+	}
+	payload, _ := json.Marshal(struct {
+		Actor  string `json:"actor"`
+		UserID uint64 `json:"user_id"`
+		Count  int64  `json:"count"`
+		Reason string `json:"reason"`
+	}{actor, grant.UserID, grant.Count, reason})
+	hash := sha256.Sum256(payload)
+	fingerprint := hex.EncodeToString(hash[:])
+	key := "admin-ticket-grant:" + requestID
+	var result AdminTicketGrantResult
+	err := s.unit.Do(ctx, func(r ports.Repositories) error {
+		if e := lockRewardRule(ctx, r.Idempotency); e != nil {
+			return e
+		}
+		receipt, e := r.Idempotency.GetOrCreateForUpdate(ctx, "admin_ticket_grant", requestID, fingerprint)
+		if e != nil {
+			return e
+		}
+		if receipt.PayloadHash != fingerprint {
+			return ledger.ErrIdempotencyConflict
+		}
+		if len(receipt.ResponseJSON) > 0 {
+			return json.Unmarshal(receipt.ResponseJSON, &result)
+		}
+		now := s.now().UTC().Truncate(time.Second)
+		p, e := r.Period.FindActiveAtCurrent(ctx, now)
+		if e != nil {
+			return e
+		}
+		if !p.Continuous || p.FundingPolicy != period.VerifiedPaidFunding || p.QuotaValidityDays < 1 {
+			return errors.New("admin ticket grants require current continuous rules")
+		}
+		if e = r.Tickets.LockUser(ctx, grant.UserID); e != nil {
+			return e
+		}
+		expires := now.Add(time.Duration(p.QuotaValidityDays) * 24 * time.Hour)
+		meta, _ := json.Marshal(map[string]any{"admin_grant": true, "actor": actor, "count": grant.Count, "ticket_lot_version": 1, "earned_at": now.Unix(), "quota_expires_at": expires.Unix()})
+		entry, e := appendEntry(ctx, r, ledger.Entry{UserID: grant.UserID, PeriodID: p.ID, AssetType: ledger.AssetTicket, Operation: ledger.OperationTicketBonus, Amount: grant.Count, SourceType: "admin_ticket_grant", SourceRef: requestID, IdempotencyKey: key, PayloadHash: fingerprint, Reason: "管理员赠券：" + reason, MetadataJSON: meta, CreatedAt: now})
+		if e != nil {
+			return e
+		}
+		if e = r.Tickets.Mint(ctx, ports.TicketLot{UserID: grant.UserID, PeriodID: p.ID, MintEntryID: entry.ID, Issued: grant.Count, Remaining: grant.Count, EarnedAt: now, QuotaExpiresAt: expires}); e != nil {
+			return e
+		}
+		result = AdminTicketGrantResult{EntryID: entry.ID, Count: grant.Count, QuotaExpiresAt: expires}
+		response, _ := json.Marshal(result)
+		after, _ := json.Marshal(map[string]any{"user_id": grant.UserID, "count": grant.Count, "balance_after": entry.BalanceAfter, "quota_expires_at": expires.Unix()})
+		if e = r.Audit.Append(ctx, ports.AuditLog{ActorType: "community_admin", ActorID: actor, Action: "admin_ticket_grant", ResourceType: "ledger_entry", ResourceID: fmt.Sprint(entry.ID), Reason: reason, AfterJSON: after, RequestID: requestID, CreatedAt: now}); e != nil {
+			return e
+		}
+		status := 200
+		receipt.ResponseStatus = &status
+		receipt.ResponseJSON = response
+		receipt.ResourceType = "ledger_entry"
+		receipt.ResourceID = fmt.Sprint(entry.ID)
+		return r.Idempotency.Save(ctx, receipt)
+	})
+	return result, err
+}
+
+var ErrInvalidAdminTicketGrant = errors.New("invalid admin ticket grant")

@@ -11,6 +11,18 @@ import (
 type ticketGranter struct {
 	calls int
 	user  uint64
+	admin []service.AdminTicketGrant
+	actor string
+	key   string
+}
+
+func (f *ticketGranter) AdminGrant(_ context.Context, actor, key string, g service.AdminTicketGrant) (service.AdminTicketGrantResult, error) {
+	if g.Count < 1 || g.Count > service.MaxAdminTicketGrant {
+		return service.AdminTicketGrantResult{}, service.ErrInvalidAdminTicketGrant
+	}
+	f.admin = append(f.admin, g)
+	f.actor, f.key = actor, key
+	return service.AdminTicketGrantResult{EntryID: 7, Count: g.Count}, nil
 }
 
 func (f *ticketGranter) Grant(_ context.Context, u uint64, _ service.CommunityTicket) (service.CommunityTicketResult, error) {
@@ -43,6 +55,33 @@ func TestCommunityTicketsSignedIdentityAndBody(t *testing.T) {
 		w = settingsTestRequest(r, "POST", "/v1/internal/me/community-tickets?user_id=1", `{}`, "")
 		if w.Code != 400 {
 			t.Fatal("query identity")
+		}
+	}
+}
+
+func TestAdminTicketGrantRequiresAdminAndIdempotencyKey(t *testing.T) {
+	for _, role := range []string{"admin", "community-bff", "forum", ""} {
+		f := &ticketGranter{}
+		r := gin.New()
+		CommunityTicketRoute(r.Group("/v1/internal"), f, func(c *gin.Context) { c.Set(PrincipalContextKey, security.Principal{UserID: 9, Role: role}) })
+		w := settingsTestRequest(r, "POST", "/v1/internal/admin/tickets/grant", `{"user_id":42,"count":10,"reason":"验证新概率"}`, "grant-1")
+		if role != "admin" {
+			if w.Code != 403 || len(f.admin) != 0 {
+				t.Fatal("unauthorized", role, w.Code)
+			}
+			continue
+		}
+		if w.Code != 200 || len(f.admin) != 1 || f.admin[0].UserID != 42 || f.admin[0].Count != 10 || f.actor != "9" || f.key != "grant-1" {
+			t.Fatalf("grant %d %+v %s %s", w.Code, f.admin, f.actor, f.key)
+		}
+		for _, c := range []struct{ body, key string }{
+			{`{"user_id":42,"count":10,"reason":"x"}`, ""},
+			{`{"user_id":42,"count":101,"reason":"验证"}`, "grant-2"},
+			{`{"user_id":42,"count":1,"reason":"验证","extra":1}`, "grant-3"},
+		} {
+			if w = settingsTestRequest(r, "POST", "/v1/internal/admin/tickets/grant", c.body, c.key); w.Code != 400 {
+				t.Fatal("invalid grant accepted", c.body, w.Code)
+			}
 		}
 	}
 }

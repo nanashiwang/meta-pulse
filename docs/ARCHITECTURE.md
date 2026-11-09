@@ -1330,6 +1330,12 @@ Answer 插件的 `communitytickets` 维护 `metar_ticket_config/cursor/source/da
 新发券与规则发布、Action 共用 `period_create_lock`，然后锁用户券账户，首次选择当前持续规则及其有效天数。奖金券沿用当前奖池与预算，发行批次从实际 Pulse 入账时间计龄，抽奖使用当前最新规则。`ticket_bonus` 不进入 `PendingContribution` 的已铸券扣减，不改 Usage Stat 的付费 entitlement、不产生 Usage/Contribution/Reward；真正抽奖才预留预算并创建 Grant/Outbox。回退到不认识该账本操作的版本前必须暂停新操作并制定兼容方案，不能删除历史账本或重新发券。
 
 
+## 管理员手动赠券（2026-11-09）
+
+用户授权管理员在 `/admin/users` 每行三点菜单「赠送抽奖券」手动发券，用于验证规则或运营补偿。浏览器只提交 Answer 用户名、数量（1–100）和原因，并为一次提交生成 Idempotency-Key；Forum 插件复核实时管理员身份，按用户名查 Answer 账号，再经 `CommunityIdentity` 校验活跃状态与一对一绑定得到 new-api 用户 ID，未绑定返回 `binding_required`。插件以独立 admin HMAC 调用 `POST /v1/internal/admin/tickets/grant`，幂等键按管理员加前缀。
+
+Pulse 在同一事务内锁 `period_create_lock`、幂等回执（`admin_ticket_grant`，payload 含操作人/用户/数量/原因，同键不同内容冲突）、当前持续规则、用户券锁，追加一条 `ticket_bonus` 账本分录（`source_type=admin_ticket_grant`）、铸造一个 `issued=count` 的券批次并写 `pulse_audit_log`。有效期按当前规则天数从发放时起算；不受社区任务日限，不产生 contribution，不改 new-api 余额。撤回只能追加负向调整，不改写历史。
+
 ## Vibe Coding 集市数据与体验边界（2026-11-07）
 
 集市复用 Answer 身份、原生帖子正文、评论/回答、点赞、收藏及内容治理。`marketplace` 插件包仅在 Answer MySQL 中新增 `metar_market_item/actor/request/audit`；不访问 Pulse/new-api 的账本、余额或模型请求。投稿者先用原生编辑器发布介绍，再将本人帖子关联为集市草稿或提交审核；原帖按 Answer 原有可见性发布，集市草稿/待审核元数据仅本人和管理员可读。每个原帖最多一条收录，项目与想法类型及原帖 ID 不可变，想法的实现通过新项目反向关联，不转移作者身份。

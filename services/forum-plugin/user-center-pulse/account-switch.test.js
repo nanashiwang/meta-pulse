@@ -65,7 +65,7 @@ test('return banner follows native language hydration and later language changes
 test('admin user switching is an item in each row three-dot menu, not an extra row button',()=>{
  const item={tagName:'BUTTON',attrs:{},setAttribute(k,v){this.attrs[k]=v},hasAttribute(k){return k in this.attrs},remove(){this.removed=true}};
  const menuItems=[];
- const menu={querySelector:s=>s==='[data-metar-switch]'?menuItems.find(x=>!x.removed):null,append(x){menuItems.push(x)}};
+ const menu={querySelector:s=>menuItems.find(x=>!x.removed&&`[${Object.keys(x.attrs).find(k=>k.startsWith('data-metar'))}]`===s)||null,append(x){menuItems.push(x)}};
  const link={href:'https://forum.test/users/member'};
  const row={querySelector(s){if(s==='td:first-child a[href^="/users/"]')return link;if(s==='[data-metar-switch]')return item;if(s==='td:last-child .dropdown-menu')return menu;return null}};
  const f=setup();let confirmed='';f.window.confirm=message=>{confirmed=message;return false};
@@ -77,15 +77,40 @@ test('admin user switching is an item in each row three-dot menu, not an extra r
  f.window.requestAnimationFrame=fn=>fn();f.window.addEventListener=()=>{};
  f.api.install(()=>({role_id:2,username:'admin'}));
  assert.equal(item.removed,true);
- assert.equal(menuItems.length,1);
- assert.equal(menuItems[0].textContent,'切换登录');
- assert.equal(menuItems[0].className,'dropdown-item');
- menuItems[0].onclick();
+ assert.equal(menuItems.length,2);
+ assert.equal(menuItems[0].textContent,'赠送抽奖券');
+ assert.equal(menuItems[1].textContent,'切换登录');
+ assert.equal(menuItems[1].className,'dropdown-item');
+ menuItems[1].onclick();
  return new Promise(resolve=>setImmediate(()=>{
   assert.match(confirmed,/切换登录到 @member/);
   assert.equal(f.calls.length,0);
   observe();
-  assert.equal(menuItems.length,1);
+  assert.equal(menuItems.length,2);
   resolve();
  }));
+});
+
+test('ticket gift sends username, count and reason with one retry key and reports the result',async()=>{
+ const f=setup([new Error('network'),ok({count:10,quota_expires_at:'2026-12-09T00:00:00Z'})]);
+ const prompts=['10','验证新概率'];f.window.prompt=()=>prompts.shift();
+ f.window.crypto={randomUUID:()=>'grant-key-1'};
+ await f.api.grantTickets('uno');
+ assert.equal(f.calls.length,2);
+ for(const c of f.calls){
+  assert.equal(c.url,'/answer/admin/api/metar/accounts/tickets');
+  assert.equal(c.options.headers['Idempotency-Key'],'grant-key-1');
+  assert.deepEqual(JSON.parse(c.options.body),{username:'uno',count:10,reason:'验证新概率'});
+ }
+ assert.match(f.alerts.at(-1),/已赠送 10 张抽奖券给 @uno/);
+});
+test('ticket gift rejects bad counts locally and explains unbound accounts',async()=>{
+ const f=setup([{ok:false,status:409,json:async()=>({reason:'binding_required'})}]);
+ f.window.crypto={randomUUID:()=>'k'};
+ let prompts=['101'];f.window.prompt=()=>prompts.shift();
+ await f.api.grantTickets('uno');
+ assert.equal(f.calls.length,0);assert.match(f.alerts.at(-1),/1–100/);
+ prompts=['3','测试'];
+ await f.api.grantTickets('uno');
+ assert.equal(f.calls.length,1);assert.match(f.alerts.at(-1),/尚未绑定 API 账号/);
 });

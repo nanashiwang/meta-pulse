@@ -123,3 +123,58 @@ func TestMySQLCommunityTicketsReplayCapsDrawAndContribution(t *testing.T) {
 		t.Fatal("usage contribution replay or community isolation failed")
 	}
 }
+
+func TestAdminTicketGrantRejectsInvalidInputBeforeWriting(t *testing.T) {
+	s := NewCommunityTicketService(nil)
+	for _, g := range []AdminTicketGrant{{UserID: 0, Count: 1, Reason: "验证"}, {UserID: 1, Count: 0, Reason: "验证"}, {UserID: 1, Count: MaxAdminTicketGrant + 1, Reason: "验证"}, {UserID: 1, Count: 1, Reason: " "}} {
+		if _, err := s.AdminGrant(context.Background(), "9", "k", g); err != ErrInvalidAdminTicketGrant {
+			t.Fatalf("%+v: %v", g, err)
+		}
+	}
+	if _, err := s.AdminGrant(context.Background(), "", "k", AdminTicketGrant{UserID: 1, Count: 1, Reason: "验证"}); err != ErrInvalidAdminTicketGrant {
+		t.Fatal("missing actor accepted")
+	}
+}
+
+func TestMySQLAdminTicketGrantReplayMintsOneLot(t *testing.T) {
+	database, db := openMySQLIntegration(t)
+	unit, _ := mysqlstore.NewUnitOfWork(database)
+	ctx := context.Background()
+	now := time.Date(2078, 1, 1, 8, 0, 0, 0, time.UTC)
+	key := fmt.Sprintf("admin-grant-%d", time.Now().UnixNano())
+	user := uint64(time.Now().UnixNano()%1000000000 + 3000000000)
+	creator, _ := NewPeriodCreateService(unit, func() time.Time { return now })
+	p, err := creator.CreateFromAdmin(ctx, PeriodAdminRequest{Key: key, Continuous: true, QuotaValidityDays: 30, QuotaBudgetUnlimited: true, ExperienceBudgetUnlimited: true, MultiplierBps: 10000, TicketThresholdMilli: 1000, Rewards: []PeriodRewardSpec{{Key: "quota", Amount: 1, Weight: 1}, {Key: "exp", RewardType: ExperienceRewardType, Amount: 1, Weight: 1}}, Reason: "管理员赠券测试"}, "test", key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Exec("DELETE FROM pulse_period WHERE id=?", p.PeriodID) })
+	now = now.Add(time.Second)
+	s := NewCommunityTicketService(unit)
+	s.now = func() time.Time { return now }
+	grant := AdminTicketGrant{UserID: user, Count: 10, Reason: "验证新概率"}
+	var wg sync.WaitGroup
+	errs := make(chan error, 100)
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); _, e := s.AdminGrant(ctx, "9", key, grant); errs <- e }()
+	}
+	wg.Wait()
+	close(errs)
+	for e := range errs {
+		if e != nil {
+			t.Fatal(e)
+		}
+	}
+	var count, total int
+	if err = db.QueryRow("SELECT COUNT(*),SUM(remaining) FROM pulse_ticket_lot WHERE user_id=?", user).Scan(&count, &total); err != nil || count != 1 || total != 10 {
+		t.Fatalf("lots %d %d %v", count, total, err)
+	}
+	var balance int64
+	if err = db.QueryRow("SELECT COALESCE(SUM(amount),0) FROM pulse_ledger_entry WHERE user_id=? AND asset_type=?", user, ledger.AssetTicket).Scan(&balance); err != nil || balance != 10 {
+		t.Fatalf("ledger %d %v", balance, err)
+	}
+	if _, err = s.AdminGrant(ctx, "9", key, AdminTicketGrant{UserID: user, Count: 11, Reason: "验证新概率"}); err == nil {
+		t.Fatal("same key with different payload accepted")
+	}
+}

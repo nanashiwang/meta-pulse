@@ -21,7 +21,9 @@ func (c *PulseClient) adminSettingsRequest(ctx context.Context, method, operatio
 		return nil, 0, errors.New("admin settings unavailable")
 	}
 	path := "/v1/internal/admin/settings"
-	if operation == "experience-reverse" && method == http.MethodPost {
+	if operation == "ticket-grant" && method == http.MethodPost {
+		path = "/v1/internal/admin/tickets/grant"
+	} else if operation == "experience-reverse" && method == http.MethodPost {
 		path = "/v1/internal/admin/experience/reverse"
 	} else if operation == "periods" && (method == http.MethodGet || method == http.MethodPut) {
 		path = "/v1/internal/admin/periods"
@@ -50,7 +52,7 @@ func (c *PulseClient) adminSettingsRequest(ctx context.Context, method, operatio
 	if method != http.MethodGet {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if method == http.MethodPut || (method == http.MethodPost && operation == "experience-reverse") {
+	if method == http.MethodPut || (method == http.MethodPost && (operation == "experience-reverse" || operation == "ticket-grant")) {
 		req.Header.Set("Idempotency-Key", key)
 	}
 	resp, err := c.http.Do(req)
