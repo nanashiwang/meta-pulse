@@ -212,7 +212,7 @@
   }
 
   function footer() {
-    return `<footer class="prod-footer"><span>© 2026 ${esc(config.siteName)}</span><nav>${external('/tos', t("服务条款"))}${external('/privacy', t("隐私政策"))}${external('/users/register', t("加入社区"))}${link('/guidelines', t("社区规范"))}</nav></footer>`;
+    return `<footer class="prod-footer"><span>© 2026 ${esc(config.siteName)}</span><nav>${link('/tos', t("服务条款"))}${link('/privacy', t("隐私政策"))}${external('/users/register', t("加入社区"))}${link('/guidelines', t("社区规范"))}</nav></footer>`;
   }
 
   function currentTitle() {
@@ -221,7 +221,7 @@
     if (path.startsWith('/model/')) return t('模型详情');
     if (path.startsWith('/question/')) return t("问题详情");
     if (path.startsWith('/topic/')) return t("话题");
-    return ({ '/me/drafts': t('我的草稿'), '/events': t('近期活动'), '/admin/operations': t('社区经营'), '/admin/events': t('活动管理'), '/chat': t('聊天'), '/admin/chat': t('聊天举报'), '/latest': t("最新话题"), '/topics': t("类别与标签"), '/admin/taxonomy': t('类别管理'), '/knowledge': t("知识库"), '/search': t("搜索"), '/models': t('AI 模型榜单'), '/models/leaderboard': t('完整模型榜单'), '/models/methodology': t('综合分计算方法'), '/admin/models': t('模型榜管理'), '/tools': t('工具'), '/tools/network': t('Claude 访问环境检测'), '/marketplace': t('Vibe Coding 集市'), '/marketplace/mine': t('我的集市发布'), '/marketplace/publish': t('发布到集市'), '/admin/marketplace': t('集市审核'), '/me': t("个人空间"), '/me/bookmarks': t("我的收藏"), '/me/growth': t('社区成长'), '/me/notifications': t("通知中心"), '/settings/binding': t("账号绑定"), '/pulse': t("Pulse 权益"), '/admin/pulse': t("Pulse 配置"), '/publish': t("发布内容"), '/login': t("登录"), '/register': t("注册"), '/forgot': t("找回密码"), '/status': t("服务状态"), '/support': t("帮助中心"), '/guidelines': t("社区规范") })[path] || t("METAR 社区");
+    return ({ '/me/drafts': t('我的草稿'), '/events': t('近期活动'), '/admin/operations': t('社区经营'), '/admin/events': t('活动管理'), '/chat': t('聊天'), '/admin/chat': t('聊天举报'), '/latest': t("最新话题"), '/topics': t("类别与标签"), '/admin/taxonomy': t('类别管理'), '/knowledge': t("知识库"), '/search': t("搜索"), '/models': t('AI 模型榜单'), '/models/leaderboard': t('完整模型榜单'), '/models/methodology': t('综合分计算方法'), '/admin/models': t('模型榜管理'), '/tools': t('工具'), '/tools/network': t('Claude 访问环境检测'), '/marketplace': t('Vibe Coding 集市'), '/marketplace/mine': t('我的集市发布'), '/marketplace/publish': t('发布到集市'), '/admin/marketplace': t('集市审核'), '/me': t("个人空间"), '/me/bookmarks': t("我的收藏"), '/me/growth': t('社区成长'), '/me/notifications': t("通知中心"), '/settings/binding': t("账号绑定"), '/pulse': t("Pulse 权益"), '/admin/pulse': t("Pulse 配置"), '/publish': t("发布内容"), '/login': t("登录"), '/register': t("注册"), '/forgot': t("找回密码"), '/status': t("服务状态"), '/support': t("帮助中心"), '/guidelines': t("社区规范"), '/tos': t("服务条款"), '/privacy': t("隐私政策") })[path] || t("METAR 社区");
   }
 
   function languageControl() {
@@ -771,6 +771,14 @@
     return `${pageTitle(t("社区规范"))}<section class="card card-pad stack"><div><h2>${t("1. 描述可复现的问题")}</h2><p class="muted mt8">${t("说明目标、环境、已尝试方法和实际结果；不要泄露 API Key、Cookie、支付信息、完整 Prompt/Response 或个人隐私。")}</p></div><div><h2>${t("2. 内容不自动产生权益")}</h2><p class="muted mt8">${t("论坛发帖、回答、点赞不得产生 contribution 或 ticket。内容奖励使用独立资格、预算与人工审核。")}</p></div><div><h2>${t("3. 尊重身份边界")}</h2><p class="muted mt8">${t("社区身份来自 Answer，API 与资金身份来自 new-api。绑定可选、一对一，禁止静默换绑和身份转移。")}</p></div><div><h2>${t("4. 对不确定结果先查询")}</h2><p class="muted mt8">${t("奖励发放中或服务超时时，查询原 Grant 和 source_ref，不重复开启或重新随机。")}</p></div></section>${footer()}`;
   }
 
+  async function legalPage(path) {
+    // Static, trusted build-time HTML from seo-pages.json; no user data involved.
+    await loadFeatureScript('legal', 'MetarLegal');
+    const page = window.MetarLegal[path];
+    const note = getLanguage() !== 'en_US' ? '' : `<p class="legal-language-note">${t('本文件仅提供中文版本，以中文版本为准。')}</p>`;
+    return `<article class="card card-pad legal-doc">${note}${page.body}</article>${footer()}`;
+  }
+
   function notFoundPage() {
     return `<section class="card">${empty(t("没有找到这个页面"), t("请检查地址，或返回社区继续浏览。"), link('/latest', t("返回发现"), 'btn primary'), 'compass')}</section>${footer()}`;
   }
@@ -880,6 +888,7 @@
     if (path === '/support') return supportPage();
     if (path === '/status') return statusPage();
     if (path === '/guidelines') return guidelinesPage();
+    if (path === '/tos' || path === '/privacy') return legalPage(path);
     if (path === '/topic/vibe-coding') { location.replace('/marketplace' + location.search); return ''; }
     if (path.startsWith('/topic/')) return questionsPage(decodeURIComponent(path.slice('/topic/'.length)));
     return notFoundPage();

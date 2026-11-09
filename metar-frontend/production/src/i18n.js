@@ -384,6 +384,7 @@
     "退出登录": "Log out",
     "服务条款": "Terms",
     "隐私政策": "Privacy",
+    "本文件仅提供中文版本，以中文版本为准。": "This document is available in Chinese only. The Chinese version governs.",
     "账号设置": "Account settings",
     "社区管理": "Community administration",
     "社区连接配置": "Community connections",

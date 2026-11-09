@@ -81,6 +81,10 @@ def build(output: Path, config_path: Path) -> None:
         "pulse-feed": (ROOT / "src/pulse-feed.js").read_text(encoding="utf-8"),
         "pulse-core": (ROOT / "src/pulse-core.js").read_text(encoding="utf-8"),
     }
+    # Legal pages have one source: the public SEO body is also the in-app page.
+    seo_pages = json.loads((ROOT / "src/seo-pages.json").read_text(encoding="utf-8"))
+    legal = {route: {"title": seo_pages[route]["title"].split("｜")[0], "body": seo_pages[route]["body"]} for route in ("/tos", "/privacy")}
+    sources["legal"] = "'use strict';\nwindow.MetarLegal = Object.freeze(" + json.dumps(legal, ensure_ascii=False, separators=(",", ":")) + ");\n"
     # Keep the supplied artwork intact. Embedding it makes the SVG icon
     # self-contained: SVGs loaded as images cannot fetch external image URLs.
     brand = (ROOT / "src/images/brand-logo.jpg").read_bytes()
@@ -109,6 +113,7 @@ def build(output: Path, config_path: Path) -> None:
     (assets / "models.js").write_text(sources["models"], encoding="utf-8")
     (assets / "admin-models.js").write_text(sources["admin-models"], encoding="utf-8")
     (assets / "tools.js").write_text(sources["tools"], encoding="utf-8")
+    (assets / "legal.js").write_text(sources["legal"], encoding="utf-8")
     (assets / "avatars.js").write_text(sources["avatars"], encoding="utf-8")
     (assets / "admin-periods.js").write_text(sources["admin-periods"], encoding="utf-8")
     (assets / "admin-pulse.js").write_text(sources["admin-pulse"], encoding="utf-8")

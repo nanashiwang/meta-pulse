@@ -32,6 +32,13 @@ class SearchAssetsTest(unittest.TestCase):
             for url in urls:
                 self.assertTrue(url.startswith('https://metarhub.com/'))
                 self.assertNotRegex(url, r'/(?:me|admin|pulse|settings|search|login)(?:/|$)')
+            for route, heading in (('tos', '服务条款'), ('privacy', '隐私政策')):
+                self.assertIn('https://metarhub.com/' + route, urls)
+                self.assertIn('<h1>' + heading + '</h1>', (output / 'seo' / (route + '.html')).read_text())
+            legal = (output / 'assets/legal.js').read_text()
+            self.assertIn('window.MetarLegal', legal)
+            self.assertIn('<h1>服务条款</h1>', legal)
+            self.assertIn('<h1>隐私政策</h1>', legal)
             robots = (output / 'robots.txt').read_text()
             for sitemap in ['/sitemap.xml', '/sitemap-site.xml', '/blog/sitemap.xml']:
                 self.assertIn('Sitemap: https://metarhub.com' + sitemap, robots)

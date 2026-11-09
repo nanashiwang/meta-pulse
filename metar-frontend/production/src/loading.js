@@ -13,7 +13,7 @@
     return ['/topics', '/knowledge'].includes(path) ? 'grid' : 'panel';
   }
   function isPublic(path) {
-    return ['/latest', '/topics', '/search', '/knowledge', '/support', '/guidelines'].includes(path) || /^\/topic\/[^/]+$/.test(path);
+    return ['/latest', '/topics', '/search', '/knowledge', '/support', '/guidelines', '/tos', '/privacy'].includes(path) || /^\/topic\/[^/]+$/.test(path);
   }
   function canRetain(path, key, previousKey, language, previousLanguage, sameSession) {
     return sameSession && isPublic(path) && key === previousKey && language === previousLanguage;
