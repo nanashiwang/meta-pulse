@@ -185,7 +185,18 @@ type Score struct {
 	URL             string       `json:"url"`
 }
 
+type Ranking struct {
+	Category string `json:"category"`
+	RankedAt string `json:"ranked_at"`
+	Models   []struct {
+		ModelID string      `json:"model_id"`
+		Rating  json.Number `json:"conservative_rating"`
+		URL     string      `json:"url"`
+	} `json:"models"`
+}
+
 type Dataset struct {
+	Rankings   []Ranking
 	Models     []Model
 	Benchmarks []Benchmark
 	Scores     []Score
@@ -245,6 +256,16 @@ func (c *Client) Fetch(ctx context.Context) (Dataset, error) {
 			break
 		}
 		cursor = *resp.NextCursor
+	}
+	for _, category := range []string{"general", "reasoning", "code", "agents"} {
+		var ranking Ranking
+		if err := c.get(ctx, "/v1/rankings", url.Values{"category": {category}, "limit": {"50"}}, &ranking); err != nil {
+			return ds, fmt.Errorf("rankings %s: %w", category, err)
+		}
+		if ranking.Category != category || ranking.RankedAt == "" {
+			return ds, errors.New("invalid rankings response")
+		}
+		ds.Rankings = append(ds.Rankings, ranking)
 	}
 	return ds, nil
 }

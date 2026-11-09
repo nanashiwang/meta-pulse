@@ -216,7 +216,7 @@ func TestSourcesAreSortedAndFingerprinted(t *testing.T) {
 }
 
 func TestSourceScoresRemainOriginalAndMissingStayMissing(t *testing.T) {
-	in := Inputs{Models: []ModelInfo{{Slug: "opus", Modality: "llm"}, {Slug: "qwen", Modality: "llm"}}, Results: map[string]map[string]int64{"opus": {"llmstats-rating-overall": 59900, "llmstats-rating-code": 61250}, "qwen": {"raw-bench": 100000}}}
+	in := Inputs{Models: []ModelInfo{{Slug: "opus", Modality: "llm"}, {Slug: "qwen", Modality: "llm"}}, Results: map[string]map[string]int64{"opus": {"llmstats-ranking-overall": 59900, "llmstats-ranking-code": 61250}, "qwen": {"raw-bench": 100000}}}
 	snap, err := BuildSnapshot(score.Source, in, time.Now())
 	if err != nil {
 		t.Fatal(err)

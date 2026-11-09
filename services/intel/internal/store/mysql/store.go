@@ -316,7 +316,9 @@ func (s *Store) LoadInputs(ctx context.Context, now time.Time, speedWindow time.
 	if err := s.each(ctx, `SELECT model_slug, benchmark_slug, value FROM (
 			SELECT model_slug, benchmark_slug, value,
 			  ROW_NUMBER() OVER (PARTITION BY model_slug, benchmark_slug ORDER BY published_at DESC, id DESC) AS rn
-			FROM intel_benchmark_result WHERE published_at <= ?) x WHERE rn = 1`, []any{now}, func(r *sql.Rows) error {
+			FROM intel_benchmark_result r WHERE published_at <= ? AND
+            (benchmark_slug NOT LIKE 'llmstats-ranking-%' OR published_at =
+              (SELECT MAX(r2.published_at) FROM intel_benchmark_result r2 WHERE r2.benchmark_slug = r.benchmark_slug AND r2.source_slug = 'llm-stats'))) x WHERE rn = 1`, []any{now}, func(r *sql.Rows) error {
 		var model, bench string
 		var v int64
 		if err := r.Scan(&model, &bench, &v); err != nil {
@@ -457,7 +459,7 @@ func (s *Store) ModelDetail(ctx context.Context, slug string, now time.Time) (se
 			SELECT benchmark_slug, value, settings, self_run, published_at, source_url,
 			  ROW_NUMBER() OVER (PARTITION BY benchmark_slug ORDER BY published_at DESC, id DESC) AS rn
 			FROM intel_benchmark_result WHERE model_slug = ? AND published_at <= ?
-              AND (source_slug <> 'llm-stats' OR benchmark_slug LIKE 'raw-%' OR benchmark_slug LIKE 'llmstats-rating-%')) x
+              AND (source_slug <> 'llm-stats' OR benchmark_slug LIKE 'raw-%' OR benchmark_slug LIKE 'llmstats-ranking-%')) x
 		JOIN intel_benchmark b ON b.slug = x.benchmark_slug WHERE x.rn = 1 ORDER BY b.dimension, b.slug`, []any{slug, now}, func(r *sql.Rows) error {
 		var b service.BenchmarkResult
 		if err := r.Scan(&b.Benchmark, &b.Name, &b.Dimension, &b.Unit, &b.HigherIsBetter, &b.Value, &b.Settings, &b.SelfRun, &b.PublishedAt, &b.SourceURL); err != nil {

@@ -23,3 +23,5 @@ Status: implemented
 上游未提供 overall 时总榜暂无评分；接受缺失，不猜测分类映射。既有独立服务提案仅部分重叠，保留其架构讨论，本笔记取代其中自有评分方向。
 
 Intel 单测、go vet、完整社区测试与 Intel/社区构建通过。官方 API 未承诺 overall，缺失时不提供总榜排名；不宣称已复现网站 TrueSkill 总分。旧来源百分比在公开详情排除，仅留数据库审计。
+
+现场复查：v0.2.107 升级跳过 24 小时内同步，且 top_scores 不是 TrueSkill 排行榜评分；修复由[排行榜接入](2026-11-10-intel-ranking-import.md)接管。

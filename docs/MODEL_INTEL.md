@@ -82,9 +82,9 @@ Intel     = 模型目录、评测、价格、速度等公开数据的采集、�
 
 ### 综合分（本站方法）
 
-- 当前方法 `source-v2`：直接读取 LLM Stats `/v1/models` 的 `top_scores`，保留 `reasoning`、`code`、`agent` 原始分类评分；仅在来源明确提供 `overall` 时展示总分，不把分类平均或猜测为总分。没有总分的模型不参与综合排名。
+- 当前方法 `source-v3`：直接读取 LLM Stats `/v1/models` 的 `/v1/rankings` 的 `conservative_rating`，保留 `reasoning`、`code`、`agent` 原始分类评分；仅在来源明确提供 `overall` 时展示总分，不把分类平均或猜测为总分。general 分类提供综合排名，每分类 API 上限 50；范围外不参与排名。
 - 不进行 min-max、加权或可信度扣分；单项 `score` 不再除以 `max_score`。原始评测以 `raw-` 新标识和 points 单位追加，历史百分比记录保留审计。
-- v1 快照保留，但线上 API/worker/tool 使用独立 `source-v2` 版本，禁止回退旧分数；完成升级后须成功同步才能展示来源评分。所有分类与总分缺失显示「—」。
+- v1 快照保留，但线上 API/worker/tool 使用独立 `source-v3` 版本，禁止回退旧分数；完成升级后须成功同步才能展示来源评分。所有分类与总分缺失显示「—」。
 - 兼容已有 API 的 `*_bps` 字段以百分之一分存储展示分数，不表示对来源做百分比归一化；来源原始观测以千分之一分存储。
 - 方法调整只能新增版本，不改写历史快照。
 
@@ -272,3 +272,5 @@ docker compose --profile intel up -d intel-api intel-worker
 ## 2026-11-10 页面精简
 
 首页、完整榜与开放权重榜不再展示顶部标题、统计介绍、更新时点、方法版本及来源行。计算方法页面和全部入口移除，旧地址 `/models/methodology` 兼容跳回 `/models`；详情来源与服务端方法元数据保留。此前文档中的方法页描述仅为历史阶段记录。
+
+2026-11-10 生产修复：分类 general/reasoning/code/agents 经真实 API 验证，直接采用 conservative_rating；top_scores 不再用于评分。升级缺少 source-v3 快照时先同步，随后只读取最新排名批次；榜单展示 API 前 50 名限制。

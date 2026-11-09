@@ -217,23 +217,6 @@ func Convert(ds Dataset, now time.Time, latest map[string]PriceKey) (catalog.Doc
 			Status: status, ContextTokens: ctxTokens, License: license, OpenWeights: m.OpenWeight, SourceURL: modelURL,
 		})
 
-		for category, value := range m.TopScores {
-			if category != "overall" && category != "reasoning" && category != "code" && category != "agent" {
-				continue
-			}
-			raw, _, ok := scaled(&value, money.MilliScale)
-			if !ok {
-				continue
-			}
-			slug := "llmstats-rating-" + category
-			yes := true
-			doc.Benchmarks = append(doc.Benchmarks, catalog.BenchmarkDoc{Slug: slug, Name: "LLM Stats " + category, Dimension: "other", Unit: "points", HigherIsBetter: &yes, SourceURL: modelURL})
-			published := m.UpdatedAt
-			if _, err := time.Parse(time.RFC3339, published); err != nil {
-				continue
-			}
-			doc.Results = append(doc.Results, catalog.ResultDoc{Model: Slug(m.ID), Benchmark: slug, Value: raw, PublishedAt: published, SourceURL: modelURL})
-		}
 		seenOfferings := map[string]bool{}
 		for _, p := range m.Providers {
 			if strings.TrimSpace(p.ProviderID+p.ProviderName) == "" {
@@ -269,6 +252,26 @@ func Convert(ds Dataset, now time.Time, latest map[string]PriceKey) (catalog.Doc
 		}
 	}
 
+	for _, ranking := range ds.Rankings {
+		category := map[string]string{"general": "overall", "reasoning": "reasoning", "code": "code", "agents": "agent"}[ranking.Category]
+		if category == "" {
+			continue
+		}
+		slug := "llmstats-ranking-" + category
+		yes := true
+		doc.Benchmarks = append(doc.Benchmarks, catalog.BenchmarkDoc{Slug: slug, Name: "LLM Stats TrueSkill " + ranking.Category, Dimension: "other", Unit: "points", HigherIsBetter: &yes, SourceURL: "https://llm-stats.com"})
+		for _, entry := range ranking.Models {
+			model, ok := modelSlugs[entry.ModelID]
+			if !ok {
+				continue
+			}
+			raw, _, ok := scaled(&entry.Rating, money.MilliScale)
+			if !ok {
+				continue
+			}
+			doc.Results = append(doc.Results, catalog.ResultDoc{Model: model, Benchmark: slug, Value: raw, PublishedAt: ranking.RankedAt, SourceURL: httpsURL(entry.URL, "https://llm-stats.com")})
+		}
+	}
 	benchSlugs := map[string]string{}
 	benchDocs := map[string]catalog.BenchmarkDoc{}
 	unmapped := map[string]bool{}

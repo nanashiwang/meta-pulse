@@ -1364,4 +1364,6 @@ forum 编入独立 `metar_turnstile` Captcha 插件，复用 Answer 注册 API�
 
 ## 模型情报原始评分（2026-11-10）
 
-Intel 的来源观测为评分事实，快照仅用于查询。当前 `source-v2` 读取 LLM Stats `top_scores`，不再从评测做 min-max 或加权合成；无 overall 就无综合分。单项原始 score 使用 raw- 标识追加，不改写旧百分比观测。API、worker 与离线重算统一使用新版本，不回退历史 v1。独立服务边界不变，详见 [模型情报](MODEL_INTEL.md)。
+Intel 的来源观测为评分事实，快照仅用于查询。当前 `source-v3` 读取 LLM Stats `/v1/rankings` 的 `conservative_rating`，不再从评测做 min-max 或加权合成；general 对应综合分，agents 对应 Agent，每分类最多 50 名。单项原始 score 使用 raw- 标识追加，不改写旧百分比观测。API、worker 与离线重算统一使用新版本，不回退历史 v1。独立服务边界不变，详见 [模型情报](MODEL_INTEL.md)。
+
+2026-11-10 生产修复：分类 general/reasoning/code/agents 经真实 API 验证，直接采用 conservative_rating；top_scores 不再用于评分。升级缺少 source-v3 快照时先同步，随后只读取最新排名批次；榜单展示 API 前 50 名限制。

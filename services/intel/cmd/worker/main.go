@@ -119,6 +119,9 @@ func (w *worker) syncLLMStats(ctx context.Context, forced bool) bool {
 		}
 		return false
 	}
+	if _, err := w.store.LatestSnapshot(ctx, score.Source.Version); errors.Is(err, service.ErrNoSnapshot) {
+		forced = true
+	}
 	if !forced {
 		if last, ok, err := w.store.LastImportAt(ctx, llmstats.SourceSlug); err != nil || (ok && time.Since(last) < w.cfg.LLMStatsSyncInterval) {
 			return false

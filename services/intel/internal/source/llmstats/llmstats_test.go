@@ -3,6 +3,7 @@ package llmstats
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -37,6 +38,9 @@ func fixtureServer(t *testing.T, status map[string]int) (*httptest.Server, *int3
 		}
 		file := ""
 		switch r.URL.Path {
+		case "/stats/v1/rankings":
+			fmt.Fprintf(w, `{"category":%q,"ranked_at":"2026-11-08T00:00:00Z","models":[{"model_id":"example-lab/Alpha Pro 2","conservative_rating":59.9,"score":119,"url":"https://llm-stats.com/models/alpha"}]}`, r.URL.Query().Get("category"))
+			return
 		case "/stats/v1/models":
 			if r.URL.Query().Get("limit") != "200" {
 				t.Errorf("models limit %q", r.URL.Query().Get("limit"))
@@ -80,7 +84,7 @@ func TestFetchPaginatesAndRetries429(t *testing.T) {
 	if len(ds.Models) != 3 || len(ds.Benchmarks) != 4 || len(ds.Scores) != 7 {
 		t.Fatalf("got %d models %d benchmarks %d scores", len(ds.Models), len(ds.Benchmarks), len(ds.Scores))
 	}
-	if c.Requests != 5 {
+	if c.Requests != 9 {
 		t.Fatalf("requests %d, want 2 model pages + 429 retry + benchmarks + scores", c.Requests)
 	}
 }
@@ -209,7 +213,7 @@ func TestTopScoresAreImportedWithoutScalingAgainstPeers(t *testing.T) {
 	}
 	found := false
 	for _, r := range b.Results {
-		if r.Benchmark == "llmstats-rating-overall" {
+		if r.Benchmark == "llmstats-ranking-overall" {
 			found = true
 			if r.Value != 59900 {
 				t.Fatal(r.Value)
