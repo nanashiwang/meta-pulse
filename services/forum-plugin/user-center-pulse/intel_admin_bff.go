@@ -156,12 +156,23 @@ func (uc *UserCenter) intelAdminHandler(op intelAdminOperation, session func(*gi
 				communityError(c, http.StatusServiceUnavailable, "intel_unavailable")
 				return
 			}
-			c.Data(status, "application/json; charset=utf-8", data)
+			writeIntelJSON(c, status, data)
 		case http.StatusUnprocessableEntity, http.StatusConflict, http.StatusBadRequest:
 			intelAdminUpstreamError(c, status, data)
 		default:
 			communityError(c, http.StatusServiceUnavailable, "intel_unavailable")
 		}
+	}
+}
+
+// Avoid Gin Data: it sets the original Content-Length after Answer Brotli clears it.
+// Let the response writer frame the compressed bytes actually sent.
+func writeIntelJSON(c *gin.Context, status int, data []byte) {
+	c.Header("Content-Type", "application/json; charset=utf-8")
+	c.Status(status)
+	if _, err := c.Writer.Write(data); err != nil {
+		_ = c.Error(err)
+		c.Abort()
 	}
 }
 
