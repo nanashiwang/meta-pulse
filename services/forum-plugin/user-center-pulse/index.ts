@@ -5,6 +5,8 @@ import ImageImportEditor from './image-import-editor';
 import './drafts-store.js';
 import './avatar-cropper.js';
 import './avatar-cropper.css';
+import { installRanking } from './ranking.js';
+import './ranking.css';
 import storageExpires from '@/utils/storageWithExpires';
 import './growth-presentation.js';
 import i18n from '@/i18n/init';
@@ -22,6 +24,16 @@ import { installLocalRegistration } from './local-registration';
 import './theme-tokens.css';
 import './native-shell.css';
 import { installAccountMenu } from './account-menu';
+
+installRanking({
+  getUser: () => loggedUserInfoStore.getState().user,
+  getLanguage: () => i18n.language,
+  subscribeUser: (handler) => loggedUserInfoStore.subscribe(handler),
+  onLanguageChanged: (handler) => {
+    i18n.on('languageChanged', handler);
+    return () => i18n.off('languageChanged', handler);
+  },
+});
 
 installAccountMenu({
   getUser: () => loggedUserInfoStore.getState().user,

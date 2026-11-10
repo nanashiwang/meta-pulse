@@ -1,0 +1,34 @@
+[data-metar-ranking-original] { display: none !important; }
+.answer-container.main-mx-with.metar-ranking-container { width:100%; max-width:none; margin-left:0; margin-right:0; padding-left:24px; padding-right:24px; }
+.metar-ranking-main { max-width:1120px; }
+@media(max-width:767px) { .answer-container.main-mx-with.metar-ranking-container { padding-left:12px; padding-right:12px; } }
+.metar-ranking { display:grid; grid-template-columns:230px minmax(0,1fr); gap:40px; padding:36px 12px 120px; color:var(--bs-body-color,#22352a); }
+.metar-ranking-main { min-width:0; }
+.metar-ranking h1 { font-size:clamp(24px,3vw,34px); font-weight:650; margin:8px 0 16px; }
+.metar-ranking-eyebrow { color:var(--bs-secondary-color,#68746b); font-size:13px; letter-spacing:.08em; }
+.metar-ranking-note,.metar-ranking-staff p { color:var(--bs-secondary-color,#68746b); font-size:13px; line-height:1.8; }
+.metar-ranking-staff { border-right:1px solid var(--bs-border-color,#dce3d8); padding-right:24px; }
+.metar-ranking-staff h2 { font-size:16px; margin:0 0 12px; }
+.metar-ranking-staff .metar-ranking-person { margin:20px 0; }
+.metar-ranking-person { display:flex; gap:12px; align-items:center; color:inherit; text-decoration:none; min-width:0; }
+.metar-ranking-person span:last-child { overflow-wrap:anywhere; }
+.metar-ranking-person img,.metar-ranking-avatar { width:36px; height:36px; flex-shrink:0; border-radius:50%; object-fit:cover; }
+.metar-ranking-avatar { display:grid; place-items:center; background:var(--bs-tertiary-bg,#e9eee7); font-size:14px; }
+.metar-ranking-own { padding:16px 18px; margin:24px 0 12px; border-left:3px solid #63836b; background:var(--bs-tertiary-bg,#f0f4ee); font-size:14px; }
+.metar-ranking-table { width:100%; border-collapse:collapse; }
+.metar-ranking-table th { color:var(--bs-secondary-color,#68746b); font-size:12px; font-weight:500; }
+.metar-ranking-table td,.metar-ranking-table th { padding:16px 10px; border-bottom:1px solid var(--bs-border-color,#dce3d8); }
+.metar-ranking-table th:first-child { width:64px; }
+.metar-ranking-table th:last-child,.metar-ranking-growth { text-align:right; white-space:nowrap; }
+.metar-ranking-growth { font-variant-numeric:tabular-nums; font-weight:600; }
+.metar-ranking-position { color:var(--bs-secondary-color,#68746b); font-variant-numeric:tabular-nums; }
+.metar-ranking-pagination { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-top:24px; font-size:13px; }
+.metar-ranking button,.metar-ranking select { border:1px solid var(--bs-border-color,#dce3d8); border-radius:6px; padding:6px 10px; background:var(--bs-body-bg,#fff); color:inherit; }
+.metar-ranking button:disabled { opacity:.4; }
+#header .metar-ranking-link { flex-shrink:0; }
+@media(max-width:767px) {
+  .metar-ranking { grid-template-columns:minmax(0,1fr); gap:24px; padding:24px 4px 140px; }
+  .metar-ranking-staff { border-right:0; border-bottom:1px solid var(--bs-border-color,#dce3d8); padding:0 0 12px; }
+  .metar-ranking-staff .metar-ranking-person { display:inline-flex; margin:8px 20px 8px 0; }
+  .metar-ranking-table td,.metar-ranking-table th { padding:14px 6px; }
+}

@@ -29,6 +29,7 @@
   function install(host) {
     if (host.__metarSidebar) return host.__metarSidebar;
     const doc = host.document, root = doc.documentElement;
+    root.classList.toggle('pulse-no-sidebar', host.location.pathname.replace(/\/$/, '') === '/pulse');
     let storage;
     try { storage = host.localStorage; } catch (_) {}
     const label = (expanded) => root.lang?.startsWith('en')

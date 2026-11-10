@@ -16,7 +16,7 @@ function browser(url) {
 
 test('旧分享链接只替换当前历史项，并保留筛选、分页和编码后的搜索词', () => {
   for (const [old, expected] of [
-    ['/discover', '/latest'], ['/questions?order=unanswered&page=2', '/latest?order=unanswered&page=2'],
+    ['/discover', '/questions'], ['/questions?order=unanswered&page=2', '/questions?order=unanswered&page=2'],
     ['/topics', '/topics'], ['/question/42', '/question/42'], ['/topic/AI%20tools', '/topic/AI%20tools'],
     ['/bookmarks', '/me/bookmarks'], ['/notifications', '/me/notifications'],
     ['/admin/pulse', '/admin/pulse'], ['/search?q=a%23b%26c', '/search?q=a%23b%26c'],
@@ -37,7 +37,7 @@ test('普通路径可直接读取，尾斜杠规范化，锚点不作为页面�
   assert.equal(router.route().path, '/latest');
   assert.equal(router.route().query.get('order'), 'hot');
   assert.equal(host.location.hash, '#main');
-  assert.equal(create(browser('https://metarhub.com/')).route().path, '/latest');
+  assert.equal(create(browser('https://metarhub.com/')).route().path, '/questions');
 });
 
 test('路由拒绝外站、回调、发帖、账号接口和伪造的旧 hash 路径', () => {
@@ -80,6 +80,18 @@ test('Nginx 深链接范围与浏览器一致，Answer 原生路径不被静态�
     assert.equal(gateway.test(route), false, route);
     assert.equal(owns(route), false, route);
   }
+});
+
+test('社区入口交接到原生 questions，保留查询和锚点且不形成桥接循环', () => {
+  const { href, nativeDestination } = require('../src/router.js');
+  const policy = require('../src/route-policy.js');
+  for (const entry of ['/', '/latest', '/latest/', '/discover']) {
+    assert.equal(nativeDestination(new URL(entry + '?order=hot&page=2#main', 'https://metarhub.com')), '/questions?order=hot&page=2#main');
+    assert.equal(policy.target(entry + '?order=hot&page=2#main', 'https://metarhub.com'), '/questions?order=hot&page=2#main');
+  }
+  assert.equal(href('/latest?order=unanswered'), '/questions?order=unanswered');
+  assert.equal(href('/questions'), '/questions');
+  assert.equal(policy.target('/questions', 'https://metarhub.com'), null);
 });
 
 test('旧详情和通知进入唯一原生目标，查询参数与回答评论锚点保留且不接管账号回调', () => {

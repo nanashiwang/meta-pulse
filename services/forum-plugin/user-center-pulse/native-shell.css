@@ -77,7 +77,20 @@ html.metar-native[data-theme="dark"] { --bs-body-color-rgb: 230, 236, 228; color
 .metar-native .metar-language-switcher option { color: var(--metar-text); background: var(--metar-surface); }
 .metar-native .metar-theme-toggle { border: 0; background: none; color: var(--metar-muted); width: 32px; height: 36px; padding: 0; font-size: 24px; flex: 0 0 32px; order: 3; border-radius: 6px; }
 .metar-native :is(a, button, select):focus-visible { outline: 2px solid var(--metar-primary); outline-offset: 3px; }
-.metar-native #pcSideNav { width: 208px; top: var(--metar-header-height, 64px) !important; height: calc(100vh - var(--metar-header-height, 64px)); }
+/* Remove the legacy left rail everywhere; admin keeps its own #adminSideNav. */
+.metar-native #pcSideNav,
+.metar-native .answer-navBar.navbar-toggler,
+.metar-native .mobile-menu,
+.metar-native .offcanvas:has(#sideNav) { display: none !important; }
+.metar-native #header a[href="/questions/add"],
+.metar-native #header a[href="/questions/ask"],
+.metar-native .topbar a[href="/publish"] { display: none !important; }
+.metar-native #header .nav-item:has(a[href="/questions/add"]) { display: none !important; }
+.metar-native #header .metar-account-actions { display: contents; }
+.metar-native #header .metar-language-switcher { order: 30; }
+.metar-native #header .metar-theme-toggle { order: 40; }
+.metar-native #header .metar-account-actions > .dropdown:has(#dropdown-basic) { order: 50; }
+.metar-native #header .metar-account-actions > .dropdown:has(#dropdown-uca) { display: none !important; }
 .metar-native #sideNav .nav-link { color: var(--metar-muted); padding: 9px 12px; font-size: 14px; border-radius: 6px; }
 .metar-native #sideNav .nav-link.active { color: var(--metar-primary); background: var(--metar-tint); }
 .metar-native #sideNav .nav-link:hover { color: var(--metar-primary); background: var(--metar-hover); }

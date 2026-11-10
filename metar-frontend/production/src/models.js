@@ -211,7 +211,7 @@
           <section class="intel-main"><div class="intel-section-head"><h2>${t('综合榜', 'Overall ranking')}</h2></div>${board}</section>
           <aside class="intel-side">
             <section class="card card-pad"><h2>${t('综合分说明', 'About the score')}</h2><p class="muted">${t('直接展示来源原始评分，价格与速度单独展示。', 'Original source scores. Price and speed are shown separately.')}</p></section>
-            <section class="card card-pad"><h2>${t('一起讨论', 'Discuss')}</h2><p class="muted">${t('对排名或数据有疑问？在社区发帖讨论或指出错误。', 'Questions about a ranking or a number? Start a discussion or report an error.')}</p><div class="intel-side-actions mt16">${link('/publish', t('发起讨论', 'Start a discussion'), 'btn primary small')}${link('/latest', t('社区讨论', 'Community'), 'btn small')}</div></section>
+            <section class="card card-pad"><h2>${t('一起讨论', 'Discuss')}</h2><p class="muted">${t('对排名或数据有疑问？在社区发帖讨论或指出错误。', 'Questions about a ranking or a number? Start a discussion or report an error.')}</p><div class="intel-side-actions mt16">${link('/publish', t('发起讨论', 'Start a discussion'), 'btn primary small')}${link('/questions', t('社区讨论', 'Community'), 'btn small')}</div></section>
           </aside>
         </div>
         ${faq(h)}`;

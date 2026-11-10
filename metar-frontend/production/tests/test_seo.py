@@ -21,12 +21,13 @@ class SearchAssetsTest(unittest.TestCase):
             self.assertIn('href="/blog/guides/"', homepage)
             self.assertEqual(1, homepage.count('rel="canonical"'))
             self.assertIn('href="https://metarhub.com/"', homepage)
-            # Initial HTML must not declare page 1 canonical for later pages.
-            self.assertNotIn('rel="canonical"', (output / 'seo/latest.html').read_text())
+            self.assertFalse((output / 'seo/latest.html').exists())
+            self.assertIn('href="https://metarhub.com/questions"', (output / 'seo/questions.html').read_text())
             self.assertNotIn('rel="canonical"', (output / 'shell.html').read_text())
             entries = ET.parse(output / 'sitemap-site.xml').findall('.//{*}loc')
             urls = [entry.text for entry in entries]
-            self.assertIn('https://metarhub.com/', urls)
+            self.assertNotIn('https://metarhub.com/', urls)
+            self.assertNotIn('https://metarhub.com/latest', urls)
             self.assertIn('https://metarhub.com/questions', urls)
             self.assertEqual(len(urls), len(set(urls)))
             for url in urls:

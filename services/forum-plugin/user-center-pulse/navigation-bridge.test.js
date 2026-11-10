@@ -39,7 +39,7 @@ test('资料页回首页完整加载 METAR，保留 Answer 已提交的历史和
   assert.equal(host.history.pushState(state, '', '/?order=hot&page=2#main'), 'native-result');
   assert.deepEqual(host.loads, []);
   host.flush();
-  assert.deepEqual(host.loads, ['/latest?order=hot&page=2#main']);
+  assert.deepEqual(host.loads, ['/questions?order=hot&page=2#main']);
   assert.equal(host.entries[0].state, state);
   assert.equal(host.entries.length, 1);
 });

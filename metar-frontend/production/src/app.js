@@ -97,7 +97,7 @@
   function presentedRoute() {
     if (!pendingListTransition) return route();
     const url = new URL(pendingListTransition.source, location.origin);
-    return {path:url.pathname === '/' ? '/latest' : url.pathname, query:url.searchParams};
+    return {path:url.pathname === '/' ? '/questions' : url.pathname, query:url.searchParams};
   }
   let extrasUpdatedAt = 0;
 
@@ -160,7 +160,7 @@
   router.migrate();
   const route = router.route;
   const link = (path, label, className = '') => `<a href="${esc(window.MetarRouter.href(path))}" data-router class="${esc(className)}">${label}</a>`;
-  const external = (path, label, className = '') => `<a href="${esc(path)}" class="${esc(className)}">${label}</a>`;
+  const external = (path, label, className = '', attributes = '') => `<a href="${esc(path)}" class="${esc(className)}"${attributes}>${label}</a>`;
   const outbound = (url, label, className = '') => url ? `<a href="${esc(url)}" class="${esc(className)}" target="_blank" rel="noopener noreferrer">${label}</a>` : '';
   const badge = (label, className = '') => `<span class="badge ${className}">${label}</span>`;
   const pageTitle = title => `<h1 class="visually-hidden">${esc(title)}</h1>`;
@@ -221,11 +221,39 @@
     if (path.startsWith('/model/')) return t('模型详情');
     if (path.startsWith('/question/')) return t("问题详情");
     if (path.startsWith('/topic/')) return t("话题");
-    return ({ '/me/drafts': t('我的草稿'), '/events': t('近期活动'), '/admin/operations': t('社区经营'), '/admin/events': t('活动管理'), '/chat': t('聊天'), '/admin/chat': t('聊天举报'), '/latest': t("最新话题"), '/topics': t("类别与标签"), '/admin/taxonomy': t('类别管理'), '/knowledge': t("知识库"), '/search': t("搜索"), '/models': t('模型评分榜'), '/models/leaderboard': t('模型评分榜'), '/admin/models': t('模型榜管理'), '/tools': t('工具'), '/tools/network': t('Claude 访问环境检测'), '/marketplace': t('Vibe Coding 集市'), '/marketplace/mine': t('我的集市发布'), '/marketplace/publish': t('发布到集市'), '/admin/marketplace': t('集市审核'), '/me': t("个人空间"), '/me/bookmarks': t("我的收藏"), '/me/growth': t('社区成长'), '/me/notifications': t("通知中心"), '/settings/binding': t("账号绑定"), '/pulse': t("Pulse 权益"), '/admin/pulse': t("Pulse 配置"), '/publish': t("发布内容"), '/login': t("登录"), '/register': t("注册"), '/forgot': t("找回密码"), '/status': t("服务状态"), '/support': t("帮助中心"), '/guidelines': t("社区规范"), '/tos': t("服务条款"), '/privacy': t("隐私政策") })[path] || t("METAR 社区");
+    return ({ '/me/drafts': t('我的草稿'), '/events': t('近期活动'), '/admin/operations': t('社区经营'), '/admin/events': t('活动管理'), '/chat': t('聊天'), '/admin/chat': t('聊天举报'), '/questions': t("最新话题"), '/topics': t("类别与标签"), '/admin/taxonomy': t('类别管理'), '/knowledge': t("知识库"), '/search': t("搜索"), '/models': t('AI 模型榜单'), '/models/leaderboard': t('完整模型榜单'), '/admin/models': t('模型榜管理'), '/tools': t('工具'), '/tools/network': t('Claude 访问环境检测'), '/marketplace': t('Vibe Coding 集市'), '/marketplace/mine': t('我的集市发布'), '/marketplace/publish': t('发布到集市'), '/admin/marketplace': t('集市审核'), '/me': t("个人空间"), '/me/bookmarks': t("我的收藏"), '/me/growth': t('社区成长'), '/me/notifications': t("通知中心"), '/settings/binding': t("账号绑定"), '/pulse': t("Pulse 权益"), '/admin/pulse': t("Pulse 配置"), '/publish': t("发布内容"), '/login': t("登录"), '/register': t("注册"), '/forgot': t("找回密码"), '/status': t("服务状态"), '/support': t("帮助中心"), '/guidelines': t("社区规范"), '/tos': t("服务条款"), '/privacy': t("隐私政策") })[path] || t("METAR 社区");
   }
 
   function languageControl() {
     return `<span class="icon-btn language-control" title="${t('界面语言')}">${I('language')}<select class="language-select" data-action="language" aria-label="${t('界面语言')}"><option value="zh_CN"${getLanguage() === 'zh_CN' ? ' selected' : ''}>中文</option><option value="en_US"${getLanguage() === 'en_US' ? ' selected' : ''}>English</option></select></span>`;
+  }
+
+  function accountManagement(item) {
+    if (currentUserState !== 'ready' || !isCommunityAdministrator(currentUser)) return '';
+    return `<div class="account-menu-group"><div class="account-menu-label">${t('管理')}</div>${item('/admin/pulse', t('Pulse 配置'), 'settings')}${item('/admin/growth', t('成长管理'), 'target')}${item('/admin/taxonomy', t('类别管理'), 'flag')}${item('/admin/marketplace', t('集市审核'), 'code')}${item('/admin/models', t('模型榜管理'), 'target')}${item('/admin/chat', t('聊天举报'), 'chat')}${item('/admin/events', t('活动管理'), 'calendar')}${item('/admin/operations', t('社区经营'), 'target')}${external('/admin/dashboard', I('shield') + `<span>${t('社区管理')}</span>`, 'account-menu-link')}${external('/admin/pulse_user_center', I('link') + `<span>${t('社区连接配置')}</span>`, 'account-menu-link')}</div>`;
+  }
+
+  function personalSidebar() {
+    if (route().path !== '/me' || currentUserState !== 'ready' || !currentUser) return '';
+    const item = (url, label, icon) => link(url, I(icon) + label, 'account-menu-link');
+    const consoleBase = config.consoleUrl?.replace(/\/$/, '').replace(/\/console$/, '');
+    return `<aside class="personal-sidebar" aria-label="${t('我的空间')}"><div class="personal-side-title">${t('我的空间')}</div>${link('/me', t('个人空间'), 'personal-side-link active')}${external('/badges', getLanguage() === 'en_US' ? 'Badges' : '勋章', 'personal-side-link')}${external(config.answerSettingsPath, t('编辑资料'), 'personal-side-link')}${accountManagement(item)}${consoleBase ? `<div class="personal-console-group">${outbound(consoleBase + '/console/pulse', getLanguage() === 'en_US' ? 'Check-in & draw' : '签到抽奖', 'personal-side-link')}${outbound(consoleBase + '/console', t('元衡API'), 'personal-side-link')}</div>` : ''}</aside>`;
+  }
+
+  function syncPersonalNavigation() {
+    document.querySelector('.personal-sidebar')?.remove();
+    const sidebar = personalSidebar();
+    document.documentElement.classList.toggle('has-personal-sidebar', !!sidebar);
+    if (sidebar) document.getElementById('main')?.insertAdjacentHTML('beforebegin', sidebar);
+    const back = document.querySelector('[data-action="back"]');
+    if (back) back.hidden = /^\/questions\/?$/.test(route().path);
+  }
+
+  function goBack() {
+    const path = route().path;
+    if (/^\/users\/settings(?:\/|$)/.test(path) || /^\/settings\/binding\/?$/.test(path)) { router.go('/me'); navigate(); }
+    else if (history.length > 1) history.back();
+    else { router.go('/questions'); navigate(); }
   }
 
   function accountMenu() {
@@ -234,7 +262,7 @@
     return `<details class="account-menu"><summary class="icon-btn" aria-label="${t('账号菜单')}">${avatar(currentUser)}</summary><nav class="account-menu-panel" aria-label="${t('账号菜单')}">
       <div class="account-menu-profile">${avatar(currentUser)}<div><strong>${esc(displayName(currentUser))}</strong><span class="account-menu-level" data-account-level></span></div></div>
       <div class="account-menu-group"><div class="account-menu-label">${t("我的空间")}</div>${item('/chat', t('聊天'), 'chat')}${item('/me', t("个人空间"), 'user')}${item('/marketplace/mine', t('我的集市发布'), 'code')}${item('/me/growth', t('社区成长'), 'target')}${item('/me/bookmarks', t("我的收藏"), 'bookmark')}${item('/settings/binding', t("账号绑定"), 'link')}${external(config.answerSettingsPath, I('settings') + `<span>${t("账号设置")}</span>`, 'account-menu-link')}</div>
-      ${currentUserState === 'ready' && isCommunityAdministrator(currentUser) ? `<div class="account-menu-group"><div class="account-menu-label">${t('管理')}</div>${item('/admin/pulse', t('Pulse 配置'), 'settings')}${item('/admin/growth', t('成长管理'), 'target')}${item('/admin/taxonomy', t('类别管理'), 'flag')}${item('/admin/marketplace', t('集市审核'), 'code')}${item('/admin/models', t('模型榜管理'), 'target')}${item('/admin/chat', t('聊天举报'), 'chat')}${item('/admin/events', t('活动管理'), 'calendar')}${item('/admin/operations', t('社区经营'), 'target')}${external('/admin/dashboard', I('shield') + `<span>${t('社区管理')}</span>`, 'account-menu-link')}${external('/admin/pulse_user_center', I('link') + `<span>${t('社区连接配置')}</span>`, 'account-menu-link')}</div>` : ''}
+      ${accountManagement(item)}
       <div class="account-menu-group">${external('/users/logout', I('external') + `<span>${t('退出登录')}</span>`, 'account-menu-link')}</div>
     </nav></details>`;
   }
@@ -246,11 +274,11 @@
     const activeUser = logged && isActiveUser(currentUser);
     const active = (prefix) => path === prefix || path.startsWith(`${prefix}/`);
     return `<header class="topbar">
-      <button class="icon-btn mobile-menu" type="button" data-action="menu" aria-label="${t("打开导航")}" aria-controls="community-sidebar" aria-expanded="false">${I('menu')}</button>
-      ${link('/latest', LOGO + `<span class="brand-word" aria-hidden="true">${esc(config.siteName.toLowerCase())}</span>`, 'brand')}
-      <nav class="topnav" aria-label="${t("主导航")}">${link('/latest', t("社区"), active('/latest') || active('/question') || active('/topic') || active('/topics') ? 'active' : '')}${link('/marketplace', t('集市'), active('/marketplace') ? 'active' : '')}${link('/models', t('模型榜'), active('/models') || active('/model') ? 'active' : '')}${link('/pulse', 'Pulse', active('/pulse') ? 'active' : '')}${toolsMenu(active('/tools'))}</nav>
+      <button type="button" class="page-back" data-action="back" aria-label="${getLanguage() === 'en_US' ? 'Go back' : '返回上一页'}"${path === '/questions' ? ' hidden' : ''}>← ${getLanguage() === 'en_US' ? 'Back' : '返回'}</button>
+      ${link('/questions', LOGO + `<span class="brand-word" aria-hidden="true">${esc(config.siteName.toLowerCase())}</span>`, 'brand')}
+      <nav class="topnav" aria-label="${t("主导航")}">${link('/questions', t("社区"), active('/questions') || active('/question') || active('/topic') || active('/topics') ? 'active' : '')}${link('/marketplace', t('集市'), active('/marketplace') ? 'active' : '')}${link('/models', t('模型榜'), active('/models') || active('/model') ? 'active' : '')}${link('/pulse', 'Pulse', active('/pulse') ? 'active' : '')}${toolsMenu(active('/tools'))}</nav>
       <form class="searchbox" data-form="search" role="search">${I('search')}<input type="search" name="q" aria-label="${t("搜索社区")}" placeholder="${t("搜索真实问题与回答…")}" value="${path === '/search' ? esc(route().query.get('q') || '') : ''}" autocomplete="off"><kbd>⌘ K</kbd></form>
-      <div class="header-actions">${languageControl()}<button type="button" class="icon-btn theme-btn" data-action="theme" aria-label="${document.documentElement.dataset.theme === 'dark' ? t("切换到浅色主题") : t("切换到深色主题")}">${I(document.documentElement.dataset.theme === 'dark' ? 'sun' : 'moon')}</button>${currentUserState === 'loading' ? `<span class="identity-loading" role="status">${t("正在确认身份…")}</span>` : identityUnavailableState ? link('/me', I('server', 'sm') + `<span>${t("身份服务暂不可用")}</span>`, 'btn ghost identity-status') : logged ? (activeUser ? external('/users/notifications/inbox', I('bell') + `<span class="visually-hidden">${t("通知中心")}</span><span class="account-unread-dot" data-account-unread hidden></span>`, 'icon-btn account-notifications') + `<a href="${esc(window.MetarRouter.href('/chat'))}" data-router class="icon-btn header-chat" title="${t('聊天')}">${I('chat')}<span class="visually-hidden">${t('聊天')}</span><span class="chat-unread" data-chat-unread hidden></span></a>` : external('/users/login?status=inactive', t("激活账号"), 'btn primary')) + accountMenu() : external(config.answerLoginPath, t("登录"), 'btn ghost') + external(config.answerRegisterPath, t("加入社区"), 'btn primary guest-register')}</div>
+      <div class="header-actions">${activeUser ? external('/users', I(ICONS.barChart ? 'barChart' : 'target') + `<span class="visually-hidden">${t('排行榜')}</span>`, 'icon-btn header-ranking', ` aria-label="${t('排行榜')}" title="${t('排行榜')}"`) : ''}${languageControl()}<button type="button" class="icon-btn theme-btn" data-action="theme" aria-label="${document.documentElement.dataset.theme === 'dark' ? t("切换到浅色主题") : t("切换到深色主题")}">${I(document.documentElement.dataset.theme === 'dark' ? 'sun' : 'moon')}</button>${currentUserState === 'loading' ? `<span class="identity-loading" role="status">${t("正在确认身份…")}</span>` : identityUnavailableState ? link('/me', I('server', 'sm') + `<span>${t("身份服务暂不可用")}</span>`, 'btn ghost identity-status') : logged ? (activeUser ? external('/users/notifications/inbox', I('bell') + `<span class="visually-hidden">${t("通知中心")}</span><span class="account-unread-dot" data-account-unread hidden></span>`, 'icon-btn account-notifications') + external('/users/notifications/achievement', I('trophy') + `<span class="visually-hidden">${getLanguage() === 'en_US' ? 'Achievements' : '成就'}</span>`, 'icon-btn account-achievements') + (isCommunityAdministrator(currentUser) ? external('/review', I('shield') + `<span class="visually-hidden">${getLanguage() === 'en_US' ? 'Review' : '审查'}</span>`, 'icon-btn account-review') : '') + `<a href="${esc(window.MetarRouter.href('/chat'))}" data-router class="icon-btn header-chat" title="${t('聊天')}">${I('chat')}<span class="visually-hidden">${t('聊天')}</span><span class="chat-unread" data-chat-unread hidden></span></a>` : external('/users/login?status=inactive', t("激活账号"), 'btn primary')) + accountMenu() : external(config.answerLoginPath, t("登录"), 'btn ghost') + external(config.answerRegisterPath, t("加入社区"), 'btn primary guest-register')}</div>
     </header>`;
   }
 
@@ -273,29 +301,20 @@
     return `<details class="topnav-menu${isActive ? ' active' : ''}"><summary>${t('工具')}</summary><div class="topnav-menu-panel" role="group" aria-label="${t('工具')}">${link('/tools', t('全部工具'), 'topnav-menu-link')}${items}</div></details>`;
   }
 
-  function sidebar() {
-    const { path, query } = route();
-    const item = (url, label, icon) => link(url, I(icon) + `<span>${esc(label)}</span>`, `nav-item ${routeMatchesNavigation(path, query.toString(), url) ? 'active' : ''}`);
-    return `<aside class="sidebar" id="community-sidebar" aria-label="${t("社区导航")}">
-      <div class="nav-group"><div class="nav-label">${t("社区")}</div>${item('/latest', t("全部讨论"), 'chat')}${item('/me/drafts', t('我的草稿'), 'edit')}${link('/chat', I('inbox') + `<span>${t('我的消息')}</span><span class="member-unread" data-chat-unread hidden></span>`, 'nav-item')}${item('/events', t('近期活动'), 'calendar')}${item('/latest?order=unanswered', t("待回答"), 'target')}</div>
-      <div data-taxonomy-navigation>${taxonomy.navigation(null, '', taxonomyCollapsed)}</div>
-      <div class="side-bottom">${item('/tools', t('工具'), 'server')}${item('/pulse', t("Pulse 权益"), 'pulse')}<div class="side-footer">${link('/guidelines', t("社区规范"))}${external('/sitemap.xml', t("站点地图"))}</div></div>
-    </aside>`;
-  }
-
   function mobileBottom() {
     const { path, query } = route();
-    return `<nav class="mobile-bottom" aria-label="${t("移动端主导航")}">${[['/latest', t("话题"), 'chat'], ['/topics', t("类别"), 'flag'], ['/pulse', 'Pulse', 'pulse'], ['/me', t("我的"), 'user']].map(([url, label, icon]) => link(url, I(icon) + label, routeMatchesNavigation(path, query.toString(), url) ? 'active' : '')).join('')}</nav>`;
+    return `<nav class="mobile-bottom" aria-label="${t("移动端主导航")}">${[['/questions', t("话题"), 'chat'], ['/topics', t("类别"), 'flag'], ['/pulse', 'Pulse', 'pulse'], ['/me', t("我的"), 'user']].map(([url, label, icon]) => link(url, I(icon) + label, routeMatchesNavigation(path, query.toString(), url) ? 'active' : '')).join('')}</nav>`;
   }
 
   function syncNavigation() {
+    syncPersonalNavigation();
     window.MetarSidebar?.sync();
     const {path, query} = presentedRoute();
     for (const node of document.querySelectorAll('.sidebar a[data-router], .mobile-bottom a[data-router], .account-menu a[data-router], .topnav a[data-router]')) {
       const href = node.getAttribute('href');
       const active = node.dataset.taxonomyDirectory
         ? path === '/topics' && (query.get('view') === 'tags' ? 'tags' : 'categories') === node.dataset.taxonomyDirectory
-        : node.closest('.topnav') && href === '/latest'
+        : node.closest('.topnav') && href === '/questions'
         ? /^\/(?:latest|topics?|question)(?:\/|$)/.test(path)
         : routeMatchesNavigation(path, query.toString(), href);
       node.classList.toggle('active', active);
@@ -329,7 +348,7 @@
   function renderShell({retain = false} = {}) {
     syncDocument();
     if (!shellReady || shellLanguage !== getLanguage()) {
-      app.innerHTML = `${topbar()}${sidebar()}<main class="page" id="main" tabindex="-1"><div class="page-inner" id="view">${loading()}</div></main>${mobileBottom()}`;
+      app.innerHTML = `${topbar()}<main class="page" id="main" tabindex="-1"><div class="page-inner" id="view">${loading()}</div></main>${mobileBottom()}`;
       shellReady = true; shellLanguage = getLanguage();
       extrasUpdatedAt = 0;
       refreshAccountExtras();
@@ -478,7 +497,7 @@
     const filter = `<div class="taxonomy-filter" data-taxonomy-filter>${catalog ? taxonomy.filters(catalog, tag) : link('/topics', t('类别'), 'btn small') + link('/topics?view=tags', t('标签'), 'btn small') + (tag ? `<span class="badge prod-current-tag">${esc(tag)}</span>` : '')}</div>`;
     const list = Array.isArray(result?.list) ? result.list : [];
     const total = Number(result?.count) || 0;
-    const base = tag ? `/topic/${encodeURIComponent(tag)}` : '/latest';
+    const base = tag ? `/topic/${encodeURIComponent(tag)}` : '/questions';
     const title = tag || t("最新话题");
     const askPath = tag ? taxonomy.askURL(config.answerAskPath, tag) : config.answerAskPath;
     const tabs = Object.entries(orders).map(([value, label]) => link(`${base}?order=${value}`, `<span${order === value ? ' aria-current="page"' : ''}>${esc(label)}</span>`, `discussion-tab ${order === value ? 'active' : ''}`)).join('');
@@ -514,12 +533,12 @@
   }
 
   function loginRequired(title, description) {
-    return `<section class="card prod-login-card">${I('shield', 'lg')}<h1 class="mt16">${esc(title)}</h1><p>${esc(description)}${t(" 社区账号可独立注册，不要求先绑定元衡 API 账号。")}</p><div class="flex wrap">${external(config.answerLoginPath, t("登录社区账号"), 'btn primary')}${external(config.answerRegisterPath, t("独立注册"), 'btn')}${link('/latest', t("先浏览社区"), 'btn ghost')}</div></section>${footer()}`;
+    return `<section class="card prod-login-card">${I('shield', 'lg')}<h1 class="mt16">${esc(title)}</h1><p>${esc(description)}${t(" 社区账号可独立注册，不要求先绑定元衡 API 账号。")}</p><div class="flex wrap">${external(config.answerLoginPath, t("登录社区账号"), 'btn primary')}${external(config.answerRegisterPath, t("独立注册"), 'btn')}${link('/questions', t("先浏览社区"), 'btn ghost')}</div></section>${footer()}`;
   }
 
   function identityUnavailable(title) {
     const reason = errorMessage(identityError) || t("暂时无法确认当前社区登录状态。");
-    return `<section class="card prod-login-card">${I('server', 'lg')}<h1 class="mt16">${t("身份服务暂不可用")}</h1><p>${esc(reason)}${t(" 这不代表账号已退出，请勿反复登录；仍可继续尝试浏览社区公开内容。")}</p><div class="flex wrap"><button type="button" class="btn primary" data-action="retry-identity">${I('refresh')}${t("重新确认身份")}</button>${link('/latest', t("继续浏览社区"), 'btn ghost')}</div></section>${footer()}`;
+    return `<section class="card prod-login-card">${I('server', 'lg')}<h1 class="mt16">${t("身份服务暂不可用")}</h1><p>${esc(reason)}${t(" 这不代表账号已退出，请勿反复登录；仍可继续尝试浏览社区公开内容。")}</p><div class="flex wrap"><button type="button" class="btn primary" data-action="retry-identity">${I('refresh')}${t("重新确认身份")}</button>${link('/questions', t("继续浏览社区"), 'btn ghost')}</div></section>${footer()}`;
   }
 
   function accountUnavailable(title) {
@@ -527,7 +546,7 @@
     const headingText = inactive ? t("社区账号尚未激活") : t("当前社区账号不可参与操作");
     const description = inactive ? t("请先验证邮箱。可以在登录页面重新发送激活邮件。") : t("请在账号页面查看当前状态，或联系社区管理员。");
     const action = inactive ? external('/users/login?status=inactive', t("重新发送激活邮件"), 'btn primary') : external(config.answerSettingsPath, t("查看账号状态"), 'btn primary');
-    return `<section class="card prod-login-card">${I('shield', 'lg')}<h1 class="mt16">${headingText}</h1><p>${description}</p><div class="flex wrap">${action}${link('/latest', t("继续浏览社区"), 'btn ghost')}</div></section>${footer()}`;
+    return `<section class="card prod-login-card">${I('shield', 'lg')}<h1 class="mt16">${headingText}</h1><p>${description}</p><div class="flex wrap">${action}${link('/questions', t("继续浏览社区"), 'btn ghost')}</div></section>${footer()}`;
   }
 
   async function profilePage() {
@@ -536,7 +555,7 @@
     const username = currentUser.username;
     const [profile, questions, experience] = await Promise.all([answer.getProfile(username), answer.listPersonalQuestions(username), isActiveUser(currentUser) ? growthView().then(view => view.compact()).catch(() => '') : Promise.resolve('')]);
     const list = Array.isArray(questions?.list) ? questions.list : [];
-    return `<div class="content-grid"><div class="stack"><section class="card prod-user-card"><div class="between wrap">${avatar(profile, 'large')}<div class="flex wrap">${external(profileHref(username), t("公开主页"), 'btn')}${external(config.answerSettingsPath, I('settings', 'sm') + t("编辑资料"), 'btn')}</div></div><h1 class="mt16">${esc(displayName(profile))}</h1><p class="muted mt8">@${esc(profile.username || username)}${profile.location ? ` · ${esc(profile.location)}` : ''}</p><p class="mt16">${esc(profile.bio || t("这位成员暂未填写个人简介。"))}</p><div class="profile-numbers"><div><strong>${number(questions?.count)}</strong><span>${t("发布问题")}</span></div><div><strong>${number(profile.answer_count)}</strong><span>${t("参与回答")}</span></div><div><strong>${number(profile.rank)}</strong><span>${t("社区声望")}</span></div></div>${currentUser.mail_status === 2 ? `<div class="prod-status error mt16">${I('shield')}<div><strong>${t("邮箱尚未激活")}</strong><p>${t("请先验证邮箱，或在登录页面重新发送激活邮件。")}</p></div></div>` : ''}</section>${experience}<section class="card prod-feed"><div class="section-heading"><h2>${t("最近发布")}</h2><span class="muted">${t("发布记录")}</span></div>${list.length ? list.map((item) => questionRow({ ...item, user_info: profile })).join('') : empty(t("还没有发布问题"), t("从一个具体、可复现的问题开始。"), external(config.answerAskPath, t("发起问题"), 'btn primary'), 'chat')}</section></div><aside class="stack"><section class="card card-pad"><h3>${t("账号快捷入口")}</h3><ul class="mini-list"><li>${link('/me/bookmarks', `<span>${t("我的收藏")}</span>`)}</li><li>${external('/users/notifications/inbox', `<span>${t("通知中心")}</span>`)}</li><li>${link('/settings/binding', `<span>${t("元衡账号绑定")}</span><small>${t("可选")}</small>`)}</li><li>${link('/pulse', `<span>${t("Pulse 权益")}</span><small>${t("绑定后")}</small>`)}</li><li>${external('/users/logout', `<span>${t("退出登录")}</span>`)}</li></ul></section></aside></div>${footer()}`;
+    return `<div class="content-grid"><div class="stack"><section class="card prod-user-card"><div class="between wrap">${avatar(profile, 'large')}<div class="flex wrap">${external(profileHref(username), t("公开主页"), 'btn')}</div></div><h1 class="mt16">${esc(displayName(profile))}</h1><p class="muted mt8">@${esc(profile.username || username)}${profile.location ? ` · ${esc(profile.location)}` : ''}</p><p class="mt16">${esc(profile.bio || t("这位成员暂未填写个人简介。"))}</p><div class="profile-numbers"><div><strong>${number(questions?.count)}</strong><span>${t("发布问题")}</span></div><div><strong>${number(profile.answer_count)}</strong><span>${t("参与回答")}</span></div><div><strong>${number(profile.rank)}</strong><span>${t("社区声望")}</span></div></div>${currentUser.mail_status === 2 ? `<div class="prod-status error mt16">${I('shield')}<div><strong>${t("邮箱尚未激活")}</strong><p>${t("请先验证邮箱，或在登录页面重新发送激活邮件。")}</p></div></div>` : ''}</section>${experience}<section class="card prod-feed"><div class="section-heading"><h2>${t("最近发布")}</h2><span class="muted">${t("发布记录")}</span></div>${list.length ? list.map((item) => questionRow({ ...item, user_info: profile })).join('') : empty(t("还没有发布问题"), t("从一个具体、可复现的问题开始。"), external(config.answerAskPath, t("发起问题"), 'btn primary'), 'chat')}</section></div><aside class="stack"><section class="card card-pad"><h3>${t("账号快捷入口")}</h3><ul class="mini-list"><li>${link('/me/bookmarks', `<span>${t("我的收藏")}</span>`)}</li><li>${external('/users/notifications/inbox', `<span>${t("通知中心")}</span>`)}</li><li>${link('/settings/binding', `<span>${t("元衡账号绑定")}</span><small>${t("可选")}</small>`)}</li><li>${link('/pulse', `<span>${t("Pulse 权益")}</span><small>${t("绑定后")}</small>`)}</li><li>${external('/users/logout', `<span>${t("退出登录")}</span>`)}</li></ul></section></aside></div>${footer()}`;
   }
 
   async function bookmarksPage() {
@@ -548,7 +567,7 @@
     const totalPages = Math.max(1, Math.ceil((Number(result?.count) || 0) / 20));
     const pager = totalPages > 1 ? `<div class="prod-pager">${page > 1 ? link(`/me/bookmarks?page=${page - 1}`, t("上一页"), 'btn small') : ''}<span>${t("第 {page} / {total} 页", { page: number(page), total: number(totalPages) })}</span>${page < totalPages ? link(`/me/bookmarks?page=${page + 1}`, t("下一页"), 'btn small') : ''}</div>` : '';
     const list = Array.isArray(result?.list) ? result.list : [];
-    return `${pageTitle(t("我的收藏"))}<section class="card prod-feed">${list.length ? list.map(questionRow).join('') : empty(t("还没有收藏内容"), t("在讨论页收藏感兴趣的话题，方便以后继续阅读。"), link('/latest', t("浏览问题"), 'btn primary'), 'bookmark')}</section>${pager}${footer()}`;
+    return `${pageTitle(t("我的收藏"))}<section class="card prod-feed">${list.length ? list.map(questionRow).join('') : empty(t("还没有收藏内容"), t("在讨论页收藏感兴趣的话题，方便以后继续阅读。"), link('/questions', t("浏览问题"), 'btn primary'), 'bookmark')}</section>${pager}${footer()}`;
   }
 
   async function bindingPage() {
@@ -559,7 +578,7 @@
     if (state.status === 'unavailable') return `${pageTitle(t("账号绑定"))}<section class="card card-pad"><div class="prod-status error">${I('server')}<div><strong>${t("绑定服务暂不可用")}</strong><p>${t("服务器没有返回 Pulse UserCenter Connector。社区浏览、登录、发帖和回答仍然可用。")}</p></div></div></section>${footer()}`;
     const connectorPath = safeSameOriginPath(state.connector?.link, config.answerBindingPath);
     const bound = state.status === 'bound';
-    return `${pageTitle(t("连接元衡 API 账号"))}<section class="card card-pad"><div class="between wrap"><h2>${t("元衡 API 身份")}</h2>${badge(bound ? I('check', 'sm') + t(" 已绑定") : t("未绑定"), bound ? 'green' : '')}</div>${bound ? `<div class="prod-binding-account"><div class="topic-icon">${I('link')}</div><div><strong>${t("已通过可信回调完成绑定")}</strong><p class="muted">${t("服务端已确认一对一关系；页面不会展示外部用户 ID 或任何 API 凭据。")}</p></div>${badge(t("受保护关系"), 'green')}</div><dl class="info-pairs"><dt>${t("社区账号")}</dt><dd>${esc(displayName(currentUser))}</dd><dt>${t("社区身份事实源")}</dt><dd>Apache Answer</dd><dt>${t("API / 资金身份事实源")}</dt><dd>new-api</dd><dt>${t("普通解绑或换绑")}</dt><dd>${t("不开放；纠错需要支持流程与审计")}</dd></dl><div class="flex wrap mt24">${link('/pulse', t("查看 Pulse 状态 ") + I('arrow', 'sm'), 'btn primary')}${link('/support', t("联系支持"), 'btn')}</div>` : `<div class="prod-binding-steps"><div class="prod-binding-step"><span class="number">1</span><strong>${t("确认社区身份")}</strong><p>${t("当前登录：")}${esc(displayName(currentUser))}</p></div><div class="prod-binding-step"><span class="number">2</span><strong>${t("前往元衡授权")}</strong><p>${t("由 Connector、浏览器 flow 和固定 callback 校验 API 身份。")}</p></div><div class="prod-binding-step"><span class="number">3</span><strong>${t("建立一对一关系")}</strong><p>${t("不按同名邮箱静默合并，冲突时拒绝覆盖。")}</p></div></div><div class="prod-status">${I('shield')}<div><strong>${t("开始前请确认")}</strong><p>${t("绑定是可选的一对一关系，不会合并两个账号、密码或余额。")}</p><p>${t("绑定后不能普通自助解绑或换绑；不会读取 API Key，不会改变社区密码或治理角色。")}</p></div></div><div class="flex wrap mt24">${external(connectorPath, I('link') + t("开始安全绑定"), 'btn primary')}${link('/latest', t("暂不绑定"), 'btn ghost')}</div>`}</section><section class="card card-pad mt24"><h3>${t("身份边界")}</h3><p class="muted mt8">${t("浏览器不能提交可信 user_id。所有回调参数在服务端验签、校验 flow 与 nonce 前都视为不可信输入。")}</p></section>${footer()}`;
+    return `${pageTitle(t("连接元衡 API 账号"))}<section class="card card-pad"><div class="between wrap"><h2>${t("元衡 API 身份")}</h2>${badge(bound ? I('check', 'sm') + t(" 已绑定") : t("未绑定"), bound ? 'green' : '')}</div>${bound ? `<div class="prod-binding-account"><div class="topic-icon">${I('link')}</div><div><strong>${t("已通过可信回调完成绑定")}</strong><p class="muted">${t("服务端已确认一对一关系；页面不会展示外部用户 ID 或任何 API 凭据。")}</p></div>${badge(t("受保护关系"), 'green')}</div><dl class="info-pairs"><dt>${t("社区账号")}</dt><dd>${esc(displayName(currentUser))}</dd><dt>${t("社区身份事实源")}</dt><dd>Apache Answer</dd><dt>${t("API / 资金身份事实源")}</dt><dd>new-api</dd><dt>${t("普通解绑或换绑")}</dt><dd>${t("不开放；纠错需要支持流程与审计")}</dd></dl><div class="flex wrap mt24">${link('/pulse', t("查看 Pulse 状态 ") + I('arrow', 'sm'), 'btn primary')}${link('/support', t("联系支持"), 'btn')}</div>` : `<div class="prod-binding-steps"><div class="prod-binding-step"><span class="number">1</span><strong>${t("确认社区身份")}</strong><p>${t("当前登录：")}${esc(displayName(currentUser))}</p></div><div class="prod-binding-step"><span class="number">2</span><strong>${t("前往元衡授权")}</strong><p>${t("由 Connector、浏览器 flow 和固定 callback 校验 API 身份。")}</p></div><div class="prod-binding-step"><span class="number">3</span><strong>${t("建立一对一关系")}</strong><p>${t("不按同名邮箱静默合并，冲突时拒绝覆盖。")}</p></div></div><div class="prod-status">${I('shield')}<div><strong>${t("开始前请确认")}</strong><p>${t("绑定是可选的一对一关系，不会合并两个账号、密码或余额。")}</p><p>${t("绑定后不能普通自助解绑或换绑；不会读取 API Key，不会改变社区密码或治理角色。")}</p></div></div><div class="flex wrap mt24">${external(connectorPath, I('link') + t("开始安全绑定"), 'btn primary')}${link('/me', t("暂不绑定"), 'btn ghost')}</div>`}</section><section class="card card-pad mt24"><h3>${t("身份边界")}</h3><p class="muted mt8">${t("浏览器不能提交可信 user_id。所有回调参数在服务端验签、校验 flow 与 nonce 前都视为不可信输入。")}</p></section>${footer()}`;
   }
 
   function loadPulseCore() {
@@ -686,7 +705,7 @@
     const dialogHeader = (id, title) => `<div class="prod-pulse-dialog-header"><h2 id="${id}-title">${t(title)}</h2><form method="dialog"><button type="submit" class="prod-pulse-dialog-close" aria-label="${t('关闭窗口')}" autofocus>×</button></form></div>`;
     const bind = link('/settings/binding', t('去绑定元衡 API 账号 ') + I('arrow', 'sm'), 'btn primary');
     return `${coreReady ? window.MetarPulseCore.markup({ t }) : `<section class="card card-pad"><h1>${esc(t('可用脉冲券：{count}', { count: number(0) }))}</h1><div class="actions"><button type="button" class="btn primary" disabled>${t('开启一次脉冲 · 1 券')}</button><button type="button" class="btn primary" disabled>${t('五连抽 · 5 券')}</button></div></section>`}
-      <div data-pulse-details><section class="card card-pad mt24 prod-pulse-bind" data-pulse-bind role="status"><div class="between wrap"><h2>${I('link')} ${t('尚未绑定元衡 API 账号')}</h2>${badge(t('未绑定'))}</div><p class="muted mt8">${t('抽奖券、额度奖励和抽奖记录都归属你的元衡 API 账号。完成一次绑定后，每日签到和社区互动即可获得抽奖券，额度奖励直接到账 API 账号。社区账号仍可独立使用。')}</p><div class="actions mt16">${bind}${link('/latest', t('继续浏览社区'), 'btn')}</div></section></div>
+      <div data-pulse-details><section class="card card-pad mt24 prod-pulse-bind" data-pulse-bind role="status"><div class="between wrap"><h2>${I('link')} ${t('尚未绑定元衡 API 账号')}</h2>${badge(t('未绑定'))}</div><p class="muted mt8">${t('抽奖券、额度奖励和抽奖记录都归属你的元衡 API 账号。完成一次绑定后，每日签到和社区互动即可获得抽奖券，额度奖励直接到账 API 账号。社区账号仍可独立使用。')}</p><div class="actions mt16">${bind}${link('/questions', t('继续浏览社区'), 'btn')}</div></section></div>
       <section class="card card-pad mt24"><h2>${t('获取抽奖券')}</h2><ul class="mini-list"><li>${t('帖子每收到 10 次评论 +1 券，每天最多 2 券。')}</li><li>${t('给别人点赞每 40 次或评论每 20 次 +1 券，分别累计，合计每天最多 3 券。')}</li><li>${t('每日签到 +1 券；社区任务每天最多 6 券。')}</li></ul><p class="prod-page-note">${t('以上赠券需先绑定元衡 API 账号；绑定前的互动不补发。')}</p></section>
       <dialog id="pulse-benefits" class="prod-pulse-dialog prod-pulse-benefits-dialog" aria-labelledby="pulse-benefits-title">${dialogHeader('pulse-benefits', '我的权益')}<div data-pulse-benefits-body><p>${t('尚未绑定元衡 API 账号，暂无抽奖券和权益。')}</p><div class="actions mt16">${bind}</div></div></dialog>${footer()}`;
   }
@@ -696,7 +715,7 @@
       <ul class="mini-list"><li>${t('帖子每收到 10 次评论 +1 券，每天最多 2 券。')}</li><li>${t('给别人点赞每 40 次或评论每 20 次 +1 券，分别累计，合计每天最多 3 券。')}</li><li>${t('每日签到 +1 券；社区任务每天最多 6 券。')}</li></ul>
       <p class="muted mt12">${t('按北京时间每日重置，仅统计绑定后及功能上线后的有效互动。评论包含回答和评论；自评自赞不计，撤赞重赞不重复计数。')}</p>
       <p class="muted">${t('互动达标后自动发券，通常需等待片刻。Meta API 消费不再获得抽奖券。')}</p>
-      <p role="status" data-task-progress>${t('正在读取今日进度…')}</p><div class="actions"><button class="btn" data-task-refresh>${t('刷新任务进度')}</button><button class="btn" data-action="pulse-refresh">${t('刷新权益')}</button>${link('/latest',t('参与讨论'),'btn')}</div></section>`;
+      <p role="status" data-task-progress>${t('正在读取今日进度…')}</p><div class="actions"><button class="btn" data-task-refresh>${t('刷新任务进度')}</button><button class="btn" data-action="pulse-refresh">${t('刷新权益')}</button>${link('/questions',t('参与讨论'),'btn')}</div></section>`;
   }
   async function mountCommunityTasks() {
     const root = document.querySelector('[data-community-tasks]');
@@ -780,7 +799,7 @@
   }
 
   function notFoundPage() {
-    return `<section class="card">${empty(t("没有找到这个页面"), t("请检查地址，或返回社区继续浏览。"), link('/latest', t("返回发现"), 'btn primary'), 'compass')}</section>${footer()}`;
+    return `<section class="card">${empty(t("没有找到这个页面"), t("请检查地址，或返回社区继续浏览。"), link('/questions', t("返回发现"), 'btn primary'), 'compass')}</section>${footer()}`;
   }
 
   async function resolveView() {
@@ -823,7 +842,7 @@
     if (path === '/admin/operations') {
       if (currentUserState === 'unavailable') return identityUnavailable(currentTitle());
       if (!currentUser) return loginRequired(currentTitle(), t('请先登录社区账号。'));
-      if (!isCommunityAdministrator(currentUser)) return empty(t('需要管理员权限'), '', link('/latest', t('返回社区'), 'btn'), 'shield');
+      if (!isCommunityAdministrator(currentUser)) return empty(t('需要管理员权限'), '', link('/questions', t('返回社区'), 'btn'), 'shield');
       await loadFeatureScript('analytics', 'MetarOperations');
       operationsView = new window.MetarOperations.View(new AnswerAdapter({answerApiBase:'/answer/admin/api'}));
       return await operationsView.page();
@@ -835,7 +854,7 @@
         if (currentUserState === 'unavailable') return identityUnavailable(title);
         if (!currentUser) return loginRequired(title, t('请先登录社区账号。'));
         if (!isActiveUser(currentUser)) return accountUnavailable(title);
-        if (path === '/admin/events' && !isCommunityAdministrator(currentUser)) return empty(t('需要管理员权限'), '', link('/latest', t('返回社区'), 'btn'), 'shield');
+        if (path === '/admin/events' && !isCommunityAdministrator(currentUser)) return empty(t('需要管理员权限'), '', link('/questions', t('返回社区'), 'btn'), 'shield');
       }
       await loadFeatureScript('drafts-store', 'MetarDrafts');
       await loadFeatureScript('member-pages', 'MetarMemberPages');
@@ -847,7 +866,7 @@
       if (currentUserState === 'unavailable') return identityUnavailable(title);
       if (!currentUser) return loginRequired(title, t('登录社区账号后开始聊天，无需绑定 API 账号。'));
       if (!isActiveUser(currentUser)) return accountUnavailable(title);
-      if (path === '/admin/chat' && !isCommunityAdministrator(currentUser)) return empty(t('需要管理员权限'), '', link('/latest', t('返回社区'), 'btn'), 'shield');
+      if (path === '/admin/chat' && !isCommunityAdministrator(currentUser)) return empty(t('需要管理员权限'), '', link('/questions', t('返回社区'), 'btn'), 'shield');
       await loadFeatureScript('chat', 'MetarChat');
       if (path === '/admin/chat') {
         chatModeration = new window.MetarChat.Moderation(answer, new AnswerAdapter({answerApiBase:'/answer/admin/api'}));
@@ -856,13 +875,13 @@
       if (!chatView || chatView.user !== String(currentUser.id)) chatView = new window.MetarChat.View(answer, new AnswerAdapter({answerApiBase:'/answer/admin/api'}), currentUser);
       return chatView.shell();
     }
-    if (path === '/latest') return questionsPage();
+    if (path === '/questions') return questionsPage();
     if (path === '/topics') return topicsPage();
     if (path === '/admin/taxonomy') {
       const title = t('类别管理');
       if (currentUserState === 'unavailable') return identityUnavailable(title);
       if (!currentUser) return loginRequired(title, t('请使用社区管理员账号登录。'));
-      if (!isCommunityAdministrator(currentUser)) return `<section class="card">${empty(t('需要管理员权限'), '', link('/latest', t('返回社区'), 'btn'), 'shield')}</section>${footer()}`;
+      if (!isCommunityAdministrator(currentUser)) return `<section class="card">${empty(t('需要管理员权限'), '', link('/questions', t('返回社区'), 'btn'), 'shield')}</section>${footer()}`;
       return `${pageTitle(title)}${await taxonomy.orderPage(answer)}${taxonomy.adminPage()}${footer()}`;
     }
     if (path === '/knowledge') return knowledgePage();
@@ -873,7 +892,7 @@
       if (currentUserState === 'unavailable') return identityUnavailable(title);
       if (!currentUser) return loginRequired(title, t('登录后查看个人资料与发布记录。'));
       if (!isActiveUser(currentUser)) return accountUnavailable(title);
-      if (path === '/admin/growth' && !isCommunityAdministrator(currentUser)) return `${pageTitle(title)}<section class="card">${empty(t('需要管理员权限'), '', link('/latest', t('返回社区'), 'btn'), 'shield')}</section>${footer()}`;
+      if (path === '/admin/growth' && !isCommunityAdministrator(currentUser)) return `${pageTitle(title)}<section class="card">${empty(t('需要管理员权限'), '', link('/questions', t('返回社区'), 'btn'), 'shield')}</section>${footer()}`;
       return `${pageTitle(title)}${await growthView().then(view => path === '/admin/growth' ? view.adminPage() : view.page())}${footer()}`;
     }
     if (path === '/me/bookmarks') return bookmarksPage();
@@ -882,7 +901,7 @@
     if (path === '/admin/pulse') {
       if (currentUserState === 'unavailable') return identityUnavailable(t('Pulse 配置'));
       if (!currentUser) return loginRequired(t('Pulse 配置'), t('请使用社区管理员账号登录。'));
-      if (!isCommunityAdministrator(currentUser)) return `<section class="card">${empty(t('需要管理员权限'), t('仅正常且已激活的社区管理员可管理 Pulse 配置。'), link('/latest', t('返回社区'), 'btn'), 'shield')}</section>${footer()}`;
+      if (!isCommunityAdministrator(currentUser)) return `<section class="card">${empty(t('需要管理员权限'), t('仅正常且已激活的社区管理员可管理 Pulse 配置。'), link('/questions', t('返回社区'), 'btn'), 'shield')}</section>${footer()}`;
       return `${pageTitle(t('Pulse 配置'))}${await adminView().then(view => view.page())}${footer()}`;
     }
     if (path === '/support') return supportPage();
@@ -1204,7 +1223,7 @@
         if (router.go(event.target.dataset.kind === 'tags' ? '/topics?view=tags' : '/topics')) navigate();
         return;
       }
-      const base = event.target.value ? taxonomy.topicURL(event.target.value) : '/latest';
+      const base = event.target.value ? taxonomy.topicURL(event.target.value) : '/questions';
       const order = query.get('order') || 'active';
       if (router.go(`${base}?${new URLSearchParams({order})}`)) navigate();
       return;
@@ -1287,6 +1306,7 @@
     if (action === 'menu') {
       closeTaxonomy(false);
     }
+    if (action === 'back') { goBack(); return; }
     if (action === 'theme') setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
     if (action === 'retry') { answer.clearContentCache(); navigate({preservePublicView:true}); }
     if (action === 'pulse-draw') submitPulse();

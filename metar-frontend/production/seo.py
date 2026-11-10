@@ -16,12 +16,12 @@ def build_seo(output, shell, site_name="METAR"):
     shell = shell.replace("<!-- METAR_LOADING_TEMPLATE -->", '<template id="metar-loading-template">' + view_template + '</template>')
 
     def initial_document(document, route="", body=""):
-        titles = {"/": ("最新话题", "Latest topics"), "/latest": ("最新话题", "Latest topics"),
+        titles = {"/": ("最新话题", "Latest topics"), "/questions": ("最新话题", "Latest topics"),
                   "/topics": ("类别与标签", "Categories and tags"), "/knowledge": ("知识库", "Knowledge"),
                   "/support": ("帮助中心", "Help center"), "/guidelines": ("社区规范", "Guidelines"),
                   "/tos": ("服务条款", "Terms"), "/privacy": ("隐私政策", "Privacy")}
         title, english = titles.get(route, ("正在加载…", "Loading…"))
-        layout = "feed" if route in ("/", "/latest") else "grid" if route in ("/topics", "/knowledge") else "panel"
+        layout = "feed" if route in ("/", "/questions") else "grid" if route in ("/topics", "/knowledge") else "panel"
         view = (view_template.replace("__METAR_LOADING_LAYOUT__", layout)
                 .replace("__METAR_LOADING_TITLE__", html.escape(title))
                 .replace("__METAR_LOADING_LABEL__", "正在读取社区实时数据…")
@@ -39,13 +39,11 @@ def build_seo(output, shell, site_name="METAR"):
         document = re.sub(r'<meta name="description" content="[^"]*">', '<meta name="description" content="' + description + '">', document)
         document = document.replace('</head>', '<link rel="canonical" href="' + ORIGIN + route + '">\n<meta property="og:url" content="' + ORIGIN + route + '">\n<meta property="og:title" content="' + html.escape(page["title"], quote=True) + '">\n<meta property="og:description" content="' + description + '">\n<meta property="og:type" content="website">\n</head>')
         document = initial_document(document, route, page["body"])
-        if route == "/latest":
-            document = re.sub(r'<link rel="canonical"[^>]*>', "", document)
         target = output / "index.html" if route == "/" else directory / (route.strip("/") + ".html")
         target.write_text(document)
     ET.register_namespace("", "http://www.sitemaps.org/schemas/sitemap/0.9")
     root = ET.Element("{http://www.sitemaps.org/schemas/sitemap/0.9}urlset")
-    for route in [*PAGES, "/questions", "/tags"]:
+    for route in dict.fromkeys([*(route for route in PAGES if route != "/"), "/questions", "/tags"]):
         entry = ET.SubElement(root, "url")
         ET.SubElement(entry, "loc").text = ORIGIN + route
     ET.ElementTree(root).write(output / "sitemap-site.xml", encoding="utf-8", xml_declaration=True)

@@ -15,13 +15,13 @@ const origin = 'https://metarhub.com';
 test('后台返回网站和站名直接指向首页，保留筛选与锚点', () => {
   const link = anchor('/?order=hot#main');
   canonicalizeHomeLinks({ querySelectorAll: () => [link] }, origin);
-  assert.equal(link.getAttribute('href'), '/latest?order=hot#main');
-  assert.equal(homeDestination(link, origin), '/latest?order=hot#main');
+  assert.equal(link.getAttribute('href'), '/questions?order=hot#main');
+  assert.equal(homeDestination(link, origin), '/questions?order=hot#main');
 });
 
 test('不接管普通链接、通知、管理操作、下载或外部站点', () => {
   for (const link of [anchor('/', { home: false }), anchor('/', { download: true }),
-    anchor('/users/notifications/inbox'), anchor('/admin/users'), anchor('https://other.test/'), anchor('//other.test/'), anchor('/latest\\evil')]) {
+    anchor('/users/notifications/inbox'), anchor('/admin/users'), anchor('https://other.test/'), anchor('//other.test/'), anchor('/questions\\evil')]) {
     assert.equal(homeDestination(link, origin), null);
   }
 });
@@ -41,7 +41,7 @@ test('一次浏览器原生导航，保留默认行为与 beforeunload；取消�
     handler({ button: 0, target: { closest: () => link }, ...modifiers,
       stopPropagation: () => stopped++, preventDefault: () => assert.fail('must retain default navigation and draft guard') });
     assert.equal(stopped, 1);
-    assert.equal(link.getAttribute('href'), '/latest');
+    assert.equal(link.getAttribute('href'), '/questions');
   }
   for (const event of [{ button: 0, defaultPrevented: true }, { button: 1 }, { button: 0, target: null }]) {
     handler({ ...event, stopPropagation: () => assert.fail('must not intercept') });

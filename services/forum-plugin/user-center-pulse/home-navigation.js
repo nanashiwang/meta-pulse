@@ -8,9 +8,16 @@ export function homeDestination(link, origin) {
   if (!link?.matches(homeControls) || link.hasAttribute('download')) return null;
   const value = link.getAttribute('href');
   const destination = target(value, origin);
-  if (!destination) return null;
-  const path = new URL(value, origin).pathname;
-  return path === '/' || path === '/latest' ? destination : null;
+  if (destination) {
+    const path = new URL(value, origin).pathname.replace(/\/$/, '') || '/';
+    return path === '/' || path === '/latest' ? destination : null;
+  }
+  if (typeof value !== 'string' || /[\\\u0000-\u0020\u007f]/.test(value)) return null;
+  try {
+    const url = new URL(value, origin);
+    return url.origin === origin && !url.username && !url.password && url.pathname === '/questions'
+      ? url.pathname + url.search + url.hash : null;
+  } catch { return null; }
 }
 
 export function canonicalizeHomeLinks(doc, origin) {

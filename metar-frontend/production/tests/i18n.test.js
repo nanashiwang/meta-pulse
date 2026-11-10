@@ -38,6 +38,17 @@ test('默认中文、只接受约定语言，并与 Answer 共享持久偏好', 
   assert.equal(blocked.t('问答广场'), 'Questions');
 });
 
+test('仅个人空间显示个人侧栏，离开后清理', async () => {
+  const view = await shell({user:{username:'alice',role_id:1,status:'normal',mail_status:1}});
+  assert.doesNotMatch(view.nodes.app.innerHTML, /class="personal-sidebar"/);
+  await view.navigate('/me');
+  assert.match(view.nodes.app.innerHTML, /class="personal-sidebar"/);
+  await view.navigate('/pulse');
+  assert.doesNotMatch(view.nodes.app.innerHTML, /class="personal-sidebar"/);
+  await view.navigate('/knowledge');
+  assert.doesNotMatch(view.nodes.app.innerHTML, /class="personal-sidebar"/);
+});
+
 test('参数文案和数量在两种语言下保持完整语序', () => {
   const { i18n } = languageContext('en_US');
   assert.equal(i18n.t('“{query}” 的结果', { query: '未读' }), 'Results for “未读”');
@@ -63,6 +74,7 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
   const { context, i18n, values } = languageContext(language);
   const node = () => ({ innerHTML: '', textContent: '', attributes: {}, setAttribute(key, value) { this.attributes[key] = value; }, focus() {} });
   const nodes = Object.fromEntries(['app', 'view', 'main', 'skip', 'description', 'theme', 'menu', 'language', 'metar-loading-template'].map((key) => [key, node()]));
+  nodes.main.insertAdjacentHTML = (_position, html) => { nodes.app.innerHTML = nodes.app.innerHTML.replace('<main ', html + '<main '); };
   nodes['metar-loading-template'].innerHTML = script('loading-view.html');
   nodes['toast-root'] = { append(message) { nodes[message.id] = message; } };
   const scrolls = [];
@@ -73,11 +85,12 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
   const localLocation = (url) => Object.assign(new URL(url, 'https://metarhub.com'), { replace: (value) => redirects.push(value) });
   const operations = new Map();
   const document = {
-    title: '', documentElement: { dataset: {}, lang: '', getAttribute(key) { return this.dataset[key.replace('data-', '')]; }, setAttribute(key, value) { this.dataset[key.replace('data-', '')] = value; } },
+    title: '', documentElement: { classList: { values: new Set(), contains(key) { return this.values.has(key); }, toggle(key, enabled) { if (enabled) this.values.add(key); else this.values.delete(key); } }, dataset: {}, lang: '', getAttribute(key) { return this.dataset[key.replace('data-', '')]; }, setAttribute(key, value) { this.dataset[key.replace('data-', '')] = value; } },
     body: { classList: { remove() {}, toggle() { return true; } } },
     getElementById: (id) => nodes[id] || null,
     createElement() { return {...node(), remove() { delete nodes[this.id]; }}; },
     querySelector: (selector) => ({
+      '.personal-sidebar': {remove() { nodes.app.innerHTML = nodes.app.innerHTML.replace(/<aside class="personal-sidebar"[\s\S]*?<\/aside>/g, ''); }},
       'header.topbar': {set outerHTML(value) { nodes.app.innerHTML = nodes.app.innerHTML.replace(/<header class="topbar">[\s\S]*?<\/header>/, () => value); }},
       '[data-action="skip"]': nodes.skip, 'meta[name="description"]': nodes.description,
       '[data-action="theme"]': nodes.theme, '[data-action="menu"]': nodes.menu,
@@ -88,7 +101,7 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
   };
   const question = { id: '42', title: content ? '未读' : 'User question', description: content ? '社区规范' : 'User summary', content: content ? '我的收藏' : 'User content', user_info: user, created_at: Math.floor(Date.now() / 1000) - 3600 };
   Object.assign(context, {
-    document, location: localLocation('/latest'),
+    document, location: localLocation('/topic/agent'),
     URL, URLSearchParams, Headers, AbortController, setTimeout: (...args) => { const timer = setTimeout(...args); timer.unref(); return timer; }, clearTimeout,
     crypto: require('node:crypto').webcrypto,
     sessionStorage: {
@@ -229,7 +242,7 @@ test('所有英文页面与访客/已登录/绑定/失败状态不会遗留静�
     { failure: 'all' },
   ]) {
     const view = await shell(scenario);
-    for (const route of ['/latest', '/latest', '/question/42', '/topics', '/topic/agent', '/knowledge', '/search', '/search?q=hello', '/me', '/me/bookmarks', '/me/notifications', '/settings/binding', '/pulse', '/publish', '/login', '/register', '/forgot', '/support', '/status', '/guidelines', '/missing']) {
+    for (const route of ['/topic/agent', '/topic/agent', '/question/42', '/topics', '/topic/agent', '/knowledge', '/search', '/search?q=hello', '/me', '/me/bookmarks', '/me/notifications', '/settings/binding', '/pulse', '/publish', '/login', '/register', '/forgot', '/support', '/status', '/guidelines', '/missing']) {
       await view.navigate(route);
       assertEnglish(view, route);
     }
@@ -241,13 +254,13 @@ test('所有英文页面与访客/已登录/绑定/失败状态不会遗留静�
 
 test('语言切换重新渲染标题、筛选、ARIA、错误和数值，用户原文保持不变', async () => {
   const view = await shell({ language: 'zh_CN', user: { username: 'alice', display_name: 'Alice', mail_status: 1 }, content: true });
-  await view.navigate('/latest');
+  await view.navigate('/topic/agent');
   assert.match(view.html(), /最近活跃/);
   await view.changeLanguage('en_US');
   assert.match(view.html(), /Active/);
   assert.match(view.html(), /aria-label="Interface language"/);
   assert.equal(view.values.get('metar-language'), 'en_US');
-  assert.equal(view.document.title, 'Latest topics · METAR');
+  assert.equal(view.document.title, 'Topic · METAR');
   assert.match(view.html(), /<h3>未读<\/h3>/);
   assert.doesNotMatch(view.html(), /<p>社区规范<\/p>/); // Compact rows omit excerpts.
   assert.match(view.html(), /1 hour ago/);
@@ -397,6 +410,7 @@ test('Pulse 管理入口仅对 Answer 正常激活管理员显示，版主和伪
   assert.match(view.nodes.app.innerHTML, /href="\/admin\/pulse"/);
   assert.match(view.nodes.app.innerHTML, /href="\/admin\/dashboard"/);
   assert.match(view.nodes.app.innerHTML, /href="\/admin\/pulse_user_center"/);
+  assert.match(view.nodes.app.innerHTML, /href="\/users\/notifications\/achievement"[\s\S]*href="\/review"/);
   await view.navigate('/admin/pulse');
   assert.match(view.html(), /Save Pulse settings/);
   assert.match(view.html(), /Grant key storage is ready/);
@@ -421,6 +435,7 @@ test('统一入口打开原生互动页，旧详情不再读取只读副本，�
   assert.match(view.html(), /href="\/questions\/42" class="discussion-title"/);
   assert.match(view.html(), /href="\/users\/alice" class="discussion-author"/);
   assert.match(view.html(), /href="\/users\/notifications\/inbox"/);
+  assert.match(view.nodes.app.innerHTML, /<div class="header-actions"><a href="\/users" class="icon-btn header-ranking" aria-label="Leaderboard" title="Leaderboard">[\s\S]*?<span class="visually-hidden">Leaderboard<\/span><\/a>/);
   await view.navigate('/question/42?commentId=9#answer-7');
   assert.equal(view.redirects.at(-1), '/questions/42?commentId=9#answer-7');
   assert.ok(!view.requests.some(({ url }) => url.includes('/question/info') || url.includes('/answer/page')));
@@ -529,12 +544,12 @@ test('discussion sorting preserves the committed view and scroll until the new l
   const view = await shell({content:true,language:'zh_CN',publicControl});
   const previous=view.nodes.view.innerHTML,scrollCount=view.scrolls.length;
   let release;publicControl.gate=new Promise(resolve=>{release=resolve});
-  const pending=view.navigate('/latest?order=hot');
+  const pending=view.navigate('/topic/agent?order=hot');
   assert.equal(view.nodes.view.innerHTML,previous);
   assert.equal(view.scrolls.length,scrollCount);
   assert.equal(view.nodes.app.attributes['aria-busy'],'true');
   release();await pending;
-  assert.match(view.nodes.view.innerHTML,/href="\/latest\?order=hot" data-router class="discussion-tab active"/);
+  assert.match(view.nodes.view.innerHTML,/href="\/topic\/agent\?order=hot" data-router class="discussion-tab active"/);
   assert.equal(view.nodes['view-refresh-message'],undefined);
   assert.equal(view.scrolls.length,scrollCount+1);
 });
@@ -555,11 +570,11 @@ test('rapid list switches only commit the latest request, including when leaving
   const hot=new Promise(r=>{releaseHot=r}),unanswered=new Promise(r=>{releaseUnanswered=r});
   const publicControl={before:url=>{const order=new URL(url,'https://metarhub.com').searchParams.get('order');return order==='hot'?hot:order==='unanswered'?unanswered:undefined}};
   const view=await shell({content:true,publicControl});
-  const slow=view.navigate('/latest?order=hot');
-  await view.navigate('/latest?order=score');const committed=view.nodes.view.innerHTML;
+  const slow=view.navigate('/topic/agent?order=hot');
+  await view.navigate('/topic/agent?order=score');const committed=view.nodes.view.innerHTML;
   assert.match(committed,/order=score" data-router class="discussion-tab active"/);
   releaseHot();await slow;assert.equal(view.nodes.view.innerHTML,committed);
-  const leaving=view.navigate('/latest?order=unanswered');
+  const leaving=view.navigate('/topic/agent?order=unanswered');
   await view.navigate('/pulse');const privateView=view.nodes.view.innerHTML;
   assert.doesNotMatch(privateView,/discussion-title/);
   releaseUnanswered();await leaving;assert.equal(view.nodes.view.innerHTML,privateView);
@@ -568,7 +583,7 @@ test('rapid list switches only commit the latest request, including when leaving
 test('a denied list request clears the old public view instead of retaining revoked access',async()=>{
   const publicControl={};const view=await shell({content:true,publicControl});
   assert.match(view.nodes.view.innerHTML,/discussion-title/);
-  publicControl.failStatus=403;await view.navigate('/latest?order=hot');
+  publicControl.failStatus=403;await view.navigate('/topic/agent?order=hot');
   assert.doesNotMatch(view.nodes.view.innerHTML,/discussion-title/);
   assert.equal(view.nodes['view-refresh-message'],undefined);
 });
@@ -576,7 +591,7 @@ test('a denied list request clears the old public view instead of retaining revo
 
 test('a successful empty list replaces old rows with the explicit empty state',async()=>{
   const publicControl={};const view=await shell({content:true,language:'zh_CN',publicControl});
-  publicControl.empty=true;await view.navigate('/latest?order=hot');
+  publicControl.empty=true;await view.navigate('/topic/agent?order=hot');
   assert.doesNotMatch(view.nodes.view.innerHTML,/discussion-title|page-loading/);
   assert.match(view.nodes.view.innerHTML,/当前筛选没有内容/);
   assert.match(view.nodes.view.innerHTML,/order=hot" data-router class="discussion-tab active"/);

@@ -27,7 +27,8 @@ def generate(check=False):
       // after nginx decodes the path. Query and fragment remain untouched.
       const decoded = decodeURIComponent(url.pathname);
       if (/[\\\\\\u0000-\\u001f]/.test(decoded) || decoded.split('/').some(p => p === '.' || p === '..') || decoded.split('/').length !== url.pathname.split('/').length) return null;
-      return (url.pathname === '/' ? '/latest' : url.pathname) + url.search + url.hash;
+      const path = url.pathname === '/' ? '/' : url.pathname.replace(/\\/$/, '');
+      return (aliases[path] || path) + url.search + url.hash;
     } catch (_) { return null; }
   }
 '''.replace('PATTERN', json.dumps(pattern)).replace('ALIASES', json.dumps(manifest['legacyAliases']))
