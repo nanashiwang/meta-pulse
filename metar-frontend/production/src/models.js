@@ -145,6 +145,16 @@
     }).join('')}</section>`;
   }
 
+  function recentModels(rows) {
+    const title = t('近期新模型', 'New models');
+    const cards = rows.length ? `<ul class="intel-recent-grid">${rows.map(r => {
+      const provider = r.provider_name || r.provider || '';
+      const initials = provider.split(/\s+/).filter(Boolean).map(word => Array.from(word)[0]).slice(0, 2).join('').toUpperCase();
+      return `<li>${link('/model/' + encodeURIComponent(r.model), `<span class="intel-provider-mark" aria-hidden="true">${esc(initials)}</span><span class="intel-recent-content"><strong>${esc(r.name)}</strong><span class="muted">${esc(provider)} · ${fmt.date(r.release_date)}</span></span>`, 'card intel-recent-card')}</li>`;
+    }).join('')}</ul>` : `<p class="muted">${t('近 15 天没有新发布的模型。', 'No models released in the last 15 days.')}</p>`;
+    return `<section class="intel-recent-module" aria-label="${title}"><div class="intel-section-head"><div><h2>${title}</h2><p class="muted">${t('最近 15 天发布，按发布时间排列。', 'Announced in the last 15 days, newest first.')}</p></div><a class="btn small" href="https://llm-stats.com/llm-updates" target="_blank" rel="noopener noreferrer">${t('全部更新', 'All updates')} ↗</a></div>${cards}</section>`;
+  }
+
   // Answers are generated from the same snapshot as the table.
   function faq(home) {
     const find = c => home.leaders.find(l => l.category === c);
@@ -205,13 +215,13 @@
       const board = await this.board(q, true);
       h.leaders = Array.isArray(h.leaders) ? h.leaders : [];
       h.recent = Array.isArray(h.recent) ? h.recent : [];
-      const recent = h.recent.length ? `<ul class="intel-recent">${h.recent.map(r => `<li>${link('/model/' + encodeURIComponent(r.model), esc(r.name))}<span class="muted">${esc(r.provider_name || r.provider)} · ${fmt.date(r.release_date)}</span></li>`).join('')}</ul>` : `<p class="muted">${t('近 15 天没有新收录的模型。', 'No models released in the last 15 days.')}</p>`;
+
       return `${subnav('/models')}
         ${leaderCards(h.leaders)}
+        ${recentModels(h.recent)}
         <div class="intel-layout">
           <section class="intel-main"><div class="intel-section-head"><h2>${t('综合榜', 'Overall ranking')}</h2></div>${board}</section>
           <aside class="intel-side">
-            <section class="card card-pad"><h2>${t('近期新模型', 'Recently released')}</h2>${recent}</section>
             <section class="card card-pad"><h2>${t('综合分说明', 'About the score')}</h2><p class="muted">${t('直接展示来源原始评分，价格与速度单独展示。', 'Original source scores. Price and speed are shown separately.')}</p></section>
             <section class="card card-pad"><h2>${t('一起讨论', 'Discuss')}</h2><p class="muted">${t('对排名或数据有疑问？在社区发帖讨论或指出错误。', 'Questions about a ranking or a number? Start a discussion or report an error.')}</p><div class="intel-side-actions mt16">${link('/publish', t('发起讨论', 'Start a discussion'), 'btn primary small')}${link('/latest', t('社区讨论', 'Community'), 'btn small')}</div></section>
           </aside>
