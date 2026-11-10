@@ -62,21 +62,22 @@ def main():
 
             for attempt in range(30):
                 try:
-                    if get('/')[0] == 301:
+                    if get('/')[0] == 200:
                         break
                 except (ConnectionError, OSError):
                     pass
                 time.sleep(.1)
             else:
                 raise AssertionError('Gateway failed to become ready')
-            regular = get('/topics')
-            for path in ['/', '/latest', '/latest/', '/discover', '/discover/']:
+            regular = get('/')
+            for path in ['/', '/latest', '/latest/', '/discover', '/discover/', '/questions', '/questions/']:
                 for method in ['GET', 'HEAD']:
-                    status, headers, _ = get(path + '?order=unanswered&page=2', method=method)
-                    assert status == 301, (path, status)
-                    assert headers['Location'].endswith('/questions?order=unanswered&page=2'), headers
-            assert get('/questions')[0] == 200
-            assert get('/questions')[2] == '|||'  # native backend, never the shell
+                    status, headers, body = get(path + '?order=unanswered&page=2', method=method)
+                    assert status == 200 and 'Location' not in headers, (path, status)
+                    if method == 'GET':
+                        assert '/metar-assets/app.js' in body and 'https://metarhub.com/' in body
+            assert get('/questions/42')[2] == '|||'  # details still use Answer
+            assert get('/questions/ask')[2] == '|||'
             visitor = 'a' * 64
             boundary_headers = {'Cookie': 'visit=test-session; metar_ops=' + visitor + '; secret=unrelated',
                                 'Authorization': 'Bearer fixture', 'New-Api-User': '999', 'X-Pulse-Signature': 'forged'}
@@ -121,12 +122,11 @@ def main():
                     assert compressed[1]['Cache-Control'] == 'no-cache'
                     assert get(asset, request_headers={'If-None-Match':plain[1]['ETag']})[0] == 304
                 print(f'Static transfer {asset}: {plain[1]["_wire_bytes"]} -> {compressed[1]["_wire_bytes"]} bytes')
-            assert '类别与标签' in regular[2]
+            assert '<h1>METAR 元衡社区</h1>' in regular[2]
             assert 'google-site-verification' in regular[2]
             assert 'X-Robots-Tag' not in regular[1]
             for bot in ['Googlebot', 'Baiduspider', 'bingbot']:
-                assert get('/topics', bot)[2] == regular[2], bot
-                assert get('/', bot)[0] == 301, bot
+                assert get('/', bot)[2] == regular[2], bot
             for path in ['/me', '/me/notifications', '/me/bookmarks', '/pulse', '/pulse?code=test', '/status', '/chat', '/settings/binding/', '/admin/pulse', '/admin/operations', '/search?q=hello', '/login']:
                 status, headers, body = get(path)
                 assert status == 200, (path, status)

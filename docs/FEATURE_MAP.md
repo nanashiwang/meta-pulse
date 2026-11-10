@@ -104,9 +104,9 @@ new-api 接收端与实际到账、生产普通账号流程、邮件与跨实例
 
 规则发布、抽奖与社区赠券共用预建的规则守卫；v0.2.83 迁移 00018 保留原幂等身份并改为直接锁行，避免并发赠券的重复键插入死锁。验收覆盖 MySQL 双版本的 100 路重放与周期重叠竞争。
 
-## 当前社区导航（2026-11-10）
+## 当前社区导航（2026-11-11）
 
-讨论入口使用 Answer 原生 `/questions`；`/`、`/latest`、`/discover` 保留查询参数并重定向至该入口。排行榜 `/users` 复用 Answer 近七天声望前 20 条，工作人员单列且不参与榜内排序；个人中心 `/me` 专用导航按真实角色提供管理入口，公共旧侧栏移除。旧 Hash 书签经原生桥恢复，设置返回 `/me`，无历史返回 `/questions`；集市、知识库和工具保留各自入口。路由归属以 [routes.json](../metar-frontend/shared/routes.json) 为准，验证入口为 `make test-community`；上述代码状态不代表已完成生产浏览器验收。
+`/` 与 `/latest` 共用 METAR 讨论列表及 Answer API；精确 `/questions`、`/discover` 加载同壳层并规范到 latest，保留查询和旧 Hash。排行榜 `/users` 复用 Answer 近七天声望前 20 条，工作人员单列且不参与榜内排序；个人中心 `/me` 专用导航按真实角色提供管理入口，公共旧侧栏移除。旧 Hash 书签经原生桥恢复，设置返回 `/me`，无历史返回 `/latest`；集市、知识库和工具保留各自入口。路由归属以 [routes.json](../metar-frontend/shared/routes.json) 为准，验证入口为 `make test-community`；上述代码状态不代表已完成生产浏览器验收。
 
 ## 顶栏工具分组（2026-11-08）
 

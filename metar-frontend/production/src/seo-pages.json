@@ -2,12 +2,12 @@
   "/": {
     "title": "METAR 元衡社区｜AI 模型交流与 API 接入实践",
     "description": "METAR 元衡社区提供 AI 模型交流、API 接入问答、使用经验和技术知识库。社区账号可独立注册，可选绑定元衡 API 账号。",
-    "body": "<h1>METAR 元衡社区</h1><p>交流 AI 模型使用经验，讨论 API 接入问题，分享可复现的解决方法。</p><p>社区账号可以独立注册，也可以按需绑定元衡 API 账号。</p><nav aria-label=\"公开内容\"><a href=\"/questions\">浏览公开问题与回答</a> · <a href=\"/tags\">浏览话题标签</a> · <a href=\"/blog/\">元衡技术知识库</a> · <a href=\"/blog/guides/\">API 接入教程</a> · <a href=\"/blog/reviews/\">模型评测</a></nav>"
+    "body": "<h1>METAR 元衡社区</h1><p>交流 AI 模型使用经验，讨论 API 接入问题，分享可复现的解决方法。</p><p>社区账号可以独立注册，也可以按需绑定元衡 API 账号。</p><nav aria-label=\"公开内容\"><a href=\"/latest\">浏览公开问题与回答</a> · <a href=\"/tags\">浏览话题标签</a> · <a href=\"/blog/\">元衡技术知识库</a> · <a href=\"/blog/guides/\">API 接入教程</a> · <a href=\"/blog/reviews/\">模型评测</a></nav>"
   },
-  "/questions": {
+  "/latest": {
     "title": "最新讨论｜METAR 元衡社区",
     "description": "浏览 METAR 社区公开问题、回答和 AI 模型接入讨论。",
-    "body": "<h1>最新讨论</h1><p>浏览公开问题与回答，交流 AI 模型和 API 使用经验。</p><a href=\"/questions\">查看实时问题列表</a>"
+    "body": "<h1>最新讨论</h1><p>浏览公开问题与回答，交流 AI 模型和 API 使用经验。</p><a href=\"/latest\">查看实时问题列表</a>"
   },
   "/topics": {
     "title": "类别与标签｜METAR 元衡社区",
@@ -22,7 +22,7 @@
   "/support": {
     "title": "帮助中心｜METAR 元衡社区",
     "description": "METAR 社区账号、公开问答与知识库帮助入口。",
-    "body": "<h1>帮助中心</h1><p>社区账号可以独立注册；API 账号绑定是可选项。</p><p><a href=\"/questions\">在社区查找答案</a> · <a href=\"/blog/guides/\">阅读接入教程</a> · <a href=\"/users/account-recovery\">找回社区密码</a></p>"
+    "body": "<h1>帮助中心</h1><p>社区账号可以独立注册；API 账号绑定是可选项。</p><p><a href=\"/latest\">在社区查找答案</a> · <a href=\"/blog/guides/\">阅读接入教程</a> · <a href=\"/users/account-recovery\">找回社区密码</a></p>"
   },
   "/guidelines": {
     "title": "社区规范｜METAR 元衡社区",

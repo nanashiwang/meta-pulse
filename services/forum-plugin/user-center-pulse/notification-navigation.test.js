@@ -7,7 +7,7 @@ const navigation = (...paths) => ({ querySelector: (selector) => paths.some(path
 test('左侧同步社区与成员入口，不恢复已撤下栏目', () => {
   for (const english of [false, true]) {
     const items = notificationGroups(navigation('/admin', '/review'), english).flatMap(g => g.items);
-    assert.ok(items.some(i => i.href === '/questions'));
+    assert.ok(items.some(i => i.href === '/latest'));
     for (const path of ['/me/drafts','/chat','/events']) assert.ok(items.some(i => i.href === path));
     assert.ok(items.every(i => !['/knowledge','/support','/status'].includes(i.href)));
     assert.ok(items.every(i => !/^\/(users|admin|settings|review)(\/|$)/.test(i.href)));

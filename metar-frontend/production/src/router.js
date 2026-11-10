@@ -28,9 +28,6 @@
     const path = location.pathname.replace(/\/$/, '');
     const question = path.match(/^\/question\/([a-zA-Z0-9]+)$/);
     const entries = {
-      '': [null, '/questions'],
-      '/latest': [null, '/questions'],
-      '/discover': [null, '/questions'],
       '/login': [config.answerLoginPath, '/users/login'],
       '/register': [config.answerRegisterPath, '/users/register'],
       '/forgot': [config.answerPasswordResetPath, '/users/account-recovery'],
@@ -38,7 +35,6 @@
       '/me/notifications': [null, '/users/notifications/inbox'],
     };
     const entry = entries[path];
-    if (path === '/questions') return location.pathname + location.search + location.hash;
     if (!question && !entry) return null;
     const fallback = question ? questionHref(question[1]) : entry[1];
     const configured = entry?.[0];
@@ -73,10 +69,9 @@
       if (typeof value !== 'string' || !/^\/(?!\/)/.test(value) || /[\\\u0000-\u0020]/.test(value)) return null;
       try {
         const url = new URL(legacy ? href(value) : value, browser.location.origin);
-        if (legacy && url.pathname === '/questions') return url.pathname + url.search + url.hash;
         if (url.pathname.replace(/\/$/, '') === '/models/methodology') return '/models';
-        if (url.origin !== browser.location.origin || (!legacy && url.hash) || !policy.target(url.href, browser.location.origin)) return null;
-        return url.pathname + url.search + (legacy ? url.hash : '');
+        if (url.origin !== browser.location.origin || (!legacy && url.hash)) return null;
+        return policy.target(url.href, browser.location.origin);
       } catch (_) { return null; }
     }
 
@@ -89,13 +84,13 @@
       }
       const trimmed = pathname === '/' ? '/' : pathname.replace(/\/$/, '');
       if (trimmed === '/models/methodology') browser.history.replaceState(null, '', '/models');
-      else if (trimmed === '/discover') browser.history.replaceState(null, '', '/questions' + search + hash);
+      else if (trimmed === '/discover' || trimmed === '/questions') browser.history.replaceState(null, '', '/latest' + search + hash);
       else if (trimmed !== pathname && owns(trimmed)) browser.history.replaceState(null, '', trimmed + search + hash);
       return false;
     }
 
     function route() {
-      return { path: browser.location.pathname === '/' ? '/questions' : browser.location.pathname, query: new URLSearchParams(browser.location.search) };
+      return { path: browser.location.pathname === '/' ? '/latest' : browser.location.pathname, query: new URLSearchParams(browser.location.search) };
     }
 
     function go(value) {

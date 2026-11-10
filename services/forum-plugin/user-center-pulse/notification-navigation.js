@@ -4,8 +4,8 @@ export function notificationGroups(nativeNav, english = false) {
   const item = (href, zh, en, icon) => ({ href, label: english ? en : zh, icon });
   const groups = [
     { label: english ? 'Community' : '社区', items: [
-      item('/questions', '全部讨论', 'All discussions', 'chat-square-text'),
-      item('/questions?order=unanswered', '待回答', 'Unanswered', 'question-circle'),
+      item('/latest', '全部讨论', 'All discussions', 'chat-square-text'),
+      item('/latest?order=unanswered', '待回答', 'Unanswered', 'question-circle'),
       item('/topics', '类别与标签', 'Categories and tags', 'tags'),
       item('/marketplace', 'Vibe Coding 集市', 'Vibe Coding Marketplace', 'code-slash'),
       item('/me/drafts', '我的草稿', 'My drafts', 'pencil-square'),

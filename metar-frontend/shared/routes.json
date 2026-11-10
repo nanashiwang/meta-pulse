@@ -38,7 +38,8 @@
     "admin/events",
     "admin/operations",
     "admin/marketplace",
-    "admin/models"
+    "admin/models",
+    "questions"
   ],
   "detailPrefixes": [
     "question",
@@ -47,9 +48,9 @@
     "model"
   ],
   "legacyAliases": {
-    "/": "/questions",
-    "/discover": "/questions",
-    "/latest": "/questions",
+    "/": "/latest",
+    "/discover": "/latest",
+    "/questions": "/latest",
     "/bookmarks": "/me/bookmarks",
     "/notifications": "/me/notifications"
   }

@@ -4,7 +4,8 @@
   function policy(pathname, search = '') {
     const path = pathname.replace(/\/$/, '') || '/';
     const privatePage = /^\/(?:me|settings|pulse|admin|chat|search|publish|login|register|forgot|status|marketplace\/(?:mine|publish))(?:\/|$)/.test(path);
-    let canonical = path === '/discover' ? '/questions' : path;
+    const feed = ['/', '/latest', '/discover', '/questions'].includes(path);
+    let canonical = feed ? '/' : path;
     const question = path.match(/^\/question\/([a-zA-Z0-9]+)$/);
     if (question) canonical = '/questions/' + question[1];
     const topic = path.match(/^\/topic\/([^/]+)$/);
@@ -12,7 +13,7 @@
     const query = new URLSearchParams(search);
     // Separate paginated content; never put tracking or account parameters in canonical URLs.
     const page = query.get('page');
-    if ((path === '/questions' || topic) && /^[1-9][0-9]*$/.test(page || '') && page !== '1') canonical += '?page=' + page;
+    if ((feed || topic) && /^[1-9][0-9]*$/.test(page || '') && page !== '1') canonical += '?page=' + page;
     return { canonical: privatePage ? '' : origin + canonical, robots: privatePage ? 'noindex, nofollow' : 'index, follow' };
   }
   function update(error = false) {

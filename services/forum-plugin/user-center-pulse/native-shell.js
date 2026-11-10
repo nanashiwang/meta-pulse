@@ -4,9 +4,9 @@ import { installHomeNavigation, canonicalizeHomeLinks } from './home-navigation.
 import { mountComposerLayout, positionComposerMenus } from './composer-layout.js';
 
 export function backDestination(path, historyLength) {
-  if (/^\/questions\/?$/.test(path)) return null;
+  if (/^\/(?:latest|questions)?\/?$/.test(path)) return null;
   if (/^\/users\/settings(?:\/|$)/.test(path) || /^\/settings\/binding\/?$/.test(path)) return '/me';
-  return historyLength > 1 ? 'back' : '/questions';
+  return historyLength > 1 ? 'back' : '/latest';
 }
 
 export function installNativeShell(language, host = window) {
@@ -22,7 +22,7 @@ export function installNativeShell(language, host = window) {
   const nav = doc.createElement('nav');
   nav.className = 'metar-primary-nav';
   const links = [
-    ['/questions', '社区', 'Community'],
+    ['/latest', '社区', 'Community'],
     ['/marketplace', '集市', 'Marketplace'],
     ['/models', '模型榜', 'Models'],
     ['/pulse', 'Pulse', 'Pulse'],

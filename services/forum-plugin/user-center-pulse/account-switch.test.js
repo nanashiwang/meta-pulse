@@ -21,13 +21,13 @@ const issue = () => ok({ticket:proof,callback:'/answer/api/v1/connector/redirect
 const login = () => ({ok:true,url:'https://forum.test/users/auth-landing?access_token=target'});
 test('switch and return use native tokens, revoke target and remove tab return state',async()=>{
  const f=setup([issue(),login(),ok({ok:true}),ok({})]);await f.api.start('member');
- assert.equal(f.window.localStorage.getItem('_a_ltk_'),'target');assert.deepEqual(f.moves,['/questions']);
+ assert.equal(f.window.localStorage.getItem('_a_ltk_'),'target');assert.deepEqual(f.moves,['/latest']);
  assert.equal(f.calls[1].options.headers['X-Metar-Switch'],proof);
  assert.equal(f.calls[1].options.headers.Authorization,'Bearer admin');
  await f.api.restore();assert.equal(f.window.localStorage.getItem('_a_ltk_'),'admin');
  assert.equal(f.window.sessionStorage.getItem('_metar_admin_return_'),null);
  assert.equal(f.calls[3].url,'/answer/api/v1/user/logout');assert.equal(f.calls[3].options.headers.Authorization,'Bearer target');
- assert.deepEqual(f.moves,['/questions','/admin/users']);
+ assert.deepEqual(f.moves,['/latest','/admin/users']);
 });
 test('denied and disabled issuance never replace login or leave return credentials',async()=>{
  for(const code of ['forbidden','switch_plugin_disabled']){const f=setup([{ok:false,json:async()=>({error:code})}]);await f.api.start('member');assert.equal(f.calls.length,1);assert.equal(f.window.localStorage.getItem('_a_ltk_'),'admin');assert.equal(f.window.sessionStorage.getItem('_metar_admin_return_'),null);assert.equal(f.alerts.length,1);}

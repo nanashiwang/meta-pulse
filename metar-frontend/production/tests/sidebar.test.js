@@ -24,7 +24,7 @@ test('back returns settings to personal space, otherwise uses history or communi
  const back=appFunction('goBack',context);
  back();context.route=()=>({path:'/users/settings'});back();context.route=()=>({path:'/users/settings/profile'});back();
  context.route=()=>({path:'/models'});back();context.history.length=1;back();
- assert.deepEqual(visits,['/me','/me','/me','back','/questions']);
+ assert.deepEqual(visits,['/me','/me','/me','back','/latest']);
 });
 function setup(value,blocked=false){let listener,latest;const saved=new Map([[KEY,value]]),desktop={matches:true,addEventListener(_event,fn){listener=fn}};
  const storage={getItem:k=>{if(blocked)throw Error('blocked');return saved.get(k)},setItem:(k,v)=>{if(blocked)throw Error('blocked');saved.set(k,v)}};

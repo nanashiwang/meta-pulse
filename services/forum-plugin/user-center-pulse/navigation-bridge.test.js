@@ -39,7 +39,7 @@ test('资料页回首页完整加载 METAR，保留 Answer 已提交的历史和
   assert.equal(host.history.pushState(state, '', '/?order=hot&page=2#main'), 'native-result');
   assert.deepEqual(host.loads, []);
   host.flush();
-  assert.deepEqual(host.loads, ['/questions?order=hot&page=2#main']);
+  assert.deepEqual(host.loads, ['/latest?order=hot&page=2#main']);
   assert.equal(host.entries[0].state, state);
   assert.equal(host.entries.length, 1);
 });
@@ -90,11 +90,11 @@ test('重复安装不会叠加历史包装器，同一轮只根据最终已提�
  test('gateway homepage redirects retain legacy hash destinations without native redirect loops', () => {
   for (const [path, expected] of [
     ['/questions#/me', '/me'],
-    ['/questions#/latest?order=hot', '/questions?order=hot'],
-    ['/questions#/questions?page=2', '/questions?page=2'],
-    ['/questions#answer-7', null],
-    ['/questions#//evil.test/me', null],
-    ['/questions#/topic/%2fadmin', null],
+    ['/questions#/latest?order=hot', '/latest?order=hot'],
+    ['/questions#/questions?page=2', '/latest?page=2'],
+    ['/questions#answer-7', '/latest#answer-7'],
+    ['/questions#//evil.test/me', '/latest#//evil.test/me'],
+    ['/questions#/topic/%2fadmin', '/latest#/topic/%2fadmin'],
     ['/users/confirm-email#/me', null],
   ]) {
     const host = browser(path); installNavigationBridge(host); host.flush();

@@ -46,7 +46,7 @@ grep -A18 'location \^~ /metar/api/intel/' "$config" | grep -q 'proxy_set_header
 [ "$(grep -c 'proxy_set_header New-Api-User "";' "$config")" -eq 11 ] || die 'all forum routes must strip new-api identity headers'
 grep -A12 'location /blog/' "$config" | grep -q 'Strict-Transport-Security' || die 'blog location lost inherited security headers'
 grep -q 'location = / {' "$config" || die 'METAR exact homepage route is missing'
-grep -A14 'location = / {' "$config" | grep -qF 'return 301 /questions$is_args$args;' || die 'community homepage must redirect to native questions with query preserved'
+grep -A14 'location = / {' "$config" | grep -qF 'try_files /blog/metar/index.html =404;' || die 'community homepage must serve the built shell and fail closed'
 grep -A14 'location = / {' "$config" | grep -q 'Content-Security-Policy' || die 'METAR homepage CSP is missing'
 [ "$(grep -Fc "connect-src 'self' https://claude.com/cdn-cgi/trace https://claude.ai/cdn-cgi/trace https://*.dnsprobe.metarhub.com;" "$config")" -eq 2 ] || die 'both shell entry CSPs must permit only Claude trace endpoints and the DNS probe zone'
 

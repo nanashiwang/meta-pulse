@@ -44,7 +44,7 @@ export default defineConfig({
     darkModeSwitchTitle: '切换到深色主题',
     lightModeSwitchTitle: '切换到浅色主题',
     nav: [
-      { text: '社区', link: 'https://metarhub.com/questions', target: '_self' },
+      { text: '社区', link: 'https://metarhub.com/latest', target: '_self' },
       { text: '知识库', link: '/' },
       { text: 'Pulse', link: 'https://metarhub.com/pulse', target: '_self' },
       { text: '模型评测', link: '/reviews/' },
