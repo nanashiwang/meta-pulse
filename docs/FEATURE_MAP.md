@@ -109,3 +109,5 @@ new-api 接收端与实际到账、生产普通账号流程、邮件与跨实例
 | 入口 | 能力、权限与事实源 | 验证 |
 |---|---|---|
 | 顶栏「工具」下拉、手机侧栏底部「工具」、Answer 原生页头 → `/tools`、`/tools/network` | 工具清单仅在 [app.js](../metar-frontend/production/src/app.js) `TOOLS` 定义；`/tools/network` 为「Claude 访问环境检测」：本地读取时区、语言、字体、Intl、UTC+8 偏移和 UA Emoji 风格，按 30/24/20/10/8/8 生成可解释参考分；浏览器直连 claude.com/claude.ai trace 展示独立出口；WebRTC 与社区出口仅作地址差异提示；DNS 经 [独立权威探测](DNS_PROBE.md) 观测随机查询的递归 IP，默认需部署启用与子域委派，不伪造地区或安全结果；环境特征不保存/上传，DNS 临时结果 90 秒清理，不读取账号或密钥。出口 IP 仍由 nginx `/metar/api/tools/ip` 返回，无 Answer/Pulse/Intel 依赖。 | [tools.test.js](../metar-frontend/production/tests/tools.test.js)、`make test-community`、`python3 .agents/workflow.py verify`；[入口决策](../.agents/notes/implemented/feature/2026-11-08-tools-network-check.md)、[面板决策](../.agents/notes/implemented/feature/2026-11-08-claude-environment-panel.md) |
+
+类别/标签拖动排序（2026-11-10）：管理员 `/admin/taxonomy` 拖动或上下移动后显式保存；[展示模块](../metar-frontend/production/src/taxonomy.js)统一 METAR 侧栏、抽屉、筛选、目录顺序，集市也可排序。[排序 API](../services/forum-plugin/user-center-pulse/taxonomy_order.go)复用 Answer 管理员身份，以数据库版本条件更新；未知响应读回确认。原生发帖推荐顺序不变。验证：`make test-community`、`make test-forum-integration` 中的 `TestMySQLTaxonomyOrder`。

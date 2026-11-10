@@ -863,7 +863,7 @@
       if (currentUserState === 'unavailable') return identityUnavailable(title);
       if (!currentUser) return loginRequired(title, t('请使用社区管理员账号登录。'));
       if (!isCommunityAdministrator(currentUser)) return `<section class="card">${empty(t('需要管理员权限'), '', link('/latest', t('返回社区'), 'btn'), 'shield')}</section>${footer()}`;
-      return `${pageTitle(title)}${taxonomy.adminPage()}${footer()}`;
+      return `${pageTitle(title)}${await taxonomy.orderPage(answer)}${taxonomy.adminPage()}${footer()}`;
     }
     if (path === '/knowledge') return knowledgePage();
     if (path === '/search') return searchPage();
@@ -1215,6 +1215,13 @@
   });
 
   document.addEventListener('submit', (event) => {
+    const orderForm = event.target.closest('[data-taxonomy-order]');
+    if (orderForm) {
+      event.preventDefault();
+      if (isCommunityAdministrator(currentUser)) taxonomy.saveOrder(answer,new AnswerAdapter({answerApiBase:'/answer/admin/api'}),orderForm).then(()=>enhanceTaxonomy());
+      return;
+    }
+
     const taxonomyForm = event.target.closest('form[data-form="taxonomy-init"]');
     if (taxonomyForm) {
       event.preventDefault();

@@ -25,6 +25,7 @@ test('crawler can load real directory and sidebar dependencies under the shipped
     const parsed = new URL(url, 'https://metarhub.com');
     let data;
     switch (parsed.pathname) {
+      case '/answer/api/v1/metar/taxonomy/order': data = {version:0,categories:[],tags:[]}; break;
       case '/answer/api/v1/siteinfo': data = {site_write:{recommend_tags:[category]}}; break;
       case '/answer/api/v1/tag': data = category; break;
       case '/answer/api/v1/tags': data = [tag]; break;
@@ -45,7 +46,7 @@ test('crawler can load real directory and sidebar dependencies under the shipped
   const catalog = await taxonomy.catalog(answer);
   assert.equal(catalog.categoriesUnavailable, false);
   assert.equal(catalog.tagsUnavailable, false);
-  assert.deepEqual(catalog.categories.map(tag=>tag.slug_name), ['develop']);
+  assert.deepEqual(catalog.categories.map(tag=>tag.slug_name), ['vibe-coding','develop']);
   assert.deepEqual(catalog.tags.map(tag=>tag.slug_name), ['ai']);
   assert.ok(requests.some(url=>url.startsWith('/answer/api/v1/tags?tags=')));
 });
@@ -162,16 +163,16 @@ test('navigation catalog deduplicates reads and isolates session, language and i
     return {list:[{slug_name:'custom'},{slug_name:'ai'},{slug_name:'custom-tag',display_name:'Real tag'}]};
   }};
   const [first,second]=await Promise.all([taxonomy.catalog(answer),taxonomy.catalog(answer)]);
-  assert.equal(first,second);assert.equal(calls,3);
-  assert.deepEqual(first.categories,[{slug_name:'custom',display_name:'Real category'}]);
+  assert.equal(first,second);assert.equal(calls,4);
+  assert.deepEqual(first.categories.filter(x=>x.slug_name!=='vibe-coding'),[{slug_name:'custom',display_name:'Real category'}]);
   assert.deepEqual(first.tags.map(x=>x.slug_name),['ai','custom-tag']);
   assert.doesNotMatch(JSON.stringify(first),/private|secret|must not retain/);
-  await taxonomy.catalog(answer);assert.equal(calls,3);
-  answer.contentEpoch++;await taxonomy.catalog(answer);assert.equal(calls,6);
-  token='two';await taxonomy.catalog(answer);assert.equal(calls,9);
+  await taxonomy.catalog(answer);assert.equal(calls,4);
+  answer.contentEpoch++;await taxonomy.catalog(answer);assert.equal(calls,8);
+  token='two';await taxonomy.catalog(answer);assert.equal(calls,12);
   const original=window.MetarI18n;
   window.MetarI18n={...original,locale:()=> 'en-US'};
-  try {await taxonomy.catalog(answer);assert.equal(calls,12);} finally {window.MetarI18n=original;}
+  try {await taxonomy.catalog(answer);assert.equal(calls,16);} finally {window.MetarI18n=original;}
 });
 
 test('failed catalogs are retried, old results cannot overwrite a newer scope, and no seed becomes a live link',async()=>{
@@ -253,7 +254,7 @@ test('renaming rechecks permissions and source, detects incompatible/readback st
 test('inline previews are bounded but keep an out-of-preview current selection and full directory links',()=>{
   const data={categories:Array.from({length:25},(_,i)=>({slug_name:`category-${i}`,display_name:`Category ${i}`})),tags:Array.from({length:50},(_,i)=>({slug_name:`tag-${i}`,display_name:`Tag ${i}`}))};
   const html=taxonomy.navigation(data,'tag-49',{tags:true});
-  assert.equal((taxonomy.inlineItems(data,'categories').match(/data-router/g)||[]).length,17);
+  assert.equal((taxonomy.inlineItems(data,'categories').match(/data-router/g)||[]).length,16);
   assert.equal((taxonomy.inlineItems(data,'tags','tag-49').match(/data-router/g)||[]).length,9);
   assert.match(html,/href="\/topic\/tag-49" aria-current="page"/);
   assert.doesNotMatch(html,/href="\/topic\/tag-48"/);
@@ -266,4 +267,47 @@ test('inline loading, empty and error states never turn seed categories into liv
   assert.match(taxonomy.inlineItems({categories:[],categoriesUnavailable:true},'categories'),/taxonomy-inline-retry/);
   assert.match(taxonomy.inlineItems({categories:[]},'categories'),/暂无可用项目/);
   assert.doesNotMatch(taxonomy.navigation({categories:[],tags:[]}),/href="\/topic\//);
+});
+
+test('saved ordering is stable, ignores removed slugs and appends new entries',()=>{
+ const items=['a','b','c','d'].map(slug_name=>({slug_name}));
+ assert.deepEqual(taxonomy.ordered(items,['missing','c','a']).map(x=>x.slug_name),['c','a','b','d']);
+ assert.deepEqual(items.map(x=>x.slug_name),['a','b','c','d']);
+});
+
+test('saved order governs catalogs, directories and full tag pagination',async()=>{
+ const list=Array.from({length:60},(_,i)=>({slug_name:`tag-${i}`,display_name:`Tag ${i}`,status:'available'}));
+ const order={version:4,categories:['b','vibe-coding','a'],tags:['tag-59','tag-0']};
+ const answer={request:async path=>{
+  if(path==='/metar/taxonomy/order')return order;
+  if(path==='/siteinfo')return {site_write:{recommend_tags:[{slug_name:'a'},{slug_name:'b'}]}};
+  if(path.startsWith('/tags?'))return list;
+  if(path.startsWith('/tags/page'))return {list};
+  return {status:'available'};
+ },listTags:async({page,pageSize})=>({count:60,list:list.slice((page-1)*pageSize,page*pageSize)})};
+ const data=await taxonomy.catalog(answer);
+ assert.deepEqual(data.categories.map(x=>x.slug_name),['b','vibe-coding','a']);
+ assert.equal(data.tags[0].slug_name,'tag-59');
+ for(const html of [taxonomy.inlineItems(data,'categories'),taxonomy.drawerItems(data,'categories'),taxonomy.filters(data),await taxonomy.directory(answer,new URLSearchParams(),'/ask',false)]) {
+  assert.ok(html.indexOf('/topic/b')<html.indexOf('/marketplace') || html.indexOf('value="b"')<html.indexOf('value="vibe-coding"'));
+ }
+ const html=await taxonomy.directory(answer,new URLSearchParams('view=tags'),'/ask',false);
+ assert.ok(html.indexOf('/topic/tag-59')<html.indexOf('/topic/tag-0'));
+ const second=await taxonomy.directory(answer,new URLSearchParams('view=tags&page=2'),'/ask',false);
+ assert.doesNotMatch(second,/href="\/topic\/tag-59"/);
+ const admin=await taxonomy.orderPage(answer);
+ assert.match(admin,/data-version="4"/);assert.match(admin,/draggable="true"/);
+});
+
+test('save verifies lost responses and reports conflicts without overwriting draft version',async()=>{
+ const order={version:3,categories:['b','a'],tags:['z']};
+ const status={textContent:''},button={disabled:false};
+ const form={dataset:{version:'2'},querySelector:()=>status,querySelectorAll:selector=>selector==='button'?[button]:(selector.includes('categories')?order.categories:order.tags).map(orderSlug=>({dataset:{orderSlug}}))};
+ const answer={clearContentCache(){},request:async()=>order};
+ const admin={request:async()=>{throw new Error('response lost')}};
+ await taxonomy.saveOrder(answer,admin,form);
+ assert.equal(form.dataset.version,'3');assert.match(status.textContent,/顺序已保存/);assert.equal(button.disabled,false);
+ order.version=8;
+ await taxonomy.saveOrder(answer,admin,form);
+ assert.equal(form.dataset.version,'3');assert.match(status.textContent,/保存未确认/);
 });

@@ -39,6 +39,31 @@
     return site.site_write.recommend_tags.filter(item => typeof item?.slug_name === 'string' && item.slug_name);
   }
 
+  const market = () => ({slug_name:'vibe-coding',display_name:t('Vibe Coding 集市'),description:t('发现项目、在线体验与想法讨论。')});
+  const withMarket = list => [market(), ...list.filter(tag=>tag.slug_name!=='vibe-coding')];
+  function ordered(list, slugs = []) {
+    const positions = new Map(slugs.map((slug,index)=>[slug,index]));
+    return [...list].sort((a,b)=>(positions.get(a.slug_name) ?? Infinity)-(positions.get(b.slug_name) ?? Infinity));
+  }
+  async function readOrder(answer, required = false) {
+    try {
+      const value = await answer.request('/metar/taxonomy/order');
+      if (!Number.isSafeInteger(value?.version) || !Array.isArray(value.categories) || !Array.isArray(value.tags)) throw new Error(t('排序读取失败，请刷新重试。'));
+      return value;
+    } catch (error) { if (required) throw error; return {version:0,categories:[],tags:[]}; }
+  }
+  async function allTags(answer) {
+    const list = [];
+    for (let page=1; page<=209; page++) {
+      const result = await answer.listTags({page,pageSize:48,order:'name'});
+      if (!Array.isArray(result?.list) || Number(result.count)>10000) throw new Error(t('标签目录过大或读取不完整，请重试。'));
+      list.push(...result.list);
+      if (list.length>=Number(result.count)) return list;
+      if (!result.list.length) break;
+    }
+    throw new Error(t('标签目录过大或读取不完整，请重试。'));
+  }
+
   function requestURL(path, kind, english = false, feedback = '') {
     const category = kind === 'category';
     const title = english ? `[${category ? 'Category' : 'Tag'} request] Name` : `【${category ? '类别' : '标签'}申请】请填写名称`;
@@ -69,21 +94,24 @@
     const key = scope(answer), previous = catalogs.get(answer);
     if (previous?.key === key && (previous.pending || previous.expires > Date.now())) return previous.promise;
     const entry = {key,pending:true,expires:0};
+    const orderPromise = readOrder(answer);
     entry.promise = Promise.allSettled([
       answer.request('/siteinfo').then(site=>recommended(site).map(publicTag)),
-      answer.request(`/tags?${new URLSearchParams({tags:tags.map(tag=>tag.slug_name).join(',')})}`).then(validTags),
+      orderPromise,
+      orderPromise.then(order => { const slugs = [...new Set([...tags.map(tag=>tag.slug_name), ...order.tags])]; return Promise.all(Array.from({length:Math.ceil(slugs.length/40)},(_,i)=>answer.request(`/tags?${new URLSearchParams({tags:slugs.slice(i*40,i*40+40).join(',')})}`))).then(lists=>validTags(lists.flat())); }),
       answer.request('/tags/page?page=1&page_size=48&query_cond=popular').then(result=>validTags(result?.list)),
-    ]).then(([categoryResult,commonResult,popularResult])=>{
-      const categoryList = categoryResult.status === 'fulfilled' ? categoryResult.value : [];
+    ]).then(([categoryResult,orderResult,commonResult,popularResult])=>{
+      const order = orderResult.status === 'fulfilled' ? orderResult.value : {};
+      const categoryList = ordered(withMarket(categoryResult.status === 'fulfilled' ? categoryResult.value : []),order.categories);
       const categoryNames = new Set(categoryList.map(tag=>tag.slug_name));
       const common = commonResult.status === 'fulfilled' ? commonResult.value : [];
       const popular = popularResult.status === 'fulfilled' ? popularResult.value : [];
-      const ordered = [...tags.map(seed=>common.find(tag=>tag.slug_name===seed.slug_name)).filter(Boolean),...popular];
-      const tagList = [...new Map(ordered.filter(tag=>!categoryNames.has(tag.slug_name)).map(tag=>[tag.slug_name,tag])).values()];
+      const mergedTags = [...tags.map(seed=>common.find(tag=>tag.slug_name===seed.slug_name)).filter(Boolean),...common,...popular];
+      const tagList = [...new Map(mergedTags.filter(tag=>!categoryNames.has(tag.slug_name)).map(tag=>[tag.slug_name,tag])).values()];
       entry.pending = false;
       const failed = [categoryResult,commonResult,popularResult].some(result=>result.status === 'rejected');
       entry.expires = failed ? 0 : Date.now()+15000;
-      return {categories:categoryList,tags:tagList,categoriesUnavailable:categoryResult.status==='rejected',tagsUnavailable:commonResult.status==='rejected' && popularResult.status==='rejected'};
+      return {categories:categoryList,tags:ordered(tagList,order.tags),categoriesUnavailable:categoryResult.status==='rejected',tagsUnavailable:commonResult.status==='rejected' && popularResult.status==='rejected'};
     });
     catalogs.set(answer,entry);
     return entry.promise;
@@ -91,20 +119,20 @@
 
   function inlineTagItems(data, kind, current = '') {
     if (!data) return `<p class="visually-hidden" role="status">${t('正在加载…')}</p>${'<span class="loading-block taxonomy-loading-row" aria-hidden="true"></span>'.repeat(3)}`;
-    const list = (data[kind] || []).filter(tag=>tag.slug_name !== 'vibe-coding'), limit = kind === 'categories' ? 16 : 8;
+    const list = (data[kind] || []), limit = kind === 'categories' ? 16 : 8;
     const unavailable = kind === 'categories' ? data.categoriesUnavailable : data.tagsUnavailable;
     if (unavailable && !list.length) return `<p class="taxonomy-inline-message" role="status">${t('暂时无法加载')}</p><button type="button" class="textlink taxonomy-inline-retry" data-action="taxonomy-inline-retry">${t('重新加载')}</button>`;
     if (!list.length) return `<p class="taxonomy-inline-message">${t('暂无可用项目')}</p>`;
     const visible = list.slice(0, limit), selected = list.find(tag => tag.slug_name === current);
     if (selected && !visible.includes(selected)) visible.push(selected);
-    return visible.map(tag => `<a data-router class="nav-item taxonomy-sidebar-item${tag.slug_name === current ? ' active' : ''}" href="${topicURL(tag.slug_name)}"${tag.slug_name === current ? ' aria-current="page"' : ''} title="${esc(name(tag))}">${kind === 'categories' ? marker(tag.slug_name) : '<span class="taxonomy-hash" aria-hidden="true">#</span>'}<span class="taxonomy-sidebar-name">${esc(name(tag))}</span></a>`).join('');
+    return visible.map(tag => tag.slug_name === 'vibe-coding' ? marketplaceLink(current) : `<a data-router class="nav-item taxonomy-sidebar-item${tag.slug_name === current ? ' active' : ''}" href="${topicURL(tag.slug_name)}"${tag.slug_name === current ? ' aria-current="page"' : ''} title="${esc(name(tag))}">${kind === 'categories' ? marker(tag.slug_name) : '<span class="taxonomy-hash" aria-hidden="true">#</span>'}<span class="taxonomy-sidebar-name">${esc(name(tag))}</span></a>`).join('');
   }
 
   function marketplaceLink(current = '') {
     return `<a data-router class="nav-item taxonomy-sidebar-item marketplace-sidebar-link${current === '/marketplace' || current.startsWith('/marketplace/') ? ' active' : ''}" href="/marketplace"${current === '/marketplace' || current.startsWith('/marketplace/') ? ' aria-current="page"' : ''}><span class="taxonomy-dot taxonomy-color-marketplace" aria-hidden="true"></span><span class="taxonomy-sidebar-name">${t('Vibe Coding 集市')}</span></a>`;
   }
   function inlineItems(data, kind, current = '') {
-    return (kind === 'categories' ? marketplaceLink(current) : '') + inlineTagItems(data,kind,current);
+    return !data && kind === 'categories' ? marketplaceLink(current) + inlineTagItems(data,kind,current) : inlineTagItems(data,kind,current);
   }
 
   function navigation(data = null, current = '', collapsed = {}) {
@@ -146,7 +174,8 @@
     const view = query.get('view') === 'tags' ? 'tags' : 'categories';
     const page = Math.max(1, parseInt(query.get('page'), 10) || 1);
     const site = await answer.request('/siteinfo');
-    const categoryList = recommended(site);
+    const order = await readOrder(answer);
+    const categoryList = ordered(recommended(site),order.categories);
     const toolbar = `<div class="taxonomy-toolbar"><nav class="discussion-tabs" aria-label="${t('类别与标签')}"><a data-router class="discussion-tab ${view==='categories'?'active':''}" href="/topics"${view==='categories'?' aria-current="page"':''}>${t('类别')}</a><a data-router class="discussion-tab ${view==='tags'?'active':''}" href="/topics?view=tags"${view==='tags'?' aria-current="page"':''}>${t('全部标签')}</a></nav>${requests(askPath,categoryList,english)}</div>`;
     if (view === 'categories') {
       // Site settings expose names only; descriptions must come from current tags.
@@ -157,9 +186,10 @@
         } catch (_) { /* A missing description must not hide a configured category. */ }
         return tag;
       }));
-      return toolbar + (!categoryList.length ? `<p class="muted">${t('起步类别待管理员启用，已有帖子和标签仍可正常浏览。')}</p>` : '') + `<div class="taxonomy-list">${categoryRow({slug_name:'vibe-coding',display_name:t('Vibe Coding 集市'),description:t('发现项目、在线体验与想法讨论。')})}${(categoryList.length ? detailed : categories).filter(tag=>tag.slug_name!=='vibe-coding').map(tag=>categoryRow(tag,!categoryList.length)).join('')}</div>`;
+      return toolbar + (!categoryList.length ? `<p class="muted">${t('起步类别待管理员启用，已有帖子和标签仍可正常浏览。')}</p>` : '') + `<div class="taxonomy-list">${ordered(withMarket(categoryList.length ? detailed : categories),order.categories).map(tag=>categoryRow(tag,!categoryList.length && tag.slug_name!=='vibe-coding')).join('')}</div>`;
     }
-    const result = await answer.listTags({page,pageSize:48,order:'name'});
+    const full = order.tags.length ? ordered(await allTags(answer),order.tags) : null;
+    const result = full ? {count:full.length,list:full.slice((page-1)*48,page*48)} : await answer.listTags({page,pageSize:48,order:'name'});
     const list = Array.isArray(result?.list) ? result.list : [];
     const categoryNames = new Set(categoryList.map(item=>item.slug_name));
     const totalPages = Math.max(1,Math.ceil((Number(result?.count)||0)/48));
@@ -223,9 +253,65 @@
     await renameDefaults(answer, progress);
   }
 
+  async function orderPage(answer) {
+    const [order,site,list] = await Promise.all([readOrder(answer,true),answer.request('/siteinfo'),allTags(answer)]);
+    const categoryList = withMarket(recommended(site));
+    const names = new Set(categoryList.map(tag=>tag.slug_name));
+    const groups = {categories:ordered(categoryList,order.categories),tags:ordered(list.filter(tag=>!names.has(tag.slug_name)),order.tags)};
+    return `<form data-taxonomy-order data-version="${order.version}" class="card card-pad stack"><h2>${t('呈现顺序')}</h2><p>${t('拖动项目调整顺序，也可使用上下移动按钮。保存后对所有访客生效。')}</p>${Object.entries(groups).map(([kind,items])=>`<section><h3>${t(kind==='categories'?'类别':'标签')}</h3><ol data-order-group="${kind}" class="taxonomy-order-list">${items.map(tag=>`<li draggable="true" data-order-slug="${esc(tag.slug_name)}"><span aria-hidden="true" class="taxonomy-drag-handle">⠿</span><span class="taxonomy-order-name">${esc(name(tag))}</span><button type="button" class="btn small" data-order-move="-1" aria-label="${esc(t('上移')+' '+name(tag))}">↑</button><button type="button" class="btn small" data-order-move="1" aria-label="${esc(t('下移')+' '+name(tag))}">↓</button></li>`).join('')}</ol></section>`).join('')}<button class="btn primary" type="submit">${t('保存顺序')}</button><p role="status" data-order-status></p></form>`;
+  }
+  async function saveOrder(answer,admin,form) {
+    if (form.dataset.busy) return;
+    const cmd = {version:Number(form.dataset.version)};
+    for (const kind of ['categories','tags']) cmd[kind] = [...form.querySelectorAll(`[data-order-group="${kind}"] [data-order-slug]`)].map(row=>row.dataset.orderSlug);
+    const status = form.querySelector('[data-order-status]');
+    const buttons = [...form.querySelectorAll('button')];
+    form.dataset.busy='1'; buttons.forEach(button=>button.disabled=true);
+    try {
+      let failure;
+      try { await admin.request('/metar/taxonomy/order',{method:'PUT',headers:{'Content-Type':'application/json','X-Metar-Request':'1'},body:JSON.stringify(cmd)}); }
+      catch(error) { failure=error; }
+      answer.clearContentCache();
+      const saved = await readOrder(answer,true);
+      if (saved.version!==cmd.version+1 || ['categories','tags'].some(kind=>JSON.stringify(saved[kind])!==JSON.stringify(cmd[kind]))) throw failure || new Error(t('排序已发生变化，请刷新后重新调整。'));
+      form.dataset.version=String(saved.version);
+      status.textContent=t('顺序已保存。');
+    } catch(error) { status.textContent=t('保存未确认，请刷新核对后重试。')+' '+error.message; }
+    finally { delete form.dataset.busy; buttons.forEach(button=>button.disabled=false); }
+  }
+  let dragging = null;
+  if (typeof document !== 'undefined') {
+    document.addEventListener('click',event=>{
+      const button=event.target.closest?.('[data-order-move]'); if (!['-1','1'].includes(button?.dataset?.orderMove)) return;
+      const row=button.closest('[data-order-slug]'), form=row.closest('[data-taxonomy-order]'); if(form.dataset.busy) return;
+      const previous=button.dataset.orderMove==='-1', sibling=previous?row.previousElementSibling:row.nextElementSibling;
+      if(sibling) row.parentNode.insertBefore(row,previous?sibling:sibling.nextElementSibling);
+      button.focus(); form.querySelector('[data-order-status]').textContent=t('顺序尚未保存。');
+    });
+    document.addEventListener('dragstart',event=>{
+      const row=event.target.closest?.('[data-order-slug]'); if(!row) return;
+      if(row.closest('[data-taxonomy-order]').dataset.busy) {event.preventDefault();return;}
+      dragging=row; event.dataTransfer.effectAllowed='move'; event.dataTransfer.setData('text/plain',row.dataset.orderSlug);
+    });
+    document.addEventListener('dragover',event=>{
+      const row=event.target.closest?.('[data-order-slug]');
+      if(dragging && row?.parentNode===dragging.parentNode) event.preventDefault();
+    });
+    document.addEventListener('drop',event=>{
+      const row=event.target.closest?.('[data-order-slug]');
+      if(dragging && row?.parentNode===dragging.parentNode && !row.closest('[data-taxonomy-order]').dataset.busy) {
+        event.preventDefault(); const rect=row.getBoundingClientRect();
+        row.parentNode.insertBefore(dragging,event.clientY>rect.top+rect.height/2?row.nextElementSibling:row);
+        row.closest('[data-taxonomy-order]').querySelector('[data-order-status]').textContent=t('顺序尚未保存。');
+      }
+      dragging=null;
+    });
+    document.addEventListener('dragend',()=>{dragging=null;});
+  }
+
   function adminPage() {
     return `<section class="card card-pad stack"><div class="flex wrap"><a class="btn" data-router href="/topics">${t('查看类别与标签')}</a><a class="btn" href="/admin/write">${t('打开撰写设置')}</a><a class="btn" href="/tags">${t('管理原生标签')}</a></div><p>${t('同步会补齐缺失类别和标签，并将旧版默认名称更新为下列名称；保留自定义名称、介绍、帖子归属与撰写设置。')}</p><div class="taxonomy-seed-tags">${categories.map(item=>`<span class="badge green">${esc(t(item.display_name))}</span>`).join('')}</div><div class="taxonomy-seed-tags">${tags.map(item=>`<span class="badge">${esc(t(item.display_name))}</span>`).join('')}</div><form data-form="taxonomy-init"><label class="taxonomy-confirm"><input type="checkbox" required name="confirmed">${t('我已核对起步目录，并确认没有其他管理员同时修改标签或撰写设置。')}</label><button type="submit" class="btn primary">${t('同步类别与标签')}</button><p class="muted" role="status" data-taxonomy-status></p></form><details><summary>${t('处理新增申请')}</summary><p>${t('在申请帖回复审核结果。通过后在原生标签页创建标签；新增类别还需加入撰写设置的推荐标签。公告等管理专用标签可在撰写设置中设为保留标签。')}</p><p>${t('类别用于整理内容，可与其他标签一起选择。资料分享单独筛选，不自动合并到工具资源；申请和标签本身不授予 Pulse 权益。')}</p></details></section>`;
   }
 
-  window.MetarTaxonomy = Object.freeze({categories:Object.freeze(categories),tags:Object.freeze(tags),seedFor,scope,catalog,navigation,inlineItems,drawer,drawerItems,drawerFooter,filters,topicURL,askURL,requestURL,recommended,directory,initialize,renameDefaults,adminPage});
+  window.MetarTaxonomy = Object.freeze({categories:Object.freeze(categories),tags:Object.freeze(tags),seedFor,scope,catalog,navigation,inlineItems,drawer,drawerItems,drawerFooter,filters,topicURL,askURL,requestURL,recommended,directory,initialize,renameDefaults,adminPage,ordered,readOrder,allTags,orderPage,saveOrder});
 })();

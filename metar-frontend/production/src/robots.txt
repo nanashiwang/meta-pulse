@@ -21,6 +21,7 @@ Allow: /answer/api/v1/tag$
 Allow: /answer/api/v1/tag?
 Allow: /answer/api/v1/tags$
 Allow: /answer/api/v1/tags?
+Allow: /answer/api/v1/metar/taxonomy/order$
 Disallow: /answer/api
 Disallow: /answer/admin
 Disallow: /metar/api

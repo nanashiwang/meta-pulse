@@ -350,6 +350,7 @@ func (uc *UserCenter) AfterLogin(externalID, _ string) {
 }
 
 func (uc *UserCenter) RegisterUnAuthRouter(r *gin.RouterGroup) {
+	uc.registerTaxonomyOrder(r, false)
 	uc.registerPublicExperience(r)
 	uc.registerMarketplacePublic(r)
 	uc.registerOperations(r, nil, false)
@@ -367,6 +368,7 @@ func (uc *UserCenter) RegisterAuthUserRouter(r *gin.RouterGroup) {
 }
 
 func (uc *UserCenter) RegisterAuthAdminRouter(r *gin.RouterGroup) {
+	uc.registerTaxonomyOrder(r, true)
 	uc.registerAccountSwitch(r, answerAdminSessionUserID, plugin.SiteURL)
 	uc.registerAdminTicketGrant(r, answerAdminSessionUserID, plugin.SiteURL)
 	uc.registerAdminUserBindings(r, answerAdminSessionUserID, plugin.SiteURL)
