@@ -180,9 +180,6 @@ func (g *mysqlBindingGuard) Ensure(ctx context.Context) error {
 	if err := rejectUnsafeExistingBindings(ctx, conn); err != nil {
 		return err
 	}
-	if _, err := conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS metar_question_share (question_id BIGINT NOT NULL PRIMARY KEY, clicks BIGINT NOT NULL DEFAULT 0)`); err != nil {
-		return err
-	}
 	return inspectBindingGuard(ctx, conn)
 }
 

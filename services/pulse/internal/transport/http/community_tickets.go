@@ -39,39 +39,6 @@ func CommunityTicketRoute(r *gin.RouterGroup, s CommunityTicketGranter, auth gin
 		}
 		c.JSON(200, result)
 	})
-	r.POST("/admin/tickets/statistics", auth, func(c *gin.Context) {
-		c.Header("Cache-Control", "no-store")
-		if _, ok := PrincipalWithRole(c, "admin"); !ok {
-			c.Status(403)
-			return
-		}
-		var body struct {
-			UserIDs []uint64 `json:"user_ids"`
-		}
-		if c.Request.URL.RawQuery != "" || bindSettingsJSON(c, &body) != nil || len(body.UserIDs) == 0 || len(body.UserIDs) > 100 {
-			c.Status(400)
-			return
-		}
-		for _, id := range body.UserIDs {
-			if id == 0 {
-				c.Status(400)
-				return
-			}
-		}
-		reader, ok := s.(interface {
-			Statistics(context.Context, []uint64) (map[uint64]ports.TicketStatistics, error)
-		})
-		if !ok {
-			c.Status(503)
-			return
-		}
-		result, err := reader.Statistics(c.Request.Context(), body.UserIDs)
-		if err != nil {
-			c.Status(503)
-			return
-		}
-		c.JSON(200, result)
-	})
 	r.POST("/admin/tickets/grant", auth, func(c *gin.Context) {
 		c.Header("Cache-Control", "no-store")
 		p, ok := PrincipalWithRole(c, "admin")

@@ -123,22 +123,3 @@ func (r *ticketRepository) LotForUpdate(ctx context.Context, id uint64) (*ports.
 func ticketLotDomain(m ticketLotModel) ports.TicketLot {
 	return ports.TicketLot{ID: m.ID, UserID: m.UserID, PeriodID: m.PeriodID, MintEntryID: m.MintEntryID, Issued: m.Issued, Remaining: m.Remaining, EarnedAt: time.Unix(m.EarnedAt, 0).UTC(), QuotaExpiresAt: time.Unix(m.QuotaExpiresAt, 0).UTC()}
 }
-
-func (r *ticketRepository) Statistics(ctx context.Context, ids []uint64) (map[uint64]ports.TicketStatistics, error) {
-	var rows []struct {
-		UserID    uint64
-		Remaining int64
-		Total     int64
-	}
-	err := r.db.WithContext(ctx).Raw(`SELECT user_id, SUM(amount) AS remaining,
- SUM(CASE WHEN amount>0 AND operation IN ('ticket_mint','ticket_bonus','ticket_adjustment') THEN amount ELSE 0 END) AS total
- FROM pulse_ledger_entry WHERE asset_type='ticket' AND user_id IN ? GROUP BY user_id`, ids).Scan(&rows).Error
-	result := make(map[uint64]ports.TicketStatistics, len(ids))
-	for _, id := range ids {
-		result[id] = ports.TicketStatistics{}
-	}
-	for _, row := range rows {
-		result[row.UserID] = ports.TicketStatistics{Remaining: row.Remaining, Total: row.Total}
-	}
-	return result, err
-}

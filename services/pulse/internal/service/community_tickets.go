@@ -180,21 +180,3 @@ func (s *CommunityTicketService) AdminGrant(ctx context.Context, actor, requestI
 }
 
 var ErrInvalidAdminTicketGrant = errors.New("invalid admin ticket grant")
-
-func (s *CommunityTicketService) Statistics(ctx context.Context, ids []uint64) (map[uint64]ports.TicketStatistics, error) {
-	if len(ids) == 0 || len(ids) > 100 {
-		return nil, ports.ErrConflict
-	}
-	for _, id := range ids {
-		if id == 0 {
-			return nil, ports.ErrConflict
-		}
-	}
-	var result map[uint64]ports.TicketStatistics
-	err := s.unit.Do(ctx, func(r ports.Repositories) error {
-		var err error
-		result, err = r.Tickets.Statistics(ctx, ids)
-		return err
-	})
-	return result, err
-}

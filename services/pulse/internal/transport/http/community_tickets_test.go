@@ -3,7 +3,6 @@ package transporthttp
 import (
 	"context"
 	"github.com/gin-gonic/gin"
-	"github.com/nanashiwang/meta-pulse/internal/ports"
 	"github.com/nanashiwang/meta-pulse/internal/security"
 	"github.com/nanashiwang/meta-pulse/internal/service"
 	"testing"
@@ -84,40 +83,5 @@ func TestAdminTicketGrantRequiresAdminAndIdempotencyKey(t *testing.T) {
 				t.Fatal("invalid grant accepted", c.body, w.Code)
 			}
 		}
-	}
-}
-
-func TestAdminTicketStatisticsBoundary(t *testing.T) {
-	for _, role := range []string{"admin", "community-bff", "new-api", "forum"} {
-		r := gin.New()
-		CommunityTicketRoute(r.Group("/v1/internal"), &ticketGranter{}, func(c *gin.Context) { c.Set(PrincipalContextKey, security.Principal{UserID: 9, Role: role}) })
-		for _, body := range []string{`{"user_ids":[]}`, `{"user_ids":[0]}`, `{"user_ids":[1],"extra":true}`, `{"user_ids":[1]} {}`} {
-			w := settingsTestRequest(r, "POST", "/v1/internal/admin/tickets/statistics", body, "")
-			want := 400
-			if role != "admin" {
-				want = 403
-			}
-			if w.Code != want {
-				t.Fatalf("role=%s status=%d", role, w.Code)
-			}
-		}
-	}
-}
-
-type statisticsTicketGranter struct{ ticketGranter }
-
-func (*statisticsTicketGranter) Statistics(_ context.Context, ids []uint64) (map[uint64]ports.TicketStatistics, error) {
-	result := map[uint64]ports.TicketStatistics{}
-	for _, id := range ids {
-		result[id] = ports.TicketStatistics{Remaining: 3, Total: 10}
-	}
-	return result, nil
-}
-func TestAdminTicketStatisticsSuccess(t *testing.T) {
-	r := gin.New()
-	CommunityTicketRoute(r.Group("/v1/internal"), &statisticsTicketGranter{}, func(c *gin.Context) { c.Set(PrincipalContextKey, security.Principal{UserID: 9, Role: "admin"}) })
-	w := settingsTestRequest(r, "POST", "/v1/internal/admin/tickets/statistics", `{"user_ids":[42]}`, "")
-	if w.Code != 200 || w.Body.String() != `{"42":{"remaining":"3","total":"10"}}` {
-		t.Fatalf("%d %s", w.Code, w.Body.String())
 	}
 }
