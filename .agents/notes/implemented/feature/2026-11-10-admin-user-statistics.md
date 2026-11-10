@@ -21,6 +21,8 @@ Status: implemented
 
 生产只读诊断：Pulse 统计请求约 2990ms 后 context canceled / 503；Answer 原始查询返回当前页 100 人，耗时约 60ms。
 
+生产索引构建超过旧迁移工具 30 秒截止时间；MySQL 已完成 DDL、Goose 仍停在 19。迁移工具使用 30 分钟预算；00020 在列序列完全匹配时跳过已完成 DDL，重新记录成功，错误索引仍报错。在线建索引显式要求 INPLACE/LOCK=NONE，避免回退阻塞写入。
+
 ## Consequences
 
 索引增加账本写入与磁盘成本，但避免管理查询回表扫描历史金额记录；迁移不修改账本数据。历史分享无法恢复；统计增加数据库读取成本，批量查询仅限当前页。完整论坛 Docker 构建在本地因 Docker Hub 基础镜像元数据请求 503 未完成；Answer UI 和 Pulse 二进制独立构建通过。

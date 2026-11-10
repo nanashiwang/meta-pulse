@@ -1370,7 +1370,7 @@ Intel 的来源观测为评分事实，快照仅用于查询。当前 `source-v3
 
 ### 管理员用户统计（2026-11-10）
 
-用户管理复用现有 Answer 管理员列表及受保护的批量绑定接口，社区互动计数直接读 Answer，券总量/剩余量经独立 admin HMAC 的 `POST /v1/internal/admin/tickets/statistics` 批量读取 Pulse 券账本投影，最多 100 人。浏览器提交的 Answer ID 只用于管理员查询，不用于声明登录身份；券用户 ID 必须从保护绑定解析。两侧统计独立降级为缺失值，不影响列表操作；发帖数可回退原生列表的 `question_count`。管理员券查询使用迁移 00020 的 `(user_id, asset_type, operation, amount)` 覆盖索引，在保持账本口径的同时避免百万级历史账本回表扫描。
+用户管理复用现有 Answer 管理员列表及受保护的批量绑定接口，社区互动计数直接读 Answer，券总量/剩余量经独立 admin HMAC 的 `POST /v1/internal/admin/tickets/statistics` 批量读取 Pulse 券账本投影，最多 100 人。浏览器提交的 Answer ID 只用于管理员查询，不用于声明登录身份；券用户 ID 必须从保护绑定解析。两侧统计独立降级为缺失值，不影响列表操作；发帖数可回退原生列表的 `question_count`。管理员券查询使用迁移 00020 的 `(user_id, asset_type, operation, amount)` 覆盖索引，在保持账本口径的同时避免百万级历史账本回表扫描。迁移命令预算为 30 分钟，00020 在列序列完全匹配时可重入，恢复 MySQL 已完成 DDL 但 Goose 尚未记录成功的超时窗口。
 
 Answer 插件启动迁移在既有迁移锁内创建 `metar_question_share(question_id, clicks)`，仅保存主帖分享按钮累计点击，不保存 IP 或访客身份，不反推历史转发，不进入权益事务。匿名同源 `POST /answer/api/v1/metar/statistics/share` 仅接受有效可见主帖、以数据库原子加一计数；有界进程内限流只保护统计负载，不是资金事实源。有效主帖分享计数汇总至作者，删帖后从统计排除。完整口径见 [用户管理](ACCOUNT_MANAGEMENT.md#用户列表统计)。
 

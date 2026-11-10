@@ -20,6 +20,14 @@ func TestMySQLTicketStatistics(t *testing.T) {
 	if err = migrations.Up(context.Background(), db.SQL()); err != nil {
 		t.Fatal(err)
 	}
+	// Simulate MySQL completing DDL after the caller timed out, before Goose
+	// recorded version 20. Retrying must preserve the existing index and data.
+	if _, err = db.SQL().Exec("DELETE FROM goose_db_version WHERE version_id=20"); err != nil {
+		t.Fatal(err)
+	}
+	if err = migrations.Up(context.Background(), db.SQL()); err != nil {
+		t.Fatalf("resume completed statistics index: %v", err)
+	}
 	tx := db.GORM().Begin()
 	defer tx.Rollback()
 	// Read projections must include historical mint/bonus/adjustment, but never

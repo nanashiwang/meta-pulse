@@ -241,7 +241,7 @@ func runMigration(up bool) error {
 	}
 	defer database.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 	if up {
 		return migrations.Up(ctx, database.SQL())
