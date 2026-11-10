@@ -448,18 +448,6 @@ body:has(.community-discussions, .page-loading[data-layout="feed"]) .topbar .sea
 .intel-pagination{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:14px;font-size:13px;font-variant-numeric:tabular-nums}
 .intel-pagination [aria-disabled=true]{opacity:.45;pointer-events:none}
 .intel-note{font-size:12px;margin-top:10px}
-/* Recent releases are visible before the long, paginated ranking table. */
-.intel-recent-module{margin-bottom:28px}
-.intel-recent-module .intel-section-head p{font-size:13px;margin:6px 0 0}
-.intel-recent-grid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
-.intel-recent-card{display:flex;gap:12px;align-items:center;height:100%;padding:16px;color:inherit;transition:border-color .15s}
-.intel-recent-card:hover,.intel-recent-card:focus-visible{border-color:var(--green)}
-.intel-provider-mark{display:grid;place-items:center;flex:0 0 40px;height:40px;border:1px solid var(--border);border-radius:12px;color:var(--green);font-size:14px;font-weight:700}
-.intel-recent-content{display:grid;gap:5px;min-width:0;overflow-wrap:anywhere}
-.intel-recent-content strong{font-size:15px;line-height:1.4}
-.intel-recent-content .muted{font-size:12px}
-@media(max-width:960px){.intel-recent-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:600px){.intel-recent-grid{grid-template-columns:1fr}}
 
 .intel-faq{margin-top:28px}
 .intel-faq details{border-top:1px solid var(--border);padding:12px 0}

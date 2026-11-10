@@ -145,16 +145,6 @@
     }).join('')}</section>`;
   }
 
-  function recentModels(rows) {
-    const title = t('近期新模型', 'New models');
-    const cards = rows.length ? `<ul class="intel-recent-grid">${rows.map(r => {
-      const provider = r.provider_name || r.provider || '';
-      const initials = provider.split(/\s+/).filter(Boolean).map(word => Array.from(word)[0]).slice(0, 2).join('').toUpperCase();
-      return `<li>${link('/model/' + encodeURIComponent(r.model), `<span class="intel-provider-mark" aria-hidden="true">${esc(initials)}</span><span class="intel-recent-content"><strong>${esc(r.name)}</strong><span class="muted">${esc(provider)} · ${fmt.date(r.release_date)}</span></span>`, 'card intel-recent-card')}</li>`;
-    }).join('')}</ul>` : `<p class="muted">${t('近 15 天没有新发布的模型。', 'No models released in the last 15 days.')}</p>`;
-    return `<section class="intel-recent-module" aria-label="${title}"><div class="intel-section-head"><div><h2>${title}</h2><p class="muted">${t('最近 15 天发布，按发布时间排列。', 'Announced in the last 15 days, newest first.')}</p></div><a class="btn small" href="https://llm-stats.com/llm-updates" target="_blank" rel="noopener noreferrer">${t('全部更新', 'All updates')} ↗</a></div>${cards}</section>`;
-  }
-
   // Answers are generated from the same snapshot as the table.
   function faq(home) {
     const find = c => home.leaders.find(l => l.category === c);
@@ -214,11 +204,9 @@
       const h = await this.fetch('/home');
       const board = await this.board(q, true);
       h.leaders = Array.isArray(h.leaders) ? h.leaders : [];
-      h.recent = Array.isArray(h.recent) ? h.recent : [];
 
       return `${subnav('/models')}
         ${leaderCards(h.leaders)}
-        ${recentModels(h.recent)}
         <div class="intel-layout">
           <section class="intel-main"><div class="intel-section-head"><h2>${t('综合榜', 'Overall ranking')}</h2></div>${board}</section>
           <aside class="intel-side">

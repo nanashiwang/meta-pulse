@@ -182,29 +182,3 @@ test('open weights retain sorting and paging on the canonical home route', async
   assert.match(html, /sort=agent&amp;order=asc&amp;open=1/);
   assert.doesNotMatch(html, /完整榜单|榜单首页/);
 });
-
- test('recent releases render as a separate module before the ranking, in both languages', async () => {
-  for (const lang of ['zh_CN', 'en_US']) {
-    const {api} = setup(lang);
-    const h = home();
-    h.recent = [row({model: 'new-model', name: '<New model>', provider_name: 'Example Lab', release_date: '2026-11-09T00:00:00Z'})];
-    const html = await new api.View(fetcher({'/home': h})).page('/models');
-    assert.ok(html.indexOf('intel-recent-module') < html.indexOf('intel-main'));
-    assert.equal((html.match(/intel-recent-module/g) || []).length, 1);
-    assert.match(html, /href="\/model\/new-model"/);
-    assert.match(html, /&lt;New model&gt;/);
-    assert.match(html, /Example Lab/);
-    assert.match(html, /aria-hidden="true">EL/);
-    assert.match(html, /2026/);
-    assert.match(html, /15/);
-    assert.match(html, /href="https:\/\/llm-stats.com\/llm-updates" target="_blank" rel="noopener noreferrer"/);
-  }
-});
-
-test('recent module shows an honest empty state and keeps the updates link', async () => {
-  const {api} = setup();
-  const html = await new api.View(fetcher({'/home': home()})).page('/models');
-  assert.match(html, /近 15 天没有新发布的模型/);
-  assert.match(html, /全部更新/);
-  assert.doesNotMatch(html, /intel-recent-card/);
-});
