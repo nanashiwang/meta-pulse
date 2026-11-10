@@ -350,6 +350,7 @@ func (uc *UserCenter) AfterLogin(externalID, _ string) {
 }
 
 func (uc *UserCenter) RegisterUnAuthRouter(r *gin.RouterGroup) {
+	uc.registerShareStatistics(r, plugin.SiteURL)
 	uc.registerPublicExperience(r)
 	uc.registerMarketplacePublic(r)
 	uc.registerOperations(r, nil, false)

@@ -1,8 +1,8 @@
 diff --git a/i18n/en_US.yaml b/i18n/en_US.yaml
-index 5183c50..b69ff38 100644
+index 5183c50..d91f20a 100644
 --- a/i18n/en_US.yaml
 +++ b/i18n/en_US.yaml
-@@ -1977,6 +1977,31 @@ ui:
+@@ -1977,6 +1977,38 @@ ui:
        change_role: Change role
        show_logs: Show logs
        add_user: Add user
@@ -19,6 +19,13 @@ index 5183c50..b69ff38 100644
 +      metar_col_user_id: ID
 +      metar_col_email: Email
 +      metar_col_reputation: Reputation
++      metar_col_tickets_remaining: "Tickets remaining"
++      metar_col_tickets_total: "Tickets received"
++      metar_col_post_count: "Posts"
++      metar_col_post_likes: "Post likes received"
++      metar_col_comments: "Comments / answers"
++      metar_col_likes: "Likes given"
++      metar_col_shares: "Post shares"
 +      metar_col_posts: Questions / answers
 +      metar_col_api_account: API account
 +      metar_col_login_methods: Sign-in methods
@@ -35,10 +42,10 @@ index 5183c50..b69ff38 100644
          title: Deactivate user
          content: An inactive user must re-validate their email.
 diff --git a/i18n/zh_CN.yaml b/i18n/zh_CN.yaml
-index 9db4efa..4ec8172 100644
+index 9db4efa..67331f3 100644
 --- a/i18n/zh_CN.yaml
 +++ b/i18n/zh_CN.yaml
-@@ -1938,6 +1938,31 @@ ui:
+@@ -1938,6 +1938,38 @@ ui:
        change_role: 更改角色
        show_logs: 显示日志
        add_user: 添加用户
@@ -55,6 +62,13 @@ index 9db4efa..4ec8172 100644
 +      metar_col_user_id: ID
 +      metar_col_email: 邮箱
 +      metar_col_reputation: 声望
++      metar_col_tickets_remaining: "抽奖券剩余量"
++      metar_col_tickets_total: "抽奖券总量"
++      metar_col_post_count: "发帖数"
++      metar_col_post_likes: "发帖获赞数"
++      metar_col_comments: "评论数"
++      metar_col_likes: "点赞数"
++      metar_col_shares: "帖子被分享数"
 +      metar_col_posts: 提问 / 回答
 +      metar_col_api_account: API 账号
 +      metar_col_login_methods: 登录方式
@@ -143,7 +157,7 @@ index bff87c9..48be397 100644
 +	return size
 +}
 diff --git a/ui/src/pages/Admin/Users/index.tsx b/ui/src/pages/Admin/Users/index.tsx
-index 7e8e4fd..ebebda0 100644
+index 7e8e4fd..d5f8475 100644
 --- a/ui/src/pages/Admin/Users/index.tsx
 +++ b/ui/src/pages/Admin/Users/index.tsx
 @@ -17,8 +17,15 @@
@@ -183,7 +197,7 @@ index 7e8e4fd..ebebda0 100644
  
  import DeleteUserModal from './components/DeleteUserModal';
  import Action from './components/Action';
-@@ -65,7 +75,70 @@ const bgMap = {
+@@ -65,7 +75,89 @@ const bgMap = {
    inactive: 'text-bg-secondary',
  };
  
@@ -198,6 +212,14 @@ index 7e8e4fd..ebebda0 100644
 +  'email',
 +  'reputation',
 +  'posts',
++  'tickets_remaining',
++  'tickets_total',
++  'post_count',
++  'post_likes',
++  'comments',
++  'likes',
++  'shares',
++
 +  'api_account',
 +  'login_methods',
 +  'created_at',
@@ -206,7 +228,18 @@ index 7e8e4fd..ebebda0 100644
 +] as const;
 +type OptionalColumn = (typeof OPTIONAL_COLUMNS)[number];
 +
-+type BindingInfo = { api_user_id?: string; providers?: string[] };
++type BindingInfo = {
++  api_user_id?: string;
++  providers?: string[];
++  tickets?: { remaining: string; total: string };
++  statistics?: {
++    posts: string;
++    post_likes: string;
++    comments: string;
++    likes: string;
++    shares: string;
++  };
++};
 +
 +const readStored = (key: string) => {
 +  try {
@@ -255,7 +288,7 @@ index 7e8e4fd..ebebda0 100644
  const Users: FC = () => {
    const { t } = useTranslation('translation', { keyPrefix: 'admin.users' });
    const [deleteUserModalState, setDeleteUserModalState] = useState({
-@@ -78,8 +151,29 @@ const Users: FC = () => {
+@@ -78,8 +170,29 @@ const Users: FC = () => {
    });
    const [urlSearchParams, setUrlSearchParams] = useSearchParams();
    const curFilter = urlSearchParams.get('filter') || UserFilterKeys[0];
@@ -286,7 +319,7 @@ index 7e8e4fd..ebebda0 100644
    const currentUser = loggedUserInfoStore((state) => state.user);
    const { agent: ucAgent } = userCenterStore();
    const [adminUcAgent, setAdminUcAgent] = useState<AdminUcAgent>({
-@@ -95,7 +189,7 @@ const Users: FC = () => {
+@@ -95,7 +208,7 @@ const Users: FC = () => {
      mutate: refreshUsers,
    } = useQueryUsers({
      page: curPage,
@@ -295,7 +328,7 @@ index 7e8e4fd..ebebda0 100644
      query: curQuery,
      ...(curFilter === 'all'
        ? {}
-@@ -103,6 +197,41 @@ const Users: FC = () => {
+@@ -103,6 +216,41 @@ const Users: FC = () => {
          ? { staff: true }
          : { status: curFilter }),
    });
@@ -333,11 +366,11 @@ index 7e8e4fd..ebebda0 100644
 +    return () => {
 +      active = false;
 +    };
-+  }, [idsKey]);
++  }, [idsKey, data]);
  
    const userModal = useUserModal({
      onConfirm: (userModel) => {
-@@ -126,6 +255,46 @@ const Users: FC = () => {
+@@ -126,6 +274,46 @@ const Users: FC = () => {
      urlSearchParams.delete('page');
      setUrlSearchParams(urlSearchParams);
    };
@@ -384,7 +417,7 @@ index 7e8e4fd..ebebda0 100644
    useEffect(() => {
      if (ucAgent?.enabled) {
        getAdminUcAgent().then((resp) => {
-@@ -199,17 +368,56 @@ const Users: FC = () => {
+@@ -199,17 +387,56 @@ const Users: FC = () => {
      !ucAgent?.enabled ||
      (ucAgent?.enabled && adminUcAgent?.allow_update_user_status);
    const showAction = showActionPassword || showActionRole || showActionStatus;
@@ -442,7 +475,7 @@ index 7e8e4fd..ebebda0 100644
            />
            {curFilter === 'deleted' && Number(data?.count) > 0 ? (
              <Button
-@@ -234,70 +442,172 @@ const Users: FC = () => {
+@@ -234,70 +461,220 @@ const Users: FC = () => {
            type="search"
            value={curQuery}
            onChange={handleFilter}
@@ -524,6 +557,15 @@ index 7e8e4fd..ebebda0 100644
 +            {show('email') && <th>{t('email')}</th>}
 +            {show('reputation') && <th>{t('reputation')}</th>}
 +            {show('posts') && <th>{t('metar_col_posts')}</th>}
++            {show('tickets_remaining') && (
++              <th>{t('metar_col_tickets_remaining')}</th>
++            )}
++            {show('tickets_total') && <th>{t('metar_col_tickets_total')}</th>}
++            {show('post_count') && <th>{t('metar_col_post_count')}</th>}
++            {show('post_likes') && <th>{t('metar_col_post_likes')}</th>}
++            {show('comments') && <th>{t('metar_col_comments')}</th>}
++            {show('likes') && <th>{t('metar_col_likes')}</th>}
++            {show('shares') && <th>{t('metar_col_shares')}</th>}
 +            {show('api_account') && <th>{t('metar_col_api_account')}</th>}
 +            {show('login_methods') && <th>{t('metar_col_login_methods')}</th>}
 +            {show('created_at') && <th>{t('created_at')}</th>}
@@ -614,6 +656,45 @@ index 7e8e4fd..ebebda0 100644
 +                    {formatCount(user.answer_count || 0)}
 +                  </td>
 +                )}
++                {show('tickets_remaining') && (
++                  <td>
++                    {bindings?.[String(user.user_id)]?.tickets?.remaining ??
++                      '—'}
++                  </td>
++                )}
++                {show('tickets_total') && (
++                  <td>
++                    {bindings?.[String(user.user_id)]?.tickets?.total ?? '—'}
++                  </td>
++                )}
++                {show('post_count') && (
++                  <td>
++                    {bindings?.[String(user.user_id)]?.statistics?.posts ?? '—'}
++                  </td>
++                )}
++                {show('post_likes') && (
++                  <td>
++                    {bindings?.[String(user.user_id)]?.statistics?.post_likes ??
++                      '—'}
++                  </td>
++                )}
++                {show('comments') && (
++                  <td>
++                    {bindings?.[String(user.user_id)]?.statistics?.comments ??
++                      '—'}
++                  </td>
++                )}
++                {show('likes') && (
++                  <td>
++                    {bindings?.[String(user.user_id)]?.statistics?.likes ?? '—'}
++                  </td>
++                )}
++                {show('shares') && (
++                  <td>
++                    {bindings?.[String(user.user_id)]?.statistics?.shares ??
++                      '—'}
++                  </td>
++                )}
 +                {show('api_account') && (
 +                  <td>{renderBinding(String(user.user_id))}</td>
 +                )}
@@ -645,7 +726,7 @@ index 7e8e4fd..ebebda0 100644
                        {user.suspended_until <= 0 ||
                        Number(
                          dayjs(user.suspended_until * 1000).format('YYYY'),
-@@ -310,7 +620,7 @@ const Users: FC = () => {
+@@ -310,7 +687,7 @@ const Users: FC = () => {
                    </>
                  )}
                  {curFilter === 'deleted' && (
@@ -654,7 +735,7 @@ index 7e8e4fd..ebebda0 100644
                      <FormatTime time={user.deleted_at} />
                    </td>
                  )}
-@@ -319,7 +629,7 @@ const Users: FC = () => {
+@@ -319,7 +696,7 @@ const Users: FC = () => {
                      {t(user.status)}
                    </span>
                  </td>
@@ -663,7 +744,7 @@ index 7e8e4fd..ebebda0 100644
                    <td>
                      <span className="badge text-bg-light">
                        {t(user.role_name)}
-@@ -338,6 +648,8 @@ const Users: FC = () => {
+@@ -338,6 +715,8 @@ const Users: FC = () => {
                      showDeleteModal={changeDeleteUserModalState}
                      showSuspenseModal={handleSuspenseUserModalState}
                    />
@@ -672,7 +753,7 @@ index 7e8e4fd..ebebda0 100644
                  ) : null}
                </tr>
              );
-@@ -345,12 +657,48 @@ const Users: FC = () => {
+@@ -345,12 +724,48 @@ const Users: FC = () => {
          </tbody>
        </Table>
        {Number(data?.count) <= 0 && !isLoading && <Empty />}
@@ -727,3 +808,43 @@ index 7e8e4fd..ebebda0 100644
        </div>
  
        <DeleteUserModal
+diff --git a/ui/src/components/Share/index.tsx b/ui/src/components/Share/index.tsx
+index d63147b..e41f209 100644
+--- a/ui/src/components/Share/index.tsx
++++ b/ui/src/components/Share/index.tsx
+@@ -52,6 +52,15 @@ const Index: FC<IProps> = ({ type, qid, aid, title, className, mode }) => {
+     baseUrl = `${baseUrl}?share=${user.username}`;
+   }
+ 
++  const recordShare = () => {
++    if (type !== 'question') return;
++    fetch('/answer/api/v1/metar/statistics/share', {
++      method: 'POST',
++      credentials: 'same-origin',
++      headers: { 'Content-Type': 'application/json', 'X-Metar-Request': '1' },
++      body: JSON.stringify({ question_id: String(qid) }),
++    }).catch(() => undefined);
++  };
+   const closeShare = () => {
+     setShowTip(false);
+     setShow(false);
+@@ -70,6 +79,7 @@ const Index: FC<IProps> = ({ type, qid, aid, title, className, mode }) => {
+   };
+ 
+   const systemShare = () => {
++    if (mode === 'mobile') recordShare();
+     navigator.share({
+       title,
+       text: `${title} - Answer：`,
+@@ -96,7 +106,10 @@ const Index: FC<IProps> = ({ type, qid, aid, title, className, mode }) => {
+         id="dropdown-share"
+         as="a"
+         className={classNames('no-toggle pointer d-flex', className)}
+-        onClick={() => setShow(true)}
++        onClick={() => {
++          recordShare();
++          setShow(true);
++        }}
+         style={{ lineHeight: '23px' }}>
+         {t('share.name')}
+       </Dropdown.Toggle>

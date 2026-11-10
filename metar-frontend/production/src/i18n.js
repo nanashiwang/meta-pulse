@@ -8,6 +8,7 @@
     "集市审核": "Marketplace review",
     "集市": "Marketplace",
     "模型榜": "Models",
+    "模型评分榜": "Model ratings",
     "AI 模型榜单": "AI model leaderboard",
     "完整模型榜单": "Full model leaderboard",
     "综合分计算方法": "Scoring methodology",

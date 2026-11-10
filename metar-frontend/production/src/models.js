@@ -74,7 +74,7 @@
     return q;
   }
   const encode = q => new URLSearchParams(Object.entries(q).filter(([k, v]) => v && !(k === 'window' && v === 'all') && !(k === 'sort' && v === 'score') && !(k === 'order' && v === 'desc'))).toString();
-  const boardURL = q => { const s = encode(q); return '/models/leaderboard' + (s ? '?' + s : ''); };
+  const boardURL = q => { const s = encode(q); return '/models' + (s ? '?' + s : ''); };
 
   function badges(r) {
     const out = [];
@@ -89,8 +89,10 @@
       if (!sortable) return `<th class="${cls}" scope="col">${label}</th>`;
       const active = (q.sort || 'score') === key;
       const nextOrder = active && q.order !== 'asc' ? 'asc' : '';
-      const arrow = active ? (q.order === 'asc' ? ' ↑' : ' ↓') : '';
-      return `<th class="${cls}" scope="col"${active ? ` aria-sort="${q.order === 'asc' ? 'ascending' : 'descending'}"` : ''}>${link(boardURL({...q, sort: key, order: nextOrder, page: ''}), label + arrow, 'intel-sort')}</th>`;
+      // The API's default price order is cheapest first.
+      const ascending = (q.order === 'asc') !== (key === 'price');
+      const arrow = active ? (ascending ? ' ↑' : ' ↓') : ' ↕';
+      return `<th class="${cls}" scope="col"${active ? ` aria-sort="${ascending ? 'ascending' : 'descending'}"` : ''}>${link(boardURL({...q, sort: key, order: nextOrder, page: ''}), label + arrow, 'intel-sort')}</th>`;
     };
     const body = rows.length ? rows.map(r => `<tr>
       <td class="intel-rank">${r.rank ?? DASH}</td>
@@ -123,7 +125,7 @@
 
   function subnav(active) {
     const item = (path, label) => link(path, label, 'intel-subnav-item' + (active === path ? ' active' : ''));
-    return `<nav class="intel-subnav" aria-label="${t('榜单导航', 'Leaderboard navigation')}">${item('/models', t('榜单首页', 'Overview'))}${item('/models/leaderboard', t('完整榜单', 'Full leaderboard'))}${item('/models/leaderboard?open=1', t('开放权重', 'Open weights'))}</nav>`;
+    return `<nav class="intel-subnav" aria-label="${t('榜单导航', 'Leaderboard navigation')}">${item('/models', t('模型评分榜', 'Model ratings'))}${item('/models?open=1', t('开放权重', 'Open weights'))}</nav>`;
   }
 
   const LEADERS = {
@@ -164,7 +166,7 @@
 
   function stateCard(error) {
     if (error?.code === 'no_snapshot') return `<section class="card card-pad intel-state"><h2>${t('榜单数据准备中', 'Leaderboard data is being prepared')}</h2><p class="muted">${t('模型、价格与评测数据导入并完成首次计算后将在这里展示。', 'Models, prices and benchmarks will appear here after the first import and scoring run.')}</p></section>`;
-    if (error?.code === 'not_found') return `<section class="card card-pad intel-state"><h2>${t('没有找到这个模型', 'Model not found')}</h2><p class="muted">${t('它可能尚未收录或已更名。', 'It may not be listed yet or may have been renamed.')}</p><div class="mt16">${link('/models/leaderboard', t('返回榜单', 'Back to the leaderboard'), 'btn')}</div></section>`;
+    if (error?.code === 'not_found') return `<section class="card card-pad intel-state"><h2>${t('没有找到这个模型', 'Model not found')}</h2><p class="muted">${t('它可能尚未收录或已更名。', 'It may not be listed yet or may have been renamed.')}</p><div class="mt16">${link('/models', t('返回榜单', 'Back to the leaderboard'), 'btn')}</div></section>`;
     return `<section class="card card-pad intel-state" role="alert"><h2>${t('模型榜单暂时不可用', 'The model leaderboard is temporarily unavailable')}</h2><p class="muted">${t('社区其他功能不受影响，请稍后刷新。', 'The rest of the community is unaffected. Please refresh later.')}</p></section>`;
   }
 
@@ -183,8 +185,10 @@
     async page(path, params) {
       this.dispose();
       try {
-        if (path === '/models' || path === '/models/methodology') return await this.home();
-        if (path === '/models/leaderboard') return await this.board(readQuery(params));
+        if (['/models', '/models/methodology', '/models/leaderboard'].includes(path)) {
+          const q = readQuery(params);
+          return q.open ? await this.board(q) : await this.home(q);
+        }
         if (path.startsWith('/model/')) {
           const slug = decodeURIComponent(path.slice('/model/'.length));
           if (!slugOK(slug)) throw new IntelError('not_found', 404);
@@ -196,15 +200,16 @@
       return `${subnav('')}${stateCard(new IntelError('not_found', 404))}`;
     }
 
-    async home() {
+    async home(q = {}) {
       const h = await this.fetch('/home');
+      const board = await this.board(q, true);
       h.leaders = Array.isArray(h.leaders) ? h.leaders : [];
       h.recent = Array.isArray(h.recent) ? h.recent : [];
       const recent = h.recent.length ? `<ul class="intel-recent">${h.recent.map(r => `<li>${link('/model/' + encodeURIComponent(r.model), esc(r.name))}<span class="muted">${esc(r.provider_name || r.provider)} · ${fmt.date(r.release_date)}</span></li>`).join('')}</ul>` : `<p class="muted">${t('近 15 天没有新收录的模型。', 'No models released in the last 15 days.')}</p>`;
       return `${subnav('/models')}
         ${leaderCards(h.leaders)}
         <div class="intel-layout">
-          <section class="intel-main"><div class="intel-section-head"><h2>${t('综合榜', 'Overall ranking')}</h2><div class="intel-window">${link('/models/leaderboard?window=90d', t('近 90 天', 'Last 90 days'), 'btn small')}${link('/models/leaderboard?window=30d', t('近 30 天', 'Last 30 days'), 'btn small')}${link('/models/leaderboard', t('完整榜单 →', 'Full leaderboard →'), 'btn small primary')}</div></div>${table(h.preview.rows, {}, false)}</section>
+          <section class="intel-main"><div class="intel-section-head"><h2>${t('综合榜', 'Overall ranking')}</h2></div>${board}</section>
           <aside class="intel-side">
             <section class="card card-pad"><h2>${t('近期新模型', 'Recently released')}</h2>${recent}</section>
             <section class="card card-pad"><h2>${t('综合分说明', 'About the score')}</h2><p class="muted">${t('直接展示来源原始评分，价格与速度单独展示。', 'Original source scores. Price and speed are shown separately.')}</p></section>
@@ -214,11 +219,11 @@
         ${faq(h)}`;
     }
 
-    async board(q) {
+    async board(q, embedded = false) {
       const params = encode(q);
       const b = await this.fetch('/leaderboard' + (params ? '?' + params : ''));
       const windowLink = (w, label) => link(boardURL({...q, window: w, page: ''}), label, 'intel-chip' + ((q.window || 'all') === w ? ' active' : ''));
-      return `${subnav(q.open ? '/models/leaderboard?open=1' : '/models/leaderboard')}
+      return `${embedded ? '' : subnav(q.open ? '/models?open=1' : '/models')}
         <div class="intel-filters" role="group" aria-label="${t('筛选', 'Filters')}">
           <span class="intel-filter-label muted">${t('发布时间', 'Released')}</span>${windowLink('all', t('全部', 'All'))}${windowLink('90d', t('近 90 天', '90 days'))}${windowLink('30d', t('近 30 天', '30 days'))}
           <span class="intel-filter-label muted">${t('许可', 'License')}</span>${link(boardURL({...q, open: '', page: ''}), t('全部', 'All'), 'intel-chip' + (!q.open ? ' active' : ''))}${link(boardURL({...q, open: '1', page: ''}), t('开放权重', 'Open weights'), 'intel-chip' + (q.open ? ' active' : ''))}

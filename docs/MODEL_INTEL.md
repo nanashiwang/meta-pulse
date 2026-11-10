@@ -47,8 +47,8 @@ Intel     = 模型目录、评测、价格、速度等公开数据的采集、�
 
 | 路径 | 内容 | 期 |
 |---|---|---|
-| `/models` | 榜单首页 | M1 |
-| `/models/leaderboard` | 完整综合榜（全部模型、筛选） | M1 |
+| `/models` | 模型评分榜，综合榜全量分页、列头排序与筛选 | M1 |
+| `/models/leaderboard` | 旧链接兼容合并页，不再提供独立入口 | M1 |
 | `/model/:slug` | 模型详情 | M1（基础版） |
 | `/models/methodology` | 综合分计算口径与版本 | M1 |
 | `/models/open` | 开放权重榜 | M2 |

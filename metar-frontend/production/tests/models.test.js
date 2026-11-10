@@ -19,7 +19,7 @@ const home = (rows = [row()]) => ({computed_at: '2026-11-08T00:00:00Z', method_v
 
 function fetcher(responses) {
   const seen = [];
-  const fn = async path => { seen.push(path); const r = responses[path.split('?')[0]]; if (r instanceof Error) throw r; return typeof r === 'function' ? r(path) : r; };
+  const fn = async path => { seen.push(path); const r = responses[path.split('?')[0]] ?? (path.startsWith('/leaderboard') ? responses['/home']?.preview : undefined); if (r instanceof Error) throw r; return typeof r === 'function' ? r(path) : r; };
   fn.seen = seen;
   return fn;
 }
@@ -66,13 +66,13 @@ test('leaderboard query is whitelisted and canonical', async () => {
 
 test('leaderboard requests the canonical query and renders sort links and pagination', async () => {
   const {api} = setup();
-  const f = fetcher({'/leaderboard': {computed_at: '2026-11-08T00:00:00Z', method_version: 'v1', rows: [row()], total: 31, page: 2, page_size: 15}});
+  const f = fetcher({'/home': home(), '/leaderboard': {computed_at: '2026-11-08T00:00:00Z', method_version: 'v1', rows: [row()], total: 31, page: 2, page_size: 15}});
   const html = await new api.View(f).page('/models/leaderboard', new URLSearchParams('sort=price&page=2&junk=1'));
-  assert.equal(f.seen[0], '/leaderboard?sort=price&page=2');
-  assert.match(html, /aria-sort="descending"/);
-  assert.match(html, /href="\/models\/leaderboard\?sort=price&amp;order=asc"/, 'clicking the active column flips order and resets page');
+  assert.equal(f.seen[1], '/leaderboard?sort=price&page=2');
+  assert.match(html, /aria-sort="ascending"/);
+  assert.match(html, /href="\/models\?sort=price&amp;order=asc"/, 'clicking the active column flips order and resets page');
   assert.match(html, /16–30 \/ 31/);
-  assert.match(html, /href="\/models\/leaderboard\?sort=price&amp;page=3"/);
+  assert.match(html, /href="\/models\?sort=price&amp;page=3"/);
 });
 
 test('model detail shows sourced prices and results, and only https sources become links', async () => {
@@ -156,4 +156,29 @@ test('ranking pages omit intros and methodology links in both languages', async 
       assert.match(html, /Alpha/);
     }
   }
+});
+
+ test('home uses full board data, keeps filters while paging, and marks every sortable column', async () => {
+  const {api} = setup();
+  const f = fetcher({'/home': home(), '/leaderboard': {rows: [row({name: 'Second page model'})], total: 40, page: 2, page_size: 15}});
+  const html = await new api.View(f).page('/models', new URLSearchParams('window=30d&sort=reasoning&order=asc&page=2'));
+  assert.equal(f.seen[1], '/leaderboard?window=30d&sort=reasoning&order=asc&page=2');
+  assert.match(html, /Second page model/);
+  assert.match(html, /模型评分榜/);
+  assert.doesNotMatch(html, /完整榜单|榜单首页/);
+  assert.match(html, /推理 ↑/);
+  for (const label of ['综合分', '编程', 'Agent', '上下文', '速度']) assert.ok(html.includes(label + ' ↕'));
+  assert.match(html, /href="\/models\?window=30d&amp;sort=reasoning"/);
+  assert.match(html, /href="\/models\?window=30d&amp;sort=reasoning&amp;order=asc&amp;page=3"/);
+  assert.match(html, /16–30 \/ 40/);
+});
+
+test('open weights retain sorting and paging on the canonical home route', async () => {
+  const {api} = setup();
+  const f = fetcher({'/leaderboard': {rows: [row()], total: 31, page: 1, page_size: 15}});
+  const html = await new api.View(f).page('/models', new URLSearchParams('open=1&sort=agent'));
+  assert.equal(f.seen[0], '/leaderboard?sort=agent&open=1');
+  assert.match(html, /Agent ↓/);
+  assert.match(html, /sort=agent&amp;order=asc&amp;open=1/);
+  assert.doesNotMatch(html, /完整榜单|榜单首页/);
 });

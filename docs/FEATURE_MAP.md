@@ -50,7 +50,7 @@ Before adding a feature, inspect adjacent flows and the current source of truth;
 
 | 入口 | 能力、权限与事实源 | 验证 |
 |---|---|---|
-| 顶部导航「模型榜」→ `/models`、`/models/leaderboard`、`/model/:slug` | 匿名只读；独立 `services/intel` 与 `metar_intel` 库；来源原始评分 source-v3（TrueSkill 原值，每分类前 50）、领先卡片、筛选排序分页；榜单首页、完整榜与开放权重榜移除顶部标题、统计、更新时间和来源行；方法页及其入口移除，旧地址跳回首页；缺失数据显示「—」；nginx 公开代理仅允许 GET/HEAD 并清除浏览器凭据头 | `go test ./services/intel/...`、[页面测试](../metar-frontend/production/tests/models.test.js)、[网关凭据隔离回归](../deploy/nginx/test-seo.py) |
+| 顶部导航「模型榜」→ `/models`、`/models/leaderboard`、`/model/:slug` | 匿名只读；独立 `services/intel` 与 `metar_intel` 库；来源原始评分 source-v3（TrueSkill 原值，每分类前 50）、领先卡片、筛选排序分页；模型评分榜首页综合榜复用完整数据、筛选与分页，列头显示 ↕/↑/↓ 并可切换排序；移除完整榜入口，旧地址兼容合并页；评分榜与开放权重榜不展示顶部标题、统计、更新时间和来源行；方法页及其入口移除，旧地址跳回首页；缺失数据显示「—」；nginx 公开代理仅允许 GET/HEAD 并清除浏览器凭据头 | `go test ./services/intel/...`、[页面测试](../metar-frontend/production/tests/models.test.js)、[网关凭据隔离回归](../deploy/nginx/test-seo.py) |
 | 管理员头像菜单 → `/admin/models` | 校验后导入 JSON、导出、立即重算、导入审计；论坛插件 [admin BFF](../services/forum-plugin/user-center-pulse/intel_admin_bff.go) 实时核对 Answer 管理员后 HMAC 签名转发；数据源 Key 支持后台加密保存或环境变量托管，论坛 Answer 的 Brotli 压缩响应不得错误声明原始 Content-Length；导入幂等 | [BFF 与传输测试](../services/forum-plugin/user-center-pulse/intel_admin_bff_test.go)、[Brotli 代理回归](../services/forum-plugin/user-center-pulse/intel_admin_transport_test.go)、[页面测试](../metar-frontend/production/tests/admin-models.test.js)；修复理由见[响应完整性记录](../.agents/notes/implemented/bug-fix/2026-11-10-intel-admin-compressed-response.md)，生产浏览器验收随 v0.2.104 部署 |
 
 ## 2026-10-17 代码核对与测试索引

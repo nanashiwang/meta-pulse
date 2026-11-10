@@ -1367,3 +1367,9 @@ forum 编入独立 `metar_turnstile` Captcha 插件，复用 Answer 注册 API�
 Intel 的来源观测为评分事实，快照仅用于查询。当前 `source-v3` 读取 LLM Stats `/v1/rankings` 的 `conservative_rating`，不再从评测做 min-max 或加权合成；general 对应综合分，agents 对应 Agent，每分类最多 50 名。单项原始 score 使用 raw- 标识追加，不改写旧百分比观测。API、worker 与离线重算统一使用新版本，不回退历史 v1。独立服务边界不变，详见 [模型情报](MODEL_INTEL.md)。
 
 2026-11-10 生产修复：分类 general/reasoning/code/agents 经真实 API 验证，直接采用 conservative_rating；top_scores 不再用于评分。升级缺少 source-v3 快照时先同步，随后只读取最新排名批次；榜单展示 API 前 50 名限制。
+
+### 管理员用户统计（2026-11-10）
+
+用户管理复用现有 Answer 管理员列表及受保护的批量绑定接口，社区互动计数直接读 Answer，券总量/剩余量经独立 admin HMAC 的 `POST /v1/internal/admin/tickets/statistics` 批量读取 Pulse 券账本投影，最多 100 人。浏览器提交的 Answer ID 只用于管理员查询，不用于声明登录身份；券用户 ID 必须从保护绑定解析。两侧统计独立降级为缺失值，不影响列表操作。
+
+Answer 插件启动迁移在既有迁移锁内创建 `metar_question_share(question_id, clicks)`，仅保存主帖分享按钮累计点击，不保存 IP 或访客身份，不反推历史转发，不进入权益事务。匿名同源 `POST /answer/api/v1/metar/statistics/share` 仅接受有效可见主帖、以数据库原子加一计数；有界进程内限流只保护统计负载，不是资金事实源。有效主帖分享计数汇总至作者，删帖后从统计排除。完整口径见 [用户管理](ACCOUNT_MANAGEMENT.md#用户列表统计)。
