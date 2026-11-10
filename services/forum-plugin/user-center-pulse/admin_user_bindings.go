@@ -17,8 +17,10 @@ import (
 const maxAdminBindingLookup = 100
 
 type adminBindingInfo struct {
-	APIUserID string   `json:"api_user_id,omitempty"`
-	Providers []string `json:"providers,omitempty"`
+	APIUserID  string                    `json:"api_user_id,omitempty"`
+	Providers  []string                  `json:"providers,omitempty"`
+	Statistics *adminCommunityStatistics `json:"statistics,omitempty"`
+	Tickets    *adminTicketStatistics    `json:"tickets,omitempty"`
 }
 
 type adminBindingReader interface {
@@ -87,6 +89,37 @@ func (uc *UserCenter) registerAdminUserBindings(r *gin.RouterGroup, session func
 		if err != nil {
 			communityError(c, http.StatusServiceUnavailable, "bindings_unavailable")
 			return
+		}
+		if reader, ok := uc.Guard.(interface {
+			adminCommunityStatistics(context.Context, []string) (map[string]*adminCommunityStatistics, error)
+		}); ok {
+			if stats, e := reader.adminCommunityStatistics(ctx, ids); e == nil {
+				for id, stat := range stats {
+					info := result[id]
+					info.Statistics = stat
+					result[id] = info
+				}
+			}
+		}
+		if uc.Client != nil {
+			apiIDs := []uint64{}
+			for _, info := range result {
+				if info.APIUserID != "" {
+					id, _ := strconv.ParseUint(info.APIUserID, 10, 64)
+					apiIDs = append(apiIDs, id)
+				}
+			}
+			if len(apiIDs) > 0 {
+				payload, _ := json.Marshal(map[string]any{"user_ids": apiIDs})
+				data, status, e := uc.Client.adminSettingsRequest(ctx, http.MethodPost, "ticket-statistics", admin, "", payload)
+				var stats map[string]*adminTicketStatistics
+				if e == nil && status == 200 && json.Unmarshal(data, &stats) == nil {
+					for id, info := range result {
+						info.Tickets = stats[info.APIUserID]
+						result[id] = info
+					}
+				}
+			}
 		}
 		c.JSON(http.StatusOK, gin.H{"data": result})
 	})

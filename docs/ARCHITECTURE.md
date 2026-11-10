@@ -1368,6 +1368,12 @@ Intel 的来源观测为评分事实，快照仅用于查询。当前 `source-v3
 
 2026-11-10 生产修复：分类 general/reasoning/code/agents 经真实 API 验证，直接采用 conservative_rating；top_scores 不再用于评分。升级缺少 source-v3 快照时先同步，随后只读取最新排名批次；榜单展示 API 前 50 名限制。
 
+### 管理员用户统计（2026-11-10）
+
+用户管理复用现有 Answer 管理员列表及受保护的批量绑定接口，社区互动计数直接读 Answer，券总量/剩余量经独立 admin HMAC 的 `POST /v1/internal/admin/tickets/statistics` 批量读取 Pulse 券账本投影，最多 100 人。浏览器提交的 Answer ID 只用于管理员查询，不用于声明登录身份；券用户 ID 必须从保护绑定解析。两侧统计独立降级为缺失值，不影响列表操作。
+
+Answer 插件启动迁移在既有迁移锁内创建 `metar_question_share(question_id, clicks)`，仅保存主帖分享按钮累计点击，不保存 IP 或访客身份，不反推历史转发，不进入权益事务。匿名同源 `POST /answer/api/v1/metar/statistics/share` 仅接受有效可见主帖、以数据库原子加一计数；有界进程内限流只保护统计负载，不是资金事实源。有效主帖分享计数汇总至作者，删帖后从统计排除。完整口径见 [用户管理](ACCOUNT_MANAGEMENT.md#用户列表统计)。
+
 ## 社区目录展示顺序
 
 Answer 数据库的 `metar_taxonomy_order` 单行记录只拥有 METAR 类别/标签的展示顺序（slug 数组与整数 version）；标签、推荐类别及权限事实继续由 Answer 拥有。它不涉及 Pulse 账本或绑定。随论坛数据库备份恢复，首次请求幂等建表；不可用时公共展示回退原顺序，管理员读取失败禁止编辑。

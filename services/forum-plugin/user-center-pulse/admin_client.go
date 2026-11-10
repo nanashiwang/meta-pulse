@@ -21,7 +21,9 @@ func (c *PulseClient) adminSettingsRequest(ctx context.Context, method, operatio
 		return nil, 0, errors.New("admin settings unavailable")
 	}
 	path := "/v1/internal/admin/settings"
-	if operation == "ticket-grant" && method == http.MethodPost {
+	if operation == "ticket-statistics" && method == http.MethodPost {
+		path = "/v1/internal/admin/tickets/statistics"
+	} else if operation == "ticket-grant" && method == http.MethodPost {
 		path = "/v1/internal/admin/tickets/grant"
 	} else if operation == "experience-reverse" && method == http.MethodPost {
 		path = "/v1/internal/admin/experience/reverse"
