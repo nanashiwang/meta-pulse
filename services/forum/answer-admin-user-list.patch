@@ -157,7 +157,7 @@ index bff87c9..48be397 100644
 +	return size
 +}
 diff --git a/ui/src/pages/Admin/Users/index.tsx b/ui/src/pages/Admin/Users/index.tsx
-index 7e8e4fd..d5f8475 100644
+index 7e8e4fd..cd9ca45 100644
 --- a/ui/src/pages/Admin/Users/index.tsx
 +++ b/ui/src/pages/Admin/Users/index.tsx
 @@ -17,8 +17,15 @@
@@ -475,7 +475,7 @@ index 7e8e4fd..d5f8475 100644
            />
            {curFilter === 'deleted' && Number(data?.count) > 0 ? (
              <Button
-@@ -234,70 +461,220 @@ const Users: FC = () => {
+@@ -234,39 +461,95 @@ const Users: FC = () => {
            type="search"
            value={curQuery}
            onChange={handleFilter}
@@ -542,18 +542,15 @@ index 7e8e4fd..d5f8475 100644
 +        className="text-nowrap">
          <thead>
            <tr>
--            <th>{t('name')}</th>
++            {show('user_id') && <th style={{ width: '1%' }}>ID</th>}
+             <th>{t('name')}</th>
 -            <th style={{ width: '12%' }}>{t('reputation')}</th>
 -            <th style={{ width: '15%' }} className="min-w-15">
 -              {t('email')}
 -            </th>
 -            <th className="text-nowrap" style={{ width: '12%' }}>
 -              {t('created_at')}
-+            <th className="text-secondary" style={{ width: '1%' }}>
-+              #
-             </th>
-+            {show('user_id') && <th style={{ width: '1%' }}>ID</th>}
-+            <th>{t('name')}</th>
+-            </th>
 +            {show('email') && <th>{t('email')}</th>}
 +            {show('reputation') && <th>{t('reputation')}</th>}
 +            {show('posts') && <th>{t('metar_col_posts')}</th>}
@@ -595,14 +592,10 @@ index 7e8e4fd..d5f8475 100644
                  {t('action')}
                </th>
              ) : null}
-           </tr>
-         </thead>
-         <tbody className="align-middle">
--          {data?.list.map((user) => {
-+          {data?.list.map((user, index) => {
+@@ -276,28 +559,120 @@ const Users: FC = () => {
+           {data?.list.map((user) => {
              return (
                <tr key={user.user_id}>
-+                <td className="text-secondary small">{rangeStart + index}</td>
 +                {show('user_id') && (
 +                  <td className="text-secondary small">{user.user_id}</td>
 +                )}
@@ -669,7 +662,9 @@ index 7e8e4fd..d5f8475 100644
 +                )}
 +                {show('post_count') && (
 +                  <td>
-+                    {bindings?.[String(user.user_id)]?.statistics?.posts ?? '—'}
++                    {bindings?.[String(user.user_id)]?.statistics?.posts ??
++                      user.question_count ??
++                      '—'}
 +                  </td>
 +                )}
 +                {show('post_likes') && (
@@ -726,7 +721,7 @@ index 7e8e4fd..d5f8475 100644
                        {user.suspended_until <= 0 ||
                        Number(
                          dayjs(user.suspended_until * 1000).format('YYYY'),
-@@ -310,7 +687,7 @@ const Users: FC = () => {
+@@ -310,7 +685,7 @@ const Users: FC = () => {
                    </>
                  )}
                  {curFilter === 'deleted' && (
@@ -735,7 +730,7 @@ index 7e8e4fd..d5f8475 100644
                      <FormatTime time={user.deleted_at} />
                    </td>
                  )}
-@@ -319,7 +696,7 @@ const Users: FC = () => {
+@@ -319,7 +694,7 @@ const Users: FC = () => {
                      {t(user.status)}
                    </span>
                  </td>
@@ -744,7 +739,7 @@ index 7e8e4fd..d5f8475 100644
                    <td>
                      <span className="badge text-bg-light">
                        {t(user.role_name)}
-@@ -338,6 +715,8 @@ const Users: FC = () => {
+@@ -338,6 +713,8 @@ const Users: FC = () => {
                      showDeleteModal={changeDeleteUserModalState}
                      showSuspenseModal={handleSuspenseUserModalState}
                    />
@@ -753,7 +748,7 @@ index 7e8e4fd..d5f8475 100644
                  ) : null}
                </tr>
              );
-@@ -345,12 +724,48 @@ const Users: FC = () => {
+@@ -345,12 +722,48 @@ const Users: FC = () => {
          </tbody>
        </Table>
        {Number(data?.count) <= 0 && !isLoading && <Empty />}

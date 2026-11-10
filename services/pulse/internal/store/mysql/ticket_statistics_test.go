@@ -36,6 +36,10 @@ func TestMySQLTicketStatistics(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	var plan struct{ Key string }
+	if err = tx.Raw("EXPLAIN SELECT user_id,SUM(amount) FROM pulse_ledger_entry FORCE INDEX (idx_pulse_ledger_user_asset_operation_amount) WHERE asset_type='ticket' AND user_id IN (?,?) GROUP BY user_id", 987654321, 987654322).Scan(&plan).Error; err != nil || plan.Key != "idx_pulse_ledger_user_asset_operation_amount" {
+		t.Fatalf("statistics index: %+v %v", plan, err)
+	}
 	got, err := (&ticketRepository{db: tx}).Statistics(context.Background(), []uint64{987654321, 987654322})
 	if err != nil || got[987654321].Remaining != 9 || got[987654321].Total != 16 || got[987654322].Total != 0 {
 		t.Fatalf("%+v %v", got, err)

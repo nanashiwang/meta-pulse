@@ -8,9 +8,9 @@ Answer 1.7.1 的 `/admin/users` 固定每页 10 条，没有跳页、列设置�
 
 ## Decision
 
-新增按顺序应用的第三个 Answer 补丁 `services/forum/answer-admin-user-list.patch`，直接改原生列表页及其接口：
+维护按顺序应用的第三个 Answer 补丁 `services/forum/answer-admin-user-list.patch`，直接改原生列表页及其接口：
 
-- 页面：每页 10/20/50/100（URL `page_size` 优先，其次本地偏好）、跳页、「显示第 a–b 条，共 N 条」、筛选总数、列设置开关（隐藏列存本地）、紧凑模式；新增序号、ID、邮箱复制、提问/回答、API 账号、登录方式、最近登录列；状态、操作列保持原样，操作列仍是最后一列，原生弹窗与权限判断不变。
+- 页面：每页 10/20/50/100（URL `page_size` 优先，其次本地偏好）、跳页、「显示第 a–b 条，共 N 条」、筛选总数、列设置开关（隐藏列存本地）、紧凑模式；保留 ID、头像昵称（2026-11-10 按用户要求移除最左侧序号）、邮箱复制、提问/回答、API 账号、登录方式、最近登录列；状态、操作列保持原样，操作列仍是最后一列，原生弹窗与权限判断不变。
 - 接口：`GetUserPageResp` 增加 `last_login_date`、`question_count`、`answer_count`；服务端将 `page_size` 限制在 100，防止构造请求一次读出整张用户表。
 - 绑定列：插件新增只读 `POST /answer/admin/api/metar/accounts/bindings`，最多 100 个规范化 Answer 用户 ID，校验同源、`X-Metar-Request`、管理员会话与实时管理员身份后读 `user_external_login`；`pulse_user_center` 行返回 new-api 用户 ID，其余 provider（排除账号切换审计行）作为登录方式。页面用原生 `fetch` 调用，失败只显示「—」，不触发 Answer 全局 403/50X 错误页。
 - 插件 `account-switch.js` 删除 CSS 序号与总数注入；三点菜单按行内首个 `/users/` 链接识别用户，不再依赖它位于第一列。
