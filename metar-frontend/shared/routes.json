@@ -47,8 +47,9 @@
     "model"
   ],
   "legacyAliases": {
-    "/discover": "/latest",
-    "/questions": "/latest",
+    "/": "/questions",
+    "/discover": "/questions",
+    "/latest": "/questions",
     "/bookmarks": "/me/bookmarks",
     "/notifications": "/me/notifications"
   }

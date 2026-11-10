@@ -89,7 +89,7 @@
       state.targetToken = targetToken;
       host.sessionStorage.setItem(RETURN, JSON.stringify(state));
       host.localStorage.setItem(TOKEN, targetToken);
-      host.location.assign('/latest');
+      host.location.assign('/questions');
     } catch (error) {
       if (!saved()?.ticket) host.sessionStorage.removeItem(RETURN);
       host.alert(error.message);

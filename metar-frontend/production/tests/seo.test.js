@@ -11,8 +11,8 @@ test('private account, notification and reward routes never get indexed', () => 
 test('public question canonical uses the server rendered Answer URL', () => {
   assert.deepEqual(policy('/question/10010000000000002/', '?token=private&tracking=x'), { canonical: 'https://metarhub.com/questions/10010000000000002', robots: 'index, follow' });
   assert.equal(policy('/topic/api', '?page=2&token=private').canonical, 'https://metarhub.com/tags/api?page=2');
-  assert.equal(policy('/latest', '?page=2&order=hot').canonical, 'https://metarhub.com/latest?page=2');
-  assert.equal(policy('/latest', '?page=garbage').canonical, 'https://metarhub.com/latest');
+  assert.equal(policy('/questions', '?page=2&order=hot').canonical, 'https://metarhub.com/questions?page=2');
+  assert.equal(policy('/questions', '?page=garbage').canonical, 'https://metarhub.com/questions');
   assert.equal(policy('/').canonical, 'https://metarhub.com/');
 });
 

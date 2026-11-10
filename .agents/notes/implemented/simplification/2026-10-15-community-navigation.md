@@ -8,6 +8,8 @@ Status: implemented
 
 ## Decision
 
+公共旧侧栏和首页路由布局已由[社区导航 PR 集成](../../implemented/feature/2026-11-11-community-navigation-integration.md)调整，撤下帮助/知识库入口的范围继续适用。
+
 复用现有导航，移除侧栏帮助/状态、页脚状态以及桌面和手机知识库入口，同步匿名加载壳。页头不再显示「开发者」外链；讨论页将原搜索移到主内容区，其他页面保留页头搜索。保留直达路由、内容与绑定纠错帮助链接，未来完善后恢复导航即可。
 
 ## Existing notes
