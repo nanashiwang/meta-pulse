@@ -71,7 +71,7 @@ grep -A18 'location \^~ /metar/api/intel/' "$ROOT/deploy/nginx/meta-pulse.conf" 
 [[ "$(grep -c 'proxy_set_header New-Api-User "";' "$ROOT/deploy/nginx/meta-pulse.conf")" -eq 11 ]] || { echo '所有 11 个社区代理入口必须清除外部用户 ID' >&2; exit 1; }
 grep -A12 'location /blog/' "$ROOT/deploy/nginx/meta-pulse.conf" | grep -q 'Strict-Transport-Security'
 grep -q 'location = / {' "$ROOT/deploy/nginx/meta-pulse.conf"
-grep -A14 'location = / {' "$ROOT/deploy/nginx/meta-pulse.conf" | grep -q 'try_files /blog/metar/index.html =404;'
+grep -A14 'location = / {' "$ROOT/deploy/nginx/meta-pulse.conf" | grep -qF 'return 301 /questions$is_args$args;'
 grep -q 'location = /metar-runtime-config.js' "$ROOT/deploy/nginx/meta-pulse.conf"
 grep -q 'location ^~ /metar-assets/' "$ROOT/deploy/nginx/meta-pulse.conf"
 grep -A14 'location = / {' "$ROOT/deploy/nginx/meta-pulse.conf" | grep -q "style-src 'self';"

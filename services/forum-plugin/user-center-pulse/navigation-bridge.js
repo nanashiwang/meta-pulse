@@ -8,7 +8,18 @@ export function installNavigationBridge(host = window) {
   let queued = false;
   const check = () => {
     queued = false;
-    const destination = target(host.location.href, host.location.origin);
+    const url = new URL(host.location.href);
+    // HTTP redirects preserve fragments. Recover old /#/me links after the
+    // gateway has sent them to /questions#/me, without touching native anchors.
+    let legacy = null;
+    if (/^\/questions\/?$/.test(url.pathname) && url.hash.startsWith('#/')) {
+      const path = url.hash.slice(1);
+      legacy = target(path, url.origin);
+      if (!legacy && /^\/questions(?:[?#]|$)/.test(path)) {
+        legacy = target(path.replace(/^\/questions/, '/latest'), url.origin);
+      }
+    }
+    const destination = legacy || target(host.location.href, host.location.origin);
     if (destination) host.location.replace(destination);
   };
   const schedule = () => {

@@ -106,7 +106,7 @@ new-api 接收端与实际到账、生产普通账号流程、邮件与跨实例
 
 ## 当前社区导航（2026-11-10）
 
-讨论入口使用 Answer 原生 `/questions`；`/`、`/latest`、`/discover` 保留查询参数并重定向至该入口。排行榜使用原生 `/users` 的声望榜；集市、知识库和工具保留各自入口。路由归属以 [routes.json](../metar-frontend/shared/routes.json) 为准，验证入口为 `make test-community`；上述代码状态不代表已完成生产浏览器验收。
+讨论入口使用 Answer 原生 `/questions`；`/`、`/latest`、`/discover` 保留查询参数并重定向至该入口。排行榜 `/users` 复用 Answer 近七天声望前 20 条，工作人员单列且不参与榜内排序；个人中心 `/me` 专用导航按真实角色提供管理入口，公共旧侧栏移除。旧 Hash 书签经原生桥恢复，设置返回 `/me`，无历史返回 `/questions`；集市、知识库和工具保留各自入口。路由归属以 [routes.json](../metar-frontend/shared/routes.json) 为准，验证入口为 `make test-community`；上述代码状态不代表已完成生产浏览器验收。
 
 ## 顶栏工具分组（2026-11-08）
 

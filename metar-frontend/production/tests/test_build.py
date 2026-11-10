@@ -41,8 +41,9 @@ class ProductionBuildTest(unittest.TestCase):
                 dom = InitialDOM()
                 dom.feed(source)
                 elements = dom.elements
-                for tag in ('header', 'aside', 'main', 'nav'):
+                for tag in ('header', 'main', 'nav'):
                     self.assertTrue(any(name == tag for name, _ in elements), (path, tag))
+                self.assertFalse(any(attrs.get('id') == 'community-sidebar' for _, attrs in elements), path)
                 self.assertTrue(any(attrs.get('class') == 'page-loading' for _, attrs in elements), path)
                 self.assertTrue(any('data-loading-recovery' in attrs for _, attrs in elements), path)
                 self.assertTrue(any(attrs.get('href') == '/questions' for _, attrs in elements), path)
@@ -51,7 +52,7 @@ class ProductionBuildTest(unittest.TestCase):
                 self.assertIn('id="metar-loading-template"', source)
                 self.assertLess(source.index('/metar-assets/loading.js'), source.index('/metar-assets/app.js'))
                 # Searchable prose remains available with JS disabled, not as the loading UI.
-                if path.name == 'latest.html':
+                if path.name == 'questions.html':
                     self.assertIn('<noscript><section class="page-inner seo-fallback"><h1>最新讨论</h1>', source)
             self.assertTrue((output / 'assets/loading.js').is_file())
 

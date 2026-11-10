@@ -85,7 +85,7 @@ server {
                 finally:
                     conn.close()
 
-            def ready(expected=200):
+            def ready(expected=301):
                 for _ in range(40):
                     try:
                         if request('/')[0] == expected:
@@ -96,7 +96,8 @@ server {
                 raise AssertionError(f'Gateway did not return {expected}')
 
             ready()
-            assert request('/')[2] == '<h1>METAR relay fixture</h1>'
+            assert request('/')[1]['Location'].endswith('/questions')
+            assert request('/?order=hot')[1]['Location'].endswith('/questions?order=hot')
             forged = {'X-Real-IP': '198.51.100.7', 'X-Forwarded-For': '203.0.113.9',
                       'Forwarded': 'for=203.0.113.10', 'Authorization': 'Bearer fixture',
                       'Cookie': 'visit=fixture; unrelated=blocked', 'X-Pulse-Signature': 'forged',

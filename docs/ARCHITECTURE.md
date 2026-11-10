@@ -848,7 +848,7 @@ Pulse 不保存：
 
 只使用 new-api `user_id` 作为 opaque principal。
 
-Pulse 对 new-api LOG_DB 使用只读账号，并且无权限直接写 new-api 用户余额表。new-api session Cookie 不得转发给 Pulse 或论坛；YuanHeng 的 Cookie 必须隔离在 new-api WebView / 客户端安全存储边界内。社区使用新的独立 HTTPS 域名：根路径 `/` 以及白名单内的 `/latest`、`/topics`、`/question/:id`、`/topic/:slug`、`/me/*`、`/admin/pulse` 等 History 路径由无 mock 的 METAR 静态壳层提供，`/blog/` 由 VitePress 提供，其余 `/questions`、`/users/*` 和 `/answer/api/*` 仍由 Answer 提供。静态壳层只调用同源 Answer API 与认证社区 BFF，不自行实现身份或写权限判断。社区网关仅按 allowlist 转发 Answer `visit` 或 callback flow Cookie；callback 清除 Authorization，所有代理路由清除 Pulse 签名头，普通路由保留 Answer 自己的 Authorization；网关不直接代理 new-api 或 Pulse。
+Pulse 对 new-api LOG_DB 使用只读账号，并且无权限直接写 new-api 用户余额表。new-api session Cookie 不得转发给 Pulse 或论坛；YuanHeng 的 Cookie 必须隔离在 new-api WebView / 客户端安全存储边界内。社区使用新的独立 HTTPS 域名：根路径 `/`、`/latest`、`/discover` 重定向到 Answer `/questions`；白名单内的 `/topics`、`/question/:id`、`/topic/:slug`、`/me/*`、`/admin/pulse` 等 History 路径由无 mock 的 METAR 静态壳层提供，`/blog/` 由 VitePress 提供，其余 `/questions`、`/users/*` 和 `/answer/api/*` 仍由 Answer 提供。静态壳层只调用同源 Answer API 与认证社区 BFF，不自行实现身份或写权限判断。社区网关仅按 allowlist 转发 Answer `visit` 或 callback flow Cookie；callback 清除 Authorization，所有代理路由清除 Pulse 签名头，普通路由保留 Answer 自己的 Authorization；网关不直接代理 new-api 或 Pulse。
 
 ## 29. 对账与可观测性
 
@@ -1035,7 +1035,7 @@ Meta Pulse                贡献值 / 券 / 等级 / Reward 事实源
 - Pulse 对论坛内容库只读；Answer 本地 ID 必须经受保护绑定映射为 new-api ID；
 - 只采集绑定后发布的公开 available/closed 问题，未绑定、绑定前、隐藏、待审核或删除内容不进入候选；
 - 内容奖励直接生成独立预算 Reward Grant，**不产生 contribution 或 ticket**；
-- 社区首页静态壳层读取 Answer API，并通过同源认证社区 BFF 使用本人权益；不保存余额或中奖事实、不复制 Answer token、不直接调用 Pulse。社区网关仅代理 Answer（包含社区 BFF），不直接代理 new-api/Pulse；只转发 allowlist Cookie，callback 清除 Authorization，普通代理路由保留 Answer API Authorization，所有代理路由清除 Pulse 签名头；
+- 社区首页由 Answer 原生 `/questions` 提供；METAR 静态壳层读取 Answer API，并通过同源认证社区 BFF 使用本人权益；不保存余额或中奖事实、不复制 Answer token、不直接调用 Pulse。社区网关仅代理 Answer（包含社区 BFF），不直接代理 new-api/Pulse；只转发 allowlist Cookie，callback 清除 Authorization，普通代理路由保留 Answer API Authorization，所有代理路由清除 Pulse 签名头；
 - Pulse 故障时等级徽章降级为空，不影响 Answer 本地登录和浏览。
 
 完整定义、剩余 signed-state 限制和上线门禁见 `docs/COMMUNITY.md`。
@@ -1226,11 +1226,11 @@ API 每次请求、Worker 每轮相关任务读取一个一致配置快照；缓
 
 ## 44. 社区普通路径与讨论列表
 
-所有静态入口在主脚本运行前输出匿名页头、侧栏、内容骨架及手机导航；构建和运行时共用内容骨架模板，沿用 Python 构建，不增加服务器 Node 依赖。骨架不含身份、权限或业务数值，公开 SEO 正文在无脚本回退中保留。脚本失败或长时间未加载完成时提供重新加载与原生社区入口。
+所有静态入口在主脚本运行前输出匿名页头、内容骨架及手机导航（公共旧侧栏已移除）；构建和运行时共用内容骨架模板，沿用 Python 构建，不增加服务器 Node 依赖。骨架不含身份、权限或业务数值，公开 SEO 正文在无脚本回退中保留。脚本失败或长时间未加载完成时提供重新加载与原生社区入口。
 
 历史恢复只允许已完成、同一 URL（含筛选/分页）、同一语言与会话的公开页面保留当前 DOM，再后台更新；会话一致性仅在当前文档内比较，不新建持久 Token/HTML 存储。更新失败保留内容并明确提示其尚未更新、允许重试；更新不抢焦点、不主动滚到页首。私人、管理、绑定、Pulse 与服务状态页不保留旧页面作为当前结果，仍重新校验身份和加载实时数据。
 
-METAR 使用 History 路由，首页与 `/latest` 提供同一个真实讨论列表；旧 `/#/discover`、`/#/questions` 链接转换到 `/latest`，其余已登记 Hash 路径转换到对应普通路径并保留 query。转换使用 replaceState，站内导航使用 pushState，浏览器前进后退重新读取当前路径。只拦截带内部路由标记的同源普通点击，修饰键、新窗口、下载和原生 Answer 链接保留浏览器行为。
+METAR 使用 History 路由；社区首页 `/` 与 `/latest`、`/discover` 通过 Nginx 重定向到原生 `/questions` 并保留 query。旧 `/#/…` 书签在重定向保留 fragment 后，由原生导航桥仅在 `/questions` 恢复已登记的壳层地址；普通回答锚点、外站地址及敏感回调不接管。壳层站内导航使用 pushState，原生路径使用文档导航；浏览器前进后退重新读取当前路径。只拦截带内部路由标记的同源普通点击，修饰键、新窗口、下载和原生 Answer 链接保留浏览器行为。
 
 公开内容与身份查询并行，受保护页面等待身份快照完成；身份失败保留公开浏览并对私人入口失败关闭。公开问题列表、标签、搜索允许当前文档内存中最多 24 项、15 秒的短暂复用与同请求合并，按 Answer token 和语言隔离；身份变化、主动刷新、主动搜索和 bfcache 恢复清理，失败不缓存。身份、绑定、权限、个人信息、通知、成长、Pulse 和管理接口不进入此缓存，服务状态始终执行实时查询。缓存只是 Answer 响应的短期浏览加速，不构成新的内容或财务事实源。站内切页复用导航，滚动位置仅写入本页面的 history state；迟到响应不替换新页面，也不重置其滚动。
 
@@ -1240,7 +1240,7 @@ Nginx 只对白名单中的壳层页面返回静态首页，不使用全站 SPA 
 
 类别的事实源为 Answer 撰写设置的 `recommend_tags`，标签与申请帖仍由 Answer 持有，不新增 Pulse 分类或审批表。`/topics` 展示实际推荐标签；空目录只展示待初始化的起步预览，不提供伪造可用的类别链接。`/admin/taxonomy` 仅向已激活管理员提供初始化，创建标签及写设置仍经原生 API 权限校验。写前读现状、保留既有条目与其他设置、检测并发漂移、写后读回核实；未知写入结果不自动重试，重新执行先查询。原生设置缺少 CAS，管理员需避免并发修改。类别筛选失败不阻断讨论读取。新增申请使用原生发帖预填模板和反馈帖人工审核；普通标签、申请帖和审核回复均不产生 Pulse 权益或改变绑定边界。详细操作见 `COMMUNITY.md` 第 3.4 节。
 
-路由归属唯一配置为 `metar-frontend/shared/routes.json`，生成 METAR/Answer 两端路由策略与 Nginx 白名单；`make test-community` 拒绝未同步产物。Answer 插件在原生 History 导航提交后识别 METAR 页面，并用完整页面加载接入其处理器（根路径规范到 `/latest`）。同样覆盖登录回跳、前进后退与 bfcache 恢复；不拦截提交前的点击，不绕过编辑器未保存提醒，不修改原生 history state，不接管 API、callback、发帖及尚未迁移的账号页面。query/fragment 随跳转保留，重载使用 replace 避免添加无用历史项。
+路由归属唯一配置为 `metar-frontend/shared/routes.json`，生成 METAR/Answer 两端路由策略与 Nginx 白名单；`make test-community` 拒绝未同步产物。Answer 插件在原生 History 导航提交后识别 METAR 页面，并用完整页面加载接入其处理器（根路径规范到原生 `/questions`）。同样覆盖登录回跳、前进后退与 bfcache 恢复；不拦截提交前的点击，不绕过编辑器未保存提醒，不修改原生 history state，不接管 API、callback、发帖及尚未迁移的账号页面。query/fragment 随跳转保留，重载使用 replace 避免添加无用历史项。
 
 社区、Answer 插件和 VitePress 共用 `shared/theme-tokens.css` 配色与 `_metar_theme` 浏览器偏好。原生页头扩展只提供品牌、导航与主题控件，保留原生页面、表单、权限菜单和编辑器；该层不写用户/站点配置、不创建会话，也不改变 API 或内容事实源。视觉一致与功能迁移分别验收，不通过重定向隐藏尚未覆盖的原生能力。
 

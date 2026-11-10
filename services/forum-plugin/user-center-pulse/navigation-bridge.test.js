@@ -86,3 +86,18 @@ test('重复安装不会叠加历史包装器，同一轮只根据最终已提�
   dispose(); host.history.pushState({}, '', '/latest'); host.flush();
   assert.deepEqual(host.loads, []);
 });
+
+ test('gateway homepage redirects retain legacy hash destinations without native redirect loops', () => {
+  for (const [path, expected] of [
+    ['/questions#/me', '/me'],
+    ['/questions#/latest?order=hot', '/questions?order=hot'],
+    ['/questions#/questions?page=2', '/questions?page=2'],
+    ['/questions#answer-7', null],
+    ['/questions#//evil.test/me', null],
+    ['/questions#/topic/%2fadmin', null],
+    ['/users/confirm-email#/me', null],
+  ]) {
+    const host = browser(path); installNavigationBridge(host); host.flush();
+    assert.deepEqual(host.loads, expected ? [expected] : [], path);
+  }
+});

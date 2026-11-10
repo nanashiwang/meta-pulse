@@ -20,7 +20,7 @@ test('personal sidebar only exposes real administrator navigation on /me',()=>{
  context.currentUserState='ready';context.route=()=>({path:'/me/bookmarks'});assert.equal(sidebar(),'');
 });
 test('back returns settings to personal space, otherwise uses history or community',()=>{
- const visits=[];const context={route:()=>({path:'/settings/binding'}),history:{length:3,back:()=>visits.push('back')},router:{go:path=>visits.push(path)},navigate:()=>{}};
+ const visits=[];const context={route:()=>({path:'/settings/binding'}),history:{length:3,back:()=>visits.push('back')},router:{go:path=>{assert.equal(path,'/me');visits.push(path);return true}},location:{assign:path=>visits.push(path)},navigate:()=>{}};
  const back=appFunction('goBack',context);
  back();context.route=()=>({path:'/users/settings'});back();context.route=()=>({path:'/users/settings/profile'});back();
  context.route=()=>({path:'/models'});back();context.history.length=1;back();

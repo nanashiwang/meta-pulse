@@ -74,7 +74,7 @@ Meta Pulse 负责社区任务脉冲券、长期经济规则快照、Reward、Bud
 - Answer 原生登录、注册、找回、发帖和写操作入口；
 - VitePress 知识库入口，以及未登录、未激活、未绑定和服务不可用状态。
 
-正式首页与 `/latest` 使用紧凑讨论列表，支持不带 `#` 的 History 路由；Nginx 按白名单提供深链接，旧 Hash 链接自动转换。`/questions`、`/users/*`、`/answer/api/*` 等路径仍由 Answer 原生 UI/API 负责，因此前端回退不会修改社区数据、会话或权限规则。Pulse 用户权益通过受 Answer 身份保护的社区 BFF 接通总览、奖池、抽奖及奖励记录；默认关闭新抽奖，未完成配置时明确显示不可用状态。后续阶段见 [`docs/METAR_FRONTEND_REFACTOR_PLAN.md`](docs/METAR_FRONTEND_REFACTOR_PLAN.md)。
+社区主入口为 Answer 原生 `/questions`，首页 `/`、`/latest`、`/discover` 保留查询参数重定向到该入口；旧 Hash 链接由导航桥兼容。个人中心 `/me` 与其他壳层页面继续使用白名单 History 路由。`/questions`、`/users/*`、`/answer/api/*` 等路径仍由 Answer 原生 UI/API 负责，因此前端回退不会修改社区数据、会话或权限规则。Pulse 用户权益通过受 Answer 身份保护的社区 BFF 接通总览、奖池、抽奖及奖励记录；默认关闭新抽奖，未完成配置时明确显示不可用状态。后续阶段见 [`docs/METAR_FRONTEND_REFACTOR_PLAN.md`](docs/METAR_FRONTEND_REFACTOR_PLAN.md)。
 
 管理员可在 `/admin/pulse` 显式载入 **5 ⚡️ 期望方案**：额度中奖率 90%，奖励 1/3/10/30/100/500 ⚡️，有效券平均 5 ⚡️ 与 0.57 EXP，到期券平均 5.7 EXP。管理员预览按当前配置计算概率，加载预设不会改动有效期；核对保存才生效。参数见 [管理员配置](docs/METAR_ADMIN_SETTINGS.md)。
 
