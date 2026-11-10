@@ -3,16 +3,24 @@ import { installTheme } from './shared-theme.js';
 import { installHomeNavigation, canonicalizeHomeLinks } from './home-navigation.js';
 import { mountComposerLayout, positionComposerMenus } from './composer-layout.js';
 
-export function backDestination(path, historyLength) {
-  if (/^\/(?:latest|questions)?\/?$/.test(path)) return null;
-  if (/^\/users\/settings(?:\/|$)/.test(path) || /^\/settings\/binding\/?$/.test(path)) return '/me';
-  return historyLength > 1 ? 'back' : '/latest';
+export function backDestination(path) {
+  if (/^\/(?:latest|questions|discover)?\/?$/.test(path)) return null;
+  if (/^\/(?:me\/|badges(?:\/|$)|users\/settings(?:\/|$)|settings\/binding\/?$)/.test(path)) return '/me';
+  return '/latest';
 }
 
 export function installNativeShell(language, host = window) {
   if (host.__metarNativeShell) return;
   host.__metarNativeShell = true;
   const doc = host.document;
+  // The avatar opens the personal space; the legacy dropdown is no longer shown.
+  doc.addEventListener('click', (event) => {
+    const trigger = event.target.closest?.('#header #dropdown-basic');
+    if (!trigger) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (host.location.pathname !== '/me') host.location.href = '/me';
+  }, true);
   installHomeNavigation(host);
   const root = doc.documentElement;
   root.classList.add('metar-native');
@@ -39,9 +47,8 @@ export function installNativeShell(language, host = window) {
   back.type = 'button';
   back.className = 'metar-back';
   back.onclick = () => {
-    const destination = backDestination(host.location.pathname, host.history.length);
-    if (destination === 'back') host.history.back();
-    else if (destination) host.location.href = destination;
+    const destination = backDestination(host.location.pathname);
+    if (destination) host.location.href = destination;
   };
   const toggle = doc.createElement('button');
   toggle.type = 'button';
@@ -51,7 +58,7 @@ export function installNativeShell(language, host = window) {
     const english = language.getLanguage() === 'en_US';
     const backText = english ? '← Back' : '← 返回';
     if (back.textContent !== backText) back.textContent = backText;
-    back.setAttribute('aria-label', english ? 'Go back' : '返回上一页');
+    back.setAttribute('aria-label', english ? 'Back to home' : '返回主界面');
     mountNotificationNavigation(doc, host.location.pathname, english);
     nav.setAttribute('aria-label', english ? 'Main navigation' : '主导航');
     links.forEach(({ link, zh, en }) => {
@@ -81,7 +88,7 @@ export function installNativeShell(language, host = window) {
     const row = header?.querySelector(':scope > .w-100');
     const brand = row?.querySelector('.navbar-brand');
     if (!row || !brand) return;
-    back.hidden = backDestination(host.location.pathname, host.history.length) === null;
+    back.hidden = backDestination(host.location.pathname) === null;
     if (back.parentElement !== row) row.prepend(back);
     const avatar = header.querySelector('#dropdown-basic')?.closest('.dropdown');
     avatar?.parentElement.classList.add('metar-account-actions');

@@ -176,7 +176,7 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
       await new Promise(setImmediate);
     },
     async click(action, groupId = "1:false") {
-      for (const listener of documentEvents.get('click') || []) listener({ target: { closest: () => ({ dataset: { action, groupId } }) } });
+      for (const listener of documentEvents.get('click') || []) listener({ target: { closest: selector => selector === '[data-action]' ? { dataset: { action, groupId } } : null }, preventDefault() { this.defaultPrevented = true; }, defaultPrevented: false });
       await new Promise(setImmediate);
     },
     html: () => nodes.app.innerHTML + nodes.view.innerHTML,
@@ -262,15 +262,15 @@ test('语言切换重新渲染标题、筛选、ARIA、错误和数值，用户�
   assert.equal(view.values.get('metar-language'), 'en_US');
   assert.equal(view.document.title, 'Topic · METAR');
   assert.match(view.html(), /<h3>未读<\/h3>/);
-  assert.doesNotMatch(view.html(), /<p>社区规范<\/p>/); // Compact rows omit excerpts.
-  assert.match(view.html(), /1 hour ago/);
+  assert.match(view.html(), /class="discussion-excerpt">社区规范</);
+  assert.match(view.html(), /class="discussion-stat"/);
   await view.navigate('/question/42');
   assert.equal(view.redirects.at(-1), '/questions/42');
   await view.navigate('/me');
   assert.match(view.html(), /元衡账号绑定/);
   await view.changeLanguage('zh_CN');
   assert.equal(view.document.documentElement.lang, 'zh-CN');
-  assert.match(view.html(), /编辑资料/);
+  assert.match(view.html(), /账号设置/);
   assert.equal(view.i18n.errorMessage({ code: 'network', message: 'old message' }), '暂时无法连接社区服务，请稍后重试');
   view.i18n.setLanguage('en_US');
   assert.match(view.i18n.errorMessage({ code: 'network', message: '中文错误' }), /Unable to connect/);
@@ -407,10 +407,11 @@ test('Pulse 管理入口仅对 Answer 正常激活管理员显示，版主和伪
     assert.doesNotMatch(view.nodes.app.innerHTML, /href="\/admin\/(?:pulse|dashboard|pulse_user_center)"/);
   }
   const view = await shell({ user: { id: '8', role_id: 2, status: 'normal', mail_status: 1 } });
+  assert.match(view.nodes.app.innerHTML, /href="\/users\/notifications\/achievement"[\s\S]*href="\/review"/);
+  await view.navigate('/me');
   assert.match(view.nodes.app.innerHTML, /href="\/admin\/pulse"/);
   assert.match(view.nodes.app.innerHTML, /href="\/admin\/dashboard"/);
   assert.match(view.nodes.app.innerHTML, /href="\/admin\/pulse_user_center"/);
-  assert.match(view.nodes.app.innerHTML, /href="\/users\/notifications\/achievement"[\s\S]*href="\/review"/);
   await view.navigate('/admin/pulse');
   assert.match(view.html(), /Save Pulse settings/);
   assert.match(view.html(), /Grant key storage is ready/);

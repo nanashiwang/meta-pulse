@@ -125,6 +125,8 @@
     help: '<circle cx="12" cy="12" r="9"/><path d="M9 8a3 3 0 0 1 6 0c0 2-3 2-3 4m0 4v.5"/>',
     link: '<path d="m10 14 4-4m-7 2-3 3a4 4 0 0 0 6 6l4-4m-4-10 4-4a4 4 0 0 1 6 6l-3 3"/>',
     clock: '<circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/>',
+    like: '<path d="M7 21H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3m0 11V10l5-8a2 2 0 0 1 3 2l-1 5h6a2 2 0 0 1 2 2l-2 8a2 2 0 0 1-2 2Z"/>',
+    eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12Z"/><circle cx="12" cy="12" r="3"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 1v2m0 18v2M1 12h2m18 0h2M4 4l2 2m12 12 2 2M4 20l2-2M18 6l2-2"/>',
     moon: '<path d="M21 13A9 9 0 0 1 11 3a9 9 0 1 0 10 10Z"/>',
     menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
@@ -192,23 +194,27 @@
 
   function questionRow(question) {
     const author = question.user_info || question.operator || {};
-    const operator = question.operator || author;
     const tags = Array.isArray(question.tags) ? question.tags : [];
-    const stamp = question.operated_at || question.update_time || question.created_at || question.create_time;
+    const description = typeof question.description === 'string' ? question.description.replace(/\s+/g, ' ').trim() : '';
+    const excerpt = description.length > 140 ? `${description.slice(0, 140)}…` : description;
     return `<article class="discussion-row">
       <div class="discussion-main">
         ${external(questionHref(question.id || question.question_id), `<h3>${question.pin === 2 ? I('flag', 'sm') + `<span class="visually-hidden">${t("置顶")} </span>` : ''}${esc(question.title)}</h3>`, 'discussion-title')}
-        <div class="discussion-meta">${question.accepted_answer_id ? badge(I('check', 'sm') + t("已解决"), 'green') : ''}${[...tags.filter(tag=>tag.recommend), ...tags.filter(tag=>!tag.recommend).slice(0,3)].map((tag) => link(`/topic/${encodeURIComponent(tag.slug_name || tagName(tag))}`, esc(tagName(tag)), tag.recommend ? 'badge taxonomy-category-badge' : 'badge')).join('')}${publicAuthor(author, esc(displayName(author)), 'discussion-author')}</div>
+        ${excerpt ? `<p class="discussion-excerpt">${esc(excerpt)}</p>` : ''}
+        <div class="discussion-meta">
+          ${publicAuthor(author, `${avatar(author)}<span>${esc(displayName(author))}</span>`, 'discussion-author')}
+          ${[...tags.filter(tag=>tag.recommend), ...tags.filter(tag=>!tag.recommend).slice(0,3)].map((tag) => link(`/topic/${encodeURIComponent(tag.slug_name || tagName(tag))}`, esc(tagName(tag)), tag.recommend ? 'badge taxonomy-category-badge' : 'badge')).join('')}
+          ${question.accepted_answer_id ? badge(I('check', 'sm') + t("已解决"), 'green') : ''}
+          <span class="discussion-stat" title="${t('点赞')}">${I('like', 'sm')}<span class="visually-hidden">${t('点赞')} </span>${number(question.vote_count)}</span>
+          <span class="discussion-stat" title="${t('回答')}">${I('chat', 'sm')}<span class="visually-hidden">${t('回答')} </span>${number(question.answer_count)}</span>
+          <span class="discussion-stat" title="${t('浏览')}">${I('eye', 'sm')}<span class="visually-hidden">${t('浏览')} </span>${number(question.view_count)}</span>
+        </div>
       </div>
-      <div class="discussion-people" aria-label="${t('最近参与者')}">${publicAuthor(operator, avatar(operator))}</div>
-      <div class="discussion-count"><span class="visually-hidden">${t('回复')} </span>${number(question.answer_count)}</div>
-      <div class="discussion-count discussion-views"><span class="visually-hidden">${t('浏览量')} </span>${number(question.view_count)}</div>
-      <div class="discussion-activity"><span class="visually-hidden">${t('活动')} </span>${time(stamp)}</div>
     </article>`;
   }
 
   function discussionList(list) {
-    return `<div class="discussion-list"><div class="discussion-columns" aria-hidden="true"><span>${t('话题')}</span><span>${t('参与者')}</span><span>${t('回复')}</span><span>${t('浏览量')}</span><span>${t('活动')}</span></div>${list.map(questionRow).join('')}</div>`;
+    return `<div class="discussion-list">${list.map(questionRow).join('')}</div>`;
   }
 
   function footer() {
@@ -235,36 +241,33 @@
 
   function personalSidebar() {
     if (route().path !== '/me' || currentUserState !== 'ready' || !currentUser) return '';
-    const item = (url, label, icon) => link(url, I(icon) + label, 'account-menu-link');
+    const { path, query } = route();
+    const item = (url, label, icon) => link(url, I(icon) + `<span>${esc(label)}</span>`, `account-menu-link ${routeMatchesNavigation(path, query.toString(), url) ? 'active' : ''}`);
     const consoleBase = config.consoleUrl?.replace(/\/$/, '').replace(/\/console$/, '');
-    return `<aside class="personal-sidebar" aria-label="${t('我的空间')}"><div class="personal-side-title">${t('我的空间')}</div>${link('/me', t('个人空间'), 'personal-side-link active')}${external('/badges', getLanguage() === 'en_US' ? 'Badges' : '勋章', 'personal-side-link')}${external(config.answerSettingsPath, t('编辑资料'), 'personal-side-link')}${accountManagement(item)}${consoleBase ? `<div class="personal-console-group">${outbound(consoleBase + '/console/pulse', getLanguage() === 'en_US' ? 'Check-in & draw' : '签到抽奖', 'personal-side-link')}${outbound(consoleBase + '/console', t('元衡API'), 'personal-side-link')}</div>` : ''}</aside>`;
+    return `<aside class="personal-sidebar" aria-label="${t('我的空间')}"><div class="account-menu-group"><div class="account-menu-label">${t('我的空间')}</div>${item('/chat', t('聊天'), 'chat')}${item('/me', t('个人空间'), 'user')}${item('/marketplace/mine', t('我的集市发布'), 'code')}${item('/me/growth', t('社区成长'), 'target')}${item('/me/bookmarks', t('我的收藏'), 'bookmark')}${item('/settings/binding', t('账号绑定'), 'link')}${external('/badges', I('trophy') + `<span>${t('勋章')}</span>`, 'account-menu-link')}${external(config.answerSettingsPath, I('settings') + `<span>${t('账号设置')}</span>`, 'account-menu-link')}</div>${accountManagement(item)}${consoleBase ? `<div class="account-menu-group personal-console-group"><div class="account-menu-label">${t('元衡服务')}</div>${outbound(consoleBase + '/console/pulse', getLanguage() === 'en_US' ? 'Check-in & draw' : '签到抽奖', 'account-menu-link')}${outbound(consoleBase + '/console', t('元衡API'), 'account-menu-link')}</div>` : ''}<div class="account-menu-group personal-logout">${external('/users/logout', I('external') + `<span>${t('退出登录')}</span>`, 'account-menu-link')}</div></aside>`;
   }
+
+  const isHomePath = (path = route().path) => /^\/(?:latest|questions|discover)?\/?$/.test(path);
 
   function syncPersonalNavigation() {
     document.querySelector('.personal-sidebar')?.remove();
     const sidebar = personalSidebar();
     document.documentElement.classList.toggle('has-personal-sidebar', !!sidebar);
+    document.documentElement.classList.toggle('community-wide', isHomePath() || route().path.startsWith('/topic/'));
     if (sidebar) document.getElementById('main')?.insertAdjacentHTML('beforebegin', sidebar);
     const back = document.querySelector('[data-action="back"]');
-    if (back) back.hidden = /^\/(?:latest|questions)?\/?$/.test(route().path);
+    if (back) back.hidden = isHomePath();
   }
 
   function goBack() {
     const path = route().path;
-    if (/^\/users\/settings(?:\/|$)/.test(path) || /^\/settings\/binding\/?$/.test(path)) { router.go('/me'); navigate(); }
-    else if (history.length > 1) history.back();
-    else location.assign('/latest');
+    router.go(/^\/(?:me\/|users\/settings(?:\/|$)|settings\/binding(?:\/|$)|badges(?:\/|$))/.test(path) ? '/me' : '/latest');
+    navigate();
   }
 
   function accountMenu() {
-    const { path, query } = route();
-    const item = (url, label, icon) => link(url, I(icon) + `<span>${esc(label)}</span>`, `account-menu-link ${routeMatchesNavigation(path, query.toString(), url) ? 'active' : ''}`);
-    return `<details class="account-menu"><summary class="icon-btn" aria-label="${t('账号菜单')}">${avatar(currentUser)}</summary><nav class="account-menu-panel" aria-label="${t('账号菜单')}">
-      <div class="account-menu-profile">${avatar(currentUser)}<div><strong>${esc(displayName(currentUser))}</strong><span class="account-menu-level" data-account-level></span></div></div>
-      <div class="account-menu-group"><div class="account-menu-label">${t("我的空间")}</div>${item('/chat', t('聊天'), 'chat')}${item('/me', t("个人空间"), 'user')}${item('/marketplace/mine', t('我的集市发布'), 'code')}${item('/me/growth', t('社区成长'), 'target')}${item('/me/bookmarks', t("我的收藏"), 'bookmark')}${item('/settings/binding', t("账号绑定"), 'link')}${external(config.answerSettingsPath, I('settings') + `<span>${t("账号设置")}</span>`, 'account-menu-link')}</div>
-      ${accountManagement(item)}
-      <div class="account-menu-group">${external('/users/logout', I('external') + `<span>${t('退出登录')}</span>`, 'account-menu-link')}</div>
-    </nav></details>`;
+    if (route().path === '/me') return `<span class="account-avatar" aria-label="${t('个人空间')}">${avatar(currentUser)}</span>`;
+    return `<a href="${esc(window.MetarRouter.href('/me'))}" data-router class="account-avatar" aria-label="${t('个人空间')}" title="${t('个人空间')}">${avatar(currentUser)}</a>`;
   }
 
   function topbar() {
@@ -274,7 +277,7 @@
     const activeUser = logged && isActiveUser(currentUser);
     const active = (prefix) => path === prefix || path.startsWith(`${prefix}/`);
     return `<header class="topbar">
-      <button type="button" class="page-back" data-action="back" aria-label="${getLanguage() === 'en_US' ? 'Go back' : '返回上一页'}"${path === '/latest' ? ' hidden' : ''}>← ${getLanguage() === 'en_US' ? 'Back' : '返回'}</button>
+      <button type="button" class="page-back" data-action="back" aria-label="${getLanguage() === 'en_US' ? 'Back to home' : '返回主界面'}"${isHomePath() ? ' hidden' : ''}>← ${getLanguage() === 'en_US' ? 'Back' : '返回'}</button>
       ${link('/latest', LOGO + `<span class="brand-word" aria-hidden="true">${esc(config.siteName.toLowerCase())}</span>`, 'brand')}
       <nav class="topnav" aria-label="${t("主导航")}">${link('/latest', t("社区"), active('/latest') || active('/question') || active('/topic') || active('/topics') ? 'active' : '')}${link('/marketplace', t('集市'), active('/marketplace') ? 'active' : '')}${link('/models', t('模型榜'), active('/models') || active('/model') ? 'active' : '')}${link('/pulse', 'Pulse', active('/pulse') ? 'active' : '')}${toolsMenu(active('/tools'))}</nav>
       <form class="searchbox" data-form="search" role="search">${I('search')}<input type="search" name="q" aria-label="${t("搜索社区")}" placeholder="${t("搜索真实问题与回答…")}" value="${path === '/search' ? esc(route().query.get('q') || '') : ''}" autocomplete="off"><kbd>⌘ K</kbd></form>
@@ -486,7 +489,91 @@
     });
   }
 
+  let tagDirectory = null, tagDirectoryScope = '', tagPanelOpen = false, tagFollowBusy = false, tagFollowError = '';
+
+  async function loadTagDirectory() {
+    const scope = taxonomy.scope(answer);
+    if (tagDirectory && tagDirectoryScope === scope) return tagDirectory;
+    const [catalogResult, followingResult] = await Promise.allSettled([
+      taxonomy.catalog(answer),
+      currentUser ? answer.request('/tags/following') : Promise.resolve([]),
+    ]);
+    const catalog = catalogResult.status === 'fulfilled' ? catalogResult.value : {};
+    const following = followingResult.status === 'fulfilled' && Array.isArray(followingResult.value) ? followingResult.value : [];
+    tagDirectory = {
+      categories: catalog.categories || [],
+      tags: catalog.tags || [],
+      followed: new Set(following.map(tag => tag?.slug_name).filter(Boolean)),
+    };
+    tagDirectoryScope = scope;
+    return tagDirectory;
+  }
+
+  function tagRow(tag) {
+    const followed = tagDirectory.followed.has(tag.slug_name);
+    return `<div class="tag-row">${link(taxonomy.topicURL(tag.slug_name), esc(tagName(tag)), 'tag-row-name')}<button type="button" class="tag-follow${followed ? ' active' : ''}" data-tag-follow="${esc(tag.slug_name)}" aria-pressed="${followed}">${followed ? t('取消关注') : t('关注')}</button></div>`;
+  }
+
+  function tagGroupsMarkup(filter = '') {
+    if (!tagDirectory) return `<p class="muted">${t('正在加载…')}</p>`;
+    const needle = filter.trim().toLocaleLowerCase();
+    const matches = list => list.filter(tag => !needle || `${tagName(tag)} ${tag.slug_name}`.toLocaleLowerCase().includes(needle));
+    const groups = [['类别', matches(tagDirectory.categories)], ['标签', matches(tagDirectory.tags)]].filter(([, list]) => list.length);
+    if (!groups.length) return `<p class="muted">${t('没有匹配的标签')}</p>`;
+    return groups.map(([label, list]) => `<section class="tag-group"><h3>${t(label)}</h3>${list.map(tagRow).join('')}</section>`).join('');
+  }
+
+  function tagPanelMarkup() {
+    return `<div class="tag-panel-head"><strong>${t('标签')}</strong><button type="button" class="icon-btn" data-action="toggle-tags" aria-label="${t('关闭标签面板')}">${I('close')}</button></div><label class="tag-panel-search">${I('search')}<input type="search" data-tag-filter placeholder="${t('输入名称筛选…')}" aria-label="${t('筛选标签')}" autocomplete="off"></label><div data-tag-groups>${tagGroupsMarkup()}</div>${tagFollowError ? `<p class="tag-panel-status" role="alert">${esc(tagFollowError)}</p>` : ''}`;
+  }
+
+  function followedRailMarkup() {
+    if (!currentUser) return `<p class="rail-empty">${external(config.answerLoginPath, t('登录后关注标签'), 'textlink')}</p>`;
+    if (!tagDirectory) return `<p class="rail-empty">${t('正在加载…')}</p>`;
+    if (!tagDirectory.followed.size) return `<p class="rail-empty">${t('暂未关注标签')}</p>`;
+    const names = new Map([...tagDirectory.categories, ...tagDirectory.tags].map(tag => [tag.slug_name, tagName(tag)]));
+    return `<div class="rail-tags">${[...tagDirectory.followed].map(slug => link(taxonomy.topicURL(slug), esc(names.get(slug) || slug), 'rail-tag')).join('')}</div>`;
+  }
+
+  function toggleTagPanel(open = !tagPanelOpen) {
+    tagPanelOpen = open;
+    const panel = document.querySelector('[data-tag-panel]');
+    if (panel) { panel.hidden = !open; if (open) panel.innerHTML = tagPanelMarkup(); }
+    document.querySelectorAll('[data-action="toggle-tags"]').forEach(button => {
+      if (button.closest('[data-tag-panel]')) return;
+      button.textContent = open ? t('完成') : t('编辑');
+      button.setAttribute('aria-expanded', String(open));
+    });
+  }
+
+  function refreshTagPanel() {
+    document.querySelectorAll('[data-rail-tags]').forEach(node => { node.innerHTML = followedRailMarkup(); });
+    const panel = document.querySelector('[data-tag-panel]');
+    if (panel && tagPanelOpen) panel.innerHTML = tagPanelMarkup();
+  }
+
+  async function toggleTagFollow(button) {
+    const slug = button.dataset.tagFollow;
+    if (!slug || !tagDirectory || tagFollowBusy) return;
+    if (!currentUser) { location.assign(config.answerLoginPath); return; }
+    const next = new Set(tagDirectory.followed);
+    if (next.has(slug)) next.delete(slug); else next.add(slug);
+    tagFollowBusy = true;
+    button.disabled = true;
+    try {
+      await answer.request('/follow/tags', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slug_name_list: [...next] }) });
+      tagDirectory.followed = next;
+      tagFollowError = '';
+    } catch (error) {
+      tagFollowError = errorMessage(error);
+    } finally {
+      tagFollowBusy = false;
+      refreshTagPanel();
+    }
+  }
+
   async function questionsPage(tag = '') {
+    await loadTagDirectory();
     const { query } = route();
     const requested = query.get('order') || 'active';
     const orders = questionOrders();
@@ -505,12 +592,23 @@
     const pager = totalPages > 1 ? `<div class="prod-pager">${page > 1 ? link(`${base}?order=${order}&page=${page - 1}`, t("上一页"), 'btn small') : ''}<span>${t("第 {page} / {total} 页", { page: number(page), total: number(totalPages) })}</span>${page < totalPages ? link(`${base}?order=${order}&page=${page + 1}`, t("下一页"), 'btn small') : ''}</div>` : '';
     return `<section class="community-discussions">
       ${pageTitle(title)}
-      <div class="discussion-intro">
-        <form class="discussion-search" data-form="search" action="/search" role="search">${I('search')}<input type="search" name="q" aria-label="${t('搜索社区')}" placeholder="${t('搜索真实问题与回答…')}" maxlength="60" required autocomplete="off"><button type="submit" class="icon-btn" aria-label="${t('搜索')}">${I('arrow')}</button><kbd>⌘ K</kbd></form>
-        <p class="discussion-guidelines"><span>${t('友善交流，分享实践，一起建设有价值的社区。')}</span>${link('/guidelines', t('《社区准则》'))}</p>
+      <div class="community-layout">
+        <div class="community-feed">
+          <div class="discussion-intro">
+            <form class="discussion-search" data-form="search" action="/search" role="search">${I('search')}<input type="search" name="q" aria-label="${t('搜索社区')}" placeholder="${t('搜索真实问题与回答…')}" maxlength="60" required autocomplete="off"><button type="submit" class="icon-btn" aria-label="${t('搜索')}">${I('arrow')}</button><kbd>⌘ K</kbd></form>
+            <p class="discussion-guidelines"><span>${t('友善交流，分享实践，一起建设有价值的社区。')}</span>${link('/guidelines', t('《社区准则》'))}</p>
+          </div>
+          <div class="discussion-toolbar">${filter}<nav class="discussion-tabs" aria-label="${t('话题筛选')}">${tabs}</nav>${external(askPath, I('plus', 'sm') + t('新建话题'), 'btn primary')}</div>
+          ${list.length ? discussionList(list) : empty(order === 'unanswered' ? t("暂时没有待回答问题") : t("当前筛选没有内容"), t("可以调整筛选，或发起一个新问题。"), external(askPath, t("发起提问"), 'btn primary'), 'chat')}${pager}
+        </div>
+        <aside class="community-rail" aria-label="${t('社区侧栏')}">
+          <section class="rail-card">
+            <div class="rail-head"><h2>${t('已关注的标签')}</h2><button type="button" class="rail-edit" data-action="toggle-tags" aria-expanded="${tagPanelOpen}" aria-controls="tag-panel">${t(tagPanelOpen ? '完成' : '编辑')}</button></div>
+            <div data-rail-tags>${followedRailMarkup()}</div>
+          </section>
+          <div class="tag-panel" id="tag-panel" data-tag-panel${tagPanelOpen ? '' : ' hidden'}>${tagPanelMarkup()}</div>
+        </aside>
       </div>
-      <div class="discussion-toolbar">${filter}<nav class="discussion-tabs" aria-label="${t('话题筛选')}">${tabs}</nav>${external(askPath, I('plus', 'sm') + t('新建话题'), 'btn primary')}</div>
-      ${list.length ? discussionList(list) : empty(order === 'unanswered' ? t("暂时没有待回答问题") : t("当前筛选没有内容"), t("可以调整筛选，或发起一个新问题。"), external(askPath, t("发起提问"), 'btn primary'), 'chat')}${pager}
     </section>${footer()}`;
   }
 
@@ -1125,6 +1223,7 @@
   async function navigate({restore = null, preservePublicView = false} = {}) {
     const destination = nativeDestination(location, config);
     if (destination) { location.replace(destination); return; }
+    if (!isHomePath(location.pathname) && !location.pathname.startsWith('/topic/')) tagPanelOpen = false;
     chatView?.dispose();
     memberView?.dispose();
     marketplaceView?.dispose();
@@ -1287,10 +1386,13 @@
     if (event.defaultPrevented) { closeMobileMenu(); return; }
     const growthButton = event.target.closest('[data-growth]');
     if (growthButton?.dataset.growth) { event.preventDefault(); growth?.click(growthButton, navigate); return; }
+    const followButton = event.target.closest('[data-tag-follow]');
+    if (followButton) { event.preventDefault(); toggleTagFollow(followButton); return; }
     const target = event.target.closest('[data-action]');
     const action = target?.dataset.action;
     if (!action) return;
     if (action.startsWith('admin-')) { pulseAdmin?.action(action, target); return; }
+    if (action === 'toggle-tags') { event.preventDefault(); toggleTagPanel(); return; }
     if (action === 'skip') {
       event.preventDefault();
       document.getElementById('main')?.focus({ preventScroll: false });
@@ -1317,6 +1419,13 @@
       document.getElementById(action)?.showModal();
     }
     if (action === 'retry-identity') { initializeIdentity(); refreshChrome(); navigate(); }
+  });
+
+  document.addEventListener('input', (event) => {
+    const input = event.target.closest('[data-tag-filter]');
+    if (!input) return;
+    const groups = document.querySelector('[data-tag-groups]');
+    if (groups) groups.innerHTML = tagGroupsMarkup(input.value);
   });
 
   document.addEventListener('keydown', (event) => {

@@ -90,6 +90,7 @@ html.metar-native[data-theme="dark"] { --bs-body-color-rgb: 230, 236, 228; color
 .metar-native #header .metar-language-switcher { order: 30; }
 .metar-native #header .metar-theme-toggle { order: 40; }
 .metar-native #header .metar-account-actions > .dropdown:has(#dropdown-basic) { order: 50; }
+.metar-native #header .metar-account-actions > .dropdown:has(#dropdown-basic) .dropdown-menu { display: none !important; }
 .metar-native #header .metar-account-actions > .dropdown:has(#dropdown-uca) { display: none !important; }
 .metar-native #sideNav .nav-link { color: var(--metar-muted); padding: 9px 12px; font-size: 14px; border-radius: 6px; }
 .metar-native #sideNav .nav-link.active { color: var(--metar-primary); background: var(--metar-tint); }

@@ -11,7 +11,7 @@ function appFunction(name,context){
  return vm.runInNewContext(`(${appSource.slice(start,end)})`,context);
 }
 test('personal sidebar only exposes real administrator navigation on /me',()=>{
- const context={route:()=>({path:'/me'}),currentUserState:'ready',currentUser:{role_id:1},t:x=>x,getLanguage:()=> 'zh_CN',I:()=>'',link:(url,text)=>`<a href="${url}">${text}</a>`,external:(url,text)=>`<a href="${url}">${text}</a>`,outbound:(url,text)=>url?`<a href="${url}">${text}</a>`:'',config:{answerSettingsPath:'/users/settings/profile',consoleUrl:'https://api.example/console'},isCommunityAdministrator:u=>u?.role_id===2};
+ const context={route:()=>({path:'/me',query:new URLSearchParams()}),currentUserState:'ready',currentUser:{role_id:1},t:x=>x,getLanguage:()=> 'zh_CN',I:()=>'',esc:x=>String(x??''),link:(url,text)=>`<a href="${url}">${text}</a>`,external:(url,text)=>`<a href="${url}">${text}</a>`,outbound:(url,text)=>url?`<a href="${url}">${text}</a>`:'',routeMatchesNavigation:(path,search,url)=>path===url,config:{answerSettingsPath:'/users/settings/profile',consoleUrl:'https://api.example/console'},isCommunityAdministrator:u=>u?.role_id===2};
  context.accountManagement=appFunction('accountManagement',context);
  const sidebar=appFunction('personalSidebar',context);
  assert.match(sidebar(),/\/badges/);assert.match(sidebar(),/\/users\/settings\/profile/);assert.match(sidebar(),/https:\/\/api.example\/console\/pulse/);assert.doesNotMatch(sidebar(),/\/admin\//);
@@ -19,12 +19,12 @@ test('personal sidebar only exposes real administrator navigation on /me',()=>{
  context.currentUserState='unavailable';assert.equal(sidebar(),'');
  context.currentUserState='ready';context.route=()=>({path:'/me/bookmarks'});assert.equal(sidebar(),'');
 });
-test('back returns settings to personal space, otherwise uses history or community',()=>{
- const visits=[];const context={route:()=>({path:'/settings/binding'}),history:{length:3,back:()=>visits.push('back')},router:{go:path=>{assert.equal(path,'/me');visits.push(path);return true}},location:{assign:path=>visits.push(path)},navigate:()=>{}};
+test('back always returns to the personal space or the main community page',()=>{
+ const visits=[];const context={route:()=>({path:'/settings/binding'}),history:{length:3,back:()=>visits.push('back')},router:{go:path=>{visits.push(path);return true}},navigate:()=>{}};
  const back=appFunction('goBack',context);
- back();context.route=()=>({path:'/users/settings'});back();context.route=()=>({path:'/users/settings/profile'});back();
- context.route=()=>({path:'/models'});back();context.history.length=1;back();
- assert.deepEqual(visits,['/me','/me','/me','back','/latest']);
+ back();context.route=()=>({path:'/users/settings'});back();context.route=()=>({path:'/me/bookmarks'});back();context.route=()=>({path:'/badges'});back();
+ context.route=()=>({path:'/models'});back();context.route=()=>({path:'/topic/ai'});back();context.route=()=>({path:'/me'});back();
+ assert.deepEqual(visits,['/me','/me','/me','/me','/latest','/latest','/latest']);
 });
 function setup(value,blocked=false){let listener,latest;const saved=new Map([[KEY,value]]),desktop={matches:true,addEventListener(_event,fn){listener=fn}};
  const storage={getItem:k=>{if(blocked)throw Error('blocked');return saved.get(k)},setItem:(k,v)=>{if(blocked)throw Error('blocked');saved.set(k,v)}};
