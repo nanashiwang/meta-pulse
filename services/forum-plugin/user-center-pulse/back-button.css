@@ -18,6 +18,13 @@
 .page-back:hover { color: var(--text, var(--metar-text)); text-decoration: none; }
 .page-back:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
 .page-back[hidden] { display: none !important; }
+/* Home has no back action, but keeps the same header slot as every other page.
+   visibility:hidden also removes it from keyboard navigation and hit testing. */
+.topbar > .page-back[hidden], .metar-native #header .metar-back[hidden] {
+  display: inline-flex !important;
+  visibility: hidden;
+  pointer-events: none;
+}
 .page-back.chat-back { display: none; }
 @media (max-width: 767px) {
   .page-back { padding: 4px 7px; font-size: 12px; }
