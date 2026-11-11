@@ -31,11 +31,13 @@ COPY services/forum/answer-session-retention.patch /build/answer-session-retenti
 COPY services/forum/answer-optional-admin-email.patch /build/answer-optional-admin-email.patch
 COPY services/forum/answer-admin-user-list.patch /build/answer-admin-user-list.patch
 COPY services/forum/answer-admin-privileges-compact.patch /build/answer-admin-privileges-compact.patch
+COPY services/forum/answer-mail-errors.patch /build/answer-mail-errors.patch
 RUN cd /build/answer \
     && patch -p1 --fuzz=0 < /build/answer-session-retention.patch \
     && patch -p1 --fuzz=0 < /build/answer-optional-admin-email.patch \
     && patch -p1 --fuzz=0 < /build/answer-admin-user-list.patch \
-    && patch -p1 --fuzz=0 < /build/answer-admin-privileges-compact.patch
+    && patch -p1 --fuzz=0 < /build/answer-admin-privileges-compact.patch \
+    && patch -p1 --fuzz=0 < /build/answer-mail-errors.patch
 ENV ANSWER_MODULE=/build/answer
 
 WORKDIR /build

@@ -36,7 +36,7 @@ verify-notes:
 vet:
 	go vet $(GO_MODULES)
 
-test: deploy-test test-community test-forum-session test-forum-optional-email test-forum-admin-user-list test-forum-captcha
+test: test-forum-mail-errors deploy-test test-community test-forum-session test-forum-optional-email test-forum-admin-user-list test-forum-captcha
 	go test $(GO_MODULES)
 
 deploy-test:
@@ -178,3 +178,7 @@ test-forum-admin-user-list:
 .PHONY: test-forum-captcha
 test-forum-captcha:
 	bash services/forum/test-captcha.sh
+
+.PHONY: test-forum-mail-errors
+test-forum-mail-errors:
+	bash services/forum/test-mail-errors.sh

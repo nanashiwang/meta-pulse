@@ -1,0 +1,546 @@
+diff --git a/internal/service/export/email_service.go b/internal/service/export/email_service.go
+--- a/internal/service/export/email_service.go
++++ b/internal/service/export/email_service.go
+@@ -20,11 +20,9 @@
+ package export
+ 
+ import (
+-	"crypto/tls"
+ 	"encoding/json"
+ 	"fmt"
+ 	"mime"
+-	"os"
+ 	"strings"
+ 	"time"
+ 
+@@ -98,13 +96,13 @@
+ }
+ 
+ // SendAndSaveCode send email and save code
+-func (es *EmailService) SendAndSaveCode(ctx context.Context, userID, toEmailAddr, subject, body, code, codeContent string) {
++func (es *EmailService) SendAndSaveCode(ctx context.Context, userID, toEmailAddr, subject, body, code, codeContent string) error {
+ 	err := es.emailRepo.SetCode(ctx, userID, code, codeContent, constant.UserEmailCodeCacheTime)
+ 	if err != nil {
+ 		log.Error(err)
+-		return
+-	}
+-	es.Send(ctx, toEmailAddr, subject, body)
++		return errors.New(503, "error.email_send_failed")
++	}
++	return es.Send(ctx, toEmailAddr, subject, body)
+ }
+ 
+ // SendAndSaveCodeWithTime send email and save code
+@@ -119,16 +117,16 @@
+ }
+ 
+ // Send email send
+-func (es *EmailService) Send(ctx context.Context, toEmailAddr, subject, body string) {
++func (es *EmailService) Send(ctx context.Context, toEmailAddr, subject, body string) error {
+ 	log.Infof("try to send email to %s", toEmailAddr)
+ 	ec, err := es.GetEmailConfig(ctx)
+ 	if err != nil {
+ 		log.Errorf("get email config failed: %s", err)
+-		return
++		return errors.New(503, "error.email_send_failed")
+ 	}
+ 	if len(ec.SMTPHost) == 0 {
+ 		log.Warnf("smtp host is empty, skip send email")
+-		return
++		return errors.New(503, "error.email_send_failed")
+ 	}
+ 
+ 	m := gomail.NewMessage()
+@@ -138,21 +136,12 @@
+ 	m.SetHeader("Subject", subject)
+ 	m.SetBody("text/html", body)
+ 
+-	d := gomail.NewDialer(ec.SMTPHost, ec.SMTPPort, ec.SMTPUsername, ec.SMTPPassword)
+-	if ec.IsSSL() {
+-		d.SSL = true
+-	}
+-	if ec.IsTLS() {
+-		d.SSL = false
+-	}
+-	if len(os.Getenv("SKIP_SMTP_TLS_VERIFY")) > 0 {
+-		d.TLSConfig = &tls.Config{ServerName: d.Host, InsecureSkipVerify: true}
+-	}
+-	if err := d.DialAndSend(m); err != nil {
++	if err := sendSMTP(ctx, ec, m, 8*time.Second); err != nil {
+ 		log.Errorf("send email to %s failed: %s", toEmailAddr, err)
+-	} else {
+-		log.Infof("send email to %s success", toEmailAddr)
+-	}
++		return errors.New(503, "error.email_send_failed")
++	}
++	log.Infof("send email to %s success", toEmailAddr)
++	return nil
+ }
+ 
+ // VerifyUrlExpired email send
+diff --git a/internal/service/content/user_service.go b/internal/service/content/user_service.go
+--- a/internal/service/content/user_service.go
++++ b/internal/service/content/user_service.go
+@@ -490,7 +490,9 @@
+ 	if err != nil {
+ 		return nil, nil, err
+ 	}
+-	go us.emailService.SendAndSaveCode(ctx, userInfo.ID, userInfo.EMail, title, body, code, data.ToJSONString())
++	if err := us.emailService.SendAndSaveCode(ctx, userInfo.ID, userInfo.EMail, title, body, code, data.ToJSONString()); err != nil {
++		return nil, nil, errors.New(503, "error.registration_email_send_failed")
++	}
+ 
+ 	roleID, err := us.userRoleService.GetUserRole(ctx, userInfo.ID)
+ 	if err != nil {
+@@ -540,8 +542,7 @@
+ 	if err != nil {
+ 		return err
+ 	}
+-	go us.emailService.SendAndSaveCode(ctx, userInfo.ID, userInfo.EMail, title, body, code, data.ToJSONString())
+-	return nil
++	return us.emailService.SendAndSaveCode(ctx, userInfo.ID, userInfo.EMail, title, body, code, data.ToJSONString())
+ }
+ 
+ func (us *UserService) UserVerifyEmail(ctx context.Context, req *schema.UserVerifyEmailReq) (resp *schema.UserLoginResp, err error) {
+diff --git a/internal/service/siteinfo/siteinfo_service.go b/internal/service/siteinfo/siteinfo_service.go
+--- a/internal/service/siteinfo/siteinfo_service.go
++++ b/internal/service/siteinfo/siteinfo_service.go
+@@ -307,7 +307,7 @@
+ 		if err != nil {
+ 			return err
+ 		}
+-		go s.emailService.Send(ctx, req.TestEmailRecipient, title, body)
++		return s.emailService.Send(ctx, req.TestEmailRecipient, title, body)
+ 	}
+ 	return nil
+ }
+diff --git a/ui/src/utils/request.ts b/ui/src/utils/request.ts
+--- a/ui/src/utils/request.ts
++++ b/ui/src/utils/request.ts
+@@ -100,6 +100,16 @@
+           data,
+         };
+ 
++        if (
++          status === 503 &&
++          ['error.email_send_failed', 'error.registration_email_send_failed'].includes(
++            errBody?.reason,
++          )
++        ) {
++          Modal.confirm({ content: msg, showConfirm: false, cancelText: 'close' });
++          return Promise.reject(false);
++        }
++
+         if (status === 400) {
+           if (data?.err_type && errConfig?.passingError) {
+             return Promise.reject(errorObject);
+diff --git a/i18n/zh_CN.yaml b/i18n/zh_CN.yaml
+--- a/i18n/zh_CN.yaml
++++ b/i18n/zh_CN.yaml
+@@ -146,6 +146,10 @@
+   email_or_password_wrong_error:
+     other: 邮箱和密码不匹配。
+   error:
++    email_send_failed:
++      other: "发送失败，请稍后重试"
++    registration_email_send_failed:
++      other: "发送失败，请稍后重试。账号已创建，请登录后重新发送激活邮件，无需重复注册。"
+     common:
+       invalid_url:
+         other: 无效的 URL。
+diff --git a/i18n/en_US.yaml b/i18n/en_US.yaml
+--- a/i18n/en_US.yaml
++++ b/i18n/en_US.yaml
+@@ -147,6 +147,10 @@
+   email_or_password_wrong_error:
+     other: Email and password do not match.
+   error:
++    email_send_failed:
++      other: "Sending failed. Please try again later."
++    registration_email_send_failed:
++      other: "Sending failed. Your account has been created. Please sign in and resend the activation email later; do not register again."
+     common:
+       invalid_url:
+         other: Invalid URL.
+diff --git a/internal/service/export/metar_smtp.go b/internal/service/export/metar_smtp.go
+new file mode 100644
+--- /dev/null
++++ b/internal/service/export/metar_smtp.go
+@@ -0,0 +1,136 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one
++ * or more contributor license agreements.  See the NOTICE file
++ * distributed with this work for additional information
++ * regarding copyright ownership.  The ASF licenses this file
++ * to you under the Apache License, Version 2.0 (the
++ * "License"); you may not use this file except in compliance
++ * with the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing,
++ * software distributed under the License is distributed on an
++ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++ * KIND, either express or implied.  See the License for the
++ * specific language governing permissions and limitations
++ * under the License.
++ */
++
++package export
++
++import (
++	"context"
++	"crypto/tls"
++	"fmt"
++	"io"
++	"net"
++	"net/smtp"
++	"os"
++	"strconv"
++	"strings"
++	"time"
++
++	"gopkg.in/gomail.v2"
++)
++
++// sendSMTP bounds the entire SMTP exchange, including TLS and DATA, so the
++// browser receives a useful failure before its ten-second request timeout.
++func sendSMTP(ctx context.Context, ec *EmailConfig, message *gomail.Message, timeout time.Duration) error {
++	ctx, cancel := context.WithTimeout(ctx, timeout)
++	defer cancel()
++	address := net.JoinHostPort(ec.SMTPHost, strconv.Itoa(ec.SMTPPort))
++	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", address)
++	if err != nil {
++		return err
++	}
++	defer conn.Close()
++	deadline, _ := ctx.Deadline()
++	if err := conn.SetDeadline(deadline); err != nil {
++		return err
++	}
++	rawConn := conn
++	stop := context.AfterFunc(ctx, func() { _ = rawConn.Close() })
++	defer stop()
++	tlsConfig := &tls.Config{ServerName: ec.SMTPHost, MinVersion: tls.VersionTLS12,
++		InsecureSkipVerify: len(os.Getenv("SKIP_SMTP_TLS_VERIFY")) > 0}
++	implicitTLS := ec.IsSSL() || (ec.Encryption == "" && ec.SMTPPort == 465)
++	if implicitTLS {
++		secure := tls.Client(conn, tlsConfig)
++		if err := secure.HandshakeContext(ctx); err != nil {
++			return err
++		}
++		conn = secure
++	}
++	client, err := smtp.NewClient(conn, ec.SMTPHost)
++	if err != nil {
++		return err
++	}
++	defer client.Close()
++	if !implicitTLS {
++		if ok, _ := client.Extension("STARTTLS"); ok {
++			if err := client.StartTLS(tlsConfig); err != nil {
++				return err
++			}
++		} else if ec.IsTLS() {
++			return fmt.Errorf("SMTP server does not support required STARTTLS")
++		}
++	}
++	if ec.SMTPUsername != "" {
++		_, mechanisms := client.Extension("AUTH")
++		var auth smtp.Auth = smtp.PlainAuth("", ec.SMTPUsername, ec.SMTPPassword, ec.SMTPHost)
++		if strings.Contains(mechanisms, "CRAM-MD5") {
++			auth = smtp.CRAMMD5Auth(ec.SMTPUsername, ec.SMTPPassword)
++		} else if !strings.Contains(mechanisms, "PLAIN") && strings.Contains(mechanisms, "LOGIN") {
++			auth = &smtpLoginAuth{username: ec.SMTPUsername, password: ec.SMTPPassword, host: ec.SMTPHost}
++		}
++		if err := client.Auth(auth); err != nil {
++			return err
++		}
++	}
++	return gomail.Send(gomail.SendFunc(func(from string, to []string, message io.WriterTo) error {
++		if err := client.Mail(from); err != nil {
++			return err
++		}
++		for _, recipient := range to {
++			if err := client.Rcpt(recipient); err != nil {
++				return err
++			}
++		}
++		writer, err := client.Data()
++		if err != nil {
++			return err
++		}
++		if _, err := message.WriteTo(writer); err != nil {
++			return err
++		}
++		// DATA's final reply is the SMTP acceptance boundary. QUIT is cleanup only.
++		return writer.Close()
++	}), message)
++}
++
++// LOGIN is used by SMTP providers which do not advertise PLAIN.
++type smtpLoginAuth struct{ username, password, host string }
++
++func (a *smtpLoginAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
++	if server.Name != a.host {
++		return "", nil, fmt.Errorf("unexpected SMTP host")
++	}
++	if !server.TLS && server.Name != "localhost" && server.Name != "127.0.0.1" && server.Name != "::1" {
++		return "", nil, fmt.Errorf("unencrypted SMTP authentication")
++	}
++	return "LOGIN", []byte(a.username), nil
++}
++func (a *smtpLoginAuth) Next(challenge []byte, more bool) ([]byte, error) {
++	if !more {
++		return nil, nil
++	}
++	switch strings.ToLower(strings.TrimSpace(string(challenge))) {
++	case "username:":
++		return []byte(a.username), nil
++	case "password:":
++		return []byte(a.password), nil
++	default:
++		return nil, fmt.Errorf("unexpected SMTP authentication challenge")
++	}
++}
+diff --git a/internal/service/export/metar_smtp_test.go b/internal/service/export/metar_smtp_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/service/export/metar_smtp_test.go
+@@ -0,0 +1,191 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one
++ * or more contributor license agreements.  See the NOTICE file
++ * distributed with this work for additional information
++ * regarding copyright ownership.  The ASF licenses this file
++ * to you under the Apache License, Version 2.0 (the
++ * "License"); you may not use this file except in compliance
++ * with the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing,
++ * software distributed under the License is distributed on an
++ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++ * KIND, either express or implied.  See the License for the
++ * specific language governing permissions and limitations
++ * under the License.
++ */
++
++package export
++
++import (
++	"bufio"
++	"context"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"net"
++	"net/smtp"
++	"strings"
++	"testing"
++	"time"
++
++	"github.com/apache/answer/internal/entity"
++	"github.com/apache/answer/internal/service/config"
++	pacerrors "github.com/segmentfault/pacman/errors"
++	"gopkg.in/gomail.v2"
++)
++
++type mailConfigRepo struct {
++	config.ConfigRepo
++	value string
++	err   error
++}
++
++func (r mailConfigRepo) GetConfigByKey(context.Context, string) (*entity.Config, error) {
++	return &entity.Config{Value: r.value}, r.err
++}
++
++type mailCodeRepo struct {
++	EmailRepo
++	err error
++}
++
++func (r mailCodeRepo) SetCode(context.Context, string, string, string, time.Duration) error {
++	return r.err
++}
++func mailService(ec EmailConfig) *EmailService {
++	raw, _ := json.Marshal(ec)
++	return &EmailService{configService: config.NewConfigService(mailConfigRepo{value: string(raw)})}
++}
++func requireMailFailure(t *testing.T, err error) {
++	t.Helper()
++	var public *pacerrors.Error
++	if !errors.As(err, &public) || public.Code != 503 || public.Reason != "error.email_send_failed" {
++		t.Fatalf("expected sanitized mail failure, got %v", err)
++	}
++}
++func TestMetarMailMissingConfiguration(t *testing.T) {
++	requireMailFailure(t, mailService(EmailConfig{}).Send(context.Background(), "user@example.com", "test", "body"))
++	service := &EmailService{configService: config.NewConfigService(mailConfigRepo{err: errors.New("private database detail")})}
++	requireMailFailure(t, service.Send(context.Background(), "user@example.com", "test", "body"))
++	service = &EmailService{emailRepo: mailCodeRepo{err: errors.New("cache unavailable")}}
++	requireMailFailure(t, service.SendAndSaveCode(context.Background(), "id", "user@example.com", "test", "body", "code", "{}"))
++}
++
++// A local SMTP peer verifies the final DATA response, not merely TCP connect.
++func mailPeer(t *testing.T, reject bool, stall bool) (EmailConfig, <-chan string) {
++	t.Helper()
++	listener, err := net.Listen("tcp", "127.0.0.1:0")
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { _ = listener.Close() })
++	received := make(chan string, 1)
++	go func() {
++		conn, err := listener.Accept()
++		if err != nil {
++			return
++		}
++		defer conn.Close()
++		_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
++		if stall {
++			_, _ = bufio.NewReader(conn).ReadString('\n')
++			return
++		}
++		fmt.Fprint(conn, "220 local test\r\n")
++		reader := bufio.NewReader(conn)
++		for {
++			line, err := reader.ReadString('\n')
++			if err != nil {
++				return
++			}
++			switch {
++			case strings.HasPrefix(line, "EHLO"), strings.HasPrefix(line, "HELO"):
++				fmt.Fprint(conn, "250 local test\r\n")
++			case strings.HasPrefix(line, "MAIL"), strings.HasPrefix(line, "RCPT"):
++				fmt.Fprint(conn, "250 OK\r\n")
++			case strings.HasPrefix(line, "DATA"):
++				fmt.Fprint(conn, "354 continue\r\n")
++				var body strings.Builder
++				for {
++					part, err := reader.ReadString('\n')
++					if err != nil {
++						return
++					}
++					if part == ".\r\n" {
++						break
++					}
++					body.WriteString(part)
++				}
++				received <- body.String()
++				if reject {
++					fmt.Fprint(conn, "550 rejected private provider detail\r\n")
++				} else {
++					fmt.Fprint(conn, "250 queued\r\n")
++				}
++			default:
++				return
++			}
++		}
++	}()
++	address := listener.Addr().(*net.TCPAddr)
++	return EmailConfig{SMTPHost: "127.0.0.1", SMTPPort: address.Port, FromEmail: "sender@example.com"}, received
++}
++func TestMetarMailSMTPResult(t *testing.T) {
++	for _, reject := range []bool{false, true} {
++		t.Run(fmt.Sprint(reject), func(t *testing.T) {
++			ec, received := mailPeer(t, reject, false)
++			service := mailService(ec)
++			service.emailRepo = mailCodeRepo{}
++			err := service.SendAndSaveCode(context.Background(), "user-id", "user@example.com", "Activation", "activation-link", "code", "{}")
++			if reject {
++				requireMailFailure(t, err)
++			} else if err != nil {
++				t.Fatal(err)
++			}
++			select {
++			case body := <-received:
++				if !strings.Contains(body, "activation-link") {
++					t.Fatal("missing message body")
++				}
++			case <-time.After(time.Second):
++				t.Fatal("no message")
++			}
++		})
++	}
++}
++func TestMetarMailTimeoutAndRequiredTLS(t *testing.T) {
++	ec, _ := mailPeer(t, false, true)
++	message := gomail.NewMessage()
++	message.SetHeader("From", ec.FromEmail)
++	message.SetHeader("To", "user@example.com")
++	message.SetBody("text/plain", "test")
++	start := time.Now()
++	if err := sendSMTP(context.Background(), &ec, message, 50*time.Millisecond); err == nil {
++		t.Fatal("stall succeeded")
++	}
++	if time.Since(start) > time.Second {
++		t.Fatal("deadline not enforced")
++	}
++	ec, _ = mailPeer(t, false, false)
++	ec.Encryption = "TLS"
++	if err := sendSMTP(context.Background(), &ec, message, time.Second); err == nil {
++		t.Fatal("required TLS silently downgraded")
++	}
++}
++func TestMetarMailLoginAuthentication(t *testing.T) {
++	auth := &smtpLoginAuth{username: "user", password: "secret", host: "mail.example.com"}
++	if _, _, err := auth.Start(&smtp.ServerInfo{Name: "mail.example.com"}); err == nil {
++		t.Fatal("sent credentials without TLS")
++	}
++	mechanism, initial, err := auth.Start(&smtp.ServerInfo{Name: "mail.example.com", TLS: true})
++	if err != nil || mechanism != "LOGIN" || string(initial) != "user" {
++		t.Fatal("LOGIN start failed")
++	}
++	password, err := auth.Next([]byte("Password:"), true)
++	if err != nil || string(password) != "secret" {
++		t.Fatal("LOGIN password failed")
++	}
++}
+diff --git a/internal/service/user_admin/user_backyard.go b/internal/service/user_admin/user_backyard.go
+--- a/internal/service/user_admin/user_backyard.go
++++ b/internal/service/user_admin/user_backyard.go
+@@ -617,8 +617,7 @@
+ 	if err != nil {
+ 		return err
+ 	}
+-	go us.emailService.SendAndSaveCode(ctx, userInfo.ID, userInfo.EMail, title, body, code, data.ToJSONString())
+-	return nil
++	return us.emailService.SendAndSaveCode(ctx, userInfo.ID, userInfo.EMail, title, body, code, data.ToJSONString())
+ }
+ 
+ func (us *UserAdminService) DeletePermanently(ctx context.Context, req *schema.DeletePermanentlyReq) (err error) {
+diff --git a/ui/src/pages/Users/Register/components/SignUpForm/index.tsx b/ui/src/pages/Users/Register/components/SignUpForm/index.tsx
+--- a/ui/src/pages/Users/Register/components/SignUpForm/index.tsx
++++ b/ui/src/pages/Users/Register/components/SignUpForm/index.tsx
+@@ -142,7 +142,11 @@
+         updateUser(res);
+         callback();
+       })
+-      .catch((err) => {
++      .catch(async (err) => {
++        if (!err?.isError) {
++          await emailCaptcha?.close();
++          return;
++        }
+         if (err.isError) {
+           emailCaptcha?.handleCaptchaError(err.list);
+           const data = handleFormError(err, formData);
+diff --git a/ui/src/components/Unactivate/index.tsx b/ui/src/components/Unactivate/index.tsx
+--- a/ui/src/components/Unactivate/index.tsx
++++ b/ui/src/components/Unactivate/index.tsx
+@@ -60,7 +60,11 @@
+         await emailCaptcha?.close();
+         setSuccess(true);
+       })
+-      .catch((err) => {
++      .catch(async (err) => {
++        if (!err?.isError) {
++          await emailCaptcha?.close();
++          return;
++        }
+         if (err.isError) {
+           emailCaptcha?.handleCaptchaError(err.list);
+           const data = handleFormError(err, formData);

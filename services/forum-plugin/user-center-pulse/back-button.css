@@ -1,0 +1,27 @@
+/* Shared by the METAR shell and Answer. The /me button is the visual baseline. */
+.page-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  box-sizing: border-box;
+  padding: 5px 10px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text, var(--metar-text));
+  font: 600 13px/1.5 system-ui;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.page-back:hover { color: var(--text, var(--metar-text)); text-decoration: none; }
+.page-back:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.page-back[hidden] { display: none !important; }
+.page-back.chat-back { display: none; }
+@media (max-width: 767px) {
+  .page-back { padding: 4px 7px; font-size: 12px; }
+}
+@media (max-width: 640px) {
+  .page-back.chat-back { display: inline-flex; }
+}

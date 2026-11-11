@@ -14,7 +14,9 @@ test('personal sidebar only exposes real administrator navigation on /me',()=>{
  const context={route:()=>({path:'/me',query:new URLSearchParams()}),currentUserState:'ready',currentUser:{role_id:1},t:x=>x,getLanguage:()=> 'zh_CN',I:()=>'',esc:x=>String(x??''),link:(url,text)=>`<a href="${url}">${text}</a>`,external:(url,text)=>`<a href="${url}">${text}</a>`,outbound:(url,text)=>url?`<a href="${url}">${text}</a>`:'',routeMatchesNavigation:(path,search,url)=>path===url,config:{answerSettingsPath:'/users/settings/profile',consoleUrl:'https://api.example/console'},isCommunityAdministrator:u=>u?.role_id===2};
  context.accountManagement=appFunction('accountManagement',context);
  const sidebar=appFunction('personalSidebar',context);
- assert.match(sidebar(),/\/badges/);assert.match(sidebar(),/\/users\/settings\/profile/);assert.match(sidebar(),/https:\/\/api.example\/console\/pulse/);assert.doesNotMatch(sidebar(),/\/admin\//);
+ assert.match(sidebar(),/\/badges/);assert.match(sidebar(),/\/users\/settings\/profile/);assert.match(sidebar(),/href="\/pulse"[^>]*><span>签到抽奖<\/span>/);assert.doesNotMatch(sidebar(),/console\/pulse|marketplace\/mine/);assert.doesNotMatch(sidebar(),/\/admin\//);
+ context.config.consoleUrl='';assert.match(sidebar(),/href="\/pulse"/);
+ context.getLanguage=()=> 'en_US';assert.match(sidebar(),/Check-in & draw/);
  context.currentUser.role_id=2;assert.match(sidebar(),/\/admin\/pulse/);
  context.currentUserState='unavailable';assert.equal(sidebar(),'');
  context.currentUserState='ready';context.route=()=>({path:'/me/bookmarks'});assert.equal(sidebar(),'');

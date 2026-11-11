@@ -23,6 +23,7 @@ import { installNativeShell } from './native-shell';
 import { installLocalRegistration } from './local-registration';
 import './theme-tokens.css';
 import './native-shell.css';
+import './back-button.css';
 import { installAccountMenu } from './account-menu';
 
 installRanking({

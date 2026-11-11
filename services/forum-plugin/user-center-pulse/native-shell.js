@@ -45,7 +45,7 @@ export function installNativeShell(language, host = window) {
   links[0].link.setAttribute('aria-current', 'true');
   const back = doc.createElement('button');
   back.type = 'button';
-  back.className = 'metar-back';
+  back.className = 'page-back metar-back';
   back.onclick = () => {
     const destination = backDestination(host.location.pathname);
     if (destination) host.location.href = destination;

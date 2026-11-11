@@ -103,8 +103,9 @@ def build(output: Path, config_path: Path) -> None:
 
     base_css = (PROTOTYPE_ROOT / "src/styles.css").read_text(encoding="utf-8")
     production_css = (ROOT / "src/styles.css").read_text(encoding="utf-8")
+    back_button_css = (ROOT.parents[1] / "services/forum-plugin/user-center-pulse/back-button.css").read_text(encoding="utf-8")
     tokens = (PROTOTYPE_ROOT / "shared/theme-tokens.css").read_text(encoding="utf-8")
-    (assets / "app.css").write_text(f"{base_css}\n{tokens}\n{production_css}\n", encoding="utf-8")
+    (assets / "app.css").write_text(f"{base_css}\n{tokens}\n{production_css}\n{back_button_css}\n", encoding="utf-8")
     (assets / "seo.js").write_text(sources["seo"], encoding="utf-8")
     (assets / "i18n.js").write_text(sources["i18n"], encoding="utf-8")
     (assets / "adapters.js").write_text(sources["adapters"], encoding="utf-8")

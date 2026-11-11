@@ -244,7 +244,7 @@
     const { path, query } = route();
     const item = (url, label, icon) => link(url, I(icon) + `<span>${esc(label)}</span>`, `account-menu-link ${routeMatchesNavigation(path, query.toString(), url) ? 'active' : ''}`);
     const consoleBase = config.consoleUrl?.replace(/\/$/, '').replace(/\/console$/, '');
-    return `<aside class="personal-sidebar" aria-label="${t('我的空间')}"><div class="account-menu-group"><div class="account-menu-label">${t('我的空间')}</div>${item('/chat', t('聊天'), 'chat')}${item('/me', t('个人空间'), 'user')}${item('/marketplace/mine', t('我的集市发布'), 'code')}${item('/me/growth', t('社区成长'), 'target')}${item('/me/bookmarks', t('我的收藏'), 'bookmark')}${item('/settings/binding', t('账号绑定'), 'link')}${external('/badges', I('trophy') + `<span>${t('勋章')}</span>`, 'account-menu-link')}${external(config.answerSettingsPath, I('settings') + `<span>${t('账号设置')}</span>`, 'account-menu-link')}</div>${accountManagement(item)}${consoleBase ? `<div class="account-menu-group personal-console-group"><div class="account-menu-label">${t('元衡服务')}</div>${outbound(consoleBase + '/console/pulse', getLanguage() === 'en_US' ? 'Check-in & draw' : '签到抽奖', 'account-menu-link')}${outbound(consoleBase + '/console', t('元衡API'), 'account-menu-link')}</div>` : ''}<div class="account-menu-group personal-logout">${external('/users/logout', I('external') + `<span>${t('退出登录')}</span>`, 'account-menu-link')}</div></aside>`;
+    return `<aside class="personal-sidebar" aria-label="${t('我的空间')}"><div class="account-menu-group"><div class="account-menu-label">${t('我的空间')}</div>${item('/chat', t('聊天'), 'chat')}${item('/me', t('个人空间'), 'user')}${item('/me/growth', t('社区成长'), 'target')}${item('/me/bookmarks', t('我的收藏'), 'bookmark')}${item('/settings/binding', t('账号绑定'), 'link')}${external('/badges', I('trophy') + `<span>${t('勋章')}</span>`, 'account-menu-link')}${external(config.answerSettingsPath, I('settings') + `<span>${t('账号设置')}</span>`, 'account-menu-link')}</div>${accountManagement(item)}<div class="account-menu-group personal-console-group"><div class="account-menu-label">${t('元衡服务')}</div>${item('/pulse', getLanguage() === 'en_US' ? 'Check-in & draw' : '签到抽奖', 'target')}${consoleBase ? outbound(consoleBase + '/console', t('元衡API'), 'account-menu-link') : ''}</div><div class="account-menu-group personal-logout">${external('/users/logout', I('external') + `<span>${t('退出登录')}</span>`, 'account-menu-link')}</div></aside>`;
   }
 
   const isHomePath = (path = route().path) => /^\/(?:latest|questions|discover)?\/?$/.test(path);
@@ -897,7 +897,7 @@
   }
 
   function notFoundPage() {
-    return `<section class="card">${empty(t("没有找到这个页面"), t("请检查地址，或返回社区继续浏览。"), link('/latest', t("返回发现"), 'btn primary'), 'compass')}</section>${footer()}`;
+    return `<section class="card">${empty(t("没有找到这个页面"), t("请检查地址，或返回社区继续浏览。"), link('/latest', '← ' + t("返回发现"), 'page-back'), 'compass')}</section>${footer()}`;
   }
 
   async function resolveView() {
@@ -907,7 +907,7 @@
       const title = currentTitle();
       if (currentUserState === 'unavailable') return identityUnavailable(title);
       if (!currentUser) return loginRequired(title, t('请先登录社区账号。'));
-      if (!isCommunityAdministrator(currentUser)) return empty(t('需要管理员权限'), '', link('/models', t('返回榜单'), 'btn'), 'shield');
+      if (!isCommunityAdministrator(currentUser)) return empty(t('需要管理员权限'), '', link('/models', '← ' + t('返回榜单'), 'page-back'), 'shield');
       await loadFeatureScript('admin-models', 'MetarModelsAdmin');
       modelsAdminView = new window.MetarModelsAdmin.View(answer);
       return await modelsAdminView.page(currentUser);
@@ -931,7 +931,7 @@
         if (currentUserState === 'unavailable') return identityUnavailable(title);
         if (!currentUser) return loginRequired(title, t('请先登录社区账号。'));
         if (!isActiveUser(currentUser)) return accountUnavailable(title);
-        if (path === '/admin/marketplace' && !isCommunityAdministrator(currentUser)) return empty(t('需要管理员权限'), '', link('/marketplace', t('返回集市'), 'btn'), 'shield');
+        if (path === '/admin/marketplace' && !isCommunityAdministrator(currentUser)) return empty(t('需要管理员权限'), '', link('/marketplace', '← ' + t('返回集市'), 'page-back'), 'shield');
       }
       await loadFeatureScript('marketplace', 'MetarMarketplace');
       marketplaceView = new window.MetarMarketplace.View(answer, new AnswerAdapter({answerApiBase:'/answer/admin/api'}));
@@ -940,7 +940,7 @@
     if (path === '/admin/operations') {
       if (currentUserState === 'unavailable') return identityUnavailable(currentTitle());
       if (!currentUser) return loginRequired(currentTitle(), t('请先登录社区账号。'));
-      if (!isCommunityAdministrator(currentUser)) return empty(t('需要管理员权限'), '', link('/latest', t('返回社区'), 'btn'), 'shield');
+      if (!isCommunityAdministrator(currentUser)) return empty(t('需要管理员权限'), '', link('/latest', '← ' + t('返回社区'), 'page-back'), 'shield');
       await loadFeatureScript('analytics', 'MetarOperations');
       operationsView = new window.MetarOperations.View(new AnswerAdapter({answerApiBase:'/answer/admin/api'}));
       return await operationsView.page();
@@ -952,7 +952,7 @@
         if (currentUserState === 'unavailable') return identityUnavailable(title);
         if (!currentUser) return loginRequired(title, t('请先登录社区账号。'));
         if (!isActiveUser(currentUser)) return accountUnavailable(title);
-        if (path === '/admin/events' && !isCommunityAdministrator(currentUser)) return empty(t('需要管理员权限'), '', link('/latest', t('返回社区'), 'btn'), 'shield');
+        if (path === '/admin/events' && !isCommunityAdministrator(currentUser)) return empty(t('需要管理员权限'), '', link('/latest', '← ' + t('返回社区'), 'page-back'), 'shield');
       }
       await loadFeatureScript('drafts-store', 'MetarDrafts');
       await loadFeatureScript('member-pages', 'MetarMemberPages');
@@ -964,7 +964,7 @@
       if (currentUserState === 'unavailable') return identityUnavailable(title);
       if (!currentUser) return loginRequired(title, t('登录社区账号后开始聊天，无需绑定 API 账号。'));
       if (!isActiveUser(currentUser)) return accountUnavailable(title);
-      if (path === '/admin/chat' && !isCommunityAdministrator(currentUser)) return empty(t('需要管理员权限'), '', link('/latest', t('返回社区'), 'btn'), 'shield');
+      if (path === '/admin/chat' && !isCommunityAdministrator(currentUser)) return empty(t('需要管理员权限'), '', link('/latest', '← ' + t('返回社区'), 'page-back'), 'shield');
       await loadFeatureScript('chat', 'MetarChat');
       if (path === '/admin/chat') {
         chatModeration = new window.MetarChat.Moderation(answer, new AnswerAdapter({answerApiBase:'/answer/admin/api'}));
@@ -979,7 +979,7 @@
       const title = t('类别管理');
       if (currentUserState === 'unavailable') return identityUnavailable(title);
       if (!currentUser) return loginRequired(title, t('请使用社区管理员账号登录。'));
-      if (!isCommunityAdministrator(currentUser)) return `<section class="card">${empty(t('需要管理员权限'), '', link('/latest', t('返回社区'), 'btn'), 'shield')}</section>${footer()}`;
+      if (!isCommunityAdministrator(currentUser)) return `<section class="card">${empty(t('需要管理员权限'), '', link('/latest', '← ' + t('返回社区'), 'page-back'), 'shield')}</section>${footer()}`;
       return `${pageTitle(title)}${await taxonomy.orderPage(answer)}${taxonomy.adminPage()}${footer()}`;
     }
     if (path === '/knowledge') return knowledgePage();
@@ -990,7 +990,7 @@
       if (currentUserState === 'unavailable') return identityUnavailable(title);
       if (!currentUser) return loginRequired(title, t('登录后查看个人资料与发布记录。'));
       if (!isActiveUser(currentUser)) return accountUnavailable(title);
-      if (path === '/admin/growth' && !isCommunityAdministrator(currentUser)) return `${pageTitle(title)}<section class="card">${empty(t('需要管理员权限'), '', link('/latest', t('返回社区'), 'btn'), 'shield')}</section>${footer()}`;
+      if (path === '/admin/growth' && !isCommunityAdministrator(currentUser)) return `${pageTitle(title)}<section class="card">${empty(t('需要管理员权限'), '', link('/latest', '← ' + t('返回社区'), 'page-back'), 'shield')}</section>${footer()}`;
       return `${pageTitle(title)}${await growthView().then(view => path === '/admin/growth' ? view.adminPage() : view.page())}${footer()}`;
     }
     if (path === '/me/bookmarks') return bookmarksPage();
@@ -999,7 +999,7 @@
     if (path === '/admin/pulse') {
       if (currentUserState === 'unavailable') return identityUnavailable(t('Pulse 配置'));
       if (!currentUser) return loginRequired(t('Pulse 配置'), t('请使用社区管理员账号登录。'));
-      if (!isCommunityAdministrator(currentUser)) return `<section class="card">${empty(t('需要管理员权限'), t('仅正常且已激活的社区管理员可管理 Pulse 配置。'), link('/latest', t('返回社区'), 'btn'), 'shield')}</section>${footer()}`;
+      if (!isCommunityAdministrator(currentUser)) return `<section class="card">${empty(t('需要管理员权限'), t('仅正常且已激活的社区管理员可管理 Pulse 配置。'), link('/latest', '← ' + t('返回社区'), 'page-back'), 'shield')}</section>${footer()}`;
       return `${pageTitle(t('Pulse 配置'))}${await adminView().then(view => view.page())}${footer()}`;
     }
     if (path === '/support') return supportPage();

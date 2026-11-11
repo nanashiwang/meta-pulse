@@ -166,7 +166,7 @@
 
   function stateCard(error) {
     if (error?.code === 'no_snapshot') return `<section class="card card-pad intel-state"><h2>${t('榜单数据准备中', 'Leaderboard data is being prepared')}</h2><p class="muted">${t('模型、价格与评测数据导入并完成首次计算后将在这里展示。', 'Models, prices and benchmarks will appear here after the first import and scoring run.')}</p></section>`;
-    if (error?.code === 'not_found') return `<section class="card card-pad intel-state"><h2>${t('没有找到这个模型', 'Model not found')}</h2><p class="muted">${t('它可能尚未收录或已更名。', 'It may not be listed yet or may have been renamed.')}</p><div class="mt16">${link('/models', t('返回榜单', 'Back to the leaderboard'), 'btn')}</div></section>`;
+    if (error?.code === 'not_found') return `<section class="card card-pad intel-state"><h2>${t('没有找到这个模型', 'Model not found')}</h2><p class="muted">${t('它可能尚未收录或已更名。', 'It may not be listed yet or may have been renamed.')}</p><div class="mt16">${link('/models', '← ' + t('返回榜单', 'Back to the leaderboard'), 'page-back')}</div></section>`;
     return `<section class="card card-pad intel-state" role="alert"><h2>${t('模型榜单暂时不可用', 'The model leaderboard is temporarily unavailable')}</h2><p class="muted">${t('社区其他功能不受影响，请稍后刷新。', 'The rest of the community is unaffected. Please refresh later.')}</p></section>`;
   }
 

@@ -578,7 +578,6 @@ body:has(.community-discussions, .page-loading[data-layout="feed"]) .topbar .sea
 .personal-sidebar .account-menu-group,.personal-console-group{margin-top:20px;border-top:1px solid var(--border);padding-top:7px}
 .personal-sidebar .account-menu-label{font-size:11px;color:var(--muted);padding:12px}
 html.has-personal-sidebar .page{margin-left:232px}
-.page-back{flex:none;padding:5px 10px;border:1px solid currentColor;border-radius:6px;background:transparent;color:var(--text);font:600 13px/1.5 system-ui;cursor:pointer;white-space:nowrap}
 .page-back[hidden],.topbar a[href="/publish"],.topbar a[href="/questions/add"],.topbar a[href="/questions/ask"]{display:none!important}
 .prod-footer{position:fixed;left:16px;right:16px;bottom:12px;z-index:30;background:var(--surface);margin:0;width:auto;box-sizing:border-box;padding:14px 2px 8px}
 html.has-personal-sidebar .prod-footer{left:248px}
@@ -590,7 +589,6 @@ html .page{padding-bottom:120px}
  html.has-personal-sidebar .page{margin-left:0;padding-top:16px}
  html .prod-footer,html.has-personal-sidebar .prod-footer{left:12px;right:12px;bottom:67px;flex-wrap:wrap;padding:10px;gap:6px;font-size:11px}
  .prod-footer nav{flex-wrap:wrap;gap:6px}
- .page-back{padding:4px 7px;font-size:12px}
 }
 .personal-sidebar .account-menu-group:first-child{margin-top:0;border-top:0;padding-top:0}
 .personal-sidebar .personal-logout{margin-top:14px;border-top:1px solid var(--border);padding-top:7px}
