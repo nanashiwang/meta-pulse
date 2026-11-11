@@ -117,17 +117,22 @@ diff --git a/internal/service/siteinfo/siteinfo_service.go b/internal/service/si
 diff --git a/ui/src/utils/request.ts b/ui/src/utils/request.ts
 --- a/ui/src/utils/request.ts
 +++ b/ui/src/utils/request.ts
-@@ -100,6 +100,16 @@
+@@ -100,6 +100,21 @@
            data,
          };
  
 +        if (
 +          status === 503 &&
-+          ['error.email_send_failed', 'error.registration_email_send_failed'].includes(
-+            errBody?.reason,
-+          )
++          [
++            'error.email_send_failed',
++            'error.registration_email_send_failed',
++          ].includes(errBody?.reason)
 +        ) {
-+          Modal.confirm({ content: msg, showConfirm: false, cancelText: 'close' });
++          Modal.confirm({
++            content: msg,
++            showConfirm: false,
++            cancelText: 'close',
++          });
 +          return Promise.reject(false);
 +        }
 +

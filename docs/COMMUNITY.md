@@ -492,3 +492,5 @@ Answer 1.7.1 通过构建补丁同步执行注册激活邮件、用户重发、�
 Answer 构建先运行 Go vendor，再从其中的 package.json 发现 UI 插件。user-center-pulse 和 captcha-turnstile 必须显式嵌入前端入口、相对导入及样式。`make test-forum-frontend-assets` 检查递归依赖并用真实 Go vendor 验证文件保留；Docker 构建在 answer build 前执行依赖检查。
 
 部署后运行 `python3 services/forum/verify_frontend.py --base-url https://metarhub.com` 检查登录页，并加 `--path /questions/<有效帖子ID>` 检查详情页；脚本检查 HTTP 状态、主脚本与样式引用、资源非空且不是 HTML 回退。主脚本缺失时，Answer 服务端正文虽已返回，加载遮罩仍无法移除。此检查不替代登录、验证码与发帖交互验收。
+
+论坛构建在编译最终二进制后用隔离安装服务验证内嵌入口与首屏 JS/CSS，不需要业务数据库。React 构建曾因格式错误返回零却未产出入口，不能仅凭构建命令退出码判定可用；上线后仍须运行原生登录及帖子页面检查。

@@ -45,6 +45,39 @@ class FrontendAssetsTest(unittest.TestCase):
         self.assertEqual(2, len(verify.check_html('<link rel="stylesheet" href=""><div id="spin-container"></div>')))
         self.assertEqual([], verify.check_html('<link rel="stylesheet" href="/static/main.css"><script defer src="/static/main.js"></script>'))
 
+    def test_final_binary_http_gate_rejects_missing_bundles(self):
+        spec = importlib.util.spec_from_file_location('verify_binary', HERE / 'verify_binary.py')
+        import sys
+        sys.modules['verify_frontend'] = verify
+        gate = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(gate)
+        for broken in ('', 'index', 'asset'):
+            with self.subTest(broken=broken), tempfile.TemporaryDirectory() as temp:
+                fake = Path(temp) / 'answer'
+                fake.write_text('#!' + sys.executable + '\n' + f"""
+import os
+from http.server import BaseHTTPRequestHandler, HTTPServer
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/install':
+            body = b'<link rel="stylesheet" href="/static/main.css"><script src="/static/main.js"></script>'
+            if {broken!r} == 'index': body = b'<div>loading</div>'
+            kind = 'text/html'
+        else:
+            body = b'OK'
+            kind = 'text/html' if {broken!r} == 'asset' and self.path.startswith('/static/') else 'text/plain'
+        self.send_response(200)
+        self.send_header('Content-Type', kind)
+        self.end_headers()
+        self.wfile.write(body)
+HTTPServer(('127.0.0.1', int(os.environ['INSTALL_PORT'])), Handler).serve_forever()
+""")
+                fake.chmod(0o755)
+                if broken:
+                    with self.assertRaises(RuntimeError): gate.verify(fake)
+                else:
+                    gate.verify(fake)
+
     def test_real_plugins_are_complete(self):
         for directory in (verify.ROOT / 'services/forum-plugin').iterdir():
             if (directory / 'package.json').is_file():

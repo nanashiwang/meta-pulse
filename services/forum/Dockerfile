@@ -58,6 +58,9 @@ RUN answer build \
     --with github.com/nanashiwang/meta-pulse/services/forum-plugin/captcha-turnstile@v0.1.0=/build/captcha-turnstile \
     --output /out/answer
 
+COPY services/forum/verify_binary.py /build/services/forum/verify_binary.py
+RUN python3 /build/services/forum/verify_binary.py /out/answer
+
 RUN cd /build/user-center-pulse && CGO_ENABLED=0 go build -o /out/forum-config ./cmd/forum-config
 
 FROM alpine:3.20
