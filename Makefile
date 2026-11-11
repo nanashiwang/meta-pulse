@@ -36,7 +36,7 @@ verify-notes:
 vet:
 	go vet $(GO_MODULES)
 
-test: test-forum-mail-errors deploy-test test-community test-forum-session test-forum-optional-email test-forum-admin-user-list test-forum-captcha
+test: test-forum-frontend-assets test-forum-mail-errors deploy-test test-community test-forum-session test-forum-optional-email test-forum-admin-user-list test-forum-captcha
 	go test $(GO_MODULES)
 
 deploy-test:
@@ -182,3 +182,8 @@ test-forum-captcha:
 .PHONY: test-forum-mail-errors
 test-forum-mail-errors:
 	bash services/forum/test-mail-errors.sh
+
+.PHONY: test-forum-frontend-assets
+test-forum-frontend-assets:
+	python3 services/forum/verify_frontend.py
+	python3 -m unittest discover -s services/forum -p 'test_frontend_assets.py' -v

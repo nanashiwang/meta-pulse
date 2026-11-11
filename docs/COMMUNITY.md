@@ -486,3 +486,9 @@ Answer 1.7.1 通过构建补丁同步执行注册激活邮件、用户重发、�
 ### 个人中心导航与返回按钮
 
 `/me` 侧栏不再显示“我的集市发布”，“签到抽奖”使用站内 `/pulse`，即使未配置元衡控制台地址也可访问。社区壳层与 Answer 原生页共用 `back-button.css`，以个人中心的箭头描边返回按钮为基准；聊天返回列表与错误页返回入口同步采用该样式，返回目的地不变。顶部布局以 marketplace 为基准，latest 隐藏返回控件但保留空白占位，主页也保留顶部搜索框；选中导航项不改变文字宽度。需要配套更新社区静态资源和 forum 插件。
+
+### 论坛前端资源完整性
+
+Answer 构建先运行 Go vendor，再从其中的 package.json 发现 UI 插件。user-center-pulse 和 captcha-turnstile 必须显式嵌入前端入口、相对导入及样式。`make test-forum-frontend-assets` 检查递归依赖并用真实 Go vendor 验证文件保留；Docker 构建在 answer build 前执行依赖检查。
+
+部署后运行 `python3 services/forum/verify_frontend.py --base-url https://metarhub.com` 检查登录页，并加 `--path /questions/<有效帖子ID>` 检查详情页；脚本检查 HTTP 状态、主脚本与样式引用、资源非空且不是 HTML 回退。主脚本缺失时，Answer 服务端正文虽已返回，加载遮罩仍无法移除。此检查不替代登录、验证码与发帖交互验收。

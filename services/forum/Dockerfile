@@ -12,7 +12,7 @@ FROM golang:1.25-alpine AS builder
 # floating latest pnpm makes old Answer releases depend on future package
 # manager behaviour and currently fails its pre-install identity check.
 ARG PNPM_VERSION=9.7.0
-RUN apk add --no-cache build-base git bash nodejs npm patch \
+RUN apk add --no-cache build-base git bash nodejs npm patch python3 \
     && npm install -g "pnpm@${PNPM_VERSION}" \
     && test "$(pnpm --version)" = "${PNPM_VERSION}"
 
@@ -43,6 +43,13 @@ ENV ANSWER_MODULE=/build/answer
 WORKDIR /build
 COPY services/forum-plugin/user-center-pulse ./user-center-pulse
 COPY services/forum-plugin/captcha-turnstile ./captcha-turnstile
+
+# Fail before the expensive Answer build if vendor would drop a UI dependency.
+COPY services/forum/verify_frontend.py /build/services/forum/verify_frontend.py
+RUN mkdir -p /build/services/forum-plugin \
+    && ln -s /build/user-center-pulse /build/services/forum-plugin/user-center-pulse \
+    && ln -s /build/captcha-turnstile /build/services/forum-plugin/captcha-turnstile \
+    && python3 /build/services/forum/verify_frontend.py
 
 # Build from the local plugin source rather than a published module, so the
 # forum image always matches this commit.
