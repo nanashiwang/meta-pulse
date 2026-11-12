@@ -651,8 +651,8 @@
           ${list.length ? discussionList(list) : empty(order === 'unanswered' ? t("暂时没有待回答问题") : t("当前筛选没有内容"), t("可以调整筛选，或发起一个新问题。"), external(askPath, t("发起提问"), 'btn primary'), 'chat')}${pager}
         </div>
         <aside class="community-rail" data-discussion-rail aria-label="${t('社区侧栏')}">
-          <section class="rail-card"><div class="rail-head"><h2>${t('等你来回答')}</h2>${link('/latest?order=unanswered', t('查看全部'), 'rail-edit')}</div><div data-rail-content="unanswered" aria-live="polite"><p class="rail-content-state">${t('正在加载…')}</p></div></section>
-          <section class="rail-card"><div class="rail-head"><h2>${t('精选阅读')}</h2>${link('/topic/feeds?order=score', t('查看全部'), 'rail-edit')}</div><div data-rail-content="featured" aria-live="polite"><p class="rail-content-state">${t('正在加载…')}</p></div></section>
+          <section class="rail-card"><div class="rail-head"><h2>${t('等你来回答')}</h2></div><div data-rail-content="unanswered" aria-live="polite"><p class="rail-content-state">${t('正在加载…')}</p></div></section>
+          <section class="rail-card"><div class="rail-head"><h2>${t('精选阅读')}</h2></div><div data-rail-content="featured" aria-live="polite"><p class="rail-content-state">${t('正在加载…')}</p></div></section>
           <section class="rail-card">
             <div class="rail-head"><h2>${t('已关注的标签')}</h2><button type="button" class="rail-edit" data-action="toggle-tags" aria-expanded="${tagPanelOpen}" aria-controls="tag-panel">${t(tagPanelOpen ? '完成' : '编辑')}</button></div>
             <div data-rail-tags>${followedRailMarkup()}</div>

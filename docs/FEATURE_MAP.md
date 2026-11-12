@@ -128,4 +128,4 @@ new-api 接收端与实际到账、生产普通账号流程、邮件与跨实例
 
 `/admin/publishing` → [后台页面](../metar-frontend/production/src/admin-publishing.js)、[管理员发布服务](../services/forum-plugin/user-center-pulse/admin_publishing.go)、[Answer 原生适配](../services/forum/answer-operator-publishing.patch)。仅登记的无外部绑定运营账号，显式代发标识、批量预览、单项幂等与未知结果核对；规则见 [内容运营](CONTENT_OPERATIONS.md)，测试 `make test-operator-publishing`。
 
-帖子列表右栏包含「等你来回答」（Answer unanswered 前五条）与「精选阅读」（既有 feeds / 好文收藏、score 排序前五条），独立异步加载并提供查看全部，保留已关注标签；见 `discussion-rail.test.js`。
+帖子列表右栏包含「等你来回答」（Answer unanswered 前五条）与「精选阅读」（既有 feeds / 好文收藏、score 排序前五条），独立异步加载，隐藏查看全部并用细分隔线区分帖子，保留已关注标签；见 `discussion-rail.test.js`。
