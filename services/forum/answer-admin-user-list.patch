@@ -1,8 +1,8 @@
 diff --git a/i18n/en_US.yaml b/i18n/en_US.yaml
-index 5183c50..d91f20a 100644
+index eac322d..3e75be1 100644
 --- a/i18n/en_US.yaml
 +++ b/i18n/en_US.yaml
-@@ -1977,6 +1977,38 @@ ui:
+@@ -1977,6 +1977,68 @@ ui:
        change_role: Change role
        show_logs: Show logs
        add_user: Add user
@@ -20,7 +20,37 @@ index 5183c50..d91f20a 100644
 +      metar_col_email: Email
 +      metar_col_reputation: Reputation
 +      metar_col_tickets_remaining: "Tickets remaining"
-+      metar_col_tickets_total: "Tickets received"
++      metar_col_tickets_total: "Lifetime tickets received"
++      metar_col_tickets_spent: "Tickets spent"
++      metar_col_rewards: "Settled rewards"
++      metar_ticket_history_hint: "Lifetime tickets include reset, revoked and expired tickets; they are not the available balance. Spent tickets count draws only. Rewards include settled, unreversed draw quota and EXP."
++      metar_removed: "Reset/revoked/expired: {{count}}"
++      metar_sort_all: "Sort all filtered users"
++      metar_sort_default: "Default order"
++      metar_refresh_statistics: "Refresh statistics"
++      metar_sort_loading: "Loading users; global sorting waits for all filtered results."
++      metar_sort_error: "Could not load complete statistics. No partial ranking is shown. Refresh or narrow the filter."
++      metar_sort_user_id: "User ID"
++      metar_sort_name: "Name"
++      metar_sort_email: "Email"
++      metar_sort_reputation: "Reputation"
++      metar_sort_posts: "Questions"
++      metar_sort_tickets_remaining: "Tickets remaining"
++      metar_sort_tickets_total: "Lifetime tickets received"
++      metar_sort_tickets_spent: "Tickets spent"
++      metar_sort_reward_quota: "Settled quota"
++      metar_sort_reward_experience: "Settled EXP"
++      metar_sort_post_count: "Posts"
++      metar_sort_post_likes: "Post likes"
++      metar_sort_comments: "Comments"
++      metar_sort_likes: "Likes"
++      metar_sort_shares: "Shares"
++      metar_sort_api_account: "API account"
++      metar_sort_login_methods: "Login methods"
++      metar_sort_created_at: "Registered"
++      metar_sort_last_login: "Last login"
++      metar_sort_role: "Role"
++      metar_sort_status: "Status"
 +      metar_col_post_count: "Posts"
 +      metar_col_post_likes: "Post likes received"
 +      metar_col_comments: "Comments / answers"
@@ -42,10 +72,10 @@ index 5183c50..d91f20a 100644
          title: Deactivate user
          content: An inactive user must re-validate their email.
 diff --git a/i18n/zh_CN.yaml b/i18n/zh_CN.yaml
-index 9db4efa..67331f3 100644
+index 53dca07..bc7ecc1 100644
 --- a/i18n/zh_CN.yaml
 +++ b/i18n/zh_CN.yaml
-@@ -1938,6 +1938,38 @@ ui:
+@@ -1938,6 +1938,68 @@ ui:
        change_role: 更改角色
        show_logs: 显示日志
        add_user: 添加用户
@@ -63,7 +93,37 @@ index 9db4efa..67331f3 100644
 +      metar_col_email: 邮箱
 +      metar_col_reputation: 声望
 +      metar_col_tickets_remaining: "抽奖券剩余量"
-+      metar_col_tickets_total: "抽奖券总量"
++      metar_col_tickets_total: "历史累计获券"
++      metar_col_tickets_spent: "已消耗券"
++      metar_col_rewards: "已到账奖励"
++      metar_ticket_history_hint: "历史累计获券包含已清零、撤销和过期的券，不代表当前可用；已消耗券仅统计抽奖消费。奖励仅统计已到账且未撤销的抽奖额度和经验。"
++      metar_removed: "已清零/撤销/过期：{{count}}"
++      metar_sort_all: "全部筛选用户排序"
++      metar_sort_default: "默认排序"
++      metar_refresh_statistics: "刷新统计"
++      metar_sort_loading: "正在加载用户数据；全局排序需等待全部筛选结果加载完成。"
++      metar_sort_error: "无法完整加载统计，未显示部分排名。请刷新统计重试，或缩小筛选范围。"
++      metar_sort_user_id: "用户 ID"
++      metar_sort_name: "昵称"
++      metar_sort_email: "邮箱"
++      metar_sort_reputation: "声望"
++      metar_sort_posts: "提问数"
++      metar_sort_tickets_remaining: "抽奖券剩余量"
++      metar_sort_tickets_total: "历史累计获券"
++      metar_sort_tickets_spent: "已消耗券"
++      metar_sort_reward_quota: "已到账额度"
++      metar_sort_reward_experience: "已到账经验"
++      metar_sort_post_count: "发帖数"
++      metar_sort_post_likes: "发帖获赞"
++      metar_sort_comments: "评论数"
++      metar_sort_likes: "点赞数"
++      metar_sort_shares: "分享数"
++      metar_sort_api_account: "API 账号"
++      metar_sort_login_methods: "登录方式"
++      metar_sort_created_at: "注册时间"
++      metar_sort_last_login: "最近登录"
++      metar_sort_role: "角色"
++      metar_sort_status: "状态"
 +      metar_col_post_count: "发帖数"
 +      metar_col_post_likes: "发帖获赞数"
 +      metar_col_comments: "评论数"
@@ -85,7 +145,7 @@ index 9db4efa..67331f3 100644
          title: 停用用户
          content: 未激活的用户必须重新验证他们的邮箱。
 diff --git a/internal/schema/backyard_user_schema.go b/internal/schema/backyard_user_schema.go
-index 50222bc..c5660d9 100644
+index d36ff80..9b72417 100644
 --- a/internal/schema/backyard_user_schema.go
 +++ b/internal/schema/backyard_user_schema.go
 @@ -126,6 +126,10 @@ type GetUserPageResp struct {
@@ -97,7 +157,7 @@ index 50222bc..c5660d9 100644
 +	QuestionCount int   `json:"question_count"`
 +	AnswerCount   int   `json:"answer_count"`
  }
- 
+
  // GetUserInfoReq get user request
 diff --git a/internal/service/user_admin/metar_admin_user_list_test.go b/internal/service/user_admin/metar_admin_user_list_test.go
 new file mode 100644
@@ -117,18 +177,18 @@ index 0000000..c8c1a38
 +	}
 +}
 diff --git a/internal/service/user_admin/user_backyard.go b/internal/service/user_admin/user_backyard.go
-index bff87c9..48be397 100644
+index fcced1c..86d0d18 100644
 --- a/internal/service/user_admin/user_backyard.go
 +++ b/internal/service/user_admin/user_backyard.go
-@@ -511,6 +511,7 @@ func (us *UserAdminService) GetUserPage(ctx context.Context, req *schema.GetUser
+@@ -505,6 +505,7 @@ func (us *UserAdminService) GetUserPage(ctx context.Context, req *schema.GetUser
  		}
  	}
- 
+
 +	req.PageSize = metarAdminUserPageSize(req.PageSize)
  	users, total, err := us.userRepo.GetUserPage(ctx, req.Page, req.PageSize, user, req.Query, req.Staff)
  	if err != nil {
  		return
-@@ -527,6 +528,12 @@ func (us *UserAdminService) GetUserPage(ctx context.Context, req *schema.GetUser
+@@ -521,6 +522,12 @@ func (us *UserAdminService) GetUserPage(ctx context.Context, req *schema.GetUser
  			Rank:        u.Rank,
  			DisplayName: u.DisplayName,
  			Avatar:      avatarMapping[u.ID].GetURL(),
@@ -141,8 +201,8 @@ index bff87c9..48be397 100644
  		}
  		switch {
  		case u.Status == entity.UserStatusDeleted:
-@@ -670,3 +677,14 @@ func (us *UserAdminService) CheckAndUnsuspendExpiredUsers(ctx context.Context) e
- 
+@@ -664,3 +671,14 @@ func (us *UserAdminService) CheckAndUnsuspendExpiredUsers(ctx context.Context) e
+
  	return nil
  }
 +
@@ -156,14 +216,54 @@ index bff87c9..48be397 100644
 +	}
 +	return size
 +}
+diff --git a/ui/src/components/Share/index.tsx b/ui/src/components/Share/index.tsx
+index d63147b..e41f209 100644
+--- a/ui/src/components/Share/index.tsx
++++ b/ui/src/components/Share/index.tsx
+@@ -52,6 +52,15 @@ const Index: FC<IProps> = ({ type, qid, aid, title, className, mode }) => {
+     baseUrl = `${baseUrl}?share=${user.username}`;
+   }
+
++  const recordShare = () => {
++    if (type !== 'question') return;
++    fetch('/answer/api/v1/metar/statistics/share', {
++      method: 'POST',
++      credentials: 'same-origin',
++      headers: { 'Content-Type': 'application/json', 'X-Metar-Request': '1' },
++      body: JSON.stringify({ question_id: String(qid) }),
++    }).catch(() => undefined);
++  };
+   const closeShare = () => {
+     setShowTip(false);
+     setShow(false);
+@@ -70,6 +79,7 @@ const Index: FC<IProps> = ({ type, qid, aid, title, className, mode }) => {
+   };
+
+   const systemShare = () => {
++    if (mode === 'mobile') recordShare();
+     navigator.share({
+       title,
+       text: `${title} - Answer：`,
+@@ -96,7 +106,10 @@ const Index: FC<IProps> = ({ type, qid, aid, title, className, mode }) => {
+         id="dropdown-share"
+         as="a"
+         className={classNames('no-toggle pointer d-flex', className)}
+-        onClick={() => setShow(true)}
++        onClick={() => {
++          recordShare();
++          setShow(true);
++        }}
+         style={{ lineHeight: '23px' }}>
+         {t('share.name')}
+       </Dropdown.Toggle>
 diff --git a/ui/src/pages/Admin/Users/index.tsx b/ui/src/pages/Admin/Users/index.tsx
-index 7e8e4fd..cd9ca45 100644
+index 7e8e4fd..4fd3f50 100644
 --- a/ui/src/pages/Admin/Users/index.tsx
 +++ b/ui/src/pages/Admin/Users/index.tsx
 @@ -17,8 +17,15 @@
   * under the License.
   */
- 
+
 -import { FC, useEffect, useState } from 'react';
 -import { Form, Table, Button, Stack } from 'react-bootstrap';
 +import { FC, useEffect, useMemo, useState } from 'react';
@@ -177,7 +277,7 @@ index 7e8e4fd..cd9ca45 100644
 +} from 'react-bootstrap';
  import { useSearchParams } from 'react-router-dom';
  import { useTranslation } from 'react-i18next';
- 
+
 @@ -32,8 +39,10 @@ import {
    Empty,
    QueryGroup,
@@ -189,18 +289,27 @@ index 7e8e4fd..cd9ca45 100644
  import { useUserModal } from '@/hooks';
  import { toastStore, loggedUserInfoStore, userCenterStore } from '@/stores';
  import {
-@@ -45,6 +54,7 @@ import {
+@@ -45,9 +54,16 @@ import {
    deletePermanently,
  } from '@/services';
  import { formatCount } from '@/utils';
 +import Storage from '@/utils/storage';
- 
+
  import DeleteUserModal from './components/DeleteUserModal';
  import Action from './components/Action';
-@@ -65,7 +75,89 @@ const bgMap = {
++import {
++  sortKeys,
++  sortUsers,
++  quotaText,
++  loadAllUsers,
++} from './metar-statistics';
+ import SuspenseUserModal from './components/SuspenseUserModal';
+
+ const UserFilterKeys: Type.UserFilterBy[] = [
+@@ -65,7 +81,101 @@ const bgMap = {
    inactive: 'text-bg-secondary',
  };
- 
+
 -const PAGE_SIZE = 10;
 +// METAR: denser admin list. The server clamps page_size to 100 as well.
 +const PAGE_SIZES = [10, 20, 50, 100];
@@ -214,6 +323,8 @@ index 7e8e4fd..cd9ca45 100644
 +  'posts',
 +  'tickets_remaining',
 +  'tickets_total',
++  'tickets_spent',
++  'rewards',
 +  'post_count',
 +  'post_likes',
 +  'comments',
@@ -231,7 +342,15 @@ index 7e8e4fd..cd9ca45 100644
 +type BindingInfo = {
 +  api_user_id?: string;
 +  providers?: string[];
-+  tickets?: { remaining: string; total: string };
++  tickets?: {
++    remaining: string;
++    total: string;
++    spent?: string;
++    removed?: string;
++    reward_quota?: string;
++    reward_experience?: string;
++    quota_per_unit?: string;
++  };
 +  statistics?: {
 +    posts: string;
 +    post_likes: string;
@@ -264,10 +383,12 @@ index 7e8e4fd..cd9ca45 100644
 +// disabled plugin from triggering Answer's global 403/50X admin error page.
 +const fetchBindings = async (
 +  ids: string[],
++  signal?: AbortSignal,
 +): Promise<Record<string, BindingInfo>> => {
 +  const token = String(readStored(LOGGED_TOKEN_STORAGE_KEY) || '');
 +  const response = await fetch('/answer/admin/api/metar/accounts/bindings', {
 +    method: 'POST',
++    signal,
 +    credentials: 'same-origin',
 +    cache: 'no-store',
 +    headers: {
@@ -288,7 +409,7 @@ index 7e8e4fd..cd9ca45 100644
  const Users: FC = () => {
    const { t } = useTranslation('translation', { keyPrefix: 'admin.users' });
    const [deleteUserModalState, setDeleteUserModalState] = useState({
-@@ -78,8 +170,29 @@ const Users: FC = () => {
+@@ -78,8 +188,29 @@ const Users: FC = () => {
    });
    const [urlSearchParams, setUrlSearchParams] = useSearchParams();
    const curFilter = urlSearchParams.get('filter') || UserFilterKeys[0];
@@ -319,8 +440,16 @@ index 7e8e4fd..cd9ca45 100644
    const currentUser = loggedUserInfoStore((state) => state.user);
    const { agent: ucAgent } = userCenterStore();
    const [adminUcAgent, setAdminUcAgent] = useState<AdminUcAgent>({
-@@ -95,7 +208,7 @@ const Users: FC = () => {
-     mutate: refreshUsers,
+@@ -90,12 +221,12 @@ const Users: FC = () => {
+   });
+
+   const {
+-    data,
+-    isLoading,
+-    mutate: refreshUsers,
++    data: nativeData,
++    isLoading: nativeLoading,
++    mutate: refreshNativeUsers,
    } = useQueryUsers({
      page: curPage,
 -    page_size: PAGE_SIZE,
@@ -328,10 +457,130 @@ index 7e8e4fd..cd9ca45 100644
      query: curQuery,
      ...(curFilter === 'all'
        ? {}
-@@ -103,6 +216,41 @@ const Users: FC = () => {
+@@ -103,6 +234,162 @@ const Users: FC = () => {
          ? { staff: true }
          : { status: curFilter }),
    });
++  const sortKey = sortKeys.includes(urlSearchParams.get('sort') || '')
++    ? urlSearchParams.get('sort') || ''
++    : '';
++  const direction = urlSearchParams.get('direction') === 'asc' ? 'asc' : 'desc';
++  const [allUsers, setAllUsers] = useState<any>(null);
++  const [sortError, setSortError] = useState(false);
++  const [reload, setReload] = useState(0);
++  const identity = String(currentUser?.user_id || '');
++  const loadKey = JSON.stringify([curFilter, curQuery, identity, reload]);
++  const sortedMode = Boolean(sortKey);
++  const refreshUsers = () => {
++    setReload((value) => value + 1);
++    return refreshNativeUsers();
++  };
++  useEffect(() => {
++    if (!sortedMode) {
++      setAllUsers(null);
++      setSortError(false);
++      return undefined;
++    }
++    const controller = new AbortController();
++    const timer = window.setTimeout(() => controller.abort(), 60000);
++    let active = true;
++    setAllUsers(null);
++    setSortError(false);
++    const fetchPage = async (page, signal) => {
++      const params = new URLSearchParams({
++        page: String(page),
++        page_size: '100',
++        query: curQuery,
++      });
++      if (curFilter === 'staff') params.set('staff', 'true');
++      else if (curFilter !== 'all') params.set('status', curFilter);
++      const response = await fetch(`/answer/admin/api/users/page?${params}`, {
++        credentials: 'same-origin',
++        cache: 'no-store',
++        signal,
++        headers: {
++          Authorization: String(readStored(LOGGED_TOKEN_STORAGE_KEY) || ''),
++        },
++      });
++      if (!response.ok) throw Error('users unavailable');
++      return (await response.json()).data;
++    };
++    loadAllUsers(
++      fetchPage,
++      async (ids, signal) => {
++        const rows = await fetchBindings(ids, signal);
++        if (
++          ids.some(
++            (id) =>
++              !rows[id]?.statistics ||
++              (rows[id]?.api_user_id && !rows[id]?.tickets),
++          )
++        )
++          throw Error('statistics unavailable');
++        return rows;
++      },
++      controller.signal,
++    )
++      .then((result) => {
++        if (active) setAllUsers({ ...result, key: loadKey });
++      })
++      .catch(() => {
++        if (active) setSortError(true);
++      })
++      .finally(() => window.clearTimeout(timer));
++    return () => {
++      active = false;
++      controller.abort();
++      window.clearTimeout(timer);
++    };
++  }, [sortedMode, loadKey, curQuery, curFilter]);
++  const readyAll = allUsers?.key === loadKey ? allUsers : null;
++  const sortedList = useMemo(
++    () =>
++      readyAll
++        ? sortUsers(readyAll.list, readyAll.bindings, sortKey, direction)
++        : [],
++    [readyAll, sortKey, direction],
++  );
++  const data = sortedMode
++    ? {
++        count: readyAll?.count || 0,
++        list: sortedList.slice((curPage - 1) * pageSize, curPage * pageSize),
++      }
++    : nativeData;
++  const isLoading = sortedMode ? !readyAll && !sortError : nativeLoading;
++  const visibleBindings = sortedMode ? readyAll?.bindings : bindings;
++  const setSort = (key) => {
++    if (key) {
++      urlSearchParams.set('sort', key);
++      urlSearchParams.set(
++        'direction',
++        key === sortKey && direction === 'desc' ? 'asc' : 'desc',
++      );
++    } else {
++      urlSearchParams.delete('sort');
++      urlSearchParams.delete('direction');
++    }
++    urlSearchParams.delete('page');
++    setUrlSearchParams(urlSearchParams);
++  };
++  const sortHeader = (key, label) => (
++    <th
++      aria-sort={
++        sortKey === key
++          ? direction === 'asc'
++            ? 'ascending'
++            : 'descending'
++          : 'none'
++      }>
++      <button
++        type="button"
++        className="btn btn-link p-0 text-reset text-decoration-none"
++        onClick={() => setSort(key)}>
++        {label} {sortKey === key ? (direction === 'asc' ? '↑' : '↓') : '↕'}
++      </button>
++    </th>
++  );
 +  const total = Number(data?.count) || 0;
 +  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 +  const rangeStart = total === 0 ? 0 : (curPage - 1) * pageSize + 1;
@@ -345,6 +594,7 @@ index 7e8e4fd..cd9ca45 100644
 +  );
 +
 +  useEffect(() => {
++    if (sortedMode) return undefined;
 +    if (!idsKey) {
 +      setBindings({});
 +      setBindingsFailed(false);
@@ -366,11 +616,11 @@ index 7e8e4fd..cd9ca45 100644
 +    return () => {
 +      active = false;
 +    };
-+  }, [idsKey, data]);
- 
++  }, [idsKey, nativeData, sortedMode]);
+
    const userModal = useUserModal({
      onConfirm: (userModel) => {
-@@ -126,6 +274,46 @@ const Users: FC = () => {
+@@ -126,6 +413,46 @@ const Users: FC = () => {
      urlSearchParams.delete('page');
      setUrlSearchParams(urlSearchParams);
    };
@@ -417,7 +667,7 @@ index 7e8e4fd..cd9ca45 100644
    useEffect(() => {
      if (ucAgent?.enabled) {
        getAdminUcAgent().then((resp) => {
-@@ -199,17 +387,56 @@ const Users: FC = () => {
+@@ -199,17 +526,56 @@ const Users: FC = () => {
      !ucAgent?.enabled ||
      (ucAgent?.enabled && adminUcAgent?.allow_update_user_status);
    const showAction = showActionPassword || showActionRole || showActionStatus;
@@ -426,15 +676,15 @@ index 7e8e4fd..cd9ca45 100644
 +  const filtered = curFilter !== UserFilterKeys[0] || curQuery !== '';
 +
 +  const renderBinding = (userId: string) => {
-+    if (bindingsFailed) {
++    if (!sortedMode && bindingsFailed) {
 +      return (
 +        <span className="text-secondary" title={t('metar_binding_unavailable')}>
 +          —
 +        </span>
 +      );
 +    }
-+    if (!bindings) return <span className="text-secondary">…</span>;
-+    const id = bindings[userId]?.api_user_id;
++    if (!visibleBindings) return <span className="text-secondary">…</span>;
++    const id = visibleBindings[userId]?.api_user_id;
 +    return id ? (
 +      <span className="badge text-bg-primary bg-opacity-75">#{id}</span>
 +    ) : (
@@ -442,10 +692,10 @@ index 7e8e4fd..cd9ca45 100644
 +    );
 +  };
 +  const renderLoginMethods = (userId: string) => {
-+    if (bindingsFailed || !bindings) {
++    if ((!sortedMode && bindingsFailed) || !visibleBindings) {
 +      return <span className="text-secondary">—</span>;
 +    }
-+    const providers = bindings[userId]?.providers || [];
++    const providers = visibleBindings[userId]?.providers || [];
 +    return (
 +      <div className="d-flex flex-wrap gap-1">
 +        <span className="badge text-bg-light">{t('metar_local')}</span>
@@ -459,7 +709,7 @@ index 7e8e4fd..cd9ca45 100644
 +      </div>
 +    );
 +  };
- 
+
    return (
      <>
        <h3 className="mb-4">{t('title')}</h3>
@@ -475,7 +725,7 @@ index 7e8e4fd..cd9ca45 100644
            />
            {curFilter === 'deleted' && Number(data?.count) > 0 ? (
              <Button
-@@ -234,39 +461,95 @@ const Users: FC = () => {
+@@ -234,39 +600,161 @@ const Users: FC = () => {
            type="search"
            value={curQuery}
            onChange={handleFilter}
@@ -535,6 +785,45 @@ index 7e8e4fd..cd9ca45 100644
 +          </Dropdown>
 +        </Stack>
 +      </div>
++      <p className="small text-secondary">{t('metar_ticket_history_hint')}</p>
++      <div className="d-flex gap-2 mb-3 align-items-center">
++        <span>{t('metar_sort_all')}</span>
++        <Form.Select
++          size="sm"
++          value={sortKey}
++          onChange={(e) => setSort(e.target.value)}
++          style={{ width: 'auto' }}
++          aria-label={t('metar_sort_all')}>
++          <option value="">{t('metar_sort_default')}</option>
++          {sortKeys.map((key) => (
++            <option key={key} value={key}>
++              {t(`metar_sort_${key}`)}
++            </option>
++          ))}
++        </Form.Select>
++        {sortedMode && (
++          <Button
++            size="sm"
++            variant="outline-secondary"
++            onClick={() => setSort(sortKey)}>
++            {direction === 'asc' ? '↑' : '↓'}
++          </Button>
++        )}
++        {sortedMode && (
++          <Button
++            size="sm"
++            variant="outline-secondary"
++            onClick={() => setReload((value) => value + 1)}>
++            {t('metar_refresh_statistics')}
++          </Button>
++        )}
++      </div>
++      {isLoading && <p role="status">{t('metar_sort_loading')}</p>}
++      {sortedMode && sortError && (
++        <p role="alert" className="text-danger">
++          {t('metar_sort_error')}
++        </p>
++      )}
 +      <Table
 +        responsive
 +        hover
@@ -542,8 +831,7 @@ index 7e8e4fd..cd9ca45 100644
 +        className="text-nowrap">
          <thead>
            <tr>
-+            {show('user_id') && <th style={{ width: '1%' }}>ID</th>}
-             <th>{t('name')}</th>
+-            <th>{t('name')}</th>
 -            <th style={{ width: '12%' }}>{t('reputation')}</th>
 -            <th style={{ width: '15%' }} className="min-w-15">
 -              {t('email')}
@@ -551,48 +839,77 @@ index 7e8e4fd..cd9ca45 100644
 -            <th className="text-nowrap" style={{ width: '12%' }}>
 -              {t('created_at')}
 -            </th>
-+            {show('email') && <th>{t('email')}</th>}
-+            {show('reputation') && <th>{t('reputation')}</th>}
-+            {show('posts') && <th>{t('metar_col_posts')}</th>}
-+            {show('tickets_remaining') && (
-+              <th>{t('metar_col_tickets_remaining')}</th>
-+            )}
-+            {show('tickets_total') && <th>{t('metar_col_tickets_total')}</th>}
-+            {show('post_count') && <th>{t('metar_col_post_count')}</th>}
-+            {show('post_likes') && <th>{t('metar_col_post_likes')}</th>}
-+            {show('comments') && <th>{t('metar_col_comments')}</th>}
-+            {show('likes') && <th>{t('metar_col_likes')}</th>}
-+            {show('shares') && <th>{t('metar_col_shares')}</th>}
-+            {show('api_account') && <th>{t('metar_col_api_account')}</th>}
-+            {show('login_methods') && <th>{t('metar_col_login_methods')}</th>}
-+            {show('created_at') && <th>{t('created_at')}</th>}
-+            {show('last_login') && <th>{t('metar_col_last_login')}</th>}
-             {(curFilter === 'deleted' || curFilter === 'suspended') && (
+-            {(curFilter === 'deleted' || curFilter === 'suspended') && (
 -              <th className="text-nowrap" style={{ width: '12%' }}>
+-                {curFilter === 'deleted' ? t('delete_at') : t('suspend_at')}
++            {show('user_id') && sortHeader('user_id', 'ID')}
++            {sortHeader('name', t('name'))}
++            {show('email') && sortHeader('email', t('email'))}
++            {show('reputation') && sortHeader('reputation', t('reputation'))}
++            {show('posts') && sortHeader('posts', t('metar_col_posts'))}
++            {show('tickets_remaining') &&
++              sortHeader('tickets_remaining', t('metar_col_tickets_remaining'))}
++            {show('tickets_total') &&
++              sortHeader('tickets_total', t('metar_col_tickets_total'))}
++            {show('tickets_spent') &&
++              sortHeader('tickets_spent', t('metar_col_tickets_spent'))}
++            {show('rewards') && (
 +              <th>
-                 {curFilter === 'deleted' ? t('delete_at') : t('suspend_at')}
++                {t('metar_col_rewards')}
++                <br />
++                <button
++                  type="button"
++                  className="btn btn-link p-0"
++                  onClick={() => setSort('reward_quota')}>
++                  {t('metar_sort_reward_quota')} ↕
++                </button>{' '}
++                /{' '}
++                <button
++                  type="button"
++                  className="btn btn-link p-0"
++                  onClick={() => setSort('reward_experience')}>
++                  {t('metar_sort_reward_experience')} ↕
++                </button>
                </th>
              )}
 -            {curFilter === 'suspended' && (
 -              <th className="text-nowrap" style={{ width: '12%' }}>
 -                {t('suspend_until')}
--              </th>
--            )}
++            {show('post_count') &&
++              sortHeader('post_count', t('metar_col_post_count'))}
++            {show('post_likes') &&
++              sortHeader('post_likes', t('metar_col_post_likes'))}
++            {show('comments') &&
++              sortHeader('comments', t('metar_col_comments'))}
++            {show('likes') && sortHeader('likes', t('metar_col_likes'))}
++            {show('shares') && sortHeader('shares', t('metar_col_shares'))}
++            {show('api_account') &&
++              sortHeader('api_account', t('metar_col_api_account'))}
++            {show('login_methods') &&
++              sortHeader('login_methods', t('metar_col_login_methods'))}
++            {show('created_at') && sortHeader('created_at', t('created_at'))}
++            {show('last_login') &&
++              sortHeader('last_login', t('metar_col_last_login'))}
++            {(curFilter === 'deleted' || curFilter === 'suspended') && (
++              <th>
++                {curFilter === 'deleted' ? t('delete_at') : t('suspend_at')}
+               </th>
+             )}
 +            {curFilter === 'suspended' && <th>{t('suspend_until')}</th>}
- 
+
 -            <th style={{ width: '12%' }}>{t('status')}</th>
 -            {curFilter !== 'suspended' && curFilter !== 'deleted' && (
 -              <th style={{ width: '12%' }}>{t('role')}</th>
 -            )}
-+            <th>{t('status')}</th>
-+            {showRoleColumn && <th>{t('role')}</th>}
++            {sortHeader('status', t('status'))}
++            {showRoleColumn && sortHeader('role', t('role'))}
              {curFilter !== 'deleted' ? (
 -              <th style={{ width: '8%' }} className="text-end">
 +              <th style={{ width: '1%' }} className="text-end">
                  {t('action')}
                </th>
              ) : null}
-@@ -276,28 +559,120 @@ const Users: FC = () => {
+@@ -276,28 +764,153 @@ const Users: FC = () => {
            {data?.list.map((user) => {
              return (
                <tr key={user.user_id}>
@@ -651,43 +968,76 @@ index 7e8e4fd..cd9ca45 100644
 +                )}
 +                {show('tickets_remaining') && (
 +                  <td>
-+                    {bindings?.[String(user.user_id)]?.tickets?.remaining ??
-+                      '—'}
++                    {visibleBindings?.[String(user.user_id)]?.tickets
++                      ?.remaining ?? '—'}
 +                  </td>
 +                )}
 +                {show('tickets_total') && (
 +                  <td>
-+                    {bindings?.[String(user.user_id)]?.tickets?.total ?? '—'}
++                    {visibleBindings?.[String(user.user_id)]?.tickets?.total ??
++                      '—'}
++                    {visibleBindings?.[String(user.user_id)]?.tickets
++                      ?.removed && (
++                      <small className="d-block text-secondary">
++                        {t('metar_removed', {
++                          count:
++                            visibleBindings[String(user.user_id)].tickets
++                              .removed,
++                        })}
++                      </small>
++                    )}
++                  </td>
++                )}
++                {show('tickets_spent') && (
++                  <td>
++                    {visibleBindings?.[String(user.user_id)]?.tickets?.spent ??
++                      '—'}
++                  </td>
++                )}
++                {show('rewards') && (
++                  <td>
++                    {quotaText(
++                      visibleBindings?.[String(user.user_id)]?.tickets
++                        ?.reward_quota,
++                      visibleBindings?.[String(user.user_id)]?.tickets
++                        ?.quota_per_unit,
++                    )}
++                    <br />
++                    {visibleBindings?.[String(user.user_id)]?.tickets
++                      ?.reward_experience ?? '—'}{' '}
++                    EXP
 +                  </td>
 +                )}
 +                {show('post_count') && (
 +                  <td>
-+                    {bindings?.[String(user.user_id)]?.statistics?.posts ??
++                    {visibleBindings?.[String(user.user_id)]?.statistics
++                      ?.posts ??
 +                      user.question_count ??
 +                      '—'}
 +                  </td>
 +                )}
 +                {show('post_likes') && (
 +                  <td>
-+                    {bindings?.[String(user.user_id)]?.statistics?.post_likes ??
-+                      '—'}
++                    {visibleBindings?.[String(user.user_id)]?.statistics
++                      ?.post_likes ?? '—'}
 +                  </td>
 +                )}
 +                {show('comments') && (
 +                  <td>
-+                    {bindings?.[String(user.user_id)]?.statistics?.comments ??
-+                      '—'}
++                    {visibleBindings?.[String(user.user_id)]?.statistics
++                      ?.comments ?? '—'}
 +                  </td>
 +                )}
 +                {show('likes') && (
 +                  <td>
-+                    {bindings?.[String(user.user_id)]?.statistics?.likes ?? '—'}
++                    {visibleBindings?.[String(user.user_id)]?.statistics
++                      ?.likes ?? '—'}
 +                  </td>
 +                )}
 +                {show('shares') && (
 +                  <td>
-+                    {bindings?.[String(user.user_id)]?.statistics?.shares ??
-+                      '—'}
++                    {visibleBindings?.[String(user.user_id)]?.statistics
++                      ?.shares ?? '—'}
 +                  </td>
 +                )}
 +                {show('api_account') && (
@@ -721,7 +1071,7 @@ index 7e8e4fd..cd9ca45 100644
                        {user.suspended_until <= 0 ||
                        Number(
                          dayjs(user.suspended_until * 1000).format('YYYY'),
-@@ -310,7 +685,7 @@ const Users: FC = () => {
+@@ -310,7 +923,7 @@ const Users: FC = () => {
                    </>
                  )}
                  {curFilter === 'deleted' && (
@@ -730,7 +1080,7 @@ index 7e8e4fd..cd9ca45 100644
                      <FormatTime time={user.deleted_at} />
                    </td>
                  )}
-@@ -319,7 +694,7 @@ const Users: FC = () => {
+@@ -319,7 +932,7 @@ const Users: FC = () => {
                      {t(user.status)}
                    </span>
                  </td>
@@ -739,7 +1089,7 @@ index 7e8e4fd..cd9ca45 100644
                    <td>
                      <span className="badge text-bg-light">
                        {t(user.role_name)}
-@@ -338,6 +713,8 @@ const Users: FC = () => {
+@@ -338,19 +951,57 @@ const Users: FC = () => {
                      showDeleteModal={changeDeleteUserModalState}
                      showSuspenseModal={handleSuspenseUserModalState}
                    />
@@ -748,16 +1098,17 @@ index 7e8e4fd..cd9ca45 100644
                  ) : null}
                </tr>
              );
-@@ -345,12 +722,48 @@ const Users: FC = () => {
+           })}
          </tbody>
        </Table>
-       {Number(data?.count) <= 0 && !isLoading && <Empty />}
+-      {Number(data?.count) <= 0 && !isLoading && <Empty />}
 -      <div className="mt-4 mb-2 d-flex justify-content-center">
 -        <Pagination
 -          currentPage={curPage}
 -          totalSize={data?.count || 0}
 -          pageSize={PAGE_SIZE}
 -        />
++      {Number(data?.count) <= 0 && !isLoading && !sortError && <Empty />}
 +      <div className="mt-3 mb-2 d-flex flex-wrap justify-content-between align-items-center gap-3">
 +        <div className="small text-secondary">
 +          {t('metar_range', { start: rangeStart, end: rangeEnd, total })}
@@ -801,45 +1152,149 @@ index 7e8e4fd..cd9ca45 100644
 +          </InputGroup>
 +        </div>
        </div>
- 
+
        <DeleteUserModal
-diff --git a/ui/src/components/Share/index.tsx b/ui/src/components/Share/index.tsx
-index d63147b..e41f209 100644
---- a/ui/src/components/Share/index.tsx
-+++ b/ui/src/components/Share/index.tsx
-@@ -52,6 +52,15 @@ const Index: FC<IProps> = ({ type, qid, aid, title, className, mode }) => {
-     baseUrl = `${baseUrl}?share=${user.username}`;
-   }
- 
-+  const recordShare = () => {
-+    if (type !== 'question') return;
-+    fetch('/answer/api/v1/metar/statistics/share', {
-+      method: 'POST',
-+      credentials: 'same-origin',
-+      headers: { 'Content-Type': 'application/json', 'X-Metar-Request': '1' },
-+      body: JSON.stringify({ question_id: String(qid) }),
-+    }).catch(() => undefined);
+diff --git a/ui/src/pages/Admin/Users/metar-statistics.js b/ui/src/pages/Admin/Users/metar-statistics.js
+new file mode 100644
+index 0000000..b9ac986
+--- /dev/null
++++ b/ui/src/pages/Admin/Users/metar-statistics.js
+@@ -0,0 +1,138 @@
++// Admin-only, explicit full-result sorting. No partial page is a global rank.
++export const sortKeys = [
++  'user_id',
++  'name',
++  'email',
++  'reputation',
++  'posts',
++  'tickets_remaining',
++  'tickets_total',
++  'tickets_spent',
++  'reward_quota',
++  'reward_experience',
++  'post_count',
++  'post_likes',
++  'comments',
++  'likes',
++  'shares',
++  'api_account',
++  'login_methods',
++  'created_at',
++  'last_login',
++  'role',
++  'status',
++];
++const numericKeys = new Set(
++  sortKeys.filter(
++    (key) => !['name', 'email', 'login_methods', 'status'].includes(key),
++  ),
++);
++export function sortValue(user, bindings, key) {
++  const info = bindings?.[String(user.user_id)];
++  if (key.startsWith('tickets_')) return info?.tickets?.[key.slice(8)];
++  if (key.startsWith('reward_')) return info?.tickets?.[key];
++  if (['post_likes', 'comments', 'likes', 'shares'].includes(key))
++    return info?.statistics?.[key];
++  if (key === 'post_count')
++    return info?.statistics?.posts ?? user.question_count;
++  if (key === 'api_account') return info?.api_user_id;
++  if (key === 'login_methods')
++    return info
++      ? [...(info.providers || []), ...(info.api_user_id ? ['API'] : [])]
++          .sort()
++          .join(',') || 'local'
++      : null;
++  const fields = {
++    name: 'display_name',
++    email: 'e_mail',
++    reputation: 'rank',
++    posts: 'question_count',
++    last_login: 'last_login_date',
++    role: 'role_id',
 +  };
-   const closeShare = () => {
-     setShowTip(false);
-     setShow(false);
-@@ -70,6 +79,7 @@ const Index: FC<IProps> = ({ type, qid, aid, title, className, mode }) => {
-   };
- 
-   const systemShare = () => {
-+    if (mode === 'mobile') recordShare();
-     navigator.share({
-       title,
-       text: `${title} - Answer：`,
-@@ -96,7 +106,10 @@ const Index: FC<IProps> = ({ type, qid, aid, title, className, mode }) => {
-         id="dropdown-share"
-         as="a"
-         className={classNames('no-toggle pointer d-flex', className)}
--        onClick={() => setShow(true)}
-+        onClick={() => {
-+          recordShare();
-+          setShow(true);
-+        }}
-         style={{ lineHeight: '23px' }}>
-         {t('share.name')}
-       </Dropdown.Toggle>
++  return user[fields[key] || key];
++}
++export function sortUsers(users, bindings, key, direction) {
++  const compare = (a, b, numeric) => {
++    if (numeric) {
++      const x = BigInt(a);
++      const y = BigInt(b);
++      return x < y ? -1 : x > y ? 1 : 0;
++    }
++    return String(a).localeCompare(String(b), 'zh-CN');
++  };
++  const valid = (value) =>
++    value !== undefined &&
++    value !== null &&
++    value !== '' &&
++    (!numericKeys.has(key) || /^-?\d+$/.test(String(value)));
++  return [...users].sort((a, b) => {
++    const x = sortValue(a, bindings, key);
++    const y = sortValue(b, bindings, key);
++    if (valid(x) !== valid(y)) return valid(x) ? -1 : 1;
++    const order = valid(x) ? compare(x, y, numericKeys.has(key)) : 0;
++    return (
++      (direction === 'asc' ? order : -order) ||
++      compare(a.user_id, b.user_id, true)
++    );
++  });
++}
++export function quotaText(amount, unit) {
++  if (!/^\d+$/.test(String(amount))) return '—';
++  if (!/^\d+$/.test(String(unit)) || BigInt(unit) === BigInt(0))
++    return `${amount} quota`;
++  const n = BigInt(amount);
++  const d = BigInt(unit);
++  let rest = n % d;
++  let decimals = '';
++  for (let i = 0; i < 6 && rest > BigInt(0); i += 1) {
++    rest *= BigInt(10);
++    decimals += String(rest / d);
++    rest %= d;
++  }
++  return `${n / d}${decimals ? `.${decimals}` : ''} ⚡`;
++}
++export async function loadAllUsers(fetchPage, fetchBindings, signal) {
++  const users = [];
++  const bindings = {};
++  const seen = new Set();
++  let expected;
++  for (let page = 1; ; page += 1) {
++    signal.throwIfAborted();
++    // Sequential batches bound server load and detect changes before continuing.
++    // eslint-disable-next-line no-await-in-loop
++    const result = await fetchPage(page, signal);
++    signal.throwIfAborted();
++    if (
++      !Array.isArray(result?.list) ||
++      !Number.isSafeInteger(Number(result.count)) ||
++      Number(result.count) < 0
++    )
++      throw Error('invalid users');
++    if (expected === undefined) expected = Number(result.count);
++    if (expected !== Number(result.count))
++      throw Error('users changed; refresh');
++    if (!result.list.length && users.length < expected)
++      throw Error('incomplete users');
++    result.list.forEach((user) => {
++      const id = String(user.user_id);
++      if (!/^\d+$/.test(id) || seen.has(id))
++        throw Error('users changed; refresh');
++      seen.add(id);
++      users.push(user);
++    });
++    if (result.list.length)
++      Object.assign(
++        bindings,
++        // eslint-disable-next-line no-await-in-loop
++        await fetchBindings(
++          result.list.map((user) => String(user.user_id)),
++          signal,
++        ),
++      );
++    signal.throwIfAborted();
++    if (users.length === expected)
++      return { list: users, count: expected, bindings };
++    if (users.length > expected) throw Error('users changed; refresh');
++  }
++}

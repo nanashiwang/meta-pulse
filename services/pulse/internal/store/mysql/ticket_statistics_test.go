@@ -2,9 +2,12 @@ package mysql
 
 import (
 	"context"
+	"fmt"
 	"github.com/nanashiwang/meta-pulse/migrations"
 	"os"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestMySQLTicketStatistics(t *testing.T) {
@@ -44,12 +47,38 @@ func TestMySQLTicketStatistics(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// This user's old 258911 tickets were reset; only the later single ticket was spent.
+	for i, e := range []struct {
+		op string
+		n  int64
+	}{{"ticket_mint", 258911}, {"ticket_adjustment", -258911}, {"ticket_bonus", 1}, {"ticket_spend", -1}} {
+		if err = tx.Exec(`INSERT INTO pulse_ledger_entry(user_id,period_id,asset_type,operation,amount,balance_after,source_type,source_ref,idempotency_key,payload_hash,created_at) VALUES(987654323,1,'ticket',?,?,0,'statistics-reset','fixture',?,REPEAT('b',64),NOW())`, e.op, e.n, fmt.Sprintf("reset-%d", i)).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	now := time.Now()
+	for i, e := range []struct {
+		kind, status, trigger string
+		amount                int64
+		reversed              *time.Time
+	}{
+		{"newapi_quota", "settled", "pulse", 625000, nil}, {"community_exp", "settled", "pulse", 20, nil},
+		{"newapi_quota", "pending", "pulse", 999999, nil}, {"community_exp", "reversed", "pulse", 999999, nil},
+		{"newapi_quota", "settled", "pulse", 999999, &now}, {"newapi_quota", "settlement_dead", "pulse", 999999, nil},
+		{"newapi_quota", "settled", "content", 999999, nil}, {"community_exp", "reversal_pending", "pulse", 999999, nil},
+	} {
+		key := fmt.Sprintf("statistics-reward-%d", i)
+		row := rewardGrantModel{GrantID: key, PeriodID: 1, UserID: 987654321, ActionID: key, TriggerType: e.trigger, RewardDefinitionID: 1, RewardType: e.kind, Amount: e.amount, RandomValue: strings.Repeat("a", 64), ConfigVersion: "test", Status: e.status, SourceRef: key, Reason: "statistics test", BudgetType: "loyalty", CreatedAt: now, SettledAt: &now, ReversedAt: e.reversed}
+		if err = tx.Create(&row).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
 	var plan struct{ Key string }
 	if err = tx.Raw("EXPLAIN SELECT user_id,SUM(amount) FROM pulse_ledger_entry FORCE INDEX (idx_pulse_ledger_user_asset_operation_amount) WHERE asset_type='ticket' AND user_id IN (?,?) GROUP BY user_id", 987654321, 987654322).Scan(&plan).Error; err != nil || plan.Key != "idx_pulse_ledger_user_asset_operation_amount" {
 		t.Fatalf("statistics index: %+v %v", plan, err)
 	}
-	got, err := (&ticketRepository{db: tx}).Statistics(context.Background(), []uint64{987654321, 987654322})
-	if err != nil || got[987654321].Remaining != 9 || got[987654321].Total != 16 || got[987654322].Total != 0 {
+	got, err := (&ticketRepository{db: tx}).Statistics(context.Background(), []uint64{987654321, 987654322, 987654323})
+	if err != nil || got[987654321].Remaining != 9 || got[987654321].Total != 16 || got[987654322].Total != 0 || got[987654321].Spent != 3 || got[987654321].Removed != 4 || got[987654321].RewardQuota != 625000 || got[987654321].RewardExperience != 20 || got[987654323].Remaining != 0 || got[987654323].Total != 258912 || got[987654323].Spent != 1 || got[987654323].Removed != 258911 {
 		t.Fatalf("%+v %v", got, err)
 	}
 }

@@ -31,6 +31,11 @@ type TicketRepository interface {
 
 // TicketStatistics is a read-only projection of ticket ledger facts.
 type TicketStatistics struct {
-	Remaining int64 `json:"remaining,string"`
-	Total     int64 `json:"total,string"`
+	Remaining        int64 `json:"remaining,string"`
+	Total            int64 `json:"total,string"`
+	QuotaPerUnit     int64 `json:"quota_per_unit,string"`
+	Spent            int64 `json:"spent,string"`
+	Removed          int64 `json:"removed,string"`
+	RewardQuota      int64 `json:"reward_quota,string"`
+	RewardExperience int64 `json:"reward_experience,string"`
 }

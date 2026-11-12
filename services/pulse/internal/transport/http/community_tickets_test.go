@@ -109,7 +109,7 @@ type statisticsTicketGranter struct{ ticketGranter }
 func (*statisticsTicketGranter) Statistics(_ context.Context, ids []uint64) (map[uint64]ports.TicketStatistics, error) {
 	result := map[uint64]ports.TicketStatistics{}
 	for _, id := range ids {
-		result[id] = ports.TicketStatistics{Remaining: 3, Total: 10}
+		result[id] = ports.TicketStatistics{Remaining: 3, Total: 10, Spent: 2, Removed: 5, RewardQuota: 625000, RewardExperience: 20, QuotaPerUnit: 500000}
 	}
 	return result, nil
 }
@@ -117,7 +117,7 @@ func TestAdminTicketStatisticsSuccess(t *testing.T) {
 	r := gin.New()
 	CommunityTicketRoute(r.Group("/v1/internal"), &statisticsTicketGranter{}, func(c *gin.Context) { c.Set(PrincipalContextKey, security.Principal{UserID: 9, Role: "admin"}) })
 	w := settingsTestRequest(r, "POST", "/v1/internal/admin/tickets/statistics", `{"user_ids":[42]}`, "")
-	if w.Code != 200 || w.Body.String() != `{"42":{"remaining":"3","total":"10"}}` {
+	if w.Code != 200 || w.Body.String() != `{"42":{"remaining":"3","total":"10","quota_per_unit":"500000","spent":"2","removed":"5","reward_quota":"625000","reward_experience":"20"}}` {
 		t.Fatalf("%d %s", w.Code, w.Body.String())
 	}
 }

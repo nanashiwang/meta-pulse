@@ -116,7 +116,7 @@ func TestAdminUserStatisticsPulseFailureKeepsCommunityCounts(t *testing.T) {
 				t.Error("missing fixed signed request")
 			}
 			w.WriteHeader(status)
-			_, _ = w.Write([]byte(`{"4242":{"remaining":"8","total":"20"}}`))
+			_, _ = w.Write([]byte(`{"4242":{"remaining":"8","total":"20","spent":"2","removed":"10","reward_quota":"625000","reward_experience":"20","quota_per_unit":"500000"}}`))
 		}))
 		cfg := validPluginConfig()
 		cfg.PulseBaseURL = upstream.URL
@@ -129,6 +129,9 @@ func TestAdminUserStatisticsPulseFailureKeepsCommunityCounts(t *testing.T) {
 		upstream.Close()
 		if w.Code != 200 || !strings.Contains(w.Body.String(), `"posts":"2"`) || !strings.Contains(w.Body.String(), `"shares":"6"`) {
 			t.Fatalf("%d %s", w.Code, w.Body.String())
+		}
+		if status == 200 && (!strings.Contains(w.Body.String(), `"spent":"2"`) || !strings.Contains(w.Body.String(), `"reward_quota":"625000"`) || !strings.Contains(w.Body.String(), `"reward_experience":"20"`)) {
+			t.Fatalf("missing statistics: %s", w.Body.String())
 		}
 		if strings.Contains(w.Body.String(), `"tickets"`) != (status == 200) {
 			t.Fatalf("%s", w.Body.String())

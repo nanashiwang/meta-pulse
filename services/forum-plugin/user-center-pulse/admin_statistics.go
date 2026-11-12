@@ -19,8 +19,13 @@ type adminCommunityStatistics struct {
 	Shares    int64 `json:"shares,string"`
 }
 type adminTicketStatistics struct {
-	Remaining string `json:"remaining"`
-	Total     string `json:"total"`
+	Remaining        string `json:"remaining"`
+	Total            string `json:"total"`
+	QuotaPerUnit     string `json:"quota_per_unit"`
+	Spent            string `json:"spent"`
+	Removed          string `json:"removed"`
+	RewardQuota      string `json:"reward_quota"`
+	RewardExperience string `json:"reward_experience"`
 }
 
 func (g *mysqlBindingGuard) adminCommunityStatistics(ctx context.Context, ids []string) (map[string]*adminCommunityStatistics, error) {
