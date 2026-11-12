@@ -204,20 +204,29 @@
     const author = question.user_info || (question.operation_type === 'asked' ? question.operator : null) || {};
     const tags = Array.isArray(question.tags) ? question.tags : [];
     const description = typeof question.description === 'string' ? question.description.replace(/\s+/g, ' ').trim() : '';
-    const excerpt = description.length > 140 ? `${description.slice(0, 140)}…` : description;
+    const characters = Array.from(description);
+    const excerpt = characters.length > 28 ? characters.slice(0, 28).join('') + '…' : description;
+    const reply = question.last_reply;
+    const replyCount = Math.max(0, Number(question.answer_count) || 0);
+    const replySummary = replyCount === 0 ? esc(t('暂无回答 · 等你分享经验'))
+      : reply?.user_info && Number(reply.created_at) > 0
+        ? esc(t('最后回复：')) + publicAuthor(reply.user_info, esc(displayName(reply.user_info))) + ' · ' + esc(time(reply.created_at))
+        : esc(t('已有回答'));
     return `<article class="discussion-row">
+      ${publicAuthor(author, avatar(author), 'discussion-avatar')}
       <div class="discussion-main">
         ${external(questionHref(question.id || question.question_id), `<h3>${question.pin === 2 ? I('flag', 'sm') + `<span class="visually-hidden">${t("置顶")} </span>` : ''}${esc(question.title)}</h3>`, 'discussion-title')}
         ${excerpt ? `<p class="discussion-excerpt">${esc(excerpt)}</p>` : ''}
         <div class="discussion-meta">
-          ${publicAuthor(author, `${avatar(author)}<span>${esc(displayName(author))}</span>`, 'discussion-author')}
+          ${publicAuthor(author, `<span>${esc(displayName(author))}</span>`, 'discussion-author')}
+          ${Number(question.created_at) > 0 ? `<span class="discussion-created">${esc(t('发布于'))} ${esc(time(question.created_at))}</span>` : ''}
           ${[...tags.filter(tag=>tag.recommend), ...tags.filter(tag=>!tag.recommend).slice(0,3)].map((tag) => link(`/topic/${encodeURIComponent(tag.slug_name || tagName(tag))}`, esc(tagName(tag)), tag.recommend ? 'badge taxonomy-category-badge' : 'badge')).join('')}
           ${hasAcceptedAnswer ? badge(I('check', 'sm') + t("已采纳"), 'green') : ''}
-          <span class="discussion-stat" title="${t('点赞')}">${I('like', 'sm')}<span class="visually-hidden">${t('点赞')} </span>${number(question.vote_count)}</span>
-          <span class="discussion-stat" title="${t('回答')}">${I('chat', 'sm')}<span class="visually-hidden">${t('回答')} </span>${number(question.answer_count)}</span>
-          <span class="discussion-stat" title="${t('浏览')}">${I('eye', 'sm')}<span class="visually-hidden">${t('浏览')} </span>${number(question.view_count)}</span>
+
         </div>
       </div>
+      ${external(questionHref(question.id || question.question_id), `<strong>${number(replyCount)}</strong><span>${t('回答')}</span>`, 'discussion-reply-count')}
+      <div class="discussion-last-reply">${replySummary}</div>
     </article>`;
   }
 

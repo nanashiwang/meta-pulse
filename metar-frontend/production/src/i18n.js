@@ -2,6 +2,10 @@
 'use strict';
 (() => {
   const EN = Object.freeze({
+    "暂无回答 · 等你分享经验": "No answers yet · Share your experience",
+    "最后回复：": "Last reply: ",
+    "已有回答": "Answers available",
+    "发布于": "Posted",
     "Vibe Coding 集市": "Vibe Coding Marketplace",
     "我的集市发布": "My submissions",
     "发布到集市": "Share with the marketplace",

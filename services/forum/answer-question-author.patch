@@ -1,12 +1,20 @@
 diff --git a/internal/schema/question_schema.go b/internal/schema/question_schema.go
 --- a/internal/schema/question_schema.go
 +++ b/internal/schema/question_schema.go
-@@ -385,6 +385,8 @@
+@@ -384,7 +384,16 @@
+ 	QuestionPageRespOperationTypeModified = "modified"
  )
  
++type QuestionLastReply struct {
++	UserID string `json:"-"`
++	UserInfo *UserBasicInfo `json:"user_info"`
++	CreatedAt int64 `json:"created_at"`
++}
++
  type QuestionPageResp struct {
 +	UserID string `json:"-"`
 +	UserInfo *UserBasicInfo `json:"user_info"`
++	LastReply *QuestionLastReply `json:"last_reply,omitempty"`
  	ID          string     `json:"id" `
  	CreatedAt   int64      `json:"created_at"`
  	Title       string     `json:"title"`
@@ -21,12 +29,27 @@ diff --git a/internal/service/question_common/question.go b/internal/service/que
  			ID:               questionInfo.ID,
  			CreatedAt:        questionInfo.CreatedAt.Unix(),
  			Title:            questionInfo.Title,
-@@ -444,6 +445,8 @@
+@@ -400,6 +401,11 @@
+ 
+ 			answerInfo, exist, err := qs.answerRepo.GetAnswer(ctx, questionInfo.LastAnswerID)
+ 			if err == nil && exist {
++				// Public reply attribution always uses the answer author, never its editor.
++				if answerInfo.Status == entity.AnswerStatusAvailable {
++					t.LastReply = &schema.QuestionLastReply{UserID: answerInfo.UserID, CreatedAt: answerInfo.CreatedAt.Unix()}
++					userIDs = append(userIDs, answerInfo.UserID)
++				}
+ 				if answerInfo.LastEditUserID != "0" {
+ 					t.LastAnsweredUserID = answerInfo.LastEditUserID
+ 				} else {
+@@ -444,6 +450,11 @@
  	}
  
  	for _, item := range formattedQuestions {
-+		// Author identity is independent of the latest activity operator.
++		// Author and last reply identities are independent of the activity operator.
 +		item.UserInfo = userInfoMap[item.UserID]
++		if item.LastReply != nil {
++			item.LastReply.UserInfo = userInfoMap[item.LastReply.UserID]
++		}
  		tags, ok := tagsMap[item.ID]
  		if ok {
  			item.Tags = tags

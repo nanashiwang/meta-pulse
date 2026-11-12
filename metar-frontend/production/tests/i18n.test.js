@@ -263,7 +263,7 @@ test('语言切换重新渲染标题、筛选、ARIA、错误和数值，用户�
   assert.equal(view.document.title, 'Topic · METAR');
   assert.match(view.html(), /<h3>未读<\/h3>/);
   assert.match(view.html(), /class="discussion-excerpt">社区规范</);
-  assert.match(view.html(), /class="discussion-stat"/);
+  assert.match(view.html(), /class="discussion-reply-count"/);
   await view.navigate('/question/42');
   assert.equal(view.redirects.at(-1), '/questions/42');
   await view.navigate('/me');

@@ -10,14 +10,20 @@ Status: implemented
 
 扩展 Answer 的 QuestionPageResp，独立添加公开 user_info，作者 ID 仅用于服务端装配且不序列化。FormatQuestionsPage 复用已有作者 ID 批量用户查询，无新增逐帖请求。operator 原语义与排序不变，前端仅在缺少 user_info 且 operation_type 明确为 asked 时，使用原始发布事件的 operator 兼容旧接口；modified/answered 等活动者绝不作为作者。个人帖子和收藏的既有 user_info 保留使用。此决定扩展社区导航集成的列表身份显示，不改变 Answer 身份事实源。
 
+列表同时返回可选 `last_reply: { user_info, created_at }`，复用列表原有的最后回答读取与用户批量查询；只公开 available 状态的回答，身份取回答的 UserID 而非 LastEditUserID。内部 UserID 不序列化。不额外逐帖请求或改变 operator/排序语义。前端不以 operator 推断最后回复：零回答显示邀请，有回答但缺少 last_reply 时显示「已有回答」，避免混合版本和已删除/待审回答产生错误归属。
+
+列表采用左侧作者头像、标题与最多 28 个 Unicode 字符的纯文本摘要、底部作者/发布时间/标签、右上回答数、右下最后回复的布局。桌面底部共用网格行；手机宽度不足时回复信息另起一行。复用首页、分类、个人帖子和收藏的 questionRow，不重建排序、分类或导航系统。
+
 ## Alternatives considered
 
 - 前端逐帖读取详情：可获得作者，但每页新增大量请求，放大当前延迟。
 - 覆盖 operator 为发布者：改动少，但破坏 Answer 原生最近活动语义。
+- 将 operator 当作最后回复者：newest 列表与编辑后记录含义不符，且回答编辑者不是回答发布者。
+- 为布局另建首页与内容模型：重复现有筛选和内容能力，扩大路由与部署风险。
 
 ## Verification
 
-3 项作者渲染回归覆盖不同活动者、缺失资料与多个活动类型；叠加现有补丁后 Answer schema 测试和 question_common 编译通过。
+前端 229 项测试通过，覆盖发布者与回复者分离、缺少回复字段、零回答、摘要 Unicode 截断及现有筛选/双语回归。正式静态构建通过；叠加现有补丁后 Answer schema 测试与 question_common 编译通过。真实样式在桌面与 375px 窄屏进行浏览器检查，桌面发布者与最后回复中心线一致，标题/摘要间距 1px，长用户名截断，窄屏无横向溢出。Windows 无法执行依赖 POSIX preexec_fn 的 umask 用例，仍须 Linux CI 验证。
 
 ## Consequences
 

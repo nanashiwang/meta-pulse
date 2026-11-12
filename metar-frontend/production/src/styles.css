@@ -652,3 +652,15 @@ a.account-avatar:hover,a.account-avatar:focus-visible{box-shadow:0 0 0 2px var(-
 .topnav > a, .topnav-menu > summary { font-weight: 600; }
 
 .publishing-body{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;max-height:320px;overflow:auto} [data-publishing] label{display:grid;gap:6px} [data-publishing] textarea{width:100%} [data-publishing] [data-results]{overflow-wrap:anywhere}
+
+/* Compact discussion rows: title / excerpt / author and latest reply. */
+.discussion-row{display:grid;grid-template-columns:46px minmax(0,1fr) auto;grid-template-rows:auto auto auto;gap:1px 12px;padding:10px 6px;align-items:start}
+.discussion-main{display:contents}.discussion-avatar{grid-column:1;grid-row:1 / 3;display:block}.discussion-avatar .avatar{width:46px;height:46px;border-radius:12px;font-size:17px}
+.discussion-title{grid-column:2;grid-row:1;min-width:0}.discussion-title h3{line-height:1.35;margin:0}
+.discussion-excerpt{grid-column:2;grid-row:2;margin:0;min-width:0;line-height:1.6;display:block;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+.discussion-meta{grid-column:2;grid-row:3;margin-top:3px;align-self:center;gap:4px 8px;font-size:11px}.discussion-author{color:var(--text);font-size:12px;font-weight:600}
+.discussion-reply-count{grid-column:3;grid-row:1 / 3;justify-self:end;display:flex;flex-direction:column;align-items:center;min-width:46px;padding:3px 10px;border-radius:8px;background:var(--hover);font-size:11px;line-height:1.4;color:var(--muted)}.discussion-reply-count strong{font-size:13px;font-weight:500;color:var(--text)}
+.discussion-last-reply{grid-column:3;grid-row:3;align-self:center;margin-top:3px;font-size:11px;line-height:1.6;text-align:right;color:var(--muted);overflow-wrap:anywhere}.discussion-last-reply a:hover{color:var(--green)}
+@media(max-width:680px){.discussion-row{grid-template-columns:36px minmax(0,1fr) 46px;gap:1px 9px}.discussion-avatar .avatar{width:36px;height:36px;font-size:14px}.discussion-meta{grid-column:2 / 4}.discussion-last-reply{grid-column:2 / 4;grid-row:4;margin-top:3px}.discussion-reply-count{min-width:40px;padding:3px 6px}}
+
+.discussion-last-reply{max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.discussion-last-reply a{display:inline-block;max-width:10em;vertical-align:bottom;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}@media(max-width:680px){.discussion-last-reply{max-width:100%;justify-self:end}}
