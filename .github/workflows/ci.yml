@@ -191,6 +191,14 @@ jobs:
           docker exec "$MYSQL_CONTAINER" sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot -e "CREATE DATABASE community_analytics_test;"'
           make test-analytics-integration
 
+      - name: Operator publishing persistence and uncertain-result recovery
+        env:
+          MYSQL_CONTAINER: ${{ job.services.mysql.id }}
+          PUBLISHING_INTEGRATION_DSN: root:pulse_ci_test_only@tcp(127.0.0.1:3306)/community_publishing_test?parseTime=true
+        run: |
+          docker exec "$MYSQL_CONTAINER" sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot -e "CREATE DATABASE community_publishing_test;"'
+          go test ./services/forum-plugin/user-center-pulse -run TestPublishingMySQL -count=1
+
   recovery-integration:
     name: Isolated backup, MySQL 8.4 restore and encrypted readback
     runs-on: ubuntu-latest

@@ -123,3 +123,7 @@ new-api 接收端与实际到账、生产普通账号流程、邮件与跨实例
 论坛镜像构建必须通过 `verify_binary.py` 的最终 Answer 二进制内嵌 HTML/JS/CSS 验收；仅 pnpm/go 返回零不代表存在可用页面。详见论坛前端资源完整性笔记。
 
 历史券展示校正由迁移 00021 和 `pulse_ticket_statistics_baseline` 管理，不变更原账本与可用券；签到自动刷新以 `checkin_delivered` 而非全部任务统计判断到账。见 [修复说明](../.agents/notes/implemented/bug-fix/2026-11-13-ticket-statistics-and-checkin.md)。
+
+## 管理员内容运营
+
+`/admin/publishing` → [后台页面](../metar-frontend/production/src/admin-publishing.js)、[管理员发布服务](../services/forum-plugin/user-center-pulse/admin_publishing.go)、[Answer 原生适配](../services/forum/answer-operator-publishing.patch)。仅登记的无外部绑定运营账号，显式代发标识、批量预览、单项幂等与未知结果核对；规则见 [内容运营](CONTENT_OPERATIONS.md)，测试 `make test-operator-publishing`。

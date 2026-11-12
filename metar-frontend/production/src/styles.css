@@ -650,3 +650,5 @@ a.account-avatar:hover,a.account-avatar:focus-visible{box-shadow:0 0 0 2px var(-
 
 /* A selected destination changes colour, never the navigation item width. */
 .topnav > a, .topnav-menu > summary { font-weight: 600; }
+
+.publishing-body{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;max-height:320px;overflow:auto} [data-publishing] label{display:grid;gap:6px} [data-publishing] textarea{width:100%} [data-publishing] [data-results]{overflow-wrap:anywhere}

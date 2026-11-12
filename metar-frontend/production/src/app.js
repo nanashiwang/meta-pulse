@@ -25,7 +25,7 @@
   const taxonomy = window.MetarTaxonomy;
   let taxonomyBusy = false;
   const pulse = new PulseAdapter(answer);
-  let growth = null, pulseAdmin = null, chatView = null, chatModeration = null, memberView = null, operationsView = null, marketplaceView = null, modelsView = null, modelsAdminView = null, toolsView = null;
+  let growth = null, pulseAdmin = null, chatView = null, chatModeration = null, memberView = null, operationsView = null, marketplaceView = null, modelsView = null, modelsAdminView = null, publishingView = null, toolsView = null;
   // Single tool inventory for the top-bar menu and the /tools hub.
   const TOOLS = Object.freeze([
     {path: '/tools/network', zh: 'Claude 访问环境检测', en: 'Claude environment check', descriptionZh: '六项设备信号评分、Claude 域名出口、WebRTC 与 DNS 状态，以及完整检测说明。', descriptionEn: 'Six local signals, Claude egress probes, WebRTC and DNS status, with a detailed guide.'},
@@ -235,7 +235,7 @@
     if (path.startsWith('/model/')) return t('模型详情');
     if (path.startsWith('/question/')) return t("问题详情");
     if (path.startsWith('/topic/')) return t("话题");
-    return ({ '/me/drafts': t('我的草稿'), '/events': t('近期活动'), '/admin/operations': t('社区经营'), '/admin/events': t('活动管理'), '/chat': t('聊天'), '/admin/chat': t('聊天举报'), '/latest': t("最新话题"), '/topics': t("类别与标签"), '/admin/taxonomy': t('类别管理'), '/knowledge': t("知识库"), '/search': t("搜索"), '/models': t('模型评分榜'), '/models/leaderboard': t('模型评分榜'), '/admin/models': t('模型榜管理'), '/tools': t('工具'), '/tools/network': t('Claude 访问环境检测'), '/marketplace': t('Vibe Coding 集市'), '/marketplace/mine': t('我的集市发布'), '/marketplace/publish': t('发布到集市'), '/admin/marketplace': t('集市审核'), '/me': t("个人空间"), '/me/bookmarks': t("我的收藏"), '/me/growth': t('社区成长'), '/me/notifications': t("通知中心"), '/settings/binding': t("账号绑定"), '/pulse': t("Pulse 权益"), '/admin/pulse': t("Pulse 配置"), '/publish': t("发布内容"), '/login': t("登录"), '/register': t("注册"), '/forgot': t("找回密码"), '/status': t("服务状态"), '/support': t("帮助中心"), '/guidelines': t("社区规范"), '/tos': t("服务条款"), '/privacy': t("隐私政策") })[path] || t("METAR 社区");
+    return ({ '/me/drafts': t('我的草稿'), '/events': t('近期活动'), '/admin/publishing': '内容运营', '/admin/operations': t('社区经营'), '/admin/events': t('活动管理'), '/chat': t('聊天'), '/admin/chat': t('聊天举报'), '/latest': t("最新话题"), '/topics': t("类别与标签"), '/admin/taxonomy': t('类别管理'), '/knowledge': t("知识库"), '/search': t("搜索"), '/models': t('模型评分榜'), '/models/leaderboard': t('模型评分榜'), '/admin/models': t('模型榜管理'), '/tools': t('工具'), '/tools/network': t('Claude 访问环境检测'), '/marketplace': t('Vibe Coding 集市'), '/marketplace/mine': t('我的集市发布'), '/marketplace/publish': t('发布到集市'), '/admin/marketplace': t('集市审核'), '/me': t("个人空间"), '/me/bookmarks': t("我的收藏"), '/me/growth': t('社区成长'), '/me/notifications': t("通知中心"), '/settings/binding': t("账号绑定"), '/pulse': t("Pulse 权益"), '/admin/pulse': t("Pulse 配置"), '/publish': t("发布内容"), '/login': t("登录"), '/register': t("注册"), '/forgot': t("找回密码"), '/status': t("服务状态"), '/support': t("帮助中心"), '/guidelines': t("社区规范"), '/tos': t("服务条款"), '/privacy': t("隐私政策") })[path] || t("METAR 社区");
   }
 
   function languageControl() {
@@ -244,7 +244,7 @@
 
   function accountManagement(item) {
     if (currentUserState !== 'ready' || !isCommunityAdministrator(currentUser)) return '';
-    return `<div class="account-menu-group"><div class="account-menu-label">${t('管理')}</div>${item('/admin/pulse', t('Pulse 配置'), 'settings')}${item('/admin/growth', t('成长管理'), 'target')}${item('/admin/taxonomy', t('类别管理'), 'flag')}${item('/admin/marketplace', t('集市审核'), 'code')}${item('/admin/models', t('模型榜管理'), 'target')}${item('/admin/chat', t('聊天举报'), 'chat')}${item('/admin/events', t('活动管理'), 'calendar')}${item('/admin/operations', t('社区经营'), 'target')}${external('/admin/dashboard', I('shield') + `<span>${t('社区管理')}</span>`, 'account-menu-link')}${external('/admin/pulse_user_center', I('link') + `<span>${t('社区连接配置')}</span>`, 'account-menu-link')}</div>`;
+    return `<div class="account-menu-group"><div class="account-menu-label">${t('管理')}</div>${item('/admin/pulse', t('Pulse 配置'), 'settings')}${item('/admin/growth', t('成长管理'), 'target')}${item('/admin/taxonomy', t('类别管理'), 'flag')}${item('/admin/marketplace', t('集市审核'), 'code')}${item('/admin/models', t('模型榜管理'), 'target')}${item('/admin/chat', t('聊天举报'), 'chat')}${item('/admin/events', t('活动管理'), 'calendar')}${item('/admin/operations', t('社区经营'), 'target')}${item('/admin/publishing', '内容运营', 'edit')}${external('/admin/dashboard', I('shield') + `<span>${t('社区管理')}</span>`, 'account-menu-link')}${external('/admin/pulse_user_center', I('link') + `<span>${t('社区连接配置')}</span>`, 'account-menu-link')}</div>`;
   }
 
   function personalSidebar() {
@@ -387,6 +387,7 @@
     if (route().path === '/admin/operations') operationsView?.mount(view);
     if (route().path.startsWith('/marketplace') || route().path === '/admin/marketplace') marketplaceView?.mount(view);
     if (route().path === '/admin/models') modelsAdminView?.mount(view);
+    if (route().path === '/admin/publishing') publishingView?.mount(view);
     if (route().path === '/tools' || route().path.startsWith('/tools/')) toolsView?.mount(view);
     const chatRoot = document.querySelector('[data-chat-root]');
     if (chatRoot && chatView) chatView.mount(chatRoot, route().query.get('room') || '');
@@ -935,6 +936,14 @@
   async function resolveView() {
     const { path } = route();
     if (/^\/(?:me|settings|admin|pulse|chat)(?:\/|$)/.test(path)) await identityReady;
+    if (path === '/admin/publishing') {
+      if (currentUserState === 'unavailable') return identityUnavailable('内容运营');
+      if (!currentUser) return loginRequired('内容运营', t('请先登录社区账号。'));
+      if (!isCommunityAdministrator(currentUser)) return empty(t('需要管理员权限'), '', link('/me', '← ' + t('返回'), 'page-back'), 'shield');
+      await loadFeatureScript('admin-publishing', 'MetarPublishing');
+      publishingView = new window.MetarPublishing.View(new AnswerAdapter({answerApiBase:'/answer/admin/api'}));
+      return await publishingView.page();
+    }
     if (path === '/admin/models') {
       const title = currentTitle();
       if (currentUserState === 'unavailable') return identityUnavailable(title);
@@ -1262,6 +1271,7 @@
     marketplaceView?.dispose();
     modelsView?.dispose();
     modelsAdminView?.dispose();
+    publishingView?.dispose();
     toolsView?.dispose();
     const sequence = ++navigationSequence;
     const key = location.pathname + location.search;

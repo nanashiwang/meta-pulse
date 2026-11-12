@@ -36,7 +36,7 @@ verify-notes:
 vet:
 	go vet $(GO_MODULES)
 
-test: test-forum-frontend-assets test-forum-mail-errors deploy-test test-community test-forum-session test-forum-optional-email test-forum-admin-user-list test-forum-captcha
+test: test-operator-publishing test-forum-frontend-assets test-forum-mail-errors deploy-test test-community test-forum-session test-forum-optional-email test-forum-admin-user-list test-forum-captcha
 	go test $(GO_MODULES)
 
 deploy-test:
@@ -187,3 +187,8 @@ test-forum-mail-errors:
 test-forum-frontend-assets:
 	python3 services/forum/verify_frontend.py
 	python3 -m unittest discover -s services/forum -p 'test_frontend_assets.py' -v
+
+.PHONY: test-operator-publishing
+test-operator-publishing:
+	bash services/forum/test-operator-publishing.sh
+	go test ./services/forum-plugin/user-center-pulse -run Publishing -count=1

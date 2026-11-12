@@ -39,7 +39,8 @@
     "admin/operations",
     "admin/marketplace",
     "admin/models",
-    "questions"
+    "questions",
+    "admin/publishing"
   ],
   "detailPrefixes": [
     "question",

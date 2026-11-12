@@ -1,0 +1,142 @@
+diff --git a/internal/router/answer_api_router.go b/internal/router/answer_api_router.go
+--- a/internal/router/answer_api_router.go
++++ b/internal/router/answer_api_router.go
+@@ -313,6 +313,7 @@
+ }
+ 
+ func (a *AnswerAPIRouter) RegisterAnswerAdminAPIRouter(r *gin.RouterGroup) {
++	a.registerMetarPublisher()
+ 	r.GET("/question/page", a.questionController.AdminQuestionPage)
+ 	r.PUT("/question/status", a.questionController.AdminUpdateQuestionStatus)
+ 	r.GET("/answer/page", a.questionController.AdminAnswerPage)
+diff --git a/internal/controller/question_controller.go b/internal/controller/question_controller.go
+--- a/internal/controller/question_controller.go
++++ b/internal/controller/question_controller.go
+@@ -414,7 +414,7 @@
+ 	}
+ 	linkUrlLimitUser := canList[7]
+ 	isAdmin := middleware.GetUserIsAdminModerator(ctx)
+-	if !isAdmin || !linkUrlLimitUser {
++	if (!isAdmin || !linkUrlLimitUser) && !ctx.GetBool("metar_operator_publishing") {
+ 		captchaPass := qc.actionService.ActionRecordVerifyCaptcha(ctx, entity.CaptchaActionQuestion, req.UserID, req.CaptchaID, req.CaptchaCode)
+ 		if !captchaPass {
+ 			errFields := append([]*validator.FormErrorField{}, &validator.FormErrorField{
+diff --git a/internal/controller/answer_controller.go b/internal/controller/answer_controller.go
+--- a/internal/controller/answer_controller.go
++++ b/internal/controller/answer_controller.go
+@@ -220,7 +220,7 @@
+ 
+ 	linkUrlLimitUser := canList[2]
+ 	isAdmin := middleware.GetUserIsAdminModerator(ctx)
+-	if !isAdmin || !linkUrlLimitUser {
++	if (!isAdmin || !linkUrlLimitUser) && !ctx.GetBool("metar_operator_publishing") {
+ 		captchaPass := ac.actionService.ActionRecordVerifyCaptcha(ctx, entity.CaptchaActionAnswer, req.UserID, req.CaptchaID, req.CaptchaCode)
+ 		if !captchaPass {
+ 			errFields := append([]*validator.FormErrorField{}, &validator.FormErrorField{
+diff --git a/internal/router/metar_publishing.go b/internal/router/metar_publishing.go
+new file mode 100644
+--- /dev/null
++++ b/internal/router/metar_publishing.go
+@@ -0,0 +1,58 @@
++package router
++
++import (
++	"bytes"
++	"encoding/json"
++	"io"
++	"net/http/httptest"
++
++	"github.com/apache/answer/internal/entity"
++	"github.com/apache/answer/plugin"
++	"github.com/gin-gonic/gin"
++)
++
++// Internal capability supplied only to enabled Agents. It is not a public route
++// and cannot be selected by JSON fields, headers or query parameters.
++func (a *AnswerAPIRouter) registerMetarPublisher() {
++	_ = plugin.CallAgent(func(agent plugin.Agent) error {
++		receiver, ok := agent.(interface {
++			RegisterOperatorPublisher(func(*gin.Context, string, string, []byte) (int, []byte))
++		})
++		if !ok {
++			return nil
++		}
++		receiver.RegisterOperatorPublisher(func(parent *gin.Context, user, kind string, body []byte) (int, []byte) {
++			if user == "" || (kind != "question" && kind != "answer") {
++				return 400, []byte("{}")
++			}
++			handler := a.questionController.AddQuestion
++			if kind == "answer" {
++				handler = a.answerController.AddAnswer
++			}
++			return metarPublishAs(parent, user, body, handler)
++		})
++		return nil
++	})
++}
++
++func metarPublishAs(parent *gin.Context, user string, body []byte, handler gin.HandlerFunc) (int, []byte) {
++	recorder := httptest.NewRecorder()
++	c, _ := gin.CreateTestContext(recorder)
++	c.Request = parent.Request.Clone(parent.Request.Context())
++	c.Request.Body = io.NopCloser(bytes.NewReader(body))
++	c.Request.ContentLength = int64(len(body))
++	c.Request.Header = c.Request.Header.Clone()
++	c.Request.Header.Set("Content-Type", "application/json")
++	c.Request.Header.Del("Authorization")
++	c.Request.Header.Del("Cookie")
++	c.Set("ctxUuidKey", &entity.UserCacheInfo{UserID: user, RoleID: 1, UserStatus: 1, EmailStatus: 1})
++	c.Set("metar_operator_publishing", true)
++	// Bind validation, target rank, restrictions, moderation and rendering are
++	// all owned by the ordinary controllers. The operator bypasses only CAPTCHA.
++	handler(c)
++	c.Writer.WriteHeaderNow()
++	if !json.Valid(recorder.Body.Bytes()) {
++		return 500, []byte("{}")
++	}
++	return recorder.Code, recorder.Body.Bytes()
++}
+diff --git a/internal/router/metar_publishing_test.go b/internal/router/metar_publishing_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/router/metar_publishing_test.go
+@@ -0,0 +1,39 @@
++package router
++
++import (
++	"net/http/httptest"
++	"strings"
++	"testing"
++
++	"github.com/apache/answer/internal/base/middleware"
++	"github.com/apache/answer/internal/entity"
++	"github.com/gin-gonic/gin"
++)
++
++func TestMetarPublishingKeepsTargetPermissionsAndCallerSession(t *testing.T) {
++	gin.SetMode(gin.TestMode)
++	parent, _ := gin.CreateTestContext(httptest.NewRecorder())
++	parent.Request = httptest.NewRequest("POST", "/answer/admin/api/metar/publishing/item", strings.NewReader("original"))
++	parent.Request.Header.Set("Authorization", "admin-secret")
++	parent.Request.Header.Set("Cookie", "admin-cookie")
++	parent.Set("ctxUuidKey", &entity.UserCacheInfo{UserID: "7", RoleID: 2, UserStatus: 1, EmailStatus: 1})
++	code, body := metarPublishAs(parent, "23", []byte(`{"content":"运营代发"}`), func(c *gin.Context) {
++		if middleware.GetLoginUserIDFromContext(c) != "23" || middleware.GetUserIsAdminModerator(c) {
++			t.Fatal("caller authority leaked into target")
++		}
++		if c.GetHeader("Authorization") != "" || c.GetHeader("Cookie") != "" || !c.GetBool("metar_operator_publishing") {
++			t.Fatal("invalid internal context")
++		}
++		var payload map[string]string
++		if err := c.ShouldBindJSON(&payload); err != nil || payload["content"] != "运营代发" {
++			t.Fatal(payload, err)
++		}
++		c.JSON(200, gin.H{"data": gin.H{"id": "123"}})
++	})
++	if code != 200 || !strings.Contains(string(body), "123") {
++		t.Fatal(code, string(body))
++	}
++	if middleware.GetLoginUserIDFromContext(parent) != "7" || parent.GetHeader("Authorization") != "admin-secret" || parent.GetBool("metar_operator_publishing") {
++		t.Fatal("caller session modified")
++	}
++}
