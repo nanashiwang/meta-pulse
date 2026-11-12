@@ -1,0 +1,191 @@
+diff --git a/ui/src/components/Comment/index.tsx b/ui/src/components/Comment/index.tsx
+--- a/ui/src/components/Comment/index.tsx
++++ b/ui/src/components/Comment/index.tsx
+@@ -80,6 +80,13 @@
+   const vCaptcha = useCaptchaPlugin('vote');
+ 
+   const { t } = useTranslation('translation', { keyPrefix: 'comment' });
++  const commentLabel = t(
++    mode === 'question'
++      ? 'metar_comment_question'
++      : mode === 'answer'
++        ? 'metar_comment_answer'
++        : 'btn_add_comment',
++  );
+ 
+   useEffect(() => {
+     if (pageIndex === 0 && commentId && comments.length !== 0) {
+@@ -388,6 +395,7 @@
+         )}>
+         <Reactions
+           objectId={objectId}
++          commentLabel={commentLabel}
+           showAddCommentBtn={comments.length === 0}
+           handleClickComment={handleAddComment}
+         />
+@@ -398,6 +406,15 @@
+           'comments-wrap',
+           comments.length > 0 && 'bg-light px-3 py-2 rounded',
+         )}>
++        {(comments.length > 0 || visibleComment) && mode && (
++          <h6 className="small fw-bold text-secondary pt-2 mb-2">
++            {t(
++              mode === 'question'
++                ? 'metar_question_comments'
++                : 'metar_answer_comments',
++            )}
++          </h6>
++        )}
+         {comments.map((item) => {
+           return (
+             <div
+@@ -477,7 +494,7 @@
+               className="p-0 btn-no-border"
+               size="sm"
+               onClick={handleAddComment}>
+-              {t('btn_add_comment')}
++              {commentLabel}
+             </Button>
+           )}
+           {data &&
+diff --git a/ui/src/pages/Questions/Detail/components/Reactions/index.tsx b/ui/src/pages/Questions/Detail/components/Reactions/index.tsx
+--- a/ui/src/pages/Questions/Detail/components/Reactions/index.tsx
++++ b/ui/src/pages/Questions/Detail/components/Reactions/index.tsx
+@@ -30,6 +30,7 @@
+ interface Props {
+   objectId: string;
+   showAddCommentBtn?: boolean;
++  commentLabel?: string;
+   handleClickComment: () => void;
+ }
+ 
+@@ -54,6 +55,7 @@
+ const Index: FC<Props> = ({
+   objectId,
+   showAddCommentBtn,
++  commentLabel,
+   handleClickComment,
+ }) => {
+   const [reactions, setReactions] = useState<ReactionItem[]>();
+@@ -117,7 +119,9 @@
+           size="sm"
+           onClick={handleClickComment}>
+           <Icon name="chat-text-fill" />
+-          <span className="ms-1">{t('comment.btn_add_comment')}</span>
++          <span className="ms-1">
++            {commentLabel || t('comment.btn_add_comment')}
++          </span>
+         </Button>
+       )}
+ 
+diff --git a/ui/src/components/Comment/components/Form/index.tsx b/ui/src/components/Comment/components/Form/index.tsx
+--- a/ui/src/components/Comment/components/Form/index.tsx
++++ b/ui/src/components/Comment/components/Form/index.tsx
+@@ -114,7 +114,13 @@
+           size="sm"
+           className="text-nowrap ms-0 ms-md-2 mt-2 mt-md-0"
+           onClick={() => handleSendReply()}>
+-          {t('btn_add_comment')}
++          {t(
++            mode === 'question'
++              ? 'metar_comment_question'
++              : mode === 'answer'
++                ? 'metar_comment_answer'
++                : 'btn_add_comment',
++          )}
+         </Button>
+       )}
+     </div>
+diff --git a/ui/src/components/Comment/components/Reply/index.tsx b/ui/src/components/Comment/components/Reply/index.tsx
+--- a/ui/src/components/Comment/components/Reply/index.tsx
++++ b/ui/src/components/Comment/components/Reply/index.tsx
+@@ -82,7 +82,7 @@
+             size="sm"
+             className="text-nowrap"
+             onClick={() => handleSendReply()}>
+-            {t('btn_add_comment')}
++            {t('metar_reply_comment')}
+           </Button>
+           <Button
+             variant="link"
+diff --git a/ui/src/components/Comment/components/ActionBar/index.tsx b/ui/src/components/Comment/components/ActionBar/index.tsx
+--- a/ui/src/components/Comment/components/ActionBar/index.tsx
++++ b/ui/src/components/Comment/components/ActionBar/index.tsx
+@@ -73,7 +73,7 @@
+           size="sm"
+           className="link-secondary m-0 p-0 btn-no-border"
+           onClick={onReply}>
+-          {t('btn_reply')}
++          {t('metar_reply_comment')}
+         </Button>
+       </div>
+       <div className="align-items-center control-area d-none">
+diff --git a/ui/src/pages/Questions/Detail/components/WriteAnswer/index.tsx b/ui/src/pages/Questions/Detail/components/WriteAnswer/index.tsx
+--- a/ui/src/pages/Questions/Detail/components/WriteAnswer/index.tsx
++++ b/ui/src/pages/Questions/Detail/components/WriteAnswer/index.tsx
+@@ -244,7 +244,7 @@
+       {(!data.answered || showEditor) && (
+         <Form.Group className="mb-3">
+           <Form.Label>
+-            <h5>{t('title')}</h5>
++            <h5>{t('metar_title')}</h5>
+           </Form.Label>
+           <Form.Control
+             isInvalid={formData.content.isInvalid}
+@@ -332,7 +332,7 @@
+           {t('edit_answer')}
+         </Link>
+       ) : (
+-        <Button onClick={clickBtn}>{t('btn_name')}</Button>
++        <Button onClick={clickBtn}>{t('metar_submit')}</Button>
+       )}
+ 
+       {data.answered && !showEditor && !writeInfo.restrict_answer && (
+diff --git a/i18n/zh_CN.yaml b/i18n/zh_CN.yaml
+--- a/i18n/zh_CN.yaml
++++ b/i18n/zh_CN.yaml
+@@ -1081,6 +1081,11 @@
+     react_emoji: 用 {{ emoji }} 回应
+     unreact_emoji: 撤销 {{ emoji }}
+   comment:
++    metar_question_comments: 帖子评论
++    metar_answer_comments: 回答评论
++    metar_comment_question: 评论帖子
++    metar_comment_answer: 评论此回答
++    metar_reply_comment: 回复这条评论
+     btn_add_comment: 添加评论
+     reply_to: 回复
+     btn_reply: 回复
+@@ -1418,6 +1423,8 @@
+       btn_accept: 采纳
+       btn_accepted: 已被采纳
+     write_answer:
++      metar_title: 发表回答
++      metar_submit: 发表回答
+       title: 你的回答
+       edit_answer: 编辑我的回答
+       btn_name: 提交你的回答
+diff --git a/i18n/en_US.yaml b/i18n/en_US.yaml
+--- a/i18n/en_US.yaml
++++ b/i18n/en_US.yaml
+@@ -1095,6 +1095,11 @@
+     react_emoji: react with {{ emoji }}
+     unreact_emoji: unreact with {{ emoji }}
+   comment:
++    metar_question_comments: Comments on the post
++    metar_answer_comments: Comments on this answer
++    metar_comment_question: Comment on the post
++    metar_comment_answer: Comment on this answer
++    metar_reply_comment: Reply to this comment
+     btn_add_comment: Add comment
+     reply_to: Reply to
+     btn_reply: Reply
+@@ -1443,6 +1448,8 @@
+       btn_accept: Accept
+       btn_accepted: Accepted
+     write_answer:
++      metar_title: Write an answer
++      metar_submit: Post answer
+       title: Your Answer
+       edit_answer: Edit my existing answer
+       btn_name: Post your answer
