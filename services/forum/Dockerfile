@@ -35,7 +35,9 @@ COPY services/forum/answer-discussion-labels.patch /build/answer-discussion-labe
 COPY services/forum/answer-operator-publishing.patch /build/answer-operator-publishing.patch
 COPY services/forum/answer-question-author.patch /build/answer-question-author.patch
 COPY services/forum/answer-mail-errors.patch /build/answer-mail-errors.patch
-RUN cd /build/answer \
+COPY services/forum/normalize-source.py /build/normalize-source.py
+RUN python3 /build/normalize-source.py /build/answer \
+    && cd /build/answer \
     && patch -p1 --fuzz=0 < /build/answer-session-retention.patch \
     && patch -p1 --fuzz=0 < /build/answer-optional-admin-email.patch \
     && patch -p1 --fuzz=0 < /build/answer-admin-user-list.patch \

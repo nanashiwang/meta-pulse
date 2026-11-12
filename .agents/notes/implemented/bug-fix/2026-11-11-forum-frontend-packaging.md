@@ -27,3 +27,9 @@ Status: implemented
 ## Consequences
 
 本地源码修复不等于线上镜像修复，生产验收独立。最终二进制检查覆盖缺入口和资源返回 HTML 的失败场景；邮件补丁测试、社区回归及静态构建通过。完整镜像通过远程隔离构建和 GitHub CI 验证。
+
+## Go 模块换行兼容与 CI 回归（2026-11-13）
+
+Go 下载的 Answer v1.7.1 模块保留 Reply/index.tsx 的 CRLF，Git 导出源码却不能复现 Linux patch 的该差异。Docker 和原生补丁测试在可写构建副本中使用 normalize-source.py 将这个已知文件转换为 LF，模块缓存不改写；保持零 fuzz 补丁校验。原生测试同时应用 discussion-labels，避免本地测试遗漏最新镜像步骤。管理员菜单断言由陈旧的 10 项计数改为包含内容运营的完整路径集合，仍验证非管理员拒绝。
+
+本地使用真实 Go 模块文件、二进制模式 patch 按镜像顺序应用全部 8 个补丁通过；插件 70 项 JS 测试通过。最终镜像结果须以本次 GitHub CI 为准。

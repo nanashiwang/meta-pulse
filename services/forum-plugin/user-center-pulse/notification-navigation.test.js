@@ -19,7 +19,11 @@ test('头像管理入口仅正常激活管理员可见，审核权限独立', ()
     assert.ok(accountLinks(user).flatMap(g => g.items).every(i => !i.href.startsWith('/admin')));
   }
   const admin = accountLinks({role_id: 2, status: 'normal', mail_status: 1}).flatMap(g => g.items);
-  assert.equal(admin.filter(i => i.href.startsWith('/admin')).length, 10);
+  assert.deepEqual(admin.filter(i => i.href.startsWith('/admin')).map(i => i.href).sort(), [
+    '/admin/pulse', '/admin/growth', '/admin/chat', '/admin/operations',
+    '/admin/publishing', '/admin/events', '/admin/taxonomy', '/admin/marketplace',
+    '/admin/models', '/admin/dashboard', '/admin/pulse_user_center',
+  ].sort());
   assert.ok(admin.some(i => i.href === '/admin/taxonomy'));
   assert.ok(admin.some(i => i.href === '/admin/models'));
   assert.ok(admin.some(i => i.href === '/admin/chat'));
