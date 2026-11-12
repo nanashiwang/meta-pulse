@@ -25,7 +25,7 @@ func TestMySQLTicketStatistics(t *testing.T) {
 	}
 	// Simulate MySQL completing DDL after the caller timed out, before Goose
 	// recorded version 20. Retrying must preserve the existing index and data.
-	if _, err = db.SQL().Exec("DELETE FROM goose_db_version WHERE version_id=20"); err != nil {
+	if _, err = db.SQL().Exec("DELETE FROM goose_db_version WHERE version_id>=20"); err != nil {
 		t.Fatal(err)
 	}
 	if err = migrations.Up(context.Background(), db.SQL()); err != nil {
@@ -80,5 +80,26 @@ func TestMySQLTicketStatistics(t *testing.T) {
 	got, err := (&ticketRepository{db: tx}).Statistics(context.Background(), []uint64{987654321, 987654322, 987654323})
 	if err != nil || got[987654321].Remaining != 9 || got[987654321].Total != 16 || got[987654322].Total != 0 || got[987654321].Spent != 3 || got[987654321].Removed != 4 || got[987654321].RewardQuota != 625000 || got[987654321].RewardExperience != 20 || got[987654323].Remaining != 0 || got[987654323].Total != 258912 || got[987654323].Spent != 1 || got[987654323].Removed != 258911 {
 		t.Fatalf("%+v %v", got, err)
+	}
+	// Display reset preserves all ledger/balance/reward facts. The starting
+	// total intentionally equals spent, even when usable tickets remain.
+	if err = tx.Exec("INSERT INTO pulse_ticket_statistics_baseline(user_id,total_offset,removed_offset,original_total,original_spent,original_removed,corrected_at,reason) VALUES(987654321,13,4,16,3,4,NOW(),'test'),(987654323,258911,258911,258912,1,258911,NOW(),'test')").Error; err != nil {
+		t.Fatal(err)
+	}
+	got, err = (&ticketRepository{db: tx}).Statistics(context.Background(), []uint64{987654321, 987654323})
+	if err != nil || got[987654321].Total != 3 || got[987654321].Removed != 0 || got[987654321].Remaining != 9 || got[987654321].RewardQuota != 625000 || got[987654323].Total != 1 || got[987654323].Removed != 0 {
+		t.Fatalf("reset: %+v %v", got, err)
+	}
+	for i, e := range []struct {
+		op string
+		n  int64
+	}{{"ticket_bonus", 2}, {"ticket_spend", -1}, {"ticket_expire", -1}} {
+		if err = tx.Exec("INSERT INTO pulse_ledger_entry(user_id,period_id,asset_type,operation,amount,balance_after,source_type,source_ref,idempotency_key,payload_hash,created_at) VALUES(987654323,1,'ticket',?,?,0,'statistics-new','fixture',?,REPEAT('c',64),NOW())", e.op, e.n, fmt.Sprintf("new-%d", i)).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err = (&ticketRepository{db: tx}).Statistics(context.Background(), []uint64{987654323})
+	if err != nil || got[987654323].Total != 3 || got[987654323].Spent != 2 || got[987654323].Removed != 1 || got[987654323].Remaining != 0 {
+		t.Fatalf("after reset activity: %+v %v", got, err)
 	}
 }

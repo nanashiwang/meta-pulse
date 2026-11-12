@@ -79,13 +79,14 @@ type Receipt struct {
 	Ordinal    int    `json:"ordinal"`
 }
 type Progress struct {
-	Day       string `json:"day"`
-	Likes     int    `json:"likes"`
-	Comments  int    `json:"comments"`
-	Received  int    `json:"received"`
-	CheckedIn bool   `json:"checked_in"`
-	Earned    int    `json:"earned"`
-	Delivered int    `json:"delivered"`
+	Day              string `json:"day"`
+	Likes            int    `json:"likes"`
+	Comments         int    `json:"comments"`
+	Received         int    `json:"received"`
+	CheckedIn        bool   `json:"checked_in"`
+	Earned           int    `json:"earned"`
+	Delivered        int    `json:"delivered"`
+	CheckinDelivered bool   `json:"checkin_delivered"`
 }
 
 func (s *Store) Pending(ctx context.Context) ([]Receipt, error) {
@@ -118,7 +119,7 @@ func (s *Store) Progress(ctx context.Context, user string) (Progress, error) {
 	p.Comments = counts["comment"]
 	p.Received = counts["received"]
 	p.CheckedIn = counts["checkin"] > 0
-	err = s.DB.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(delivered),0) FROM metar_ticket_outbox WHERE user_id=? AND earned_day=?`, user, p.Day).Scan(&p.Earned, &p.Delivered)
+	err = s.DB.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(delivered),0),COALESCE(MAX(category='checkin' AND delivered=1),0) FROM metar_ticket_outbox WHERE user_id=? AND earned_day=?`, user, p.Day).Scan(&p.Earned, &p.Delivered, &p.CheckinDelivered)
 	return p, err
 }
 

@@ -1,3 +1,4 @@
+import './return-navigation.js';
 import { mountNotificationNavigation } from './notification-navigation.js';
 import { installTheme } from './shared-theme.js';
 import { installHomeNavigation, canonicalizeHomeLinks } from './home-navigation.js';
@@ -5,7 +6,7 @@ import { mountComposerLayout, positionComposerMenus } from './composer-layout.js
 
 export function backDestination(path) {
   if (/^\/(?:latest|questions|discover)?\/?$/.test(path)) return null;
-  if (/^\/(?:me\/|badges(?:\/|$)|users\/settings(?:\/|$)|settings\/binding\/?$)/.test(path)) return '/me';
+  if (/^\/(?:admin(?:\/|$)|me\/|badges(?:\/|$)|users\/settings(?:\/|$)|settings\/binding\/?$)/.test(path)) return '/me';
   return '/latest';
 }
 
@@ -19,7 +20,10 @@ export function installNativeShell(language, host = window) {
     if (!trigger) return;
     event.preventDefault();
     event.stopPropagation();
-    if (host.location.pathname !== '/me') host.location.href = '/me';
+    if (host.location.pathname !== '/me') {
+      host.__metarReturnNavigation?.remember(host.location.href, '/me');
+      host.location.href = '/me';
+    }
   }, true);
   installHomeNavigation(host);
   const root = doc.documentElement;
@@ -47,7 +51,8 @@ export function installNativeShell(language, host = window) {
   back.type = 'button';
   back.className = 'page-back metar-back';
   back.onclick = () => {
-    const destination = backDestination(host.location.pathname);
+    const fallback = backDestination(host.location.pathname);
+    const destination = fallback && host.__metarReturnNavigation?.destination(host.location.pathname, fallback) || fallback;
     if (destination) host.location.href = destination;
   };
   const toggle = doc.createElement('button');
@@ -84,6 +89,7 @@ export function installNativeShell(language, host = window) {
     positionComposerMenus(host);
     canonicalizeHomeLinks(doc, host.location.origin);
     mountNotificationNavigation(doc, host.location.pathname, language.getLanguage() === 'en_US');
+    root.classList.toggle('metar-admin-users', host.location.pathname === '/admin/users');
     const header = doc.querySelector('#header');
     const row = header?.querySelector(':scope > .w-100');
     const brand = row?.querySelector('.navbar-brand');

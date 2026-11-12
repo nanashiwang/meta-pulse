@@ -279,3 +279,24 @@ func TestMySQLTicketInitializationDoesNotLockAnswerWrites(t *testing.T) {
 		t.Fatal("incorrect initial cursor", cursor, e)
 	}
 }
+
+func TestMySQLCheckinDeliveryProgress(t *testing.T) {
+	s, now := fixture(t)
+	ctx := context.Background()
+	must(t, s.DB, "INSERT INTO metar_exp_event VALUES(1,2,'checkin',?)", now.Unix())
+	must(t, s.DB, "INSERT INTO metar_ticket_outbox(user_id,external_id,earned_day,category,ordinal,delivered) VALUES(2,'102',?,'participation',1,1)", Day(*now))
+	p, err := s.Progress(ctx, "2")
+	if err != nil || p.CheckinDelivered {
+		t.Fatalf("other rewards mistaken for check-in: %+v %v", p, err)
+	}
+	must(t, s.DB, "INSERT INTO metar_ticket_outbox(user_id,external_id,earned_day,category,ordinal,delivered) VALUES(2,'102',?,'checkin',1,0)", Day(*now))
+	p, err = s.Progress(ctx, "2")
+	if err != nil || p.CheckinDelivered {
+		t.Fatalf("pending check-in: %+v %v", p, err)
+	}
+	must(t, s.DB, "UPDATE metar_ticket_outbox SET delivered=1 WHERE user_id=2 AND category='checkin'")
+	p, err = s.Progress(ctx, "2")
+	if err != nil || !p.CheckinDelivered {
+		t.Fatalf("delivered check-in: %+v %v", p, err)
+	}
+}

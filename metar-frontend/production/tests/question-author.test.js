@@ -28,3 +28,12 @@ test('personal and bookmark rows keep the supplied author regardless of activity
   assert.match(render({id:'123',user_info:author,operator:responder,operation_type}),/href="\/users\/publisher"/);
  }
 });
+
+test('legacy newest lists use the asked operator as the publisher with the correct avatar',()=>{
+ const html=render({id:'123',operator:author,operation_type:'asked'});
+ assert.match(html,/href="\/users\/publisher"/);assert.match(html,/author.jpg/);assert.match(html,/发布者/);
+});
+test('explicit publisher always takes precedence over the legacy operator',()=>{
+ const html=render({id:'123',user_info:author,operator:responder,operation_type:'asked'});
+ assert.match(html,/href="\/users\/publisher"/);assert.doesNotMatch(html,/xiao_li|responder.jpg/);
+});

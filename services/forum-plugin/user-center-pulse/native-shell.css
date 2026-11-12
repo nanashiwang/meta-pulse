@@ -192,3 +192,15 @@ img[data-metar-appearance="veteran"],img[data-metar-appearance="companion"]{box-
 .metar-account-menu>.dropdown-item:not([href="/users/logout"]),.metar-account-menu>.dropdown-divider{display:none}
 .metar-account-profile{display:flex;align-items:center;gap:12px;padding:12px 10px 16px}.metar-account-profile img{width:36px;height:36px;border-radius:50%;object-fit:cover}.metar-account-profile>div{min-width:0}.metar-account-profile strong{display:block;overflow-wrap:anywhere}.metar-account-profile small{display:block;color:var(--metar-muted);margin-top:3px}
 .metar-account-group+.metar-account-group,.metar-account-menu>a[href="/users/logout"]{border-top:1px solid var(--metar-border);margin-top:6px;padding-top:10px}.metar-account-label{padding:6px 10px;color:var(--metar-muted);font-size:11px}.metar-account-menu .dropdown-item{padding:9px 10px;border-radius:6px;font-size:14px;display:flex;align-items:center;gap:10px;color:var(--metar-text)}.metar-account-menu .dropdown-item:hover,.metar-account-menu .dropdown-item:focus{background:var(--metar-hover);color:var(--metar-primary)}.metar-account-menu .bi{font-size:18px;color:var(--metar-muted)}
+
+/* Keep user actions visible while the wide statistics table scrolls. */
+.metar-admin-users .table-responsive { max-width:100%; }
+.metar-admin-users .table-responsive th:last-child,
+.metar-admin-users .table-responsive td:last-child {
+ position:sticky;right:0;z-index:2;background:var(--metar-surface);
+ min-width:72px;box-shadow:-5px 0 8px -6px #0006;
+}
+.metar-admin-users .table-responsive td:last-child:has(.dropdown.show) { z-index:5; }
+.metar-admin-users td:last-child .dropdown-toggle { min-width:54px;min-height:32px; }
+.metar-admin-users td:last-child .dropdown-toggle::before { content:'操作 ';font-size:12px; }
+html[lang^="en"].metar-admin-users td:last-child .dropdown-toggle::before { content:'Actions '; }

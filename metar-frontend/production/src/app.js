@@ -199,7 +199,9 @@
     const hasAcceptedAnswer = typeof acceptedID === 'string'
       ? /^[1-9]\d*$/.test(acceptedID)
       : Number.isSafeInteger(acceptedID) && acceptedID > 0;
-    const author = question.user_info || {};
+    // Older Answer lists omit user_info. Only an "asked" operator is
+    // guaranteed to be the original author; never use an editor or responder.
+    const author = question.user_info || (question.operation_type === 'asked' ? question.operator : null) || {};
     const tags = Array.isArray(question.tags) ? question.tags : [];
     const description = typeof question.description === 'string' ? question.description.replace(/\s+/g, ' ').trim() : '';
     const excerpt = description.length > 140 ? `${description.slice(0, 140)}…` : description;
@@ -267,12 +269,14 @@
 
   function goBack() {
     const path = route().path;
-    router.go(/^\/(?:me\/|users\/settings(?:\/|$)|settings\/binding(?:\/|$)|badges(?:\/|$))/.test(path) ? '/me' : '/latest');
+    const fallback = /^\/(?:admin(?:\/|$)|me\/|users\/settings(?:\/|$)|settings\/binding(?:\/|$)|badges(?:\/|$))/.test(path) ? '/me' : '/latest';
+    const destination = window.__metarReturnNavigation?.destination(path, fallback) || fallback;
+    if (!window.MetarRouter.owns(new URL(destination, location.origin).pathname)) { location.href = destination; return; }
+    router.go(destination);
     navigate();
   }
 
   function accountMenu() {
-    if (route().path === '/me') return `<span class="account-avatar" aria-label="${t('个人空间')}">${avatar(currentUser)}</span>`;
     return `<a href="${esc(window.MetarRouter.href('/me'))}" data-router class="account-avatar" aria-label="${t('个人空间')}" title="${t('个人空间')}">${avatar(currentUser)}</a>`;
   }
 
@@ -860,9 +864,12 @@
         for (let attempt = 0; attempt < 20 && current(); attempt++) {
           const progress = await load();
           if (!current()) return;
-          if (progress?.checked_in && progress.earned > 0 && progress.delivered === progress.earned) {
+          if (progress?.checkin_delivered === true) {
+            if (await refreshPulse()) return;
+          } else if (attempt % 3 === 2) {
+            // Older servers may not expose the dedicated receipt yet. Keep
+            // refreshing without mistaking earlier task rewards for this check-in.
             await refreshPulse();
-            return;
           }
           status.textContent = t('签到成功，正在自动同步抽奖券和权益…');
           await new Promise(resolve => setTimeout(resolve, 2000));
@@ -1089,7 +1096,7 @@
   }
 
   async function refreshPulse() {
-    if (pulseBusy || pulseRefreshing || route().path !== '/pulse') return;
+    if (pulseBusy || pulseRefreshing || route().path !== '/pulse') return false;
     if (!pulseView) { await navigate(); return; }
     const presentation = pulseView;
     const sequence = navigationSequence;
@@ -1113,6 +1120,7 @@
       if (benefits && previousBenefits) previousBenefits.replaceChildren(...benefits.childNodes);
       previous.replaceWith(next);
       presentation.update(pulseCoreState);
+      return true;
     } catch (_) {
       if (presentation === pulseView) {
         pulseCoreState = {...pulseCoreState, canDraw:false, canDrawFive:false};

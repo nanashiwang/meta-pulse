@@ -22,7 +22,7 @@ test('personal sidebar only exposes real administrator navigation on /me',()=>{
  context.currentUserState='ready';context.route=()=>({path:'/me/bookmarks'});assert.equal(sidebar(),'');
 });
 test('back always returns to the personal space or the main community page',()=>{
- const visits=[];const context={route:()=>({path:'/settings/binding'}),history:{length:3,back:()=>visits.push('back')},router:{go:path=>{visits.push(path);return true}},navigate:()=>{}};
+ const visits=[];const context={route:()=>({path:'/settings/binding'}),history:{length:3,back:()=>visits.push('back')},window:{MetarRouter:{owns:()=>true}},location:{origin:'https://forum.test'},URL,router:{go:path=>{visits.push(path);return true}},navigate:()=>{}};
  const back=appFunction('goBack',context);
  back();context.route=()=>({path:'/users/settings'});back();context.route=()=>({path:'/me/bookmarks'});back();context.route=()=>({path:'/badges'});back();
  context.route=()=>({path:'/models'});back();context.route=()=>({path:'/topic/ai'});back();context.route=()=>({path:'/me'});back();
@@ -41,4 +41,18 @@ test('desktop preference survives refresh and navigation without changing mobile
 test('viewport transitions close the mobile drawer and disabled storage retains usable controls',()=>{
  const h=setup(null,true);h.controller.toggle();assert.equal(h.state.collapsed,true);h.resize(false);h.controller.toggle();h.resize(true);h.resize(false);assert.equal(h.state.expanded,false);
  h.controller.toggle();assert.equal(h.state.expanded,true);
+});
+
+test('avatar rendered on me remains a working link when the header is reused after return',()=>{
+ let path='/me';const context={route:()=>({path}),t:x=>x,avatar:()=>'<span>avatar</span>',currentUser:{id:'2'},esc:x=>x,window:{MetarRouter:{href:x=>x}}};
+ const menu=appFunction('accountMenu',context);
+ const retainedHeader=menu();
+ path='/latest';
+ assert.match(retainedHeader,/<a[^>]*href="\/me"[^>]*data-router/);
+ assert.equal(menu(),retainedHeader);
+});
+test('shell administration pages return to personal space',()=>{
+ const visits=[];let path='/admin/pulse';const back=appFunction('goBack',{route:()=>({path}),window:{MetarRouter:{owns:()=>true}},location:{origin:'https://forum.test'},URL,router:{go:p=>visits.push(p)},navigate:()=>{}});
+ for(path of ['/admin/pulse','/admin/growth','/admin/models'])back();
+ assert.deepEqual(visits,['/me','/me','/me']);
 });

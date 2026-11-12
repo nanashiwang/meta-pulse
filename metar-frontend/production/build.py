@@ -67,6 +67,7 @@ def build(output: Path, config_path: Path) -> None:
         "avatars": (ROOT / "src/avatars.js").read_text(encoding="utf-8"),
         "admin-periods": (ROOT / "src/admin-periods.js").read_text(encoding="utf-8"),
         "admin-pulse": (ROOT / "src/admin-pulse.js").read_text(encoding="utf-8"),
+        "return-navigation": (ROOT.parents[1] / "services/forum-plugin/user-center-pulse/return-navigation.js").read_text(encoding="utf-8"),
         "router": (ROOT / "src/router.js").read_text(encoding="utf-8"),
         "route-policy": (ROOT / "src/route-policy.js").read_text(encoding="utf-8"),
         "theme": (ROOT / "src/theme.js").read_text(encoding="utf-8"),
@@ -118,6 +119,7 @@ def build(output: Path, config_path: Path) -> None:
     (assets / "avatars.js").write_text(sources["avatars"], encoding="utf-8")
     (assets / "admin-periods.js").write_text(sources["admin-periods"], encoding="utf-8")
     (assets / "admin-pulse.js").write_text(sources["admin-pulse"], encoding="utf-8")
+    (assets / "return-navigation.js").write_text(sources["return-navigation"], encoding="utf-8")
     (assets / "router.js").write_text(sources["router"], encoding="utf-8")
     (assets / "route-policy.js").write_text(sources["route-policy"], encoding="utf-8")
     (assets / "theme.js").write_text(sources["theme"], encoding="utf-8")

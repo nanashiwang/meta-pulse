@@ -140,11 +140,26 @@ func (r *ticketRepository) Statistics(ctx context.Context, ids []uint64) (map[ui
 	if err != nil {
 		return nil, err
 	}
+	var baselines []struct {
+		UserID        uint64
+		TotalOffset   int64
+		RemovedOffset int64
+	}
+	if err := r.db.WithContext(ctx).Table("pulse_ticket_statistics_baseline").Where("user_id IN ?", ids).Find(&baselines).Error; err != nil {
+		return nil, err
+	}
+	offsets := make(map[uint64][2]int64, len(baselines))
+	for _, baseline := range baselines {
+		offsets[baseline.UserID] = [2]int64{baseline.TotalOffset, baseline.RemovedOffset}
+	}
 	result := make(map[uint64]ports.TicketStatistics, len(ids))
 	for _, id := range ids {
 		result[id] = ports.TicketStatistics{}
 	}
 	for _, row := range rows {
+		offset := offsets[row.UserID]
+		row.Total -= offset[0]
+		row.Removed -= offset[1]
 		result[row.UserID] = ports.TicketStatistics{Remaining: row.Remaining, Total: row.Total, Spent: row.Spent, Removed: row.Removed}
 	}
 	var rewards []struct {

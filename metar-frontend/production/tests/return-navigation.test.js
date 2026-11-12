@@ -1,0 +1,7 @@
+const test=require('node:test');const assert=require('node:assert/strict');
+const fs=require('node:fs'),vm=require('node:vm');const box={module:{exports:{}},URL};
+vm.runInNewContext(fs.readFileSync(require('node:path').resolve(__dirname,'../../../services/forum-plugin/user-center-pulse/return-navigation.js'),'utf8'),box);const {create}=box.module.exports;
+function setup(){const values=new Map();return create({location:{origin:'https://forum.test'},sessionStorage:{getItem:k=>values.get(k),setItem:(k,v)=>values.set(k,v)}})}
+test('admin remembers its external entry and skips sibling routes',()=>{const nav=setup();nav.remember('/me','/admin/dashboard');nav.remember('/admin/dashboard','/admin/users');nav.remember('/admin/users','/admin/settings');assert.equal(nav.destination('/admin/users','/latest'),'/me');});
+test('entering admin again from another page replaces its return origin',()=>{const nav=setup();nav.remember('/me','/admin/users');nav.remember('/latest?order=newest','/admin/users');assert.equal(nav.destination('/admin/dashboard','/me'),'/latest?order=newest');});
+test('ordinary pages retain their source, and unsafe or missing sources use fallback',()=>{const nav=setup();nav.remember('/marketplace','/me');assert.equal(nav.destination('/me','/latest'),'/marketplace');nav.remember('https://evil.test/a','/admin/users');nav.remember('/users/auth-landing?token=x','/admin/users');assert.equal(nav.destination('/admin/users','/me'),'/me');});

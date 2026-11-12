@@ -121,3 +121,5 @@ new-api 接收端与实际到账、生产普通账号流程、邮件与跨实例
 类别/标签拖动排序（2026-11-10）：管理员 `/admin/taxonomy` 拖动或上下移动后显式保存；[展示模块](../metar-frontend/production/src/taxonomy.js)统一 METAR 侧栏、抽屉、筛选、目录顺序，集市也可排序。[排序 API](../services/forum-plugin/user-center-pulse/taxonomy_order.go)复用 Answer 管理员身份，以数据库版本条件更新；未知响应读回确认。原生发帖推荐顺序不变。验证：`make test-community`、`make test-forum-integration` 中的 `TestMySQLTaxonomyOrder`。
 
 论坛镜像构建必须通过 `verify_binary.py` 的最终 Answer 二进制内嵌 HTML/JS/CSS 验收；仅 pnpm/go 返回零不代表存在可用页面。详见论坛前端资源完整性笔记。
+
+历史券展示校正由迁移 00021 和 `pulse_ticket_statistics_baseline` 管理，不变更原账本与可用券；签到自动刷新以 `checkin_delivered` 而非全部任务统计判断到账。见 [修复说明](../.agents/notes/implemented/bug-fix/2026-11-13-ticket-statistics-and-checkin.md)。

@@ -20,10 +20,10 @@ index eac322d..3e75be1 100644
 +      metar_col_email: Email
 +      metar_col_reputation: Reputation
 +      metar_col_tickets_remaining: "Tickets remaining"
-+      metar_col_tickets_total: "Lifetime tickets received"
++      metar_col_tickets_total: "Tickets received (adjusted)"
 +      metar_col_tickets_spent: "Tickets spent"
 +      metar_col_rewards: "Settled rewards"
-+      metar_ticket_history_hint: "Lifetime tickets include reset, revoked and expired tickets; they are not the available balance. Spent tickets count draws only. Rewards include settled, unreversed draw quota and EXP."
++      metar_ticket_history_hint: "Received starts at spent tickets when corrected, then adds new grants. Removed counts only events after correction. Available tickets and settled rewards are unchanged."
 +      metar_removed: "Reset/revoked/expired: {{count}}"
 +      metar_sort_all: "Sort all filtered users"
 +      metar_sort_default: "Default order"
@@ -36,7 +36,7 @@ index eac322d..3e75be1 100644
 +      metar_sort_reputation: "Reputation"
 +      metar_sort_posts: "Questions"
 +      metar_sort_tickets_remaining: "Tickets remaining"
-+      metar_sort_tickets_total: "Lifetime tickets received"
++      metar_sort_tickets_total: "Tickets received (adjusted)"
 +      metar_sort_tickets_spent: "Tickets spent"
 +      metar_sort_reward_quota: "Settled quota"
 +      metar_sort_reward_experience: "Settled EXP"
@@ -93,10 +93,10 @@ index 53dca07..bc7ecc1 100644
 +      metar_col_email: 邮箱
 +      metar_col_reputation: 声望
 +      metar_col_tickets_remaining: "抽奖券剩余量"
-+      metar_col_tickets_total: "历史累计获券"
++      metar_col_tickets_total: "校正累计获券"
 +      metar_col_tickets_spent: "已消耗券"
 +      metar_col_rewards: "已到账奖励"
-+      metar_ticket_history_hint: "历史累计获券包含已清零、撤销和过期的券，不代表当前可用；已消耗券仅统计抽奖消费。奖励仅统计已到账且未撤销的抽奖额度和经验。"
++      metar_ticket_history_hint: "校正时累计获券以已消耗券为起点，之后新增获券正常累加；清零/撤销/过期仅计校正后的记录。可用券与到账奖励不变。"
 +      metar_removed: "已清零/撤销/过期：{{count}}"
 +      metar_sort_all: "全部筛选用户排序"
 +      metar_sort_default: "默认排序"
@@ -109,7 +109,7 @@ index 53dca07..bc7ecc1 100644
 +      metar_sort_reputation: "声望"
 +      metar_sort_posts: "提问数"
 +      metar_sort_tickets_remaining: "抽奖券剩余量"
-+      metar_sort_tickets_total: "历史累计获券"
++      metar_sort_tickets_total: "校正累计获券"
 +      metar_sort_tickets_spent: "已消耗券"
 +      metar_sort_reward_quota: "已到账额度"
 +      metar_sort_reward_experience: "已到账经验"
