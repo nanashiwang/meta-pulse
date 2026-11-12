@@ -392,6 +392,7 @@
     document.title = `${currentTitle()} · ${config.siteName}`;
     syncNavigation();
     enhanceTaxonomy();
+    void mountDiscussionRail();
     if (['/me/drafts', '/events', '/admin/events'].includes(route().path)) memberView?.mount(view);
     if (route().path === '/admin/operations') operationsView?.mount(view);
     if (route().path.startsWith('/marketplace') || route().path === '/admin/marketplace') marketplaceView?.mount(view);
@@ -592,6 +593,34 @@
     }
   }
 
+  function discussionRailItems(result, unanswered = false) {
+    const rows = (Array.isArray(result?.list) ? result.list : []).filter(item =>
+      item && (item.id || item.question_id) && typeof item.title === 'string' &&
+      (!unanswered || Number(item.answer_count) === 0)).slice(0, 5);
+    return rows.length ? '<ul class="rail-post-list">' + rows.map(item =>
+      '<li>' + external(questionHref(item.id || item.question_id), esc(item.title)) + '</li>').join('') + '</ul>'
+      : '<p class="rail-content-state">' + esc(t(unanswered ? '暂时没有待回答问题' : '暂无精选内容')) + '</p>';
+  }
+
+  async function mountDiscussionRail() {
+    const root = document.querySelector('[data-discussion-rail]');
+    if (!root) return;
+    const sequence = navigationSequence, scope = taxonomy.scope(answer);
+    await Promise.all(['unanswered', 'featured'].map(async kind => {
+      const node = root.querySelector('[data-rail-content="' + kind + '"]');
+      if (!node) return;
+      const current = () => root.isConnected && sequence === navigationSequence && scope === taxonomy.scope(answer);
+      try {
+        const result = await answer.listQuestions(kind === 'unanswered'
+          ? {page:1, pageSize:5, order:'unanswered'}
+          : {page:1, pageSize:5, order:'score', tag:'feeds'});
+        if (current()) node.innerHTML = discussionRailItems(result, kind === 'unanswered');
+      } catch (_) {
+        if (current()) node.innerHTML = '<p class="rail-content-state">' + esc(t('内容暂时无法加载')) + '</p>';
+      }
+    }));
+  }
+
   async function questionsPage(tag = '') {
     await loadTagDirectory();
     const { query } = route();
@@ -621,7 +650,9 @@
           <div class="discussion-toolbar">${filter}<nav class="discussion-tabs" aria-label="${t('话题筛选')}">${tabs}</nav>${external(askPath, I('plus', 'sm') + t('新建话题'), 'btn primary')}</div>
           ${list.length ? discussionList(list) : empty(order === 'unanswered' ? t("暂时没有待回答问题") : t("当前筛选没有内容"), t("可以调整筛选，或发起一个新问题。"), external(askPath, t("发起提问"), 'btn primary'), 'chat')}${pager}
         </div>
-        <aside class="community-rail" aria-label="${t('社区侧栏')}">
+        <aside class="community-rail" data-discussion-rail aria-label="${t('社区侧栏')}">
+          <section class="rail-card"><div class="rail-head"><h2>${t('等你来回答')}</h2>${link('/latest?order=unanswered', t('查看全部'), 'rail-edit')}</div><div data-rail-content="unanswered" aria-live="polite"><p class="rail-content-state">${t('正在加载…')}</p></div></section>
+          <section class="rail-card"><div class="rail-head"><h2>${t('精选阅读')}</h2>${link('/topic/feeds?order=score', t('查看全部'), 'rail-edit')}</div><div data-rail-content="featured" aria-live="polite"><p class="rail-content-state">${t('正在加载…')}</p></div></section>
           <section class="rail-card">
             <div class="rail-head"><h2>${t('已关注的标签')}</h2><button type="button" class="rail-edit" data-action="toggle-tags" aria-expanded="${tagPanelOpen}" aria-controls="tag-panel">${t(tagPanelOpen ? '完成' : '编辑')}</button></div>
             <div data-rail-tags>${followedRailMarkup()}</div>

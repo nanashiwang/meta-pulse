@@ -42,12 +42,14 @@
       if (img) img.dataset.metarAppearance = value.appearance;
       let badge = anchor.querySelector(".metar-exp-badge");
       if (
-        img &&
+        anchor.matches(".discussion-avatar") ||
+        anchor.closest(".discussion-last-reply") ||
+        (img &&
         ![...anchor.childNodes]
           .filter((n) => n !== badge)
           .map((n) => n.textContent)
           .join("")
-          .trim()
+          .trim())
       ) {
         badge?.remove();
         return;
@@ -92,7 +94,7 @@
         const name = username(a.href, host.location.origin);
         if (!name) continue;
         const found = cache.get(name);
-        if (found && Date.now() - found.at < 60000) {
+        if (found && !found.pending && Date.now() - found.at < 60000) {
           if (found.value) paint(a, found.value, name);
           continue;
         }

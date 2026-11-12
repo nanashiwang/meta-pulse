@@ -2,6 +2,11 @@
 'use strict';
 (() => {
   const EN = Object.freeze({
+    "查看全部": "View all",
+    "等你来回答": "Waiting for your answer",
+    "精选阅读": "Selected reading",
+    "暂无精选内容": "No selected reading yet",
+    "内容暂时无法加载": "Content is temporarily unavailable",
     "暂无回答 · 等你分享经验": "No answers yet · Share your experience",
     "最后回复：": "Last reply: ",
     "已有回答": "Answers available",

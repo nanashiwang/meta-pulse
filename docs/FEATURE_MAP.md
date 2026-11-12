@@ -62,7 +62,7 @@ Before adding a feature, inspect adjacent flows and the current source of truth;
 | 社区列表、搜索、标签、原生页面交接 | [统一路由](../metar-frontend/shared/routes.json)、[router.js](../metar-frontend/production/src/router.js)、[adapters.js](../metar-frontend/production/src/adapters.js)：Answer 为内容源；旧详情和通知转原生页面，写入/账号 API 不由静态壳层接管；缓存仅覆盖公开列表 | [路由边界](../metar-frontend/production/tests/router.test.js)、[适配与缓存](../metar-frontend/production/tests/adapters.test.js)、[加载恢复](../metar-frontend/production/tests/loading.test.js)、[侧栏](../metar-frontend/production/tests/sidebar.test.js)；`make test-community` |
 | 类别管理 `/admin/taxonomy` | [taxonomy.js](../metar-frontend/production/src/taxonomy.js)：复用 Answer 标签、推荐设置及管理员 API；保留自定义名称并读回验证，申请仍是原生帖子 | [taxonomy.test.js](../metar-frontend/production/tests/taxonomy.test.js)：普通/未激活账号拒绝、并发漂移、丢响应和名称保护 |
 | 论坛前端打包完整性 | 两个插件 embed 清单保留 UI 入口及其依赖；[检查脚本](../services/forum/verify_frontend.py)在 Docker 构建前执行 | `make test-forum-frontend-assets`；部署后 `--base-url` 检查登录及帖子入口与静态资源 |
-| 帖子列表发布者 | [作者补丁](../services/forum/answer-question-author.patch)为列表添加独立 user_info，复用批量用户资料；共用 questionRow 不使用 operator 冒充作者；独立 last_reply 使用真实回答作者与发布时间，非公开回答不输出；列表显示作者头像、28 字摘要、右侧回答数，底部作者与最后回复齐平，窄屏自动换行 | `question-author.test.js`；forum 与社区前端配套部署 |
+| 帖子列表发布者 | [作者补丁](../services/forum/answer-question-author.patch)为列表添加独立 user_info，复用批量用户资料；共用 questionRow 不使用 operator 冒充作者；独立 last_reply 使用真实回答作者与发布时间，非公开回答不输出；列表显示作者头像、28 字摘要、右侧回答数，底部作者与最后回复齐平，窄屏自动换行；头像固定尺寸且不重复注入等级，等级只显示在名字旁 | `question-author.test.js`；forum 与社区前端配套部署 |
 | 个人中心导航与返回按钮 | `/me` 移除集市发布入口；签到抽奖站内 `/pulse`；[共用返回样式](../services/forum-plugin/user-center-pulse/back-button.css)覆盖壳层、原生页和页面返回链接 | 个人中心导航回归、社区前端构建；静态资源与 forum 插件配套部署 |
 | 注册邮件失败反馈 | [Answer 邮件补丁](../services/forum/answer-mail-errors.patch)：注册、用户/管理员重发和 SMTP 测试同步确认，失败弹窗；已创建账号通过登录重发恢复 | `make test-forum-mail-errors`；SMTP 接受不等于最终收件，需部署 forum 并刷新语言资源 |
 | 注册人机验证 `/users/register` | [Turnstile 插件](../services/forum-plugin/captcha-turnstile/README.md)：Answer Captcha hook、原生 email action、固定 Siteverify 与 hostname/action 校验；后台配置后启用 | Go 验证与并发配置、JS 生命周期回归；`make test-forum-captcha`、`make build-forum`；Release 不等于生产启用 |
@@ -127,3 +127,5 @@ new-api 接收端与实际到账、生产普通账号流程、邮件与跨实例
 ## 管理员内容运营
 
 `/admin/publishing` → [后台页面](../metar-frontend/production/src/admin-publishing.js)、[管理员发布服务](../services/forum-plugin/user-center-pulse/admin_publishing.go)、[Answer 原生适配](../services/forum/answer-operator-publishing.patch)。仅登记的无外部绑定运营账号，显式代发标识、批量预览、单项幂等与未知结果核对；规则见 [内容运营](CONTENT_OPERATIONS.md)，测试 `make test-operator-publishing`。
+
+帖子列表右栏包含「等你来回答」（Answer unanswered 前五条）与「精选阅读」（既有 feeds / 好文收藏、score 排序前五条），独立异步加载并提供查看全部，保留已关注标签；见 `discussion-rail.test.js`。
