@@ -386,9 +386,25 @@
     }
   }
 
+  let footerResizeObserver = null;
+  function fitFooter() {
+    footerResizeObserver?.disconnect();
+    const footer = document.querySelector('.prod-footer');
+    const update = () => {
+      const height = footer?.isConnected ? Math.ceil(footer.getBoundingClientRect().height) : 0;
+      document.documentElement.style.setProperty('--community-footer-height', height + 'px');
+    };
+    update();
+    if (footer && typeof window.ResizeObserver === 'function') {
+      footerResizeObserver = new window.ResizeObserver(update);
+      footerResizeObserver.observe(footer);
+    }
+  }
+
   function renderView(html, {focus = true} = {}) {
     const view = document.getElementById('view');
     if (view) view.innerHTML = html;
+    fitFooter();
     document.title = `${currentTitle()} · ${config.siteName}`;
     syncNavigation();
     enhanceTaxonomy();

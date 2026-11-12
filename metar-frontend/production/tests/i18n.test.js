@@ -85,7 +85,7 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
   const localLocation = (url) => Object.assign(new URL(url, 'https://metarhub.com'), { replace: (value) => redirects.push(value) });
   const operations = new Map();
   const document = {
-    title: '', documentElement: { classList: { values: new Set(), contains(key) { return this.values.has(key); }, toggle(key, enabled) { if (enabled) this.values.add(key); else this.values.delete(key); } }, dataset: {}, lang: '', getAttribute(key) { return this.dataset[key.replace('data-', '')]; }, setAttribute(key, value) { this.dataset[key.replace('data-', '')] = value; } },
+    title: '', documentElement: { style: { setProperty() {} }, classList: { values: new Set(), contains(key) { return this.values.has(key); }, toggle(key, enabled) { if (enabled) this.values.add(key); else this.values.delete(key); } }, dataset: {}, lang: '', getAttribute(key) { return this.dataset[key.replace('data-', '')]; }, setAttribute(key, value) { this.dataset[key.replace('data-', '')] = value; } },
     body: { classList: { remove() {}, toggle() { return true; } } },
     getElementById: (id) => nodes[id] || null,
     createElement() { return {...node(), remove() { delete nodes[this.id]; }}; },

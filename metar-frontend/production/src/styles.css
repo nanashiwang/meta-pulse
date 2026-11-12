@@ -578,15 +578,15 @@ input:not([type="checkbox"]),select,textarea { padding:8px 11px; }
 .personal-sidebar .account-menu-label{font-size:11px;color:var(--muted);padding:12px}
 html.has-personal-sidebar .page{margin-left:232px}
 .topbar a[href="/publish"],.topbar a[href="/questions/add"],.topbar a[href="/questions/ask"]{display:none!important}
-.prod-footer{position:fixed;left:16px;right:16px;bottom:12px;z-index:30;background:var(--surface);margin:0;width:auto;box-sizing:border-box;padding:14px 2px 8px}
-html.has-personal-sidebar .prod-footer{left:248px}
-html .page{padding-bottom:120px}
+.prod-footer{position:fixed;left:0;right:0;bottom:var(--community-bottom-nav,0px);z-index:30;background:var(--surface);margin:0;width:auto;box-sizing:border-box;padding:14px 18px 20px}
+html.has-personal-sidebar .prod-footer{left:232px}
+html:not(.preview-tools) .page{padding-bottom:calc(var(--community-footer-height,100px) + var(--community-bottom-nav,0px) + 24px)}
 @media(max-width:767px){
  .personal-sidebar{position:relative;top:auto;left:auto;bottom:auto;width:auto;margin-top:var(--header);padding:24px 16px 16px;border-right:0;border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;gap:6px}
  .personal-sidebar>.personal-side-title{width:100%;margin:0 10px 4px}
  .personal-sidebar .personal-console-group,.personal-sidebar .account-menu-group{width:100%;margin-top:8px}
  html.has-personal-sidebar .page{margin-left:0;padding-top:16px}
- html .prod-footer,html.has-personal-sidebar .prod-footer{left:12px;right:12px;bottom:67px;flex-wrap:wrap;padding:10px;gap:6px;font-size:11px}
+ html .prod-footer,html.has-personal-sidebar .prod-footer{left:0;right:0;bottom:var(--community-bottom-nav,0px);flex-wrap:wrap;padding:10px 12px;gap:6px;font-size:11px}
  .prod-footer nav{flex-wrap:wrap;gap:6px}
 }
 .personal-sidebar .account-menu-group:first-child{margin-top:0;border-top:0;padding-top:0}
@@ -669,3 +669,5 @@ a.account-avatar:hover,a.account-avatar:focus-visible{box-shadow:0 0 0 2px var(-
 .discussion-avatar>.metar-exp-badge,.discussion-last-reply .metar-exp-badge{display:none}
 
 .rail-post-list{list-style:none;padding:0;margin:0;display:grid;gap:0}.rail-post-list>li{padding:12px 0}.rail-post-list>li+li{border-top:1px solid var(--border)}.rail-post-list>li:first-child{padding-top:4px}.rail-post-list>li:last-child{padding-bottom:0}.rail-post-list a{display:block;font-size:13px;line-height:1.6;overflow-wrap:anywhere}.rail-post-list a:hover{color:var(--green)}.rail-content-state{font-size:12px;color:var(--muted);line-height:1.6;margin:0}.community-rail[data-discussion-rail]{display:flex;flex-direction:column;gap:16px}
+
+@media(max-width:580px){html{--community-bottom-nav:calc(55px + env(safe-area-inset-bottom,0px))}}
