@@ -76,8 +76,10 @@ func buildAPIRouter(cfg config.Config, logger *slog.Logger, readiness app.Readin
 	rules := service.NewRewardRulesService(unit, cfg.ActionsEnabled && !cfg.RewardShadowMode)
 	rules.QuotaPerUnit = cfg.QuotaPerUnit
 	rules.SelectionSecret = []byte(cfg.RewardRandomSecret)
+	tickets := service.NewCommunityTicketService(unit)
+	tickets.QuotaPerUnit = cfg.QuotaPerUnit
 	return app.NewRouterWithRoutes(logger, readiness, app.APIRoutes{
 		Profile: profile, Summary: profile, Action: action, Content: content,
-		CommunityTickets: service.NewCommunityTicketService(unit), Experience: service.NewExperienceService(unit), History: history, RewardFeed: feed, Rules: rules, Operations: operations, Settings: settings, Periods: periods, Auth: auth,
+		CommunityTickets: tickets, Experience: service.NewExperienceService(unit), History: history, RewardFeed: feed, Rules: rules, Operations: operations, Settings: settings, Periods: periods, Auth: auth,
 	}, metrics), nil
 }

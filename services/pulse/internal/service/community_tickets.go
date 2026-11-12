@@ -27,8 +27,9 @@ type CommunityTicketResult struct {
 	EntryID uint64 `json:"entry_id"`
 }
 type CommunityTicketService struct {
-	unit ports.UnitOfWork
-	now  func() time.Time
+	unit         ports.UnitOfWork
+	QuotaPerUnit int64
+	now          func() time.Time
 }
 
 func NewCommunityTicketService(unit ports.UnitOfWork) *CommunityTicketService {
@@ -196,5 +197,11 @@ func (s *CommunityTicketService) Statistics(ctx context.Context, ids []uint64) (
 		result, err = r.Tickets.Statistics(ctx, ids)
 		return err
 	})
+	if err == nil {
+		for id, stat := range result {
+			stat.QuotaPerUnit = s.QuotaPerUnit
+			result[id] = stat
+		}
+	}
 	return result, err
 }

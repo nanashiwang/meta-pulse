@@ -77,10 +77,11 @@ html.metar-native[data-theme="dark"] { --bs-body-color-rgb: 230, 236, 228; color
 .metar-native .metar-language-switcher option { color: var(--metar-text); background: var(--metar-surface); }
 .metar-native .metar-theme-toggle { border: 0; background: none; color: var(--metar-muted); width: 32px; height: 36px; padding: 0; font-size: 24px; flex: 0 0 32px; order: 3; border-radius: 6px; }
 .metar-native :is(a, button, select):focus-visible { outline: 2px solid var(--metar-primary); outline-offset: 3px; }
-/* Remove the legacy left rail everywhere; admin keeps its own #adminSideNav. */
-.metar-native #pcSideNav,
-.metar-native .answer-navBar.navbar-toggler,
-.metar-native .mobile-menu,
+/* Answer shares the desktop wrapper and mobile toggle with its admin layout.
+   Hide public navigation only; keep native admin menus and responsive behavior. */
+.metar-native #pcSideNav:not(:has(#adminSideNav)),
+.metar-native:not(:has(.admin-container)) .answer-navBar.navbar-toggler,
+.metar-native:not(:has(.admin-container)) .mobile-menu,
 .metar-native .offcanvas:has(#sideNav) { display: none !important; }
 .metar-native #header a[href="/questions/add"],
 .metar-native #header a[href="/questions/ask"],

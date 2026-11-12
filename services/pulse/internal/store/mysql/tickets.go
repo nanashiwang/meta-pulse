@@ -129,16 +129,41 @@ func (r *ticketRepository) Statistics(ctx context.Context, ids []uint64) (map[ui
 		UserID    uint64
 		Remaining int64
 		Total     int64
+		Spent     int64
+		Removed   int64
 	}
 	err := r.db.WithContext(ctx).Raw(`SELECT user_id, SUM(amount) AS remaining,
- SUM(CASE WHEN amount>0 AND operation IN ('ticket_mint','ticket_bonus','ticket_adjustment') THEN amount ELSE 0 END) AS total
+ SUM(CASE WHEN amount>0 AND operation IN ('ticket_mint','ticket_bonus','ticket_adjustment') THEN amount ELSE 0 END) AS total,
+ -SUM(CASE WHEN operation='ticket_spend' THEN amount ELSE 0 END) AS spent,
+ -SUM(CASE WHEN amount<0 AND operation IN ('ticket_adjustment','ticket_reverse','ticket_expire') THEN amount ELSE 0 END) AS removed
  FROM pulse_ledger_entry FORCE INDEX (idx_pulse_ledger_user_asset_operation_amount) WHERE asset_type='ticket' AND user_id IN ? GROUP BY user_id`, ids).Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
 	result := make(map[uint64]ports.TicketStatistics, len(ids))
 	for _, id := range ids {
 		result[id] = ports.TicketStatistics{}
 	}
 	for _, row := range rows {
-		result[row.UserID] = ports.TicketStatistics{Remaining: row.Remaining, Total: row.Total}
+		result[row.UserID] = ports.TicketStatistics{Remaining: row.Remaining, Total: row.Total, Spent: row.Spent, Removed: row.Removed}
 	}
-	return result, err
+	var rewards []struct {
+		UserID     uint64
+		Quota      int64
+		Experience int64
+	}
+	err = r.db.WithContext(ctx).Raw(`SELECT user_id,
+ SUM(CASE WHEN reward_type='newapi_quota' THEN amount ELSE 0 END) AS quota,
+ SUM(CASE WHEN reward_type='community_exp' THEN amount ELSE 0 END) AS experience
+ FROM pulse_reward_grant WHERE user_id IN ? AND trigger_type='pulse' AND status='settled' AND reversed_at IS NULL GROUP BY user_id`, ids).Scan(&rewards).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rewards {
+		stat := result[row.UserID]
+		stat.RewardQuota = row.Quota
+		stat.RewardExperience = row.Experience
+		result[row.UserID] = stat
+	}
+	return result, nil
 }
