@@ -1,0 +1,32 @@
+diff --git a/internal/schema/question_schema.go b/internal/schema/question_schema.go
+--- a/internal/schema/question_schema.go
++++ b/internal/schema/question_schema.go
+@@ -385,6 +385,8 @@
+ )
+ 
+ type QuestionPageResp struct {
++	UserID string `json:"-"`
++	UserInfo *UserBasicInfo `json:"user_info"`
+ 	ID          string     `json:"id" `
+ 	CreatedAt   int64      `json:"created_at"`
+ 	Title       string     `json:"title"`
+diff --git a/internal/service/question_common/question.go b/internal/service/question_common/question.go
+--- a/internal/service/question_common/question.go
++++ b/internal/service/question_common/question.go
+@@ -369,6 +369,7 @@
+ 	userIDs := make([]string, 0)
+ 	for _, questionInfo := range questionList {
+ 		t := &schema.QuestionPageResp{
++			UserID: questionInfo.UserID,
+ 			ID:               questionInfo.ID,
+ 			CreatedAt:        questionInfo.CreatedAt.Unix(),
+ 			Title:            questionInfo.Title,
+@@ -444,6 +445,8 @@
+ 	}
+ 
+ 	for _, item := range formattedQuestions {
++		// Author identity is independent of the latest activity operator.
++		item.UserInfo = userInfoMap[item.UserID]
+ 		tags, ok := tagsMap[item.ID]
+ 		if ok {
+ 			item.Tags = tags

@@ -626,6 +626,8 @@
     "该问题没有可展示的正文。": "No question content is available.",
     "在 Answer 完整页面参与 ": "Join the discussion in Answer ",
     "已采纳": "Accepted",
+    "签到成功，正在自动同步抽奖券和权益…": "Checked in. Syncing tickets and benefits automatically…",
+    "签到已成功，赠券仍在同步。可稍后刷新权益，无需重复签到。": "Check-in succeeded. Tickets are still syncing. Refresh benefits later; no need to check in again.",
     "该回答没有可展示的正文。": "No answer content is available.",
     " 赞同": " upvotes",
     "还没有回答": "No answers yet",

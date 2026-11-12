@@ -193,7 +193,13 @@
   function tagName(tag) { return tag?.display_name || tag?.slug_name || t("话题"); }
 
   function questionRow(question) {
-    const author = question.user_info || question.operator || {};
+    // Answer uses the string "0" when no answer has been accepted.
+    // Keep decimal IDs as strings: real IDs can exceed JavaScript's safe integer range.
+    const acceptedID = question.accepted_answer_id;
+    const hasAcceptedAnswer = typeof acceptedID === 'string'
+      ? /^[1-9]\d*$/.test(acceptedID)
+      : Number.isSafeInteger(acceptedID) && acceptedID > 0;
+    const author = question.user_info || {};
     const tags = Array.isArray(question.tags) ? question.tags : [];
     const description = typeof question.description === 'string' ? question.description.replace(/\s+/g, ' ').trim() : '';
     const excerpt = description.length > 140 ? `${description.slice(0, 140)}…` : description;
@@ -204,7 +210,7 @@
         <div class="discussion-meta">
           ${publicAuthor(author, `${avatar(author)}<span>${esc(displayName(author))}</span>`, 'discussion-author')}
           ${[...tags.filter(tag=>tag.recommend), ...tags.filter(tag=>!tag.recommend).slice(0,3)].map((tag) => link(`/topic/${encodeURIComponent(tag.slug_name || tagName(tag))}`, esc(tagName(tag)), tag.recommend ? 'badge taxonomy-category-badge' : 'badge')).join('')}
-          ${question.accepted_answer_id ? badge(I('check', 'sm') + t("已解决"), 'green') : ''}
+          ${hasAcceptedAnswer ? badge(I('check', 'sm') + t("已采纳"), 'green') : ''}
           <span class="discussion-stat" title="${t('点赞')}">${I('like', 'sm')}<span class="visually-hidden">${t('点赞')} </span>${number(question.vote_count)}</span>
           <span class="discussion-stat" title="${t('回答')}">${I('chat', 'sm')}<span class="visually-hidden">${t('回答')} </span>${number(question.answer_count)}</span>
           <span class="discussion-stat" title="${t('浏览')}">${I('eye', 'sm')}<span class="visually-hidden">${t('浏览')} </span>${number(question.view_count)}</span>
@@ -822,7 +828,7 @@
     const user = currentUser?.id, sequence = navigationSequence, identity = identitySequence;
     const current = () => root.isConnected && user === currentUser?.id && identity === identitySequence && sequence === navigationSequence;
     const status = root.querySelector('[data-task-progress]'), checkin = root.querySelector('[data-task-checkin]'), refresh = root.querySelector('[data-task-refresh]');
-    let busy = false;
+    let busy = false, signingIn = false, signedIn = false;
     const load = async () => {
       if (busy || !current()) return;
       busy = true; refresh.disabled = true;
@@ -831,20 +837,39 @@
         if (!current()) return;
         if (!['likes','comments','received','earned','delivered'].every(k=>Number.isSafeInteger(progress[k]) && progress[k]>=0) || progress.earned>6 || progress.delivered>progress.earned) throw new Error('invalid task progress');
         status.textContent = t('今日点赞 {likes} 次 · 评论 {comments} 次 · 收到评论 {received} 次；已获得 {earned}/6 券，已入账 {delivered} 券。',progress);
-        checkin.disabled = progress.checked_in === true;
-        checkin.textContent = t(progress.checked_in ? '今日已签到' : '每日签到 · +1 券');
+        checkin.disabled = signingIn || signedIn || progress.checked_in === true;
+        checkin.textContent = t(signedIn || progress.checked_in ? '今日已签到' : '每日签到 · +1 券');
+        return progress;
       } catch (error) {
         if (current()) status.textContent=t('任务进度暂不可用，请稍后刷新。已确认的券不会重复发放。');
       } finally { busy=false; if(current())refresh.disabled=false; }
     };
     refresh.onclick=load;
     checkin.onclick=async()=>{
-      if(checkin.disabled || !current())return;
-      checkin.disabled=true;
+      if(checkin.disabled || signingIn || !current())return;
+      checkin.disabled=true; signingIn=true;
       try {
         await answer.request('/metar/experience/checkin',{method:'POST',headers:{'Content-Type':'application/json','X-Metar-Request':'1'},body:'{}'});
-        if(current()){checkin.textContent=t('今日已签到');status.textContent=t('签到成功，赠券正在同步。稍后刷新任务进度和权益即可查看。');}
-      }catch(_){if(current()){checkin.disabled=false;status.textContent=t('暂时无法确认签到，请重试；同一天不会重复签到或发券。');}}
+        if (!current()) return;
+        signedIn = true;
+        checkin.textContent = t('今日已签到');
+        status.textContent = t('签到成功，正在自动同步抽奖券和权益…');
+        await refreshPulse();
+        // Ticket delivery runs asynchronously (normally every 15 seconds).
+        // Poll only reads, with a bounded lifetime and the captured user/page guard.
+        for (let attempt = 0; attempt < 20 && current(); attempt++) {
+          const progress = await load();
+          if (!current()) return;
+          if (progress?.checked_in && progress.earned > 0 && progress.delivered === progress.earned) {
+            await refreshPulse();
+            return;
+          }
+          status.textContent = t('签到成功，正在自动同步抽奖券和权益…');
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+        if (current()) status.textContent = t('签到已成功，赠券仍在同步。可稍后刷新权益，无需重复签到。');
+      }catch(_){if(current()){checkin.disabled=signedIn;status.textContent=t(signedIn ? '签到已成功，赠券仍在同步。可稍后刷新权益，无需重复签到。' : '暂时无法确认签到，请重试；同一天不会重复签到或发券。');}}
+      finally { signingIn=false; }
     };
     await load();
   }

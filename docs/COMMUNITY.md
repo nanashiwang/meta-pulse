@@ -492,3 +492,15 @@ Answer 1.7.1 通过构建补丁同步执行注册激活邮件、用户重发、�
 Answer 构建先运行 Go vendor，再从其中的 package.json 发现 UI 插件。user-center-pulse 和 captcha-turnstile 必须显式嵌入前端入口、相对导入及样式。`make test-forum-frontend-assets` 检查递归依赖并用真实 Go vendor 验证文件保留；Docker 构建在 answer build 前执行依赖检查。
 
 部署后运行 `python3 services/forum/verify_frontend.py --base-url https://metarhub.com` 检查登录页，并加 `--path /questions/<有效帖子ID>` 检查详情页；脚本检查 HTTP 状态、主脚本与样式引用、资源非空且不是 HTML 回退。主脚本缺失时，Answer 服务端正文虽已返回，加载遮罩仍无法移除。此检查不替代登录、验证码与发帖交互验收。
+
+### 帖子列表采纳标签
+
+首页、个人帖子及收藏共用列表将 Answer 的 `accepted_answer_id` 字符串 `"0"`、数值 0、空值及非法值视为未采纳，不显示状态标签。有效正整数回答 ID 才显示“已采纳”（英文 Accepted）；十进制字符串保持原样判断，避免大整数精度丢失。采纳及取消操作仍由 Answer 原生接口负责，列表重新获取状态后反映结果，不新增独立“已解决”开关。
+
+### Pulse 签到自动同步
+
+Pulse 页签到成功后立即调用已有权益刷新，再每 2 秒读取任务进度，最多 20 次；确认今日已签到且获得的券全部入账后再次刷新权益。异步赠券服务仍是事实源，不在浏览器直接增加券数。离页或身份变化停止后续读取和更新；签到失败不触发权益刷新，入账延迟则保留已签到状态并提示稍后刷新。
+
+### 帖子列表发布者
+
+Answer question/page 增加独立 `user_info`，以帖子持久化 UserID 获取公开用户资料，复用原有批量查询。`operator` 保持最近活动者语义，不作为作者兜底。共用 questionRow 使用 user_info 渲染头像、昵称和个人主页链接，等级组件依同一主页识别发布者。资料缺失时不伪造作者。需配套更新 forum 镜像和社区静态文件。
