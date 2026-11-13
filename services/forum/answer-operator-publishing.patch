@@ -37,7 +37,7 @@ diff --git a/internal/router/metar_publishing.go b/internal/router/metar_publish
 new file mode 100644
 --- /dev/null
 +++ b/internal/router/metar_publishing.go
-@@ -0,0 +1,58 @@
+@@ -0,0 +1,61 @@
 +package router
 +
 +import (
@@ -62,12 +62,15 @@ new file mode 100644
 +			return nil
 +		}
 +		receiver.RegisterOperatorPublisher(func(parent *gin.Context, user, kind string, body []byte) (int, []byte) {
-+			if user == "" || (kind != "question" && kind != "answer") {
++			if user == "" || (kind != "question" && kind != "answer" && kind != "comment") {
 +				return 400, []byte("{}")
 +			}
 +			handler := a.questionController.AddQuestion
 +			if kind == "answer" {
 +				handler = a.answerController.AddAnswer
++			}
++			if kind == "comment" {
++				handler = a.commentController.AddComment
 +			}
 +			return metarPublishAs(parent, user, body, handler)
 +		})
@@ -140,3 +143,15 @@ new file mode 100644
 +		t.Fatal("caller session modified")
 +	}
 +}
+diff --git a/internal/controller/comment_controller.go b/internal/controller/comment_controller.go
+--- a/internal/controller/comment_controller.go
++++ b/internal/controller/comment_controller.go
+@@ -110,7 +110,7 @@
+ 	}
+ 	linkUrlLimitUser := canList[3]
+ 	isAdmin := middleware.GetUserIsAdminModerator(ctx)
+-	if !isAdmin || !linkUrlLimitUser {
++	if (!isAdmin || !linkUrlLimitUser) && !ctx.GetBool("metar_operator_publishing") {
+ 		captchaPass := cc.actionService.ActionRecordVerifyCaptcha(ctx, entity.CaptchaActionComment, req.UserID, req.CaptchaID, req.CaptchaCode)
+ 		if !captchaPass {
+ 			errFields := append([]*validator.FormErrorField{}, &validator.FormErrorField{

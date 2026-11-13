@@ -40,15 +40,17 @@ var publishingDatabase = func(ctx context.Context) (*sql.DB, error) { return acc
 var publishKey = regexp.MustCompile("^[a-zA-Z0-9-]{16,64}$")
 
 type publishingItem struct {
-	Key        string   `json:"key"`
-	Username   string   `json:"username"`
-	Kind       string   `json:"kind"`
-	Title      string   `json:"title"`
-	Content    string   `json:"content"`
-	Tags       []string `json:"tags"`
-	QuestionID string   `json:"question_id"`
-	Source     string   `json:"source"`
-	Reason     string   `json:"reason"`
+	Key            string   `json:"key"`
+	Username       string   `json:"username"`
+	Kind           string   `json:"kind"`
+	Title          string   `json:"title"`
+	Content        string   `json:"content"`
+	Tags           []string `json:"tags"`
+	QuestionID     string   `json:"question_id"`
+	Source         string   `json:"source"`
+	Reason         string   `json:"reason"`
+	ObjectID       string   `json:"object_id,omitempty"`
+	ReplyCommentID string   `json:"reply_comment_id,omitempty"`
 }
 
 func validatePublishingItem(p publishingItem) error {
@@ -68,6 +70,10 @@ func validatePublishingItem(p publishingItem) error {
 		if !canonicalCommunityID(p.QuestionID) {
 			return errors.New("invalid_question_id")
 		}
+	} else if p.Kind == "comment" {
+		if !canonicalCommunityID(p.ObjectID) || (p.ReplyCommentID != "" && !canonicalCommunityID(p.ReplyCommentID)) || utf8.RuneCountInString(p.Content) > 400 || p.Source != "" {
+			return errors.New("invalid_comment")
+		}
 	} else {
 		return errors.New("invalid_kind")
 	}
@@ -83,6 +89,10 @@ func publishingPayload(p publishingItem, marker string) []byte {
 	content := p.Content + "\n\n---\n**运营代发 / Posted by community operations** · " + marker
 	if p.Source != "" {
 		content += "\n\n来源 / Source: " + p.Source
+	}
+	if p.Kind == "comment" {
+		raw, _ := json.Marshal(map[string]any{"original_text": content, "object_id": p.ObjectID, "reply_comment_id": p.ReplyCommentID})
+		return raw
 	}
 	payload := map[string]any{"content": content}
 	if p.Kind == "answer" {
@@ -136,15 +146,22 @@ func operatorTarget(ctx context.Context, db *sql.DB, username string, enrolled b
 func (uc *UserCenter) registerPublishing(r *gin.RouterGroup, session func(*gin.Context) (string, error), siteURL func() string) {
 	authorize := func(c *gin.Context) (string, *sql.DB, bool) {
 		c.Header("Cache-Control", "no-store")
-		if !publishingEnabled() || c.Request.URL.RawQuery != "" || switchToken(c) == "" {
+		internalActor, internal := c.Get(publishingInternalActor)
+		if !publishingEnabled() || c.Request.URL.RawQuery != "" || (!internal && switchToken(c) == "") {
 			communityError(c, 403, "forbidden")
 			return "", nil, false
 		}
-		if c.Request.Method != "GET" && (c.GetHeader("X-Metar-Request") != "1" || !communitySameOrigin(c.Request, siteURL())) {
+		if !internal && c.Request.Method != "GET" && (c.GetHeader("X-Metar-Request") != "1" || !communitySameOrigin(c.Request, siteURL())) {
 			communityError(c, 403, "forbidden")
 			return "", nil, false
 		}
-		actor, err := session(c)
+		var actor string
+		var err error
+		if internal {
+			actor = internalActor.(string)
+		} else {
+			actor, err = session(c)
+		}
 		if err != nil {
 			adminSettingsIdentityError(c, err)
 			return "", nil, false
@@ -246,7 +263,7 @@ func (uc *UserCenter) registerPublishing(r *gin.RouterGroup, session func(*gin.C
 		}
 		c.JSON(200, gin.H{"data": gin.H{"username": body.Username}})
 	})
-	r.POST("/metar/publishing/item", func(c *gin.Context) {
+	itemHandler := func(c *gin.Context) {
 		actor, db, ok := authorize(c)
 		if !ok {
 			return
@@ -313,8 +330,8 @@ func (uc *UserCenter) registerPublishing(r *gin.RouterGroup, session func(*gin.C
 			// unique visible marker to recover writes whose HTTP result was lost.
 			if status == "running" || status == "needs_review" {
 				table := "question"
-				if item.Kind == "answer" {
-					table = "answer"
+				if item.Kind == "answer" || item.Kind == "comment" {
+					table = item.Kind
 				}
 				var recovered string
 				e := conn.QueryRowContext(c.Request.Context(), "SELECT id FROM "+table+" WHERE user_id=? AND LOCATE(?,original_text)>0 ORDER BY id LIMIT 1", target, marker).Scan(&recovered)
@@ -348,8 +365,9 @@ func (uc *UserCenter) registerPublishing(r *gin.RouterGroup, session func(*gin.C
 		code, result := publish(c, target, item.Kind, publishingPayload(item, marker))
 		var response struct {
 			Data struct {
-				ID   string `json:"id"`
-				Info struct {
+				ID        string `json:"id"`
+				CommentID string `json:"comment_id"`
+				Info      struct {
 					ID string `json:"id"`
 				} `json:"info"`
 			} `json:"data"`
@@ -357,6 +375,9 @@ func (uc *UserCenter) registerPublishing(r *gin.RouterGroup, session func(*gin.C
 		}
 		_ = json.Unmarshal(result, &response)
 		object = response.Data.ID
+		if item.Kind == "comment" {
+			object = response.Data.CommentID
+		}
 		if object == "" {
 			object = response.Data.Info.ID
 		}
@@ -376,7 +397,9 @@ func (uc *UserCenter) registerPublishing(r *gin.RouterGroup, session func(*gin.C
 			return
 		}
 		c.JSON(200, gin.H{"data": gin.H{"status": status, "object_id": object, "question_id": item.QuestionID, "message": message}})
-	})
+	}
+	r.POST("/metar/publishing/item", itemHandler)
+	uc.registerPublishingPlans(r, authorize, itemHandler)
 }
 
 func publishingJSON(c *gin.Context, value any) bool {

@@ -19,3 +19,18 @@ test('unknown outcomes pause before publishing later rows and navigation stops f
 test('switching login identity stops queued publications',async()=>{
  const f=setup([{status:'published',object_id:'1'}]);let token='admin-a';f.view.client.token=()=>token;f.view.session=token;token='admin-b';await f.view.publish();assert.equal(f.calls.length,0);
 });
+
+test('scheduled JSON validates time zones and earlier typed parents and previews relationships',()=>{
+ const input=[{id:'topic',username:'editor',kind:'question',title:'一个完整的话题标题',content:'需要讨论的实际内容',tags:['news'],reason:'社区运营'},{id:'reply',parent:'topic',username:'helper',kind:'answer',content:'补充具体操作说明',reason:'社区运营',publish_at:'2026-11-14T10:00:00+08:00'},{id:'nested',parent:'reply',username:'editor',kind:'comment',content:'谢谢补充的操作说明',reason:'社区运营'}];
+ const items=importItems(JSON.stringify(input),()=> 'stable-key-123456789');
+ assert.equal(items[2].parent,'reply');assert.match(itemPreview(items[1]),/2026-11-14/);
+ assert.throws(()=>importItems(JSON.stringify([...input].reverse()),()=> 'stable-key-123456789'));
+ input[1].publish_at='2026-11-14T10:00:00';assert.throws(()=>importItems(JSON.stringify(input),()=> 'stable-key-123456789'));
+});
+test('stable batch envelope survives reload and scheduled submission retries the same payload',async()=>{
+ const envelope={batch_id:'forum-launch-demo-20261114',items:[{...item,id:'topic',publish_at:'2026-11-14T09:00:00+08:00'}]};
+ const rows=importItems(JSON.stringify(envelope),()=> 'transient-item-key');
+ const calls=[];let fail=true;const view=new View({token:()=> 'a',request:async(path,options)=>{calls.push([path,JSON.parse(options.body)]);if(fail){fail=false;throw Error('lost response')}return {status:'queued'}}});
+ view.items=rows;view.planKey=envelope.batch_id;view.current=()=>true;view.message=()=>{};view.loadPlans=async()=>{};view.q=()=>({disabled:false});
+ await view.publishPlan();await view.publishPlan();assert.deepEqual(calls[0],calls[1]);assert.equal(calls[0][1].key,envelope.batch_id);assert.equal(calls[0][1].items[0].key,undefined);
+});

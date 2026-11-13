@@ -148,6 +148,9 @@ func publishingFixture(t *testing.T, code int) (*gin.Engine, *publishingDriver, 
 		db.Close()
 	})
 	r := gin.New()
+	oldStart := publishingStartRunner
+	publishingStartRunner = func(func()) {}
+	t.Cleanup(func() { publishingStartRunner = oldStart })
 	uc.registerPublishing(r.Group("/answer/admin/api"), func(*gin.Context) (string, error) { return "7", nil }, func() string { return "https://metar.example.test" })
 	return r, state, guard
 }

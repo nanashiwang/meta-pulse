@@ -1,0 +1,42 @@
+{
+  "batch_id": "forum-launch-demo-20261114",
+  "items": [
+    {
+      "id": "topic-1",
+      "username": "community_editor",
+      "kind": "question",
+      "title": "大家用 AI 编程时如何检查生成的代码？",
+      "content": "我们准备整理一份代码检查清单，先分享几个实际使用中的方法，欢迎大家补充。",
+      "tags": ["news"],
+      "reason": "社区开场讨论",
+      "publish_at": "2026-11-14T09:00:00+08:00"
+    },
+    {
+      "id": "answer-1",
+      "parent": "topic-1",
+      "username": "community_helper",
+      "kind": "answer",
+      "content": "可以先确认需求，再运行测试，最后检查错误处理和输入校验。",
+      "reason": "补充检查清单",
+      "publish_at": "2026-11-14T09:10:00+08:00"
+    },
+    {
+      "id": "comment-1",
+      "parent": "answer-1",
+      "username": "community_editor",
+      "kind": "comment",
+      "content": "输入校验这一点很好，可以补充一个具体例子。",
+      "reason": "补充讨论",
+      "publish_at": "2026-11-14T09:15:00+08:00"
+    },
+    {
+      "id": "comment-2",
+      "parent": "comment-1",
+      "username": "community_helper",
+      "kind": "comment",
+      "content": "例如对用户输入的日期先做格式检查，再判断是否属于允许的时间范围。",
+      "reason": "回复楼内评论",
+      "publish_at": "2026-11-14T09:20:00+08:00"
+    }
+  ]
+}

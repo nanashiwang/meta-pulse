@@ -87,6 +87,8 @@ make build-community  # 产物写入现有博客静态卷的 metar/ 子目录
 
 管理员可从 `/admin/users` 使用原生「添加用户」批量创建社区账号；启用「管理员账号切换」插件后，可从用户列表「切换登录」并返回管理员。操作与恢复见[社区账号管理](docs/ACCOUNT_MANAGEMENT.md)。
 
+管理员「[内容运营](docs/CONTENT_OPERATIONS.md)」支持 JSON 导入多运营账号发帖、定时回答及楼中楼；可使用[示例文件](docs/content-operations-example.json)修改账号、内容和时间，预览确认后服务端执行。
+
 社区新增 [Vibe Coding 集市](docs/VIBE_CODING_MARKETPLACE.md)：项目与想法讨论、GitHub/演示、投稿审核与站内体验入口位于 `/marketplace`，复用社区账号和原生讨论。
 
 ## 快速开始
