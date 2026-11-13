@@ -2,6 +2,8 @@
 'use strict';
 (() => {
   const EN = Object.freeze({
+    "更多": "More",
+    "社区推荐": "Community picks",
     "查看全部": "View all",
     "等你来回答": "Waiting for your answer",
     "精选阅读": "Selected reading",

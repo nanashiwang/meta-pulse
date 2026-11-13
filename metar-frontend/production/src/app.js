@@ -220,7 +220,7 @@
         <div class="discussion-meta">
           ${publicAuthor(author, `<span>${esc(displayName(author))}</span>`, 'discussion-author')}
           ${Number(question.created_at) > 0 ? `<span class="discussion-created">${esc(t('发布于'))} ${esc(time(question.created_at))}</span>` : ''}
-          ${[...tags.filter(tag=>tag.recommend), ...tags.filter(tag=>!tag.recommend).slice(0,3)].map((tag) => link(`/topic/${encodeURIComponent(tag.slug_name || tagName(tag))}`, esc(tagName(tag)), tag.recommend ? 'badge taxonomy-category-badge' : 'badge')).join('')}
+          ${[...tags.filter(tag=>tag.recommend), ...tags.filter(tag=>!tag.recommend)].slice(0,1).map((tag) => link(`/topic/${encodeURIComponent(tag.slug_name || tagName(tag))}`, esc(tagName(tag)), tag.recommend ? 'badge taxonomy-category-badge' : 'badge')).join('')}
           ${hasAcceptedAnswer ? badge(I('check', 'sm') + t("已采纳"), 'green') : ''}
 
         </div>
@@ -392,7 +392,8 @@
     footerResizeObserver?.disconnect();
     const footer = document.querySelector('.prod-footer');
     const update = () => {
-      const height = footer?.isConnected ? Math.ceil(footer.getBoundingClientRect().height) : 0;
+      const flowing = document.documentElement.classList.contains('community-wide');
+      const height = footer?.isConnected && !flowing ? Math.ceil(footer.getBoundingClientRect().height) : 0;
       document.documentElement.style.setProperty('--community-footer-height', height + 'px');
     };
     update();
@@ -586,6 +587,8 @@
 
   function refreshTagPanel() {
     document.querySelectorAll('[data-rail-tags]').forEach(node => { node.innerHTML = followedRailMarkup(); });
+    const followed = document.querySelector('[data-followed-card]');
+    if (followed) followed.hidden = !(currentUser && tagDirectory?.followed?.size);
     const panel = document.querySelector('[data-tag-panel]');
     if (panel && tagPanelOpen) panel.innerHTML = tagPanelMarkup();
   }
@@ -613,15 +616,25 @@
   function discussionRailItems(result, unanswered = false) {
     const rows = (Array.isArray(result?.list) ? result.list : []).filter(item =>
       item && (item.id || item.question_id) && typeof item.title === 'string' &&
-      (!unanswered || Number(item.answer_count) === 0)).slice(0, 5);
+      (!unanswered || Number(item.answer_count) === 0)).slice(0, unanswered ? 3 : 5);
     return rows.length ? '<ul class="rail-post-list">' + rows.map(item =>
       '<li>' + external(questionHref(item.id || item.question_id), esc(item.title)) + '</li>').join('') + '</ul>'
       : '<p class="rail-content-state">' + esc(t(unanswered ? '暂时没有待回答问题' : '暂无精选内容')) + '</p>';
   }
 
+  let railMediaCleanup = null;
   async function mountDiscussionRail() {
+    railMediaCleanup?.();
+    railMediaCleanup = null;
     const root = document.querySelector('[data-discussion-rail]');
     if (!root) return;
+    const disclosure = root.querySelector('[data-rail-disclosure]');
+    if (disclosure && window.matchMedia) {
+      const media = window.matchMedia('(max-width:900px)');
+      const sync = () => { disclosure.open = !media.matches; };
+      sync(); media.addEventListener?.('change',sync);
+      railMediaCleanup = () => media.removeEventListener?.('change',sync);
+    }
     const sequence = navigationSequence, scope = taxonomy.scope(answer);
     await Promise.all(['unanswered', 'featured'].map(async kind => {
       const node = root.querySelector('[data-rail-content="' + kind + '"]');
@@ -629,7 +642,7 @@
       const current = () => root.isConnected && sequence === navigationSequence && scope === taxonomy.scope(answer);
       try {
         const result = await answer.listQuestions(kind === 'unanswered'
-          ? {page:1, pageSize:5, order:'unanswered'}
+          ? {page:1, pageSize:3, order:'unanswered'}
           : {page:1, pageSize:5, order:'score', tag:'feeds'});
         if (current()) node.innerHTML = discussionRailItems(result, kind === 'unanswered');
       } catch (_) {
@@ -653,29 +666,27 @@
     const base = tag ? `/topic/${encodeURIComponent(tag)}` : '/latest';
     const title = tag || t("最新话题");
     const askPath = tag ? taxonomy.askURL(config.answerAskPath, tag) : config.answerAskPath;
-    const tabs = Object.entries(orders).map(([value, label]) => link(`${base}?order=${value}`, `<span${order === value ? ' aria-current="page"' : ''}>${esc(label)}</span>`, `discussion-tab ${order === value ? 'active' : ''}`)).join('');
+    const tab = value => link(`${base}?order=${value}`, `<span${order === value ? ' aria-current="page"' : ''}>${esc(orders[value])}</span>`, `discussion-tab ${order === value ? 'active' : ''}`);
+    const tabs = ['active','newest','unanswered'].map(tab).join('') + `<details class="discussion-more"><summary>${esc(['hot','score'].includes(order) ? orders[order] : t('更多'))}</summary><div>${['hot','score'].map(tab).join('')}${link('/topics?view=tags',t('标签'))}</div></details>`;
     const totalPages = Math.max(1, Math.ceil(total / 20));
     const pager = totalPages > 1 ? `<div class="prod-pager">${page > 1 ? link(`${base}?order=${order}&page=${page - 1}`, t("上一页"), 'btn small') : ''}<span>${t("第 {page} / {total} 页", { page: number(page), total: number(totalPages) })}</span>${page < totalPages ? link(`${base}?order=${order}&page=${page + 1}`, t("下一页"), 'btn small') : ''}</div>` : '';
     return `<section class="community-discussions">
       ${pageTitle(title)}
       <div class="community-layout">
         <div class="community-feed">
-          <div class="discussion-intro">
-            <form class="discussion-search" data-form="search" action="/search" role="search">${I('search')}<input type="search" name="q" aria-label="${t('搜索社区')}" placeholder="${t('搜索真实问题与回答…')}" maxlength="60" required autocomplete="off"><button type="submit" class="icon-btn" aria-label="${t('搜索')}">${I('arrow')}</button><kbd>⌘ K</kbd></form>
-            <p class="discussion-guidelines"><span>${t('友善交流，分享实践，一起建设有价值的社区。')}</span>${link('/guidelines', t('《社区准则》'))}</p>
-          </div>
           <div class="discussion-toolbar">${filter}<nav class="discussion-tabs" aria-label="${t('话题筛选')}">${tabs}</nav>${external(askPath, I('plus', 'sm') + t('新建话题'), 'btn primary')}</div>
           ${list.length ? discussionList(list) : empty(order === 'unanswered' ? t("暂时没有待回答问题") : t("当前筛选没有内容"), t("可以调整筛选，或发起一个新问题。"), external(askPath, t("发起提问"), 'btn primary'), 'chat')}${pager}
         </div>
-        <aside class="community-rail" data-discussion-rail aria-label="${t('社区侧栏')}">
+        <aside class="community-rail" data-discussion-rail aria-label="${t('社区侧栏')}"><details data-rail-disclosure open><summary class="rail-mobile-summary">${t('社区推荐')}</summary><div class="rail-disclosure-content">
           <section class="rail-card"><div class="rail-head"><h2>${t('等你来回答')}</h2></div><div data-rail-content="unanswered" aria-live="polite"><p class="rail-content-state">${t('正在加载…')}</p></div></section>
-          <section class="rail-card"><div class="rail-head"><h2>${t('精选阅读')}</h2></div><div data-rail-content="featured" aria-live="polite"><p class="rail-content-state">${t('正在加载…')}</p></div></section>
-          <section class="rail-card">
+          <details class="rail-card rail-curated"><summary>${t('精选阅读')}</summary><div data-rail-content="featured" aria-live="polite"><p class="rail-content-state">${t('正在加载…')}</p></div></details>
+          <section class="rail-card" data-followed-card${currentUser && tagDirectory?.followed?.size ? '' : ' hidden'}>
             <div class="rail-head"><h2>${t('已关注的标签')}</h2><button type="button" class="rail-edit" data-action="toggle-tags" aria-expanded="${tagPanelOpen}" aria-controls="tag-panel">${t(tagPanelOpen ? '完成' : '编辑')}</button></div>
             <div data-rail-tags>${followedRailMarkup()}</div>
           </section>
+          <p class="rail-guidelines">${link('/guidelines', t('《社区准则》'))} · ${link('/topics?view=tags',t('标签'))}</p>
           <div class="tag-panel" id="tag-panel" data-tag-panel${tagPanelOpen ? '' : ' hidden'}>${tagPanelMarkup()}</div>
-        </aside>
+        </div></details></aside>
       </div>
     </section>${footer()}`;
   }
