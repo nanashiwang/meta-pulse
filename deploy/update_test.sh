@@ -20,6 +20,13 @@ cat >"$tmp/repo/deploy/build-blog.sh" <<'BUILD'
 printf 'build-blog\n' >>"$MOCK_LOG"
 BUILD
 chmod +x "$tmp/repo/deploy/build-community.sh" "$tmp/repo/deploy/build-blog.sh"
+cat >"$tmp/repo/deploy/build-cache.py" <<'CACHE'
+import os
+import sys
+with open(os.environ['MOCK_LOG'], 'a') as log:
+    log.write('cache-maintenance ' + ' '.join(sys.argv[1:]) + '\n')
+sys.exit(int(os.environ.get('MOCK_CACHE_FAIL', '0')))
+CACHE
 cp "$ROOT/docker-compose.yml" "$tmp/repo/"
 "$REAL_GIT" -C "$tmp/repo" init -q
 "$REAL_GIT" -C "$tmp/repo" add deploy docker-compose.yml
@@ -157,10 +164,18 @@ grep -q '^fetch$' "$MOCK_LOG"
 cmp "$tmp/original.env" "$tmp/repo/.env"
 # The lock precedes the first Compose config rendering (not just Git fetch).
 awk '/^lock$/{locked=1} / config$/{if(!locked) exit 1}' "$MOCK_LOG"
+# Disk protection must stop before backup, fetch or build.
+: >"$MOCK_LOG"
+if MOCK_CACHE_FAIL=1 bash "$tmp/repo/deploy/update.sh" >"$tmp/output" 2>&1; then
+  echo 'disk guard failure ignored' >&2; exit 1
+fi
+grep -q '^cache-maintenance ' "$MOCK_LOG"
+! grep -Eq '^fetch$|mysqldump| compose .* build ' "$MOCK_LOG"
 # A successful same-commit check must have no backup or rollout side effects.
 : >"$MOCK_LOG"
 MOCK_FETCH_SUCCEED=1 bash "$tmp/repo/deploy/update.sh" >"$tmp/output" 2>&1 || { cat "$tmp/output"; exit 1; }
 grep -q '当前代码已是最新版本' "$tmp/output"
+grep -q '^cache-maintenance ' "$MOCK_LOG"
 [[ ! -d "$tmp/repo/.data" ]]
 ! grep -Eq 'mysqldump| build | migrate| stop | up -d|^merge$' "$MOCK_LOG"
 # A stale/ahead/diverged checkout fails before backup even with --force.

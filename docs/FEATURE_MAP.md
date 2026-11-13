@@ -133,3 +133,5 @@ new-api 接收端与实际到账、生产普通账号流程、邮件与跨实例
 共享固定页脚背景贴合视口或手机导航边缘；个人侧栏保持边界。正文按 ResizeObserver 测得的页脚高度预留底部空间，防止换行后挡住末项；验证见 `footer.test.js`。
 
 返回导航：共用 return-navigation.js 使用逐历史位置的 v2 快照，重复帖子访问可逐步退回，后台子页跳过同区域；原生页面与壳层一致，浏览器前进后退和刷新恢复原快照，旧来源字典自动清除。验证：`return-navigation.test.js`。
+
+构建缓存与磁盘保护（2026-11-13）：`metar update` 在同提交退出前维护本机默认 builder 的未使用缓存（8 GB 目标），备份/构建前要求仓库与 Docker/containerd 文件系统至少 20 GiB 空闲，更新退出再回收；复用更新锁和生产现有五分钟检查。无镜像、卷、binlog、上传或备份删除。入口 [update.sh](../deploy/update.sh)、[维护助手](../deploy/build-cache.py)，验收 [容量与失败测试](../deploy/test_build_cache.py)、[更新链路](../deploy/update_test.sh)。

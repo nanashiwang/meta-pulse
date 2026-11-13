@@ -319,3 +319,13 @@ export PATH="$HOME/.local/bin:$PATH"
 ## 可选 DNS 出口探测
 
 设置 `DNS_PROBE_ENABLED=true` 和本机公网 `DNS_PROBE_BIND_IP` 后，安装/更新脚本独立构建与重建 dnsprobe 服务；失败告警不阻断论坛或 Pulse。必须完成子域 NS 委派、UDP/TCP 53 和浏览器实际回读，详见 [DNS 探测](../docs/DNS_PROBE.md)。仅发布代码不会自动启用服务。
+
+### 构建缓存与磁盘保护
+
+`metar update` 在更新锁内、检查远程提交前维护本机 default Docker builder 缓存；即使没有新版本，也会维护。构建缓存与 `.data/deploy-backups` 完全独立：前者是可再生成的编译中间层，后者是恢复用数据，仍按原备份保留规则处理。
+
+维护使用 `docker buildx prune --all --force --max-used-space 8GB --min-free-space 21474836480`（旧版支持 `--keep-storage 8GB` 时兼容）。仅回收未使用构建缓存；不删除镜像、容器、卷、数据库 binlog、用户上传或备份。它会影响同一默认 builder 下其他项目的缓存，可能增加下次编译时间。需要本机 default context、Unix socket 和支持容量参数的 Buildx；远程/custom builder 拒绝执行，不能拿本地磁盘数据误判远端。
+
+仓库、Docker 数据目录以及存在的 `/var/lib/containerd` 所在文件系统必须各有至少 **20 GiB 可用空间**；不足或清理失败则停止更新。备份后、构建前复查，实际更新退出时再次维护，维护失败返回非零并提示。8 GB 是回收目标而非硬配额，正在使用的缓存不能回收；20 GiB 也是前置阈值，不能保证任意单次构建峰值。失败/受保护备份、镜像、日志或上传增长仍需管理员诊断。
+
+生产现有五分钟自动更新检查会顺带执行维护，不新增 cron，不重启 Docker。其他部署需正常调用 `metar update`；首次从旧脚本升级后的下一次调用才取得完整保护。首次安装或直接手动 `docker build` 不经过此入口，需自行检查空间。只读检查：`python3 deploy/build-cache.py --check-only "$PWD"`；手动维护应先取得 `.git/meta-pulse-update.lock`，避免与更新并发。

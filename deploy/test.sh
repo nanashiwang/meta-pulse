@@ -95,6 +95,7 @@ python3 "$ROOT/metar-frontend/production/build.py" --output "$community_dist" >/
 
 python3 "$ROOT/deploy/test_infrastructure.py"
 python3 "$ROOT/deploy/test_backup_retention.py"
+python3 "$ROOT/deploy/test_build_cache.py"
 bash "$ROOT/deploy/update_test.sh"
 python3 "$ROOT/deploy/test_metar.py"
 python3 "$ROOT/deploy/test_blog_build.py"

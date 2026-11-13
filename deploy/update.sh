@@ -149,6 +149,9 @@ if (( SKIP_WORKER == 0 )); then
 fi
 validate_intel_environment
 
+# Also maintain cache on same-commit polling; no backup/build is needed then.
+python3 "$SCRIPT_DIR/build-cache.py" "$REPO_ROOT"
+
 CURRENT_BRANCH="$(git -C "$REPO_ROOT" symbolic-ref --quiet --short HEAD || true)"
 [[ -n "$CURRENT_BRANCH" ]] || die "当前仓库处于 detached HEAD，请先 checkout 一个本地分支后再更新"
 [[ -n "$REF" ]] || REF="$CURRENT_BRANCH"
@@ -196,6 +199,10 @@ on_exit() {
   trap - EXIT
   if (( rc != 0 )); then
     python3 "$SCRIPT_DIR/backup-retention.py" failed "$REPO_ROOT" --name "$BACKUP_NAME" || true
+  fi
+  if ! python3 "$SCRIPT_DIR/build-cache.py" "$REPO_ROOT"; then
+    warn "构建缓存维护未完成，请检查磁盘；原更新状态保留"
+    (( rc != 0 )) || rc=1
   fi
   exit "$rc"
 }
@@ -281,6 +288,7 @@ if [[ -n "$RELEASE_TAG" ]]; then
 fi
 if (( GATEWAY_ENABLED == 1 && (BLOG_CHANGED == 1 || COMMUNITY_CHANGED == 1) )); then
   if (( NO_BUILD == 0 )); then
+    python3 "$SCRIPT_DIR/build-cache.py" --check-only "$REPO_ROOT"
     if (( BLOG_CHANGED == 1 )); then
       log "构建更新后的社区博客静态文件"
       "$SCRIPT_DIR/build-blog.sh"
@@ -295,6 +303,7 @@ if (( GATEWAY_ENABLED == 1 && (BLOG_CHANGED == 1 || COMMUNITY_CHANGED == 1) )); 
 fi
 
 if (( NO_BUILD == 0 )); then
+  python3 "$SCRIPT_DIR/build-cache.py" --check-only "$REPO_ROOT"
   build_services=(pulse-api)
   (( SKIP_WORKER == 0 )) && build_services+=(pulse-worker)
   (( SKIP_FORUM == 0 )) && build_services+=(forum)
@@ -352,6 +361,7 @@ fi
 intel_rollout() {
   if (( NO_BUILD == 0 )); then
     log "构建模型榜服务镜像：intel-api intel-worker"
+    python3 "$SCRIPT_DIR/build-cache.py" --check-only "$REPO_ROOT" || return 1
     compose build intel-api intel-worker || return 1
   fi
   compose up -d intel-mysql || return 1
