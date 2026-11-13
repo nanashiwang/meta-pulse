@@ -52,7 +52,8 @@ export function installNativeShell(language, host = window) {
   back.className = 'page-back metar-back';
   back.onclick = () => {
     const fallback = backDestination(host.location.pathname);
-    const destination = fallback && host.__metarReturnNavigation?.destination(host.location.pathname, fallback) || fallback;
+    if (fallback && host.__metarReturnNavigation?.back) { host.__metarReturnNavigation.back(fallback); return; }
+    const destination = fallback;
     if (destination) host.location.href = destination;
   };
   const toggle = doc.createElement('button');

@@ -279,7 +279,8 @@
   function goBack() {
     const path = route().path;
     const fallback = /^\/(?:admin(?:\/|$)|me\/|users\/settings(?:\/|$)|settings\/binding(?:\/|$)|badges(?:\/|$))/.test(path) ? '/me' : '/latest';
-    const destination = window.__metarReturnNavigation?.destination(path, fallback) || fallback;
+    if (window.__metarReturnNavigation?.back) { window.__metarReturnNavigation.back(fallback); return; }
+    const destination = fallback;
     if (!window.MetarRouter.owns(new URL(destination, location.origin).pathname)) { location.href = destination; return; }
     router.go(destination);
     navigate();
