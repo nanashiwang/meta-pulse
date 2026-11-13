@@ -10,7 +10,7 @@ Status: implemented
 
 新增 00021 迁移一次性记录已有用户的统计偏移与原始快照。校正后累计起点为历史已消耗券，移除起点为零，之后汇总减偏移正常增加；余额、券批次、奖励不变。基线采用 INSERT IGNORE，重试/回滚不覆盖审计记录。现行累计不是余额恒等式的组成项。
 
-任务进度接口单独返回 checkin_delivered，仅检查今日 checkin 类别的交付确认。前端不再以全部任务累计相等推断签到完成，refreshPulse 实际更新成功才返回 true，遇忙继续检查；旧服务缺字段时每三轮刷新兼容。
+任务进度接口单独返回 checkin_delivered，仅检查今日 checkin 类别的交付确认。前端不再以全部任务累计相等推断签到完成，refreshPulse 实际更新成功才返回 true，遇忙继续检查；旧服务缺字段时每三轮刷新兼容。统一签到入口与后续轮询恢复由[签到刷新](2026-11-13-checkin-ticket-refresh.md)维护。
 
 ## Alternatives considered
 

@@ -871,13 +871,14 @@
     const bind = link('/settings/binding', t('去绑定元衡 API 账号 ') + I('arrow', 'sm'), 'btn primary');
     return `${coreReady ? window.MetarPulseCore.markup({ t }) : `<section class="card card-pad"><h1>${esc(t('可用脉冲券：{count}', { count: number(0) }))}</h1><div class="actions"><button type="button" class="btn primary" disabled>${t('开启一次脉冲 · 1 券')}</button><button type="button" class="btn primary" disabled>${t('五连抽 · 5 券')}</button></div></section>`}
       <div data-pulse-details><section class="card card-pad mt24 prod-pulse-bind" data-pulse-bind role="status"><div class="between wrap"><h2>${I('link')} ${t('尚未绑定元衡 API 账号')}</h2>${badge(t('未绑定'))}</div><p class="muted mt8">${t('抽奖券、额度奖励和抽奖记录都归属你的元衡 API 账号。完成一次绑定后，每日签到和社区互动即可获得抽奖券，额度奖励直接到账 API 账号。社区账号仍可独立使用。')}</p><div class="actions mt16">${bind}${link('/latest', t('继续浏览社区'), 'btn')}</div></section></div>
-      <section class="card card-pad mt24"><h2>${t('获取抽奖券')}</h2><ul class="mini-list"><li>${t('帖子每收到 10 次评论 +1 券，每天最多 2 券。')}</li><li>${t('给别人点赞每 40 次或评论每 20 次 +1 券，分别累计，合计每天最多 3 券。')}</li><li>${t('每日签到 +1 券；社区任务每天最多 6 券。')}</li></ul><p class="prod-page-note">${t('以上赠券需先绑定元衡 API 账号；绑定前的互动不补发。')}</p></section>
+      ${communityTasksMarkup(false)}
       <dialog id="pulse-benefits" class="prod-pulse-dialog prod-pulse-benefits-dialog" aria-labelledby="pulse-benefits-title">${dialogHeader('pulse-benefits', '我的权益')}<div data-pulse-benefits-body><p>${t('尚未绑定元衡 API 账号，暂无抽奖券和权益。')}</p><div class="actions mt16">${bind}</div></div></dialog>${footer()}`;
   }
 
-  function communityTasksMarkup() {
-    return `<section class="card card-pad mt24" data-community-tasks><div class="between wrap"><h2>${t('获取抽奖券')}</h2><button class="btn" data-task-checkin>${t('每日签到 · +1 券')}</button></div>
+  function communityTasksMarkup(bound = true) {
+    return `<section class="card card-pad mt24" data-community-tasks><div class="between wrap"><h2>${t('获取抽奖券')}</h2><button class="btn" data-task-checkin>${t(bound ? '每日签到 · +1 券' : '每日签到 · 领经验')}</button></div>
       <ul class="mini-list"><li>${t('帖子每收到 10 次评论 +1 券，每天最多 2 券。')}</li><li>${t('给别人点赞每 40 次或评论每 20 次 +1 券，分别累计，合计每天最多 3 券。')}</li><li>${t('每日签到 +1 券；社区任务每天最多 6 券。')}</li></ul>
+      ${bound ? '' : `<p class="prod-page-note">${t('未绑定账号签到可领经验；绑定元衡 API 后签到另得 1 张抽奖券，绑定前不补发。')}</p>`}
       <p class="muted mt12">${t('按北京时间每日重置，仅统计绑定后及功能上线后的有效互动。评论包含回答和评论；自评自赞不计，撤赞重赞不重复计数。')}</p>
       <p class="muted">${t('互动达标后自动发券，通常需等待片刻。Meta API 消费不再获得抽奖券。')}</p>
       <p role="status" data-task-progress>${t('正在读取今日进度…')}</p><div class="actions"><button class="btn" data-task-refresh>${t('刷新任务进度')}</button><button class="btn" data-action="pulse-refresh">${t('刷新权益')}</button>${link('/latest',t('参与讨论'),'btn')}</div></section>`;
@@ -886,54 +887,85 @@
     const root = document.querySelector('[data-community-tasks]');
     if (!root || root.dataset.mounted) return;
     root.dataset.mounted = '1';
+    const bound = !pulseCoreState?.unbound;
     const user = currentUser?.id, sequence = navigationSequence, identity = identitySequence;
     const current = () => root.isConnected && user === currentUser?.id && identity === identitySequence && sequence === navigationSequence;
     const status = root.querySelector('[data-task-progress]'), checkin = root.querySelector('[data-task-checkin]'), refresh = root.querySelector('[data-task-refresh]');
-    let busy = false, signingIn = false, signedIn = false;
-    const load = async () => {
-      if (busy || !current()) return;
-      busy = true; refresh.disabled = true;
+    let busy = false, signing = false, confirmed = false, awaitingCheckin = false;
+    let syncing = false, attempts = 0, timer, lastDelivered = null;
+    const schedule = () => {
+      clearTimeout(timer);
+      if (!current() || !syncing) return;
+      if (attempts >= 12) {
+        status.textContent = t(bound ? '赠券仍在同步，稍后点击“刷新任务进度”即可继续查询，无需刷新浏览器。' : '签到状态暂未确认，请稍后刷新任务进度或重试签到。');
+        return;
+      }
+      timer = setTimeout(() => { attempts++; void load(); }, 5000);
+    };
+    const load = async ({refreshBenefits = false} = {}) => {
+      if (busy || signing || !current()) return;
+      clearTimeout(timer);
+      busy = true; refresh.disabled = true; checkin.disabled = true;
       try {
+        if (!bound) {
+          const summary = await answer.request('/metar/experience/summary');
+          if (!current()) return;
+          if (!Number.isSafeInteger(summary.checkin_amount) || summary.checkin_amount < 0) throw new Error('invalid check-in status');
+          confirmed ||= summary.checkin_amount === 0;
+          syncing = awaitingCheckin && !confirmed;
+          if (confirmed) awaitingCheckin = false;
+          checkin.textContent = t(confirmed ? '今日已签到' : '每日签到 · 领经验');
+          status.textContent = t(confirmed ? '今日已签到' : '未绑定账号签到可领经验；绑定元衡 API 后签到另得 1 张抽奖券，绑定前不补发。');
+          return;
+        }
         const progress = await pulse.request('tasks');
         if (!current()) return;
-        if (!['likes','comments','received','earned','delivered'].every(k=>Number.isSafeInteger(progress[k]) && progress[k]>=0) || progress.earned>6 || progress.delivered>progress.earned) throw new Error('invalid task progress');
-        status.textContent = t('今日点赞 {likes} 次 · 评论 {comments} 次 · 收到评论 {received} 次；已获得 {earned}/6 券，已入账 {delivered} 券。',progress);
-        checkin.disabled = signingIn || signedIn || progress.checked_in === true;
-        checkin.textContent = t(signedIn || progress.checked_in ? '今日已签到' : '每日签到 · +1 券');
-        return progress;
+        if (!['likes','comments','received','earned','delivered'].every(k=>Number.isSafeInteger(progress[k]) && progress[k]>=0) || progress.earned>6 || progress.delivered>progress.earned || typeof progress.checked_in !== 'boolean') throw new Error('invalid task progress');
+        confirmed ||= progress.checked_in;
+        checkin.disabled = signing || confirmed;
+        checkin.textContent = t(confirmed ? '今日已签到' : '每日签到 · +1 券');
+        if (lastDelivered === null) lastDelivered = progress.delivered;
+        const deliveryChanged = lastDelivered !== progress.delivered;
+        const wasSyncing = syncing;
+        syncing = (awaitingCheckin && progress.checkin_delivered !== true) || progress.delivered < progress.earned;
+        status.textContent = syncing ? t('签到与赠券正在同步，到账后将自动更新抽奖券。') : t('今日点赞 {likes} 次 · 评论 {comments} 次 · 收到评论 {received} 次；已获得 {earned}/6 券，已入账 {delivered} 券。',progress);
+        // Refresh the authoritative selection as well as the count: a newly
+        // delivered ticket may enable single or five draws. Never invent +1.
+        if (deliveryChanged || (awaitingCheckin && progress.checkin_delivered === undefined && attempts % 3 === 2) || (!syncing && (awaitingCheckin || wasSyncing || refreshBenefits))) {
+          const refreshed = await refreshPulse();
+          if (refreshed) lastDelivered = progress.delivered;
+          else syncing = true;
+          if (!current()) return;
+          if (!syncing) awaitingCheckin = false;
+        }
       } catch (error) {
         if (current()) status.textContent=t('任务进度暂不可用，请稍后刷新。已确认的券不会重复发放。');
-      } finally { busy=false; if(current())refresh.disabled=false; }
+      } finally {
+        busy=false;
+        if(current()) { refresh.disabled=false; checkin.disabled=signing || confirmed; schedule(); }
+      }
     };
-    refresh.onclick=load;
+    refresh.onclick=() => { attempts=0; return load({refreshBenefits:true}); };
     checkin.onclick=async()=>{
-      if(checkin.disabled || signingIn || !current())return;
-      checkin.disabled=true; signingIn=true;
+      if(checkin.disabled || busy || signing || !current())return;
+      signing=true; checkin.disabled=true;
       try {
         await answer.request('/metar/experience/checkin',{method:'POST',headers:{'Content-Type':'application/json','X-Metar-Request':'1'},body:'{}'});
         if (!current()) return;
-        signedIn = true;
-        checkin.textContent = t('今日已签到');
-        status.textContent = t('签到成功，正在自动同步抽奖券和权益…');
-        await refreshPulse();
-        // Ticket delivery runs asynchronously (normally every 15 seconds).
-        // Poll only reads, with a bounded lifetime and the captured user/page guard.
-        for (let attempt = 0; attempt < 20 && current(); attempt++) {
-          const progress = await load();
-          if (!current()) return;
-          if (progress?.checkin_delivered === true) {
-            if (await refreshPulse()) return;
-          } else if (attempt % 3 === 2) {
-            // Older servers may not expose the dedicated receipt yet. Keep
-            // refreshing without mistaking earlier task rewards for this check-in.
-            await refreshPulse();
-          }
-          status.textContent = t('签到成功，正在自动同步抽奖券和权益…');
-          await new Promise(resolve => setTimeout(resolve, 2000));
+        confirmed=true;
+        checkin.textContent=t('今日已签到');
+        status.textContent=t('签到与赠券正在同步，到账后将自动更新抽奖券。');
+      }catch(_){
+        if(current())status.textContent=t('暂时无法确认签到，请重试；同一天不会重复签到或发券。');
+      }finally{
+        signing=false;
+        if(current()) {
+          checkin.disabled=confirmed;
+          // Even a lost response may have committed. Recover with reads only.
+          awaitingCheckin=true; syncing=true; attempts=0;
+          await load();
         }
-        if (current()) status.textContent = t('签到已成功，赠券仍在同步。可稍后刷新权益，无需重复签到。');
-      }catch(_){if(current()){checkin.disabled=signedIn;status.textContent=t(signedIn ? '签到已成功，赠券仍在同步。可稍后刷新权益，无需重复签到。' : '暂时无法确认签到，请重试；同一天不会重复签到或发券。');}}
-      finally { signingIn=false; }
+      }
     };
     await load();
   }
@@ -1162,7 +1194,7 @@
 
   async function refreshPulse() {
     if (pulseBusy || pulseRefreshing || route().path !== '/pulse') return false;
-    if (!pulseView) { await navigate(); return; }
+    if (!pulseView) { await navigate(); return true; }
     const presentation = pulseView;
     const sequence = navigationSequence;
     pulseRefreshing = true;
