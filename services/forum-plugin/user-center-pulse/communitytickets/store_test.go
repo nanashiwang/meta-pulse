@@ -300,3 +300,51 @@ func TestMySQLCheckinDeliveryProgress(t *testing.T) {
 		t.Fatalf("delivered check-in: %+v %v", p, err)
 	}
 }
+
+func TestMySQLCheckinBeforeBindingIsSignedInWithoutBackfill(t *testing.T) {
+	s, now := fixture(t)
+	ctx := context.Background()
+	must(t, s.DB, "UPDATE user_external_login SET created_at=? WHERE user_id=2", *now)
+	must(t, s.DB, "INSERT INTO metar_exp_event VALUES(1,2,'checkin',?)", now.Add(-75*time.Second).Unix())
+	for _, collected := range []bool{false, true} {
+		if collected {
+			collect(t, s)
+		}
+		p, err := s.Progress(ctx, "2")
+		if err != nil || !p.CheckedIn || p.CheckinIneligibleReason != "before_binding" || p.Earned != 0 || p.Delivered != 0 || p.CheckinDelivered {
+			t.Fatalf("before-binding check-in: %+v %v", p, err)
+		}
+	}
+	*now = now.Add(24 * time.Hour)
+	p, err := s.Progress(ctx, "2")
+	if err != nil || p.CheckedIn || p.CheckinIneligibleReason != "" {
+		t.Fatalf("new day: %+v %v", p, err)
+	}
+	must(t, s.DB, "INSERT INTO metar_exp_event VALUES(2,2,'checkin',?)", now.Unix())
+	p, err = s.Progress(ctx, "2")
+	if err != nil || !p.CheckedIn || p.CheckinIneligibleReason != "" || p.Earned != 0 {
+		t.Fatalf("not yet collected: %+v %v", p, err)
+	}
+	collect(t, s)
+	p, err = s.Progress(ctx, "2")
+	if err != nil || !p.CheckedIn || p.CheckinIneligibleReason != "" || p.Earned != 1 {
+		t.Fatalf("next day eligibility: %+v %v", p, err)
+	}
+}
+
+func TestMySQLCheckinAtBindingBoundaryAndBeforeFeatureStart(t *testing.T) {
+	s, now := fixture(t)
+	ctx := context.Background()
+	must(t, s.DB, "UPDATE user_external_login SET created_at=? WHERE user_id=2", *now)
+	must(t, s.DB, "INSERT INTO metar_exp_event VALUES(1,2,'checkin',?)", now.Unix())
+	p, err := s.Progress(ctx, "2")
+	if err != nil || p.CheckinIneligibleReason != "before_binding" {
+		t.Fatalf("same-second boundary: %+v %v", p, err)
+	}
+	must(t, s.DB, "UPDATE user_external_login SET created_at=? WHERE user_id=2", now.Add(-time.Hour))
+	must(t, s.DB, "UPDATE metar_ticket_config SET started_at=?", now.Add(time.Second).Unix())
+	p, err = s.Progress(ctx, "2")
+	if err != nil || !p.CheckedIn || p.CheckinIneligibleReason != "before_start" {
+		t.Fatalf("feature boundary: %+v %v", p, err)
+	}
+}

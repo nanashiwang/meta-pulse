@@ -79,14 +79,15 @@ type Receipt struct {
 	Ordinal    int    `json:"ordinal"`
 }
 type Progress struct {
-	Day              string `json:"day"`
-	Likes            int    `json:"likes"`
-	Comments         int    `json:"comments"`
-	Received         int    `json:"received"`
-	CheckedIn        bool   `json:"checked_in"`
-	Earned           int    `json:"earned"`
-	Delivered        int    `json:"delivered"`
-	CheckinDelivered bool   `json:"checkin_delivered"`
+	Day                     string `json:"day"`
+	Likes                   int    `json:"likes"`
+	Comments                int    `json:"comments"`
+	Received                int    `json:"received"`
+	CheckedIn               bool   `json:"checked_in"`
+	Earned                  int    `json:"earned"`
+	Delivered               int    `json:"delivered"`
+	CheckinDelivered        bool   `json:"checkin_delivered"`
+	CheckinIneligibleReason string `json:"checkin_ineligible_reason,omitempty"`
 }
 
 func (s *Store) Pending(ctx context.Context) ([]Receipt, error) {
@@ -110,7 +111,8 @@ func (s *Store) Ack(ctx context.Context, id uint64) error {
 	return err
 }
 func (s *Store) Progress(ctx context.Context, user string) (Progress, error) {
-	p := Progress{Day: Day(s.Now())}
+	now := s.Now()
+	p := Progress{Day: Day(now)}
 	counts, err := countSources(ctx, s.DB, user, p.Day)
 	if err != nil {
 		return p, err
@@ -119,6 +121,30 @@ func (s *Store) Progress(ctx context.Context, user string) (Progress, error) {
 	p.Comments = counts["comment"]
 	p.Received = counts["received"]
 	p.CheckedIn = counts["checkin"] > 0
+	// A completed EXP check-in exists even when it cannot earn a ticket. Read
+	// the original event, never infer sign-in state from eligible ticket sources.
+	dayStart, err := time.ParseInLocation("2006-01-02", p.Day, zone)
+	if err != nil {
+		return p, err
+	}
+	var occurred, bound, started int64
+	err = s.DB.QueryRowContext(ctx, `SELECT e.occurred_at,UNIX_TIMESTAMP(b.created_at),c.started_at
+FROM metar_exp_event e JOIN user_external_login b ON b.user_id=e.user_id AND b.provider='pulse_user_center'
+JOIN metar_ticket_config c ON c.id=1
+WHERE e.user_id=? AND e.kind='checkin' AND e.occurred_at>=? AND e.occurred_at<? AND e.occurred_at<=?
+ORDER BY e.id DESC LIMIT 1`, user, dayStart.Unix(), dayStart.AddDate(0, 0, 1).Unix(), now.Unix()).Scan(&occurred, &bound, &started)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return p, err
+	}
+	if err == nil {
+		p.CheckedIn = true
+		switch {
+		case occurred <= bound:
+			p.CheckinIneligibleReason = "before_binding"
+		case occurred < started:
+			p.CheckinIneligibleReason = "before_start"
+		}
+	}
 	err = s.DB.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(delivered),0),COALESCE(MAX(category='checkin' AND delivered=1),0) FROM metar_ticket_outbox WHERE user_id=? AND earned_day=?`, user, p.Day).Scan(&p.Earned, &p.Delivered, &p.CheckinDelivered)
 	return p, err
 }

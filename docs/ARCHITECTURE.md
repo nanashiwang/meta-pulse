@@ -1269,7 +1269,7 @@ Answer 库中的 `metar_exp_ledger` 是 EXP 事实源、`metar_exp_account` 是�
 
 幂等身份：签到 `user+Asia/Shanghai日期`，问题/回答/采纳 `kind+object`，点赞 `object+actor`，精选 `object`，脉冲经验 `grant_id`；管理员请求 `actor+request_key`，同 key 不同 payload 冲突。撤销墓碑禁止迟到成功响应恢复奖励。来源记录在首次采集时冻结规则，后续版本变更不能增加该来源奖励。
 
-经验路由使用 Answer 官方认证组，从服务器会话读取本人身份，禁止 query token、客户端指定领取身份或金额；写请求校验同源。成长管理额外实时读取本地角色和账号状态。公开投影仅含等级与装扮，不暴露本人账本。经验池独立初始化和降级，Pulse 或 EXP 故障不得阻断论坛本地功能。签到 UI 统一到 `/pulse`，未绑定成员直接使用 Answer 经验接口，不调用 Pulse/BFF；绑定成员签到后只读轮询 tasks，确认交付后刷新权威抽奖资格，不在浏览器预加券数。
+经验路由使用 Answer 官方认证组，从服务器会话读取本人身份，禁止 query token、客户端指定领取身份或金额；写请求校验同源。成长管理额外实时读取本地角色和账号状态。公开投影仅含等级与装扮，不暴露本人账本。经验池独立初始化和降级，Pulse 或 EXP 故障不得阻断论坛本地功能。签到 UI 统一到 `/pulse`，未绑定成员直接使用 Answer 经验接口，不调用 Pulse/BFF；绑定成员签到后只读轮询 tasks，确认交付后刷新权威抽奖资格，不在浏览器预加券数。tasks.checked_in 来自当前自然日的 EXP 签到事实；checkin_ineligible_reason 只读说明 before_binding / before_start，签到完成与赠券资格分开，既不补发历史券也不重写事件。
 
 ### Pulse → Answer 经验奖励交付
 

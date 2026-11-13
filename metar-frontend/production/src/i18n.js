@@ -53,6 +53,8 @@
 "参与讨论":"Join discussions",
 "今日点赞 {likes} 次 · 评论 {comments} 次 · 收到评论 {received} 次；已获得 {earned}/6 券，已入账 {delivered} 券。":"Today: {likes} upvotes \u00b7 {comments} replies sent \u00b7 {received} replies received; {earned}/6 tickets earned, {delivered} credited.",
 "任务进度暂不可用，请稍后刷新。已确认的券不会重复发放。":"Task progress is unavailable. Please refresh later. Confirmed tickets will not be issued twice.",
+"今日已签到；签到发生在账号绑定前，今天不补发签到券。明天签到可获券。":"You already checked in before linking your account. No ticket is backfilled today; check in tomorrow to earn one.",
+"今日已签到；签到发生在赠券功能启用前，今天不补发签到券。明天签到可获券。":"You already checked in before ticket rewards started. No ticket is backfilled today; check in tomorrow to earn one.",
 "签到状态暂未确认，请稍后刷新任务进度或重试签到。":"Check-in is not confirmed yet. Refresh task progress or retry check-in later.",
 "每日签到 · 领经验":"Daily check-in · earn EXP",
 "未绑定账号签到可领经验；绑定元衡 API 后签到另得 1 张抽奖券，绑定前不补发。":"Check in to earn EXP. Link your Meta API account to also earn 1 ticket; earlier check-ins are not backfilled.",

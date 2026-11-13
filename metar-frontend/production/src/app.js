@@ -921,17 +921,20 @@
         const progress = await pulse.request('tasks');
         if (!current()) return;
         if (!['likes','comments','received','earned','delivered'].every(k=>Number.isSafeInteger(progress[k]) && progress[k]>=0) || progress.earned>6 || progress.delivered>progress.earned || typeof progress.checked_in !== 'boolean') throw new Error('invalid task progress');
+        const ineligible = progress.checkin_ineligible_reason || '';
+        if (!['', 'before_binding', 'before_start'].includes(ineligible) || (ineligible && !progress.checked_in)) throw new Error('invalid check-in eligibility');
         confirmed ||= progress.checked_in;
+        if (ineligible) awaitingCheckin = false;
         checkin.disabled = signing || confirmed;
         checkin.textContent = t(confirmed ? '今日已签到' : '每日签到 · +1 券');
         if (lastDelivered === null) lastDelivered = progress.delivered;
         const deliveryChanged = lastDelivered !== progress.delivered;
         const wasSyncing = syncing;
-        syncing = (awaitingCheckin && progress.checkin_delivered !== true) || progress.delivered < progress.earned;
-        status.textContent = syncing ? t('签到与赠券正在同步，到账后将自动更新抽奖券。') : t('今日点赞 {likes} 次 · 评论 {comments} 次 · 收到评论 {received} 次；已获得 {earned}/6 券，已入账 {delivered} 券。',progress);
+        syncing = (!ineligible && (awaitingCheckin || progress.checked_in) && progress.checkin_delivered !== true) || progress.delivered < progress.earned;
+        status.textContent = ineligible ? t(ineligible === 'before_binding' ? '今日已签到；签到发生在账号绑定前，今天不补发签到券。明天签到可获券。' : '今日已签到；签到发生在赠券功能启用前，今天不补发签到券。明天签到可获券。') : syncing ? t('签到与赠券正在同步，到账后将自动更新抽奖券。') : t('今日点赞 {likes} 次 · 评论 {comments} 次 · 收到评论 {received} 次；已获得 {earned}/6 券，已入账 {delivered} 券。',progress);
         // Refresh the authoritative selection as well as the count: a newly
         // delivered ticket may enable single or five draws. Never invent +1.
-        if (deliveryChanged || (awaitingCheckin && progress.checkin_delivered === undefined && attempts % 3 === 2) || (!syncing && (awaitingCheckin || wasSyncing || refreshBenefits))) {
+        if (deliveryChanged || (!ineligible && (awaitingCheckin || progress.checked_in) && progress.checkin_delivered === undefined && attempts % 3 === 2) || (!syncing && (awaitingCheckin || wasSyncing || refreshBenefits))) {
           const refreshed = await refreshPulse();
           if (refreshed) lastDelivered = progress.delivered;
           else syncing = true;

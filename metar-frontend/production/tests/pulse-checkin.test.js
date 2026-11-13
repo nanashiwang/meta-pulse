@@ -90,3 +90,19 @@ test('old servers lacking a check-in receipt get periodic eligibility refresh wi
  for(let i=0;i<12;i++)await h.tick();
  assert.ok(h.counts().updates>1);assert.equal(h.counts().posts,1);assert.equal(h.timers.size,0);
 });
+
+test('check-in before linking is displayed as completed and ineligible without endless polling or another POST',async()=>{
+ for(const reason of ['before_binding','before_start']) {
+  const h=harness();h.setTask(progress({checked_in:true,checkin_ineligible_reason:reason}));await h.mount();
+  assert.equal(h.checkin.disabled,true);assert.equal(h.checkin.textContent,'今日已签到');
+  assert.match(h.status.textContent,/今天不补发签到券/);assert.equal(h.timers.size,0);
+  await h.checkin.onclick();assert.equal(h.counts().posts,0);
+  await h.refresh.onclick();assert.match(h.status.textContent,/今天不补发签到券/);assert.equal(h.timers.size,0);
+ }
+});
+test('an eligible EXP check-in not yet collected starts polling on page entry',async()=>{
+ const h=harness();h.setTask(progress({checked_in:true}));await h.mount();
+ assert.equal(h.checkin.disabled,true);assert.equal(h.timers.size,1);
+ h.setTask(progress({checked_in:true,earned:1,delivered:1}));await h.tick();
+ assert.equal(h.counts().updates,1);assert.equal(h.timers.size,0);
+});
