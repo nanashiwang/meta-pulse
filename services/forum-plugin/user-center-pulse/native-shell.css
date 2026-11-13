@@ -204,3 +204,8 @@ img[data-metar-appearance="veteran"],img[data-metar-appearance="companion"]{box-
 .metar-admin-users td:last-child .dropdown-toggle { min-width:54px;min-height:32px; }
 .metar-admin-users td:last-child .dropdown-toggle::before { content:'操作 ';font-size:12px; }
 html[lang^="en"].metar-admin-users td:last-child .dropdown-toggle::before { content:'Actions '; }
+
+/* Pulse promotion: fixed label weight, compact static multicolor badge. */
+.metar-native .metar-primary-nav>a[href="/pulse"]{position:relative;font-weight:750!important;padding-right:23px!important}
+.metar-native .metar-primary-nav>a[href="/pulse"]::before{content:'限时活动';position:absolute;top:-10px;right:-13px;padding:2px 6px;border-radius:6px 6px 6px 0;background:linear-gradient(110deg,#7138bd 0%,#b52d72 52%,#b74423 100%);color:#fff;font-size:10px;font-weight:700;line-height:1.4;letter-spacing:.2px;white-space:nowrap;pointer-events:none;box-shadow:0 2px 5px #7138bd25}
+html:lang(en).metar-native .metar-primary-nav>a[href="/pulse"]::before{content:'Limited time';font-size:9px;right:-18px}

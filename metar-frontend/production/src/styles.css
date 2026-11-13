@@ -671,3 +671,29 @@ a.account-avatar:hover,a.account-avatar:focus-visible{box-shadow:0 0 0 2px var(-
 .rail-post-list{list-style:none;padding:0;margin:0;display:grid;gap:0}.rail-post-list>li{padding:12px 0}.rail-post-list>li+li{border-top:1px solid var(--border)}.rail-post-list>li:first-child{padding-top:4px}.rail-post-list>li:last-child{padding-bottom:0}.rail-post-list a{display:block;font-size:13px;line-height:1.6;overflow-wrap:anywhere}.rail-post-list a:hover{color:var(--green)}.rail-content-state{font-size:12px;color:var(--muted);line-height:1.6;margin:0}.community-rail[data-discussion-rail]{display:flex;flex-direction:column;gap:16px}
 
 @media(max-width:580px){html{--community-bottom-nav:calc(55px + env(safe-area-inset-bottom,0px))}}
+
+/* White-surface community hierarchy: neutral panels, green for selected actions. */
+:root{--community-secondary:#56616b;--community-line:#dce1e6;--community-neutral:#f5f6f8;--community-label:#edf0f3;--community-selected:#15583f}
+:root[data-theme="dark"],:root.dark{--community-secondary:#b2bdc6;--community-line:#3a4741;--community-neutral:#1c2621;--community-label:#27332c;--community-selected:#b7ed9b}
+.discussion-guidelines{background:var(--community-neutral);color:var(--community-secondary);border:1px solid var(--community-line);border-radius:6px}
+.discussion-guidelines a{color:var(--community-selected);font-weight:600}
+.discussion-tab.active{color:var(--community-selected);border-bottom-width:3px;font-weight:700}
+.topnav>a.active{color:var(--community-selected)}
+.discussion-row{border-bottom-color:var(--community-line)}
+.discussion-excerpt,.discussion-created,.discussion-last-reply{color:var(--community-secondary)}
+.discussion-meta .badge:not(.green){background:var(--community-label);color:var(--community-secondary)}
+.discussion-reply-count{background:var(--community-neutral);color:var(--community-secondary);border:1px solid var(--community-line)}
+.rail-card{border-color:var(--community-line)}
+.rail-post-list>li+li{border-color:var(--community-line)}
+@media(max-width:900px){
+ .community-rail[data-discussion-rail]{margin-top:12px;padding-top:20px;border-top:1px solid var(--community-line);gap:12px}
+ .community-rail[data-discussion-rail] .rail-card{background:var(--community-neutral);padding:12px 14px}
+ .community-rail .rail-post-list>li{padding:9px 0}
+ .community-rail .rail-post-list>li:first-child{padding-top:4px}
+ .community-rail .rail-post-list>li:last-child{padding-bottom:0}
+}
+
+/* Pulse promotion: fixed label weight, compact static multicolor badge. */
+.topnav>a[href="/pulse"]{position:relative;font-weight:750!important;padding-right:23px!important}
+.topnav>a[href="/pulse"]::before{content:'限时活动';position:absolute;top:1px;right:-13px;padding:2px 6px;border-radius:6px 6px 6px 0;background:linear-gradient(110deg,#7138bd 0%,#b52d72 52%,#b74423 100%);color:#fff;font-size:10px;font-weight:700;line-height:1.4;letter-spacing:.2px;white-space:nowrap;pointer-events:none;box-shadow:0 2px 5px #7138bd25}
+html:lang(en) .topnav>a[href="/pulse"]::before{content:'Limited time';font-size:9px;right:-18px}
