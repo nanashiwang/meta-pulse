@@ -256,6 +256,29 @@ func (uc *UserCenter) registerPublicExperience(r *gin.RouterGroup) {
 	if r == nil {
 		return
 	}
+	r.GET("/metar/ranking", func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store")
+		c.Header("X-Content-Type-Options", "nosniff")
+		q, err := url.ParseQuery(c.Request.URL.RawQuery)
+		kind := q.Get("kind")
+		if err != nil || len(q) != 1 || len(q["kind"]) != 1 || (kind != "level" && kind != "posts" && kind != "answers") {
+			communityError(c, 400, "invalid_request")
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+		store, err := uc.experienceStore(ctx)
+		if err != nil {
+			communityError(c, 503, "ranking_unavailable")
+			return
+		}
+		members, err := store.Ranking(ctx, kind)
+		if err != nil {
+			communityError(c, 503, "ranking_unavailable")
+			return
+		}
+		c.JSON(200, gin.H{"data": gin.H{"kind": kind, "users": members}})
+	})
 	r.GET("/metar/experience/profile", func(c *gin.Context) {
 		c.Header("Cache-Control", "no-store")
 		q, queryErr := url.ParseQuery(c.Request.URL.RawQuery)

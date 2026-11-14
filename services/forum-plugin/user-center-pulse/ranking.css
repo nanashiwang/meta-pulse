@@ -32,3 +32,7 @@
   .metar-ranking-staff .metar-ranking-person { display:inline-flex; margin:8px 20px 8px 0; }
   .metar-ranking-table td,.metar-ranking-table th { padding:14px 6px; }
 }
+
+.metar-ranking-tabs{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}.metar-ranking-tabs button{padding:7px 14px;border:1px solid var(--metar-border);border-radius:7px;background:var(--metar-surface);color:var(--metar-text)}.metar-ranking-tabs button[aria-pressed="true"]{background:var(--metar-primary);color:var(--metar-on-primary);border-color:var(--metar-primary);font-weight:600}
+
+.metar-ranking,.metar-ranking *,.metar-ranking-container{box-sizing:border-box}@media(max-width:767px){.metar-ranking-growth{white-space:normal;overflow-wrap:anywhere;max-width:130px}.metar-ranking-table{table-layout:fixed}.metar-ranking-table th:first-child{width:42px}.metar-ranking-table th:last-child{width:115px}.metar-ranking-person{gap:6px}}

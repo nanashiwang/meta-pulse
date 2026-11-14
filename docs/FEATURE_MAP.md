@@ -138,4 +138,10 @@ new-api 接收端与实际到账、生产普通账号流程、邮件与跨实例
 
 精简讨论首页：单一顶部搜索、单分类与短摘要、固定回复框、隐藏列表等级；更多菜单保留热门/高赞，待回答三条、精选默认折叠，窄屏辅助区折叠，无关注时不展示空卡片；列表页页脚随文流动。
 
+
+
 个人中心工作区：me 子页面、绑定、聊天与 Pulse 保留左侧菜单；新增 /me/settings、/me/badges，并将通知收在 /me/notifications。原生设置/勋章/通知仅在白名单同源容器内显示，表单保存沿用 Answer，未保存有离开提示；后台与元衡外站保持独立。入口与测试为 personal-workspace.js / personal-workspace.test.js，需同时部署静态壳层与 Nginx。
+
+声望排行榜扩展：`answer-ranking-top100.patch` 在近7天聚合查询中先排除工作人员与删除账号再取100名；ranking.js 默认展示100，人数不足不补位，同分按用户ID稳定排序。需要重建论坛。
+
+四类排行榜：/users?board=reputation|level|posts|answers；新增只读 /answer/api/v1/metar/ranking 使用growth经验余额及Answer公开帖子/回答统计，白名单kind、活跃已验证非工作人员、过滤后前100、计数字符串、失败独立提示；代码growth/ranking.go与ranking.js，测试ranking_routes_test.go、growth/ranking_test.go、ranking.test.js。
