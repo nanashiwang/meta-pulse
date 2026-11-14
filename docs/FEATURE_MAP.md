@@ -145,3 +145,5 @@ new-api 接收端与实际到账、生产普通账号流程、邮件与跨实例
 声望排行榜扩展：`answer-ranking-top100.patch` 在近7天聚合查询中先排除工作人员与删除账号再取100名；ranking.js 默认展示100，人数不足不补位，同分按用户ID稳定排序。需要重建论坛。
 
 四类排行榜：/users?board=reputation|level|posts|answers；新增只读 /answer/api/v1/metar/ranking 使用growth经验余额及Answer公开帖子/回答统计，白名单kind、活跃已验证非工作人员、过滤后前100、计数字符串、失败独立提示；代码growth/ranking.go与ranking.js，测试ranking_routes_test.go、growth/ranking_test.go、ranking.test.js。
+
+排行榜切换优化：进入/users并行预加载四榜，切换复用本页内存；回到窗口超过60秒后台刷新，失败保留对应榜缓存并提示；离页/切账号清除，不持久存储。

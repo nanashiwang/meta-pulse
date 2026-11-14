@@ -56,3 +56,30 @@ test('invalid kinds, duplicate members and malformed counts fail rather than fab
  for(const data of [{kind:'wrong',users:[]},{kind:'posts',users:[{username:'x',value:'-1'}]},{kind:'answers',users:[{username:'x',value:'1'},{username:'x',value:'2'}]},{kind:'level',users:[{username:'x',value:'10',level:99}]}])assert.throws(()=>ranking.buildActivityRanking(data));
  assert.equal(ranking.buildActivityRanking({kind:'posts',users:[{username:'admin',value:'10'},{username:'member',value:'5'}]},[{username:'admin'}]).users[0].username,'member');
 });
+
+function cacheFixture(){
+ let clock=1000;const requests=[],changes=[];
+ const host={setTimeout,clearTimeout,fetch:(url,options)=>new Promise((resolve,reject)=>requests.push({url,options,resolve,reject}))};
+ const cache=ranking.createRankingCache(host,kind=>changes.push(kind),()=>clock);
+ const respond=(request,ok=true)=>{const kind=new URL(request.url,'https://forum.test').searchParams.get('kind');request.resolve({ok,json:async()=>({data:kind?{kind,users:[{username:kind,value:'10',level:1}]}:{staffs:[],users_with_the_most_reputation:[{username:'rep',rank:10}]}})});};
+ return {cache,requests,changes,respond,tick:()=>clock+=60001};
+}
+test('all four boards start in parallel and repeated loads reuse a single pending batch',async()=>{
+ const h=cacheFixture(),first=h.cache.load();assert.equal(h.requests.length,4);assert.equal(h.cache.load(),first);
+ h.requests.forEach(r=>h.respond(r));await first;
+ for(const kind of ranking.rankingKinds)assert.ok(h.cache.get(kind).data);
+ await h.cache.load();assert.equal(h.requests.length,4);
+});
+test('failed background refresh retains successful cached data and does not flash loading',async()=>{
+ const h=cacheFixture();let task=h.cache.load();h.requests.forEach(r=>h.respond(r));await task;
+ const old=h.cache.get('posts').data;h.changes.length=0;h.tick();task=h.cache.load();
+ assert.equal(h.cache.get('posts').data,old);assert.equal(h.changes.length,0);
+ h.requests.slice(4).forEach(r=>h.respond(r,!r.url.includes('kind=posts')));await task;
+ assert.equal(h.cache.get('posts').data,old);assert.equal(h.cache.get('posts').error,true);assert.equal(h.cache.get('answers').error,false);
+});
+test('one failed board never hides other boards; leaving ignores late results',async()=>{
+ const h=cacheFixture();let task=h.cache.load();h.requests.forEach(r=>h.respond(r,!r.url.includes('user/ranking')));await task;
+ assert.equal(h.cache.get('reputation').data,null);assert.ok(h.cache.get('answers').data);
+ task=h.cache.load(true);h.cache.clear();h.requests.slice(4).forEach(r=>h.respond(r));await task;
+ for(const kind of ranking.rankingKinds)assert.equal(h.cache.get(kind).data,null);
+});

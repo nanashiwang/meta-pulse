@@ -39,6 +39,42 @@ export function ownPosition(data, user) {
   return found ? { state: 'listed', position: found.position } : { state: 'absent' };
 }
 
+export function createRankingCache(host, onChange, now = () => Date.now()) {
+  const records = new Map(rankingKinds.map(kind => [kind,{data:null,error:false,loading:false,at:0}]));
+  let pending = null, epoch = 0, controller, attemptedAt = -Infinity;
+  function clear() {
+    epoch++; controller?.abort(); pending=null; attemptedAt=-Infinity;
+    for(const record of records.values()) Object.assign(record,{data:null,error:false,loading:false,at:0});
+  }
+  function load(force = false) {
+    if(pending) return pending;
+    if(!force && now()-attemptedAt<60000) return Promise.resolve();
+    attemptedAt=now();const current=++epoch;controller=new AbortController();const active=controller;
+    const timeout=host.setTimeout(()=>active.abort(),10000);
+    const read=async path=>{const response=await host.fetch(path,{credentials:'same-origin',cache:'no-store',signal:active.signal});if(!response.ok)throw new Error('ranking');return (await response.json()).data;};
+    for(const [kind,record] of records){record.loading=true;record.error=false;if(!record.data)onChange(kind);}
+    const staff=read('/answer/api/v1/user/ranking').then(data=>{if(!data||!Array.isArray(data.staffs)||!Array.isArray(data.users_with_the_most_reputation))throw new Error('ranking');return data;});
+    const jobs=rankingKinds.map(async kind=>{
+      const record=records.get(kind);
+      try {
+        let result;
+        if(kind==='reputation')result=buildRanking(await staff);
+        else {
+          // Fetch every board immediately; staff lookup must not serialize the requests.
+          const [data,base]=await Promise.all([read('/answer/api/v1/metar/ranking?kind='+kind),staff.catch(()=>null)]);
+          if(data?.kind!==kind)throw new Error('ranking');
+          result=buildActivityRanking(data,base?.staffs||records.get('reputation').data?.staffs||[]);
+        }
+        if(current===epoch){record.data=result;record.at=now();}
+      }catch(_){if(current===epoch)record.error=true;}
+      finally{if(current===epoch){record.loading=false;onChange(kind);}}
+    });
+    pending=Promise.all(jobs).finally(()=>{host.clearTimeout(timeout);if(current===epoch)pending=null;});
+    return pending;
+  }
+  return {get:kind=>records.get(kind),load,clear};
+}
+
 export function installRanking(options, host = window) {
   if (host.__metarRanking) return;
   host.__metarRanking = true;
@@ -51,7 +87,8 @@ export function installRanking(options, host = window) {
   };
   const english = () => options.getLanguage?.() === 'en_US' || options.getLanguage?.() === 'en';
   const t = (zh, en) => english() ? en : zh;
-  let root, data, error = false, loading = false, page = 1, size = 100, active = false, kind = 'reputation', requestId = 0, controller;
+  let root, data, error = false, loading = false, page = 1, size = 100, active = false, kind = 'reputation';
+  const cache = createRankingCache(host, changed => { if (active && changed === kind) render(); });
   const isRanking = () => /^\/users\/?$/.test(host.location.pathname);
   function person(user) {
     const link = el('a', undefined, 'metar-ranking-person');
@@ -68,6 +105,8 @@ export function installRanking(options, host = window) {
   }
   function render() {
     if (!root?.isConnected) return;
+    const record = cache.get(kind);
+    data=record.data;loading=record.loading;error=record.error;
     root.replaceChildren();
     const staff = el('aside', undefined, 'metar-ranking-staff');
     staff.append(el('h2', t('我们的社区工作人员', 'Our community staff')));
@@ -79,16 +118,17 @@ export function installRanking(options, host = window) {
     const labels = {reputation:t('声望榜','Reputation'),level:t('等级榜','Levels'),posts:t('发帖榜','Posts'),answers:t('回答榜','Answers')};
     main.append(el('h1', titles[kind]));
     const tabs = el('nav',undefined,'metar-ranking-tabs');tabs.setAttribute('aria-label',t('切换排行榜','Choose leaderboard'));
-    rankingKinds.forEach(value=>{const button=el('button',labels[value]);button.type='button';button.setAttribute('aria-pressed',String(kind===value));button.onclick=()=>{if(kind===value)return;kind=value;page=1;const url=new URL(host.location.href);url.searchParams.set('board',kind);host.history.replaceState(host.history.state,'',url.pathname+url.search);void refresh(true);};tabs.append(button);});main.append(tabs);
+    rankingKinds.forEach(value=>{const button=el('button',labels[value]);button.type='button';button.setAttribute('aria-pressed',String(kind===value));button.onclick=()=>{if(kind===value)return;kind=value;page=1;const url=new URL(host.location.href);url.searchParams.set('board',kind);host.history.replaceState(host.history.state,'',url.pathname+url.search);render();};tabs.append(button);});main.append(tabs);
     const notes={reputation:t('近7天声望正增长前100名。','Top 100 positive reputation gains in 7 days.'),level:t('按累计社区经验排序，同等级按经验高低排列。','Ordered by community EXP, including within the same level.'),posts:t('累计公开有效帖子，不计删除、待审核和隐藏内容。','Published visible posts; deleted, pending and hidden content excluded.'),answers:t('累计公开有效回答，不含帖子评论或楼中楼评论。','Published answers on visible posts; comments and replies excluded.')};
     main.append(el('p',notes[kind]+' '+t('工作人员不参与排名，不足100人时显示实际人数。','Staff excluded; fewer shown when fewer qualify.'),'metar-ranking-note'));
     root.append(staff, main);
-    if (loading || error || !data) {
+    if (!data) {
       const status = el('p', error ? t('排行榜加载失败，请重试。', 'Could not load the leaderboard. Please retry.') : t('正在更新排行榜…', 'Updating leaderboard…'));
       status.setAttribute('role', 'status'); main.append(status);
-      if (error) { const retry = el('button', t('重试', 'Retry')); retry.type = 'button'; retry.onclick = refresh; main.append(retry); }
+      if (error) { const retry = el('button', t('重试', 'Retry')); retry.type = 'button'; retry.onclick = () => refresh(true); main.append(retry); }
       return;
     }
+    if(error){const notice=el('p',t('刷新失败，暂时显示上次加载的榜单。','Refresh failed. Showing the last loaded ranking.'),'metar-ranking-note');notice.setAttribute('role','status');const retry=el('button',t('重试','Retry'));retry.type='button';retry.onclick=()=>refresh(true);main.append(notice,retry);}
     const own = ownPosition(data, options.getUser?.());
     const message = own.state === 'listed' ? t(`我的本期榜内位置：第 ${own.position} 名`, `My position this period: ${own.position}`)
       : own.state === 'staff' ? t('我的排名：工作人员不参与排名', 'My position: staff do not participate')
@@ -120,29 +160,9 @@ export function installRanking(options, host = window) {
     const next = el('button', t('下一页', 'Next')); next.type = 'button'; next.disabled = page === result.pages; next.onclick = () => { page++; render(); };
     controls.append(prev, next); main.append(controls);
   }
-  async function refresh(force = false) {
-    if ((loading && !force) || !isRanking()) return;
-    controller?.abort();controller = new AbortController();
-    const current = ++requestId, selected = kind, signal = controller.signal;
-    const activeController=controller;
-    const timeout = host.setTimeout(()=>activeController.abort(),10000);
-    loading = true; error = false; data = null; render();
-    try {
-      const response = await host.fetch('/answer/api/v1/user/ranking', { credentials:'same-origin',cache:'no-store',signal });
-      if (!response.ok) throw new Error('ranking');
-      const payload = await response.json();
-      if (!payload.data || !Array.isArray(payload.data.users_with_the_most_reputation) || !Array.isArray(payload.data.staffs)) throw new Error('ranking');
-      let result;
-      if(selected==='reputation')result=buildRanking(payload.data);
-      else {
-        const response = await host.fetch('/answer/api/v1/metar/ranking?kind='+selected,{credentials:'same-origin',cache:'no-store',signal});
-        if(!response.ok)throw new Error('ranking');
-        const extra=await response.json();if(extra.data?.kind!==selected)throw new Error('ranking');
-        result=buildActivityRanking(extra.data,payload.data.staffs);
-      }
-      if(current===requestId && isRanking())data=result;
-    } catch { if(current===requestId)error=true; }
-    finally { host.clearTimeout(timeout);if(current===requestId){loading=false;render();} }
+  function refresh(force = false) {
+    if(!isRanking() || !active) return;
+    return cache.load(force === true);
   }
   function mount() {
     const inbox = doc.querySelector('#header a[href="/users/notifications/inbox"]');
@@ -155,7 +175,7 @@ export function installRanking(options, host = window) {
     const link = header?.querySelector('.metar-ranking-link');
     if (link) { link.title = t('排行榜', 'Leaderboard'); link.setAttribute('aria-label', link.title); }
     if (!isRanking()) {
-      active = false; requestId++;controller?.abort();loading=false;root?.remove(); root = null;
+      if(active)cache.clear();active = false;loading=false;root?.remove(); root = null;
       doc.querySelector('.metar-ranking-container')?.classList.remove('metar-ranking-container');
       doc.querySelectorAll('[data-metar-ranking-original]').forEach(node => node.removeAttribute('data-metar-ranking-original'));
       return;
@@ -174,7 +194,8 @@ export function installRanking(options, host = window) {
     });
     const requested = new URL(host.location.href).searchParams.get('board') || 'reputation';
     const selected = rankingKinds.includes(requested)?requested:'reputation';
-    if (!active || selected!==kind) { active = true; kind=selected; page = 1; refresh(true); }
+    if (!active) { active = true; kind=selected; page=1; render();void refresh(); }
+    else if(selected!==kind){kind=selected;page=1;render();}
   }
   let pending = false;
   const schedule = () => {
@@ -183,9 +204,10 @@ export function installRanking(options, host = window) {
   };
   new host.MutationObserver(schedule).observe(doc.documentElement, { childList: true, subtree: true });
   host.addEventListener('popstate', schedule);
-  host.addEventListener('focus', refresh);
+  host.addEventListener('focus', () => refresh());
   doc.addEventListener('visibilitychange', () => { if (doc.visibilityState === 'visible') refresh(); });
-  options.subscribeUser?.(() => render());
+  let identity = options.getUser?.()?.username || '';
+  options.subscribeUser?.(() => {const next=options.getUser?.()?.username || '';if(next!==identity){identity=next;cache.clear();if(active)void refresh();}render();});
   options.onLanguageChanged?.(() => { render(); schedule(); });
   mount();
 }
