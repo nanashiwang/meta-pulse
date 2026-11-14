@@ -284,8 +284,10 @@ test('WebRTC error and navigation cancellation close the peer and never report n
 test('production CSP permits only fixed Claude trace paths on both shell entries', () => {
   const nginx = fs.readFileSync(require.resolve('../../../deploy/nginx/meta-pulse.conf'), 'utf8');
   const policies = [...nginx.matchAll(/add_header Content-Security-Policy "([^"]+)"/g)].map(m => m[1]);
-  assert.equal(policies.length, 2);
-  for (const policy of policies) {
+  assert.equal(policies.filter(policy => policy === "frame-ancestors 'self'").length, 1);
+  const shellPolicies = policies.filter(policy => policy.includes("default-src"));
+  assert.equal(shellPolicies.length, 2);
+  for (const policy of shellPolicies) {
     assert.match(policy, /connect-src 'self' https:\/\/claude\.com\/cdn-cgi\/trace https:\/\/claude\.ai\/cdn-cgi\/trace https:\/\/\*\.dnsprobe\.metarhub\.com;/);
     assert.match(policy, /script-src 'self'; style-src 'self';/);
     assert.doesNotMatch(policy, /unsafe-inline|connect-src[^;]*https:\/\/\*;/);

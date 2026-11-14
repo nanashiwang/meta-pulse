@@ -244,7 +244,7 @@
     if (path.startsWith('/model/')) return t('模型详情');
     if (path.startsWith('/question/')) return t("问题详情");
     if (path.startsWith('/topic/')) return t("话题");
-    return ({ '/me/drafts': t('我的草稿'), '/events': t('近期活动'), '/admin/publishing': '内容运营', '/admin/operations': t('社区经营'), '/admin/events': t('活动管理'), '/chat': t('聊天'), '/admin/chat': t('聊天举报'), '/latest': t("最新话题"), '/topics': t("类别与标签"), '/admin/taxonomy': t('类别管理'), '/knowledge': t("知识库"), '/search': t("搜索"), '/models': t('模型评分榜'), '/models/leaderboard': t('模型评分榜'), '/admin/models': t('模型榜管理'), '/tools': t('工具'), '/tools/network': t('Claude 访问环境检测'), '/marketplace': t('Vibe Coding 集市'), '/marketplace/mine': t('我的集市发布'), '/marketplace/publish': t('发布到集市'), '/admin/marketplace': t('集市审核'), '/me': t("个人空间"), '/me/bookmarks': t("我的收藏"), '/me/growth': t('社区成长'), '/me/notifications': t("通知中心"), '/settings/binding': t("账号绑定"), '/pulse': t("Pulse 权益"), '/admin/pulse': t("Pulse 配置"), '/publish': t("发布内容"), '/login': t("登录"), '/register': t("注册"), '/forgot': t("找回密码"), '/status': t("服务状态"), '/support': t("帮助中心"), '/guidelines': t("社区规范"), '/tos': t("服务条款"), '/privacy': t("隐私政策") })[path] || t("METAR 社区");
+    return ({ '/me/drafts': t('我的草稿'), '/events': t('近期活动'), '/admin/publishing': '内容运营', '/admin/operations': t('社区经营'), '/admin/events': t('活动管理'), '/chat': t('聊天'), '/admin/chat': t('聊天举报'), '/latest': t("最新话题"), '/topics': t("类别与标签"), '/admin/taxonomy': t('类别管理'), '/knowledge': t("知识库"), '/search': t("搜索"), '/models': t('模型评分榜'), '/models/leaderboard': t('模型评分榜'), '/admin/models': t('模型榜管理'), '/tools': t('工具'), '/tools/network': t('Claude 访问环境检测'), '/marketplace': t('Vibe Coding 集市'), '/marketplace/mine': t('我的集市发布'), '/marketplace/publish': t('发布到集市'), '/admin/marketplace': t('集市审核'), '/me/settings': t('账号设置'), '/me/badges': t('勋章'), '/me': t("个人空间"), '/me/bookmarks': t("我的收藏"), '/me/growth': t('社区成长'), '/me/notifications': t("通知中心"), '/settings/binding': t("账号绑定"), '/pulse': t("Pulse 权益"), '/admin/pulse': t("Pulse 配置"), '/publish': t("发布内容"), '/login': t("登录"), '/register': t("注册"), '/forgot': t("找回密码"), '/status': t("服务状态"), '/support': t("帮助中心"), '/guidelines': t("社区规范"), '/tos': t("服务条款"), '/privacy': t("隐私政策") })[path] || t("METAR 社区");
   }
 
   function languageControl() {
@@ -256,29 +256,41 @@
     return `<div class="account-menu-group"><div class="account-menu-label">${t('管理')}</div>${item('/admin/pulse', t('Pulse 配置'), 'settings')}${item('/admin/growth', t('成长管理'), 'target')}${item('/admin/taxonomy', t('类别管理'), 'flag')}${item('/admin/marketplace', t('集市审核'), 'code')}${item('/admin/models', t('模型榜管理'), 'target')}${item('/admin/chat', t('聊天举报'), 'chat')}${item('/admin/events', t('活动管理'), 'calendar')}${item('/admin/operations', t('社区经营'), 'target')}${item('/admin/publishing', '内容运营', 'edit')}${external('/admin/dashboard', I('shield') + `<span>${t('社区管理')}</span>`, 'account-menu-link')}${external('/admin/pulse_user_center', I('link') + `<span>${t('社区连接配置')}</span>`, 'account-menu-link')}</div>`;
   }
 
+  const isPersonalPath = path => /^\/me(?:\/|$)/.test(path) || ['/settings/binding','/chat','/pulse'].includes(path);
+  let personalNativeView = null, personalSidebarKey = '', personalNativeStep = 0, personalLeaveApproved = false, restoringPersonalHistory = false;
   function personalSidebar() {
-    if (route().path !== '/me' || currentUserState !== 'ready' || !currentUser) return '';
+    if (!isPersonalPath(route().path) || currentUserState !== 'ready' || !currentUser) return '';
     const { path, query } = route();
     const item = (url, label, icon) => link(url, I(icon) + `<span>${esc(label)}</span>`, `account-menu-link ${routeMatchesNavigation(path, query.toString(), url) ? 'active' : ''}`);
     const consoleBase = config.consoleUrl?.replace(/\/$/, '').replace(/\/console$/, '');
-    return `<aside class="personal-sidebar" aria-label="${t('我的空间')}"><div class="account-menu-group"><div class="account-menu-label">${t('我的空间')}</div>${item('/chat', t('聊天'), 'chat')}${item('/me', t('个人空间'), 'user')}${item('/me/growth', t('社区成长'), 'target')}${item('/me/bookmarks', t('我的收藏'), 'bookmark')}${item('/settings/binding', t('账号绑定'), 'link')}${external('/badges', I('trophy') + `<span>${t('勋章')}</span>`, 'account-menu-link')}${external(config.answerSettingsPath, I('settings') + `<span>${t('账号设置')}</span>`, 'account-menu-link')}</div>${accountManagement(item)}<div class="account-menu-group personal-console-group"><div class="account-menu-label">${t('元衡服务')}</div>${item('/pulse', getLanguage() === 'en_US' ? 'Check-in & draw' : '签到抽奖', 'target')}${consoleBase ? outbound(consoleBase + '/console', t('元衡API'), 'account-menu-link') : ''}</div><div class="account-menu-group personal-logout">${external('/users/logout', I('external') + `<span>${t('退出登录')}</span>`, 'account-menu-link')}</div></aside>`;
+    return `<aside class="personal-sidebar" aria-label="${t('我的空间')}"><div class="account-menu-group"><div class="account-menu-label">${t('我的空间')}</div>${item('/chat', t('聊天'), 'chat')}${item('/me', t('个人空间'), 'user')}${item('/me/growth', t('社区成长'), 'target')}${item('/me/bookmarks', t('我的收藏'), 'bookmark')}${item('/settings/binding', t('账号绑定'), 'link')}${item('/me/badges', t('勋章'), 'trophy')}${item('/me/settings', t('账号设置'), 'settings')}${item('/me/notifications', t('通知中心'), 'bell')}${item('/me/drafts', t('我的草稿'), 'edit')}</div>${accountManagement(item)}<div class="account-menu-group personal-console-group"><div class="account-menu-label">${t('元衡服务')}</div>${item('/pulse', getLanguage() === 'en_US' ? 'Check-in & draw' : '签到抽奖', 'target')}${consoleBase ? outbound(consoleBase + '/console', t('元衡API'), 'account-menu-link') : ''}</div><div class="account-menu-group personal-logout">${external('/users/logout', I('external') + `<span>${t('退出登录')}</span>`, 'account-menu-link')}</div></aside>`;
   }
 
   const isHomePath = (path = route().path) => /^\/(?:latest|questions|discover)?\/?$/.test(path);
 
   function syncPersonalNavigation() {
-    document.querySelector('.personal-sidebar')?.remove();
     const sidebar = personalSidebar();
+    const existing = document.querySelector('.personal-sidebar');
+    const key = `${currentUser?.id || ''}:${getLanguage()}:${isCommunityAdministrator(currentUser)}:${config.consoleUrl}`;
+    if (!sidebar || key !== personalSidebarKey) existing?.remove();
+    personalSidebarKey = key;
     document.documentElement.classList.toggle('has-personal-sidebar', !!sidebar);
     document.documentElement.classList.toggle('community-wide', isHomePath() || route().path.startsWith('/topic/'));
-    if (sidebar) document.getElementById('main')?.insertAdjacentHTML('beforebegin', sidebar);
+    if (sidebar && (!existing || key !== existing.dataset.personalKey)) {
+      if (existing?.isConnected) existing.remove();
+      document.getElementById('main')?.insertAdjacentHTML('beforebegin', sidebar);
+      const mounted = document.querySelector('.personal-sidebar');
+      if (mounted) mounted.dataset.personalKey = key;
+    }
     const back = document.querySelector('[data-action="back"]');
     if (back) back.hidden = isHomePath();
   }
 
   function goBack() {
+    if (personalNativeView && !personalNativeView.confirmLeave()) return;
+    personalLeaveApproved = true;
     const path = route().path;
-    const fallback = /^\/(?:admin(?:\/|$)|me\/|users\/settings(?:\/|$)|settings\/binding(?:\/|$)|badges(?:\/|$))/.test(path) ? '/me' : '/latest';
+    const fallback = isPersonalPath(path) ? '/latest' : /^\/(?:admin(?:\/|$)|me\/|users\/settings(?:\/|$)|settings(?:\/|$)|badges(?:\/|$))/.test(path) ? '/me' : '/latest';
     if (window.__metarReturnNavigation?.back) { window.__metarReturnNavigation.back(fallback); return; }
     const destination = fallback;
     if (!window.MetarRouter.owns(new URL(destination, location.origin).pathname)) { location.href = destination; return; }
@@ -301,7 +313,7 @@
       ${link('/latest', LOGO + `<span class="brand-word" aria-hidden="true">${esc(config.siteName.toLowerCase())}</span>`, 'brand')}
       <nav class="topnav" aria-label="${t("主导航")}">${link('/latest', t("社区"), active('/latest') || active('/question') || active('/topic') || active('/topics') ? 'active' : '')}${link('/marketplace', t('集市'), active('/marketplace') ? 'active' : '')}${link('/models', t('模型榜'), active('/models') || active('/model') ? 'active' : '')}${link('/pulse', 'Pulse', active('/pulse') ? 'active' : '')}${toolsMenu(active('/tools'))}</nav>
       <form class="searchbox" data-form="search" role="search">${I('search')}<input type="search" name="q" aria-label="${t("搜索社区")}" placeholder="${t("搜索真实问题与回答…")}" value="${path === '/search' ? esc(route().query.get('q') || '') : ''}" autocomplete="off"><kbd>⌘ K</kbd></form>
-      <div class="header-actions">${activeUser ? external('/users', I(ICONS.barChart ? 'barChart' : 'target') + `<span class="visually-hidden">${t('排行榜')}</span>`, 'icon-btn header-ranking', ` aria-label="${t('排行榜')}" title="${t('排行榜')}"`) : ''}${languageControl()}<button type="button" class="icon-btn theme-btn" data-action="theme" aria-label="${document.documentElement.dataset.theme === 'dark' ? t("切换到浅色主题") : t("切换到深色主题")}">${I(document.documentElement.dataset.theme === 'dark' ? 'sun' : 'moon')}</button>${currentUserState === 'loading' ? `<span class="identity-loading" role="status">${t("正在确认身份…")}</span>` : identityUnavailableState ? link('/me', I('server', 'sm') + `<span>${t("身份服务暂不可用")}</span>`, 'btn ghost identity-status') : logged ? (activeUser ? external('/users/notifications/inbox', I('bell') + `<span class="visually-hidden">${t("通知中心")}</span><span class="account-unread-dot" data-account-unread hidden></span>`, 'icon-btn account-notifications') + external('/users/notifications/achievement', I('trophy') + `<span class="visually-hidden">${getLanguage() === 'en_US' ? 'Achievements' : '成就'}</span>`, 'icon-btn account-achievements') + (isCommunityAdministrator(currentUser) ? external('/review', I('shield') + `<span class="visually-hidden">${getLanguage() === 'en_US' ? 'Review' : '审查'}</span>`, 'icon-btn account-review') : '') + `<a href="${esc(window.MetarRouter.href('/chat'))}" data-router class="icon-btn header-chat" title="${t('聊天')}">${I('chat')}<span class="visually-hidden">${t('聊天')}</span><span class="chat-unread" data-chat-unread hidden></span></a>` : external('/users/login?status=inactive', t("激活账号"), 'btn primary')) + accountMenu() : external(config.answerLoginPath, t("登录"), 'btn ghost') + external(config.answerRegisterPath, t("加入社区"), 'btn primary guest-register')}</div>
+      <div class="header-actions">${activeUser ? external('/users', I(ICONS.barChart ? 'barChart' : 'target') + `<span class="visually-hidden">${t('排行榜')}</span>`, 'icon-btn header-ranking', ` aria-label="${t('排行榜')}" title="${t('排行榜')}"`) : ''}${languageControl()}<button type="button" class="icon-btn theme-btn" data-action="theme" aria-label="${document.documentElement.dataset.theme === 'dark' ? t("切换到浅色主题") : t("切换到深色主题")}">${I(document.documentElement.dataset.theme === 'dark' ? 'sun' : 'moon')}</button>${currentUserState === 'loading' ? `<span class="identity-loading" role="status">${t("正在确认身份…")}</span>` : identityUnavailableState ? link('/me', I('server', 'sm') + `<span>${t("身份服务暂不可用")}</span>`, 'btn ghost identity-status') : logged ? (activeUser ? link('/me/notifications', I('bell') + `<span class="visually-hidden">${t("通知中心")}</span><span class="account-unread-dot" data-account-unread hidden></span>`, 'icon-btn account-notifications') + link('/me/notifications?view=achievement', I('trophy') + `<span class="visually-hidden">${getLanguage() === 'en_US' ? 'Achievements' : '成就'}</span>`, 'icon-btn account-achievements') + (isCommunityAdministrator(currentUser) ? external('/review', I('shield') + `<span class="visually-hidden">${getLanguage() === 'en_US' ? 'Review' : '审查'}</span>`, 'icon-btn account-review') : '') + `<a href="${esc(window.MetarRouter.href('/chat'))}" data-router class="icon-btn header-chat" title="${t('聊天')}">${I('chat')}<span class="visually-hidden">${t('聊天')}</span><span class="chat-unread" data-chat-unread hidden></span></a>` : external('/users/login?status=inactive', t("激活账号"), 'btn primary')) + accountMenu() : external(config.answerLoginPath, t("登录"), 'btn ghost') + external(config.answerRegisterPath, t("加入社区"), 'btn primary guest-register')}</div>
     </header>`;
   }
 
@@ -333,7 +345,7 @@
     syncPersonalNavigation();
     window.MetarSidebar?.sync();
     const {path, query} = presentedRoute();
-    for (const node of document.querySelectorAll('.sidebar a[data-router], .mobile-bottom a[data-router], .account-menu a[data-router], .topnav a[data-router]')) {
+    for (const node of document.querySelectorAll('.sidebar a[data-router], .personal-sidebar a[data-router], .mobile-bottom a[data-router], .account-menu a[data-router], .topnav a[data-router]')) {
       const href = node.getAttribute('href');
       const active = node.dataset.taxonomyDirectory
         ? path === '/topics' && (query.get('view') === 'tags' ? 'tags' : 'categories') === node.dataset.taxonomyDirectory
@@ -411,6 +423,7 @@
     syncNavigation();
     enhanceTaxonomy();
     void mountDiscussionRail();
+    void mountPersonalNative();
     if (['/me/drafts', '/events', '/admin/events'].includes(route().path)) memberView?.mount(view);
     if (route().path === '/admin/operations') operationsView?.mount(view);
     if (route().path.startsWith('/marketplace') || route().path === '/admin/marketplace') marketplaceView?.mount(view);
@@ -689,6 +702,50 @@
         </div></details></aside>
       </div>
     </section>${footer()}`;
+  }
+
+  function personalNativePage() {
+    const title = currentTitle();
+    if (currentUserState === 'unavailable') return identityUnavailable(title);
+    if (!currentUser) return loginRequired(title, t('请先登录社区账号。'));
+    if (!isActiveUser(currentUser)) return accountUnavailable(title);
+    return pageTitle(title) + '<section class="personal-native" data-personal-native><p data-native-status role="status">' + t('正在加载…') + '</p><iframe title="' + esc(title) + '" hidden></iframe><p class="prod-page-note"><a data-native-original class="textlink" target="_blank" rel="noopener">' + t('在独立页面打开') + '</a></p></section>' + footer();
+  }
+  async function mountPersonalNative() {
+    const root = document.querySelector('[data-personal-native]');
+    if (!root) return;
+    const sequence = navigationSequence;
+    try {
+      await loadFeatureScript('personal-workspace','MetarPersonalWorkspace');
+      if (sequence !== navigationSequence || !root.isConnected) return;
+      const target = window.MetarPersonalWorkspace.nativeTarget(route().path,route().query);
+      if (!target) throw new Error('invalid personal route');
+      root.querySelector('[data-native-original]').href = target;
+      personalNativeStep = history.state?.metarReturnV2?.step || 0;
+      personalNativeView = new window.MetarPersonalWorkspace.View(root, {
+        target, t,
+        onRoute: (path, replace = false) => {
+          if (sequence !== navigationSequence || path === location.pathname + location.search) return;
+          const details = route().path === '/me/badges';
+          if (replace || !details) history.replaceState({...history.state,metarScroll:null},'',path);
+          else router.go(path);
+          personalNativeStep = history.state?.metarReturnV2?.step || 0;
+          renderedKey = location.pathname + location.search;
+          document.title = currentTitle() + ' · ' + config.siteName;
+          syncNavigation();
+        },
+        onNavigate: path => { if (sequence === navigationSequence && router.go(path)) navigate(); },
+        onExit: value => {
+          const next = new URL(value,location.origin);
+          if (!['http:','https:'].includes(next.protocol)) return;
+          if (next.origin === location.origin && router.go(next.pathname+next.search)) navigate();
+          else location.assign(next.href);
+        },
+        onSaved: () => { answer.getCurrentUser().then(user=>{if(sequence===navigationSequence&&user?.id===currentUser?.id){currentUser=user;refreshChrome();}}).catch(()=>{}); },
+      });
+    } catch (_) {
+      if (root.isConnected) root.querySelector('[data-native-status]').textContent = t('页面暂时无法加载。');
+    }
   }
 
   async function topicsPage() {
@@ -1128,6 +1185,7 @@
     }
     if (path === '/knowledge') return knowledgePage();
     if (path === '/search') return searchPage();
+    if (['/me/settings','/me/badges','/me/notifications'].includes(path)) return personalNativePage();
     if (path === '/me') return profilePage();
     if (path === '/me/growth' || path === '/admin/growth') {
       const title = t(path === '/admin/growth' ? '成长管理' : '社区成长');
@@ -1369,6 +1427,9 @@
     const destination = nativeDestination(location, config);
     if (destination) { location.replace(destination); return; }
     if (!isHomePath(location.pathname) && !location.pathname.startsWith('/topic/')) tagPanelOpen = false;
+    personalNativeView?.dispose();
+    personalNativeView = null;
+    personalLeaveApproved = false;
     chatView?.dispose();
     memberView?.dispose();
     marketplaceView?.dispose();
@@ -1528,6 +1589,8 @@
     if (!event.target.closest('.account-menu')) closeAccountMenu();
     else if (event.target.closest('a')) closeAccountMenu();
     if (!event.target.closest('.topnav-menu') || event.target.closest('.topnav-menu a')) closeToolsMenu();
+    const leaving = event.target.closest('a[href]');
+    if (personalNativeView && leaving && event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && !leaving.target && !leaving.hasAttribute('download') && !leaving.getAttribute('href').startsWith('#') && !personalNativeView.confirmLeave()) { event.preventDefault(); return; }
     if (router.follow(event)) { navigate(); return; }
     if (event.defaultPrevented) { closeMobileMenu(); return; }
     const growthButton = event.target.closest('[data-growth]');
@@ -1589,7 +1652,15 @@
     if (!event.target.closest('.topnav-menu')) closeToolsMenu();
   });
 
-  window.addEventListener('popstate', () => navigate({restore:router.position(), preservePublicView:true}));
+  window.addEventListener('popstate', () => {
+    if (restoringPersonalHistory) { restoringPersonalHistory = false; return; }
+    if (personalNativeView && !personalLeaveApproved && !personalNativeView.confirmLeave()) {
+      const delta = personalNativeStep - (history.state?.metarReturnV2?.step || 0);
+      if (delta) { restoringPersonalHistory = true; history.go(delta); }
+      return;
+    }
+    return navigate({restore:router.position(), preservePublicView:true});
+  });
   window.addEventListener('pagehide', () => router.checkpoint());
   window.addEventListener('focus', refreshAccountExtras);
   window.addEventListener('storage', event => {

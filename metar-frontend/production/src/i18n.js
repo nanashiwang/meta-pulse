@@ -2,6 +2,9 @@
 'use strict';
 (() => {
   const EN = Object.freeze({
+    "在独立页面打开": "Open in a separate page",
+    "设置尚未保存，确定离开？": "You have unsaved settings. Leave this page?",
+    "设置页面加载较慢，可使用下方链接打开原页面。": "Loading is taking longer. Open the original page using the link below.",
     "更多": "More",
     "社区推荐": "Community picks",
     "查看全部": "View all",

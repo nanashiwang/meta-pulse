@@ -32,7 +32,6 @@
       '/register': [config.answerRegisterPath, '/users/register'],
       '/forgot': [config.answerPasswordResetPath, '/users/account-recovery'],
       '/publish': [config.answerAskPath, '/questions/ask'],
-      '/me/notifications': [null, '/users/notifications/inbox'],
     };
     const entry = entries[path];
     if (!question && !entry) return null;

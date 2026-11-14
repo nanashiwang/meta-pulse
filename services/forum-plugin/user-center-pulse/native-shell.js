@@ -6,7 +6,7 @@ import { mountComposerLayout, positionComposerMenus } from './composer-layout.js
 
 export function backDestination(path) {
   if (/^\/(?:latest|questions|discover)?\/?$/.test(path)) return null;
-  if (/^\/(?:admin(?:\/|$)|me\/|badges(?:\/|$)|users\/settings(?:\/|$)|settings\/binding\/?$)/.test(path)) return '/me';
+  if (/^\/(?:admin(?:\/|$)|me\/|badges(?:\/|$)|users\/settings(?:\/|$)|settings(?:\/|$))/.test(path)) return '/me';
   return '/latest';
 }
 

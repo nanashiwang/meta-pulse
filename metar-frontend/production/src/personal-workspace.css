@@ -1,0 +1,8 @@
+/* Applied only inside the same-origin personal content frame. */
+html.metar-personal-content #header,html.metar-personal-content #footer,html.metar-personal-content footer,html.metar-personal-content #pcSideNav,html.metar-personal-content .metar-primary-nav{display:none!important}
+html.metar-personal-content,html.metar-personal-content body,html.metar-personal-content #root{min-height:0!important;height:auto!important}
+html.metar-personal-content body{padding:0!important;margin:0!important}
+html.metar-personal-content #main{padding-top:0!important;margin-top:0!important;min-height:0!important}
+html.metar-personal-content .container{max-width:100%;padding-left:16px;padding-right:16px}
+html.metar-personal-content .settings-nav{flex:0 0 160px}
+@media(max-width:600px){html.metar-personal-content .settings-nav{flex:0 0 100%}}

@@ -5,7 +5,15 @@
 })(typeof window==='undefined'?globalThis:window,function(){
  'use strict';
  const stateKey='metarReturnV2', pendingKey='_metar_return_pending_v2';
- const area=url=>/^\/admin(?:\/|$)/.test(url.split('?')[0])?'/admin':url;
+ // Settings tabs are one branch, including the shell binding page.
+ const area=url=>{
+  const path=url.split('?')[0];
+  if(/^\/admin(?:\/|$)/.test(path))return '/admin';
+  if(/^\/users\/settings(?:\/|$)/.test(path))return '/personal';
+  if((/^\/me(?:\/|$)/.test(path) && !(path==='/me/badges' && new URLSearchParams(url.split('?')[1]||'').has('badge'))) || ['/settings/binding','/chat','/pulse'].includes(path))return '/personal';
+  if(/^\/settings(?:\/|$)/.test(path))return '/settings';
+  return url;
+ };
  function local(value,origin){
   if(typeof value!=='string'||!value||/[\\\u0000-\u0020]/.test(value))return null;
   try{const u=new URL(value,origin);
@@ -21,6 +29,8 @@
    if(!target){current=null;return;}
    const valid=value&&value.url===target&&Number.isSafeInteger(value.step)&&value.step>=0&&Array.isArray(value.trail)&&value.trail.length<=50&&value.trail.every((e,i,all)=>e&&safe(e.url)===e.url&&Number.isSafeInteger(e.step)&&e.step>=0&&e.step<value.step&&(!i||e.step>all[i-1].step));
    current=valid?{url:target,step:value.step,trail:value.trail.map(e=>({...e}))}:{url:target,step:0,trail:[]};
+   // Old v2 snapshots may contain sibling settings visits. Skip these too.
+   while(current.trail.length && area(current.trail.at(-1).url)===area(target))current.trail.pop();
   }
   function advance(url,replace=false){
    const target=safe(url);
