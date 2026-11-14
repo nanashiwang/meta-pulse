@@ -136,7 +136,7 @@ new-api 接收端与实际到账、生产普通账号流程、邮件与跨实例
 
 构建缓存与磁盘保护（2026-11-13）：`metar update` 在同提交退出前维护本机默认 builder 的未使用缓存（8 GB 目标），备份/构建前要求仓库与 Docker/containerd 文件系统至少 20 GiB 空闲，更新退出再回收；复用更新锁和生产现有五分钟检查。无镜像、卷、binlog、上传或备份删除。入口 [update.sh](../deploy/update.sh)、[维护助手](../deploy/build-cache.py)，验收 [容量与失败测试](../deploy/test_build_cache.py)、[更新链路](../deploy/update_test.sh)。
 
-徽章提示关闭（2026-11-15）：[原生补丁](../services/forum/answer-badge-dismiss.patch)复用 Answer 通知与徽章，关闭立即停止本次浏览的自动弹窗，成就中心保留；后端按数据库过滤已读、删除或异属缓存。验证 `make test-forum-badge-dismiss`（100 次重放、失败关闭与账号隔离），部署需重建 forum。
+徽章提示关闭（2026-11-15）：[原生补丁](../services/forum/answer-badge-dismiss.patch)复用 Answer 通知与徽章，后台一律不自动弹窗，社区关闭状态按账号保留在当前标签页会话中，刷新/导航不重开，成就中心保留；后端按数据库过滤已读、删除或异属缓存。验证 `make test-forum-badge-dismiss`（100 次重放、失败关闭、后台路由、重挂载、禁用存储与账号隔离），部署需重建 forum。
 
 精简讨论首页：单一顶部搜索、单分类与短摘要、固定回复框、隐藏列表等级；更多菜单保留热门/高赞，待回答三条、精选默认折叠，窄屏辅助区折叠，无关注时不展示空卡片；列表页页脚随文流动。
 

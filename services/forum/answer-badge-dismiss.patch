@@ -1,24 +1,40 @@
 --- a/ui/src/components/Modal/BadgeModal.tsx
 +++ b/ui/src/components/Modal/BadgeModal.tsx
-@@ -17,7 +17,7 @@
+@@ -17,9 +17,9 @@
   * under the License.
   */
  
 -import { FC, useEffect } from 'react';
 +import { FC, useEffect, useRef, useState } from 'react';
  import { useTranslation } from 'react-i18next';
- import { useNavigate } from 'react-router-dom';
+-import { useNavigate } from 'react-router-dom';
++import { useLocation, useNavigate } from 'react-router-dom';
  
-@@ -43,18 +43,32 @@
+ import classNames from 'classnames';
+ 
+@@ -43,18 +43,50 @@
    const { t } = useTranslation('translation', { keyPrefix: 'badges.modal' });
    const { user } = loggedUserInfoStore();
    const navigate = useNavigate();
 -  const { data, mutate } = useQueryNotificationStatus();
++  const { pathname } = useLocation();
 +  const { mutate } = useQueryNotificationStatus();
 +  const dismissed = useRef(new Set<string>());
 +  const [, redraw] = useState(0);
 +  const dismissalKey = user.username;
-+  const show = visible && !dismissed.current.has(dismissalKey);
++  const storageKey = `metar:badge-dismissed:v1:${dismissalKey}`;
++  let sessionDismissed = false;
++  try {
++    sessionDismissed = window.sessionStorage.getItem(storageKey) === '1';
++  } catch {
++    // Storage can be disabled; retain the in-memory fallback.
++  }
++  const isAdminPage = /^\/admin(?:\/|$)/.test(pathname);
++  const show =
++    visible &&
++    !isAdminPage &&
++    !sessionDismissed &&
++    !dismissed.current.has(dismissalKey);
  
 -  const handle = async () => {
 -    if (!data) return;
@@ -37,8 +53,13 @@
 +    const id = badge?.notification_id;
 +    if (dismissed.current.has(dismissalKey)) return;
 +    // Dismiss before I/O; stale polls and failed acknowledgements must not
-+    // reopen the badge queue during the lifetime of this layout.
++    // reopen the badge queue after navigation or a component remount.
 +    dismissed.current.add(dismissalKey);
++    try {
++      window.sessionStorage.setItem(storageKey, '1');
++    } catch {
++      // Closing must still work when browser storage is unavailable.
++    }
 +    redraw((value) => value + 1);
 +    destroyAnimation();
 +    try {
@@ -50,7 +71,7 @@
    };
    const handleCancel = async () => {
      await handle();
-@@ -97,21 +111,15 @@
+@@ -97,21 +129,15 @@
      }
    };
  
@@ -74,7 +95,7 @@
          initAnimation();
        } else {
          destroyAnimation();
-@@ -123,13 +131,13 @@
+@@ -123,13 +149,13 @@
        document.removeEventListener('visibilitychange', handleVisibilityChange);
        destroyAnimation();
      };
