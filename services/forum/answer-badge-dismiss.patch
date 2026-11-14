@@ -9,7 +9,7 @@
  import { useTranslation } from 'react-i18next';
  import { useNavigate } from 'react-router-dom';
  
-@@ -43,18 +43,26 @@
+@@ -43,18 +43,32 @@
    const { t } = useTranslation('translation', { keyPrefix: 'badges.modal' });
    const { user } = loggedUserInfoStore();
    const navigate = useNavigate();
@@ -20,16 +20,20 @@
 +  const dismissalKey = user.username;
 +  const show = visible && !dismissed.current.has(dismissalKey);
  
-   const handle = async () => {
+-  const handle = async () => {
 -    if (!data) return;
 -    await readNotification(badge?.notification_id);
 -    await mutate({
 -      ...data,
 -      badge_award: null,
 -    });
--    clearTimeout(timeout);
--    bg1?.destroy();
--    bg2?.destroy();
++  const destroyAnimation = () => {
+     clearTimeout(timeout);
+     bg1?.destroy();
+     bg2?.destroy();
++  };
++
++  const handle = async () => {
 +    const id = badge?.notification_id;
 +    if (dismissed.current.has(dismissalKey)) return;
 +    // Dismiss before I/O; stale polls and failed acknowledgements must not
@@ -46,9 +50,16 @@
    };
    const handleCancel = async () => {
      await handle();
-@@ -104,14 +112,14 @@
+@@ -97,21 +111,15 @@
+     }
    };
  
+-  const destroyAnimation = () => {
+-    clearTimeout(timeout);
+-    bg1?.destroy();
+-    bg2?.destroy();
+-  };
+-
    useEffect(() => {
 -    if (visible) {
 +    if (show) {
