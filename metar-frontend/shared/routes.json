@@ -40,7 +40,9 @@
     "admin/marketplace",
     "admin/models",
     "questions",
-    "admin/publishing"
+    "admin/publishing",
+    "me/settings",
+    "me/badges"
   ],
   "detailPrefixes": [
     "question",

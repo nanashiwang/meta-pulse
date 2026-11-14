@@ -87,7 +87,6 @@ test('旧详情和通知进入唯一原生目标，查询参数与回答评论�
   for (const [old, expected] of [
     ['/question/42?commentId=9#answer-7', '/questions/42?commentId=9#answer-7'],
     ['/question/42/', '/questions/42'],
-    ['/me/notifications?type=mention', '/users/notifications/inbox?type=mention'],
   ]) assert.equal(nativeDestination(new URL(old, 'https://metarhub.com')), expected);
   for (const path of ['/users/confirm-email?code=x', '/questions/42/7?commentId=9', '/api/user-center/login/callback', '/question/%2fusers', '/question/42/edit']) {
     assert.equal(nativeDestination(new URL(path, 'https://metarhub.com')), null, path);

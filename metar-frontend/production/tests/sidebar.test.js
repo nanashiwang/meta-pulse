@@ -11,22 +11,22 @@ function appFunction(name,context){
  return vm.runInNewContext(`(${appSource.slice(start,end)})`,context);
 }
 test('personal sidebar only exposes real administrator navigation on /me',()=>{
- const context={route:()=>({path:'/me',query:new URLSearchParams()}),currentUserState:'ready',currentUser:{role_id:1},t:x=>x,getLanguage:()=> 'zh_CN',I:()=>'',esc:x=>String(x??''),link:(url,text)=>`<a href="${url}">${text}</a>`,external:(url,text)=>`<a href="${url}">${text}</a>`,outbound:(url,text)=>url?`<a href="${url}">${text}</a>`:'',routeMatchesNavigation:(path,search,url)=>path===url,config:{answerSettingsPath:'/users/settings/profile',consoleUrl:'https://api.example/console'},isCommunityAdministrator:u=>u?.role_id===2};
+ const context={isPersonalPath:p=>p==='/me'||p.startsWith('/me/'),route:()=>({path:'/me',query:new URLSearchParams()}),currentUserState:'ready',currentUser:{role_id:1},t:x=>x,getLanguage:()=> 'zh_CN',I:()=>'',esc:x=>String(x??''),link:(url,text)=>`<a href="${url}">${text}</a>`,external:(url,text)=>`<a href="${url}">${text}</a>`,outbound:(url,text)=>url?`<a href="${url}">${text}</a>`:'',routeMatchesNavigation:(path,search,url)=>path===url,config:{answerSettingsPath:'/users/settings/profile',consoleUrl:'https://api.example/console'},isCommunityAdministrator:u=>u?.role_id===2};
  context.accountManagement=appFunction('accountManagement',context);
  const sidebar=appFunction('personalSidebar',context);
- assert.match(sidebar(),/\/badges/);assert.match(sidebar(),/\/users\/settings\/profile/);assert.match(sidebar(),/href="\/pulse"[^>]*><span>签到抽奖<\/span>/);assert.doesNotMatch(sidebar(),/console\/pulse|marketplace\/mine/);assert.doesNotMatch(sidebar(),/\/admin\//);
+ assert.match(sidebar(),/\/badges/);assert.match(sidebar(),/\/me\/settings/);assert.match(sidebar(),/href="\/pulse"[^>]*><span>签到抽奖<\/span>/);assert.doesNotMatch(sidebar(),/console\/pulse|marketplace\/mine/);assert.doesNotMatch(sidebar(),/\/admin\//);
  context.config.consoleUrl='';assert.match(sidebar(),/href="\/pulse"/);
  context.getLanguage=()=> 'en_US';assert.match(sidebar(),/Check-in & draw/);
  context.currentUser.role_id=2;assert.match(sidebar(),/\/admin\/pulse/);
  context.currentUserState='unavailable';assert.equal(sidebar(),'');
- context.currentUserState='ready';context.route=()=>({path:'/me/bookmarks'});assert.equal(sidebar(),'');
+ context.currentUserState='ready';context.currentUserState='ready';context.route=()=>({path:'/me/bookmarks',query:new URLSearchParams()});assert.match(sidebar(),/personal-sidebar/);
 });
 test('back always returns to the personal space or the main community page',()=>{
- const visits=[];const context={route:()=>({path:'/settings/binding'}),history:{length:3,back:()=>visits.push('back')},window:{MetarRouter:{owns:()=>true}},location:{origin:'https://forum.test'},URL,router:{go:path=>{visits.push(path);return true}},navigate:()=>{}};
+ const visits=[];const context={personalNativeView:null,isPersonalPath:p=>p==='/settings/binding'||p==='/me'||p.startsWith('/me/'),route:()=>({path:'/settings/binding'}),history:{length:3,back:()=>visits.push('back')},window:{MetarRouter:{owns:()=>true}},location:{origin:'https://forum.test'},URL,router:{go:path=>{visits.push(path);return true}},navigate:()=>{}};
  const back=appFunction('goBack',context);
  back();context.route=()=>({path:'/users/settings'});back();context.route=()=>({path:'/me/bookmarks'});back();context.route=()=>({path:'/badges'});back();
  context.route=()=>({path:'/models'});back();context.route=()=>({path:'/topic/ai'});back();context.route=()=>({path:'/me'});back();
- assert.deepEqual(visits,['/me','/me','/me','/me','/latest','/latest','/latest']);
+ assert.deepEqual(visits,['/latest','/me','/latest','/me','/latest','/latest','/latest']);
 });
 function setup(value,blocked=false){let listener,latest;const saved=new Map([[KEY,value]]),desktop={matches:true,addEventListener(_event,fn){listener=fn}};
  const storage={getItem:k=>{if(blocked)throw Error('blocked');return saved.get(k)},setItem:(k,v)=>{if(blocked)throw Error('blocked');saved.set(k,v)}};
@@ -52,7 +52,7 @@ test('avatar rendered on me remains a working link when the header is reused aft
  assert.equal(menu(),retainedHeader);
 });
 test('shell administration pages return to personal space',()=>{
- const visits=[];let path='/admin/pulse';const back=appFunction('goBack',{route:()=>({path}),window:{MetarRouter:{owns:()=>true}},location:{origin:'https://forum.test'},URL,router:{go:p=>visits.push(p)},navigate:()=>{}});
+ const visits=[];let path='/admin/pulse';const back=appFunction('goBack',{personalNativeView:null,isPersonalPath:()=>false,route:()=>({path}),window:{MetarRouter:{owns:()=>true}},location:{origin:'https://forum.test'},URL,router:{go:p=>visits.push(p)},navigate:()=>{}});
  for(path of ['/admin/pulse','/admin/growth','/admin/models'])back();
  assert.deepEqual(visits,['/me','/me','/me']);
 });

@@ -1398,3 +1398,7 @@ Answer 的注册激活邮件、用户/管理员重发和后台测试邮件同步
 
 
 内容运营定时扩展：Answer 库 `metar_operator_plan` 保存不可变批次输入/摘要、状态与逐项进度。论坛进程约 15 秒轮询，`queued → completed / needs_review / cancelled`；人工核对允许 `needs_review → queued`，保留原单项请求键，只恢复未确认项。批次命名锁串行化多实例执行与取消，单项沿用原发布审计和未知结果标识查询，进度写入失败重启后不会重新创建已尝试内容。后台使用入库管理员 ID 的内部上下文（无浏览器凭据），每项重查实时管理身份及运营账号资格。JSON 的前向无环 parent 引用映射到原生 question/answer/comment；评论的回复使用原生 reply_comment_id，仍有原生审核/权限及显式代发标识。批次未执行不依赖浏览器，停机恢复补执行到期项，不倒填时间，不进入 Pulse/new-api 请求链。
+
+### 个人中心原生内容容器（2026-11-14）
+
+/me/settings、/me/badges、/me/notifications 为私有静态壳层路由，原生 Answer 仍拥有设置写入、认证和通知权限。仅内嵌同源 settings profile/notify/account/interface、notifications inbox/achievement 与 badges 列表/详情；Nginx 在这些精确模式页面隐藏上游 DENY 并统一 SAMEORIGIN、frame-ancestors self、no-store，继续过滤 Cookie 与清除伪造服务身份头。登录、认证回调、后台及 API 不改变策略。不开放任意 URL、跨源桥接、postMessage 凭据通道或新数据权限。设置成功通过原生请求响应确认，失败不丢弃未保存输入。

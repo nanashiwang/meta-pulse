@@ -1,0 +1,31 @@
+diff --git a/internal/service/content/user_service.go b/internal/service/content/user_service.go
+--- a/internal/service/content/user_service.go
++++ b/internal/service/content/user_service.go
+@@ -749,7 +749,7 @@
+ 
+ // UserRanking get user ranking
+ func (us *UserService) UserRanking(ctx context.Context) (resp *schema.UserRankingResp, err error) {
+-	limit := 20
++	limit := 100
+ 	endTime := time.Now()
+ 	startTime := endTime.AddDate(0, 0, -7)
+ 	userIDs, userIDExist := make([]string, 0), make(map[string]bool, 0)
+diff --git a/internal/repo/activity_common/activity_repo.go b/internal/repo/activity_common/activity_repo.go
+--- a/internal/repo/activity_common/activity_repo.go
++++ b/internal/repo/activity_common/activity_repo.go
+@@ -150,10 +150,15 @@
+ 	rankStat = make([]*entity.ActivityUserRankStat, 0)
+ 	session := ar.data.DB.Context(ctx).Select("user_id, SUM(`rank`) AS rank_amount").Table("activity")
+ 	session.Where("has_rank = 1 AND cancelled = 0")
++	// Filter before LIMIT so staff and deleted accounts do not consume member slots.
++	session.Where("user_id IN (SELECT id FROM `user` WHERE status <> ?)", entity.UserStatusDeleted)
++	session.Where("user_id NOT IN (SELECT user_id FROM user_role_rel WHERE role_id IN (2, 3))")
+ 	session.Where("created_at >= ?", startTime)
+ 	session.Where("created_at <= ?", endTime)
+ 	session.GroupBy("user_id")
++	session.Having("SUM(`rank`) > 0")
+ 	session.Desc("rank_amount")
++	session.Asc("user_id")
+ 	session.Limit(limit)
+ 	err = session.Find(&rankStat)
+ 	if err != nil {

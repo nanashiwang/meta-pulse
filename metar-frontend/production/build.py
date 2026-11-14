@@ -79,6 +79,7 @@ def build(output: Path, config_path: Path) -> None:
         "chat": (ROOT / "src/chat.js").read_text(encoding="utf-8"),
         "member-pages": (ROOT / "src/member-pages.js").read_text(encoding="utf-8"),
         "drafts-store": (ROOT.parents[1] / "services/forum-plugin/user-center-pulse/drafts-store.js").read_text(encoding="utf-8"),
+        "personal-workspace": (ROOT / "src/personal-workspace.js").read_text(encoding="utf-8"),
         "app": (ROOT / "src/app.js").read_text(encoding="utf-8"),
         "pulse-feed": (ROOT / "src/pulse-feed.js").read_text(encoding="utf-8"),
         "pulse-core": (ROOT / "src/pulse-core.js").read_text(encoding="utf-8"),
@@ -132,6 +133,8 @@ def build(output: Path, config_path: Path) -> None:
     (assets / "chat.js").write_text(sources["chat"], encoding="utf-8")
     (assets / "member-pages.js").write_text(sources["member-pages"], encoding="utf-8")
     (assets / "drafts-store.js").write_text(sources["drafts-store"], encoding="utf-8")
+    (assets / "personal-workspace.js").write_text(sources["personal-workspace"], encoding="utf-8")
+    shutil.copyfile(ROOT / "src/personal-workspace.css", assets / "personal-workspace.css")
     (assets / "app.js").write_text(sources["app"], encoding="utf-8")
     (assets / "pulse-feed.js").write_text(sources["pulse-feed"], encoding="utf-8")
     (assets / "pulse-core.js").write_text(sources["pulse-core"], encoding="utf-8")

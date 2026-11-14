@@ -36,6 +36,7 @@ COPY services/forum/answer-operator-publishing.patch /build/answer-operator-publ
 COPY services/forum/answer-question-author.patch /build/answer-question-author.patch
 COPY services/forum/answer-mail-errors.patch /build/answer-mail-errors.patch
 COPY services/forum/answer-badge-dismiss.patch /build/answer-badge-dismiss.patch
+COPY services/forum/answer-ranking-top100.patch /build/answer-ranking-top100.patch
 COPY services/forum/normalize-source.py /build/normalize-source.py
 RUN python3 /build/normalize-source.py /build/answer \
     && cd /build/answer \
@@ -47,7 +48,8 @@ RUN python3 /build/normalize-source.py /build/answer \
     && patch -p1 --fuzz=0 < /build/answer-question-author.patch \
     && patch -p1 --fuzz=0 < /build/answer-operator-publishing.patch \
     && patch -p1 --fuzz=0 < /build/answer-discussion-labels.patch \
-    && patch -p1 --fuzz=0 < /build/answer-badge-dismiss.patch
+    && patch -p1 --fuzz=0 < /build/answer-badge-dismiss.patch \
+    && patch -p1 --fuzz=0 < /build/answer-ranking-top100.patch
 ENV ANSWER_MODULE=/build/answer
 
 WORKDIR /build

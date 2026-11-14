@@ -1,6 +1,6 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const source=fs.readFileSync(require('node:path').resolve(__dirname,'../../../services/forum-plugin/user-center-pulse/return-navigation.js'),'utf8');
-const box={module:{exports:{}},URL};vm.runInNewContext(source,box);const {create,install}=box.module.exports;
+const box={module:{exports:{}},URL,URLSearchParams};vm.runInNewContext(source,box);const {create,install}=box.module.exports;
 function setup(path='/latest'){
  const events={},clicks={},storage=new Map(),entries=[{url:path,state:null}];let index=0;
  const host={location:{origin:'https://forum.test'},document:{referrer:'',addEventListener:(k,fn)=>clicks[k]=fn},addEventListener:(k,fn)=>events[k]=fn,sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)}};
@@ -39,4 +39,27 @@ test('native committed navigation uses a verified pending source but never unrel
  delete h.host.__metarReturnNavigation;h.host.history.pushState(null,'','/questions/1');h.host.history.replaceState(null,'',h.host.location.href);
  h.host.document.referrer='https://forum.test/latest';h.storage.set('_metar_return_pending_v2',pending);
  const nav=install(h.host);assert.equal(nav.destination('',null),'/latest');assert.equal(nav.distance(),1);
+});
+
+test('settings tabs and shell binding share their actual entry branch',()=>{
+ for(const entry of ['/me','/me/bookmarks','/questions/7']){
+  const h=setup('/latest');h.host.history.pushState(null,'',entry);
+  for(const path of ['/users/settings/profile','/users/settings/notify','/users/settings/account','/settings/binding','/users/settings/profile'])h.host.history.pushState(null,'',path);
+  h.nav.back('/latest');assert.equal(h.host.location.pathname,entry.startsWith('/me')?'/latest':entry);
+ }
+});
+test('old settings snapshots skip sibling tabs after reload and browser traversal',()=>{
+ const h=setup('/latest');h.host.history.pushState(null,'','/users/settings/profile');h.host.history.pushState(null,'','/users/settings/notify');
+ const saved={url:'/users/settings/notify',step:2,trail:[{url:'/latest',step:0},{url:'/users/settings/profile',step:1}]};
+ h.nav.restore(saved,saved.url);assert.equal(h.nav.distance(),2);h.nav.back('/latest');assert.equal(h.host.location.pathname,'/latest');
+ h.host.history.go(2);h.nav.back('/latest');assert.equal(h.host.location.pathname,'/latest');
+});
+test('direct settings entry has no imaginary parent and unrelated personal branches remain separate',()=>{
+ const h=setup('/users/settings/profile');h.host.history.pushState(null,'','/users/settings/notify');h.nav.back('/me');assert.equal(h.host.replaced,'/me');
+ const other=setup('/me');other.host.history.pushState(null,'','/me/bookmarks');other.host.history.pushState(null,'','/questions/8');other.nav.back('/latest');assert.equal(other.host.location.pathname,'/me/bookmarks');
+});
+
+test('personal siblings skip to entry while badge details return to their list',()=>{
+ const h=setup('/latest?order=newest');for(const path of ['/me','/me/growth','/me/bookmarks','/me/badges'])h.host.history.pushState(null,'',path);
+ h.host.history.pushState(null,'','/me/badges?badge=abc');h.nav.back('/latest');assert.equal(h.host.location.pathname,'/me/badges');h.nav.back('/latest');assert.equal(h.host.location.pathname,'/latest');assert.equal(h.host.location.search,'?order=newest');
 });

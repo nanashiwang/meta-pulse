@@ -38,13 +38,13 @@ test('默认中文、只接受约定语言，并与 Answer 共享持久偏好', 
   assert.equal(blocked.t('问答广场'), 'Questions');
 });
 
-test('仅个人空间显示个人侧栏，离开后清理', async () => {
+test('个人中心同级页保留侧栏，离开个人区域后清理', async () => {
   const view = await shell({user:{username:'alice',role_id:1,status:'normal',mail_status:1}});
   assert.doesNotMatch(view.nodes.app.innerHTML, /class="personal-sidebar"/);
   await view.navigate('/me');
   assert.match(view.nodes.app.innerHTML, /class="personal-sidebar"/);
   await view.navigate('/pulse');
-  assert.doesNotMatch(view.nodes.app.innerHTML, /class="personal-sidebar"/);
+  assert.match(view.nodes.app.innerHTML, /class="personal-sidebar"/);
   await view.navigate('/knowledge');
   assert.doesNotMatch(view.nodes.app.innerHTML, /class="personal-sidebar"/);
 });
@@ -74,6 +74,7 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
   const { context, i18n, values } = languageContext(language);
   const node = () => ({ innerHTML: '', textContent: '', attributes: {}, setAttribute(key, value) { this.attributes[key] = value; }, focus() {} });
   const nodes = Object.fromEntries(['app', 'view', 'main', 'skip', 'description', 'theme', 'menu', 'language', 'metar-loading-template'].map((key) => [key, node()]));
+  const sidebarNode = { dataset:{}, get isConnected(){return nodes.app.innerHTML.includes('class="personal-sidebar"');}, remove(){nodes.app.innerHTML = nodes.app.innerHTML.replace(/<aside class="personal-sidebar"[\s\S]*?<\/aside>/g,'');} };
   nodes.main.insertAdjacentHTML = (_position, html) => { nodes.app.innerHTML = nodes.app.innerHTML.replace('<main ', html + '<main '); };
   nodes['metar-loading-template'].innerHTML = script('loading-view.html');
   nodes['toast-root'] = { append(message) { nodes[message.id] = message; } };
@@ -90,7 +91,7 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
     getElementById: (id) => nodes[id] || null,
     createElement() { return {...node(), remove() { delete nodes[this.id]; }}; },
     querySelector: (selector) => ({
-      '.personal-sidebar': {remove() { nodes.app.innerHTML = nodes.app.innerHTML.replace(/<aside class="personal-sidebar"[\s\S]*?<\/aside>/g, ''); }},
+      '.personal-sidebar': sidebarNode.isConnected ? sidebarNode : null,
       'header.topbar': {set outerHTML(value) { nodes.app.innerHTML = nodes.app.innerHTML.replace(/<header class="topbar">[\s\S]*?<\/header>/, () => value); }},
       '[data-action="skip"]': nodes.skip, 'meta[name="description"]': nodes.description,
       '[data-action="theme"]': nodes.theme, '[data-action="menu"]': nodes.menu,
@@ -407,7 +408,7 @@ test('Pulse 管理入口仅对 Answer 正常激活管理员显示，版主和伪
     assert.doesNotMatch(view.nodes.app.innerHTML, /href="\/admin\/(?:pulse|dashboard|pulse_user_center)"/);
   }
   const view = await shell({ user: { id: '8', role_id: 2, status: 'normal', mail_status: 1 } });
-  assert.match(view.nodes.app.innerHTML, /href="\/users\/notifications\/achievement"[\s\S]*href="\/review"/);
+  assert.match(view.nodes.app.innerHTML, /href="\/me\/notifications\?view=achievement"[\s\S]*href="\/review"/);
   await view.navigate('/me');
   assert.match(view.nodes.app.innerHTML, /href="\/admin\/pulse"/);
   assert.match(view.nodes.app.innerHTML, /href="\/admin\/dashboard"/);
@@ -435,21 +436,21 @@ test('统一入口打开原生互动页，旧详情不再读取只读副本，�
   const view = await shell({ user: { username: 'alice', display_name: 'Alice', mail_status: 1 }, content: true });
   assert.match(view.html(), /href="\/questions\/42" class="discussion-title"/);
   assert.match(view.html(), /href="\/users\/alice" class="discussion-author"/);
-  assert.match(view.html(), /href="\/users\/notifications\/inbox"/);
+  assert.match(view.html(), /href="\/me\/notifications"/);
   assert.match(view.nodes.app.innerHTML, /<div class="header-actions"><a href="\/users" class="icon-btn header-ranking" aria-label="Leaderboard" title="Leaderboard">[\s\S]*?<span class="visually-hidden">Leaderboard<\/span><\/a>/);
   await view.navigate('/question/42?commentId=9#answer-7');
   assert.equal(view.redirects.at(-1), '/questions/42?commentId=9#answer-7');
   assert.ok(!view.requests.some(({ url }) => url.includes('/question/info') || url.includes('/answer/page')));
   const outage = await shell({ failure: 'identity' });
   await outage.navigate('/me/notifications');
-  assert.equal(outage.redirects.at(-1), '/users/notifications/inbox');
+  assert.match(outage.nodes.view.innerHTML, /unavailable/i);
 });
 
 test('账号页保留公开和私人入口，故障时旧登录发布路由仍交给原生处理', async () => {
   const view = await shell({ user: { username: 'alice', display_name: 'Alice', mail_status: 1 } });
   await view.navigate('/me');
   assert.match(view.html(), /href="\/users\/alice"[^>]*>Public profile/);
-  assert.match(view.html(), /href="\/users\/settings\/profile"/);
+  assert.match(view.html(), /href="\/me\/settings"/);
   assert.doesNotMatch(view.html(), /Answer question list|Edit Answer profile|questions\/undefined/);
   assert.match(view.html(), /href="\/questions\/42" class="discussion-title"/);
   const outage = await shell({ failure: 'identity' });
