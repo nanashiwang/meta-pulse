@@ -2,7 +2,7 @@ diff --git a/i18n/en_US.yaml b/i18n/en_US.yaml
 index eac322d..3e75be1 100644
 --- a/i18n/en_US.yaml
 +++ b/i18n/en_US.yaml
-@@ -1977,6 +1977,68 @@ ui:
+@@ -1977,6 +1977,67 @@ ui:
        change_role: Change role
        show_logs: Show logs
        add_user: Add user
@@ -23,8 +23,7 @@ index eac322d..3e75be1 100644
 +      metar_col_tickets_total: "Tickets received (adjusted)"
 +      metar_col_tickets_spent: "Tickets spent"
 +      metar_col_rewards: "Settled rewards"
-+      metar_ticket_history_hint: "Received starts at spent tickets when corrected, then adds new grants. Removed counts only events after correction. Available tickets and settled rewards are unchanged."
-+      metar_removed: "Reset/revoked/expired: {{count}}"
++      metar_ticket_history_hint: "Received starts at spent tickets when corrected, then adds new grants. Available tickets and settled rewards are unchanged."
 +      metar_sort_all: "Sort all filtered users"
 +      metar_sort_default: "Default order"
 +      metar_refresh_statistics: "Refresh statistics"
@@ -75,7 +74,7 @@ diff --git a/i18n/zh_CN.yaml b/i18n/zh_CN.yaml
 index 53dca07..bc7ecc1 100644
 --- a/i18n/zh_CN.yaml
 +++ b/i18n/zh_CN.yaml
-@@ -1938,6 +1938,68 @@ ui:
+@@ -1938,6 +1938,67 @@ ui:
        change_role: 更改角色
        show_logs: 显示日志
        add_user: 添加用户
@@ -96,8 +95,7 @@ index 53dca07..bc7ecc1 100644
 +      metar_col_tickets_total: "校正累计获券"
 +      metar_col_tickets_spent: "已消耗券"
 +      metar_col_rewards: "已到账奖励"
-+      metar_ticket_history_hint: "校正时累计获券以已消耗券为起点，之后新增获券正常累加；清零/撤销/过期仅计校正后的记录。可用券与到账奖励不变。"
-+      metar_removed: "已清零/撤销/过期：{{count}}"
++      metar_ticket_history_hint: "校正时累计获券以已消耗券为起点，之后新增获券正常累加。可用券与到账奖励不变。"
 +      metar_sort_all: "全部筛选用户排序"
 +      metar_sort_default: "默认排序"
 +      metar_refresh_statistics: "刷新统计"
@@ -909,7 +907,7 @@ index 7e8e4fd..4fd3f50 100644
                  {t('action')}
                </th>
              ) : null}
-@@ -276,28 +764,153 @@ const Users: FC = () => {
+@@ -276,28 +764,143 @@ const Users: FC = () => {
            {data?.list.map((user) => {
              return (
                <tr key={user.user_id}>
@@ -976,16 +974,6 @@ index 7e8e4fd..4fd3f50 100644
 +                  <td>
 +                    {visibleBindings?.[String(user.user_id)]?.tickets?.total ??
 +                      '—'}
-+                    {visibleBindings?.[String(user.user_id)]?.tickets
-+                      ?.removed && (
-+                      <small className="d-block text-secondary">
-+                        {t('metar_removed', {
-+                          count:
-+                            visibleBindings[String(user.user_id)].tickets
-+                              .removed,
-+                        })}
-+                      </small>
-+                    )}
 +                  </td>
 +                )}
 +                {show('tickets_spent') && (
@@ -1071,7 +1059,7 @@ index 7e8e4fd..4fd3f50 100644
                        {user.suspended_until <= 0 ||
                        Number(
                          dayjs(user.suspended_until * 1000).format('YYYY'),
-@@ -310,7 +923,7 @@ const Users: FC = () => {
+@@ -310,7 +913,7 @@ const Users: FC = () => {
                    </>
                  )}
                  {curFilter === 'deleted' && (
@@ -1080,7 +1068,7 @@ index 7e8e4fd..4fd3f50 100644
                      <FormatTime time={user.deleted_at} />
                    </td>
                  )}
-@@ -319,7 +932,7 @@ const Users: FC = () => {
+@@ -319,7 +922,7 @@ const Users: FC = () => {
                      {t(user.status)}
                    </span>
                  </td>
@@ -1089,7 +1077,7 @@ index 7e8e4fd..4fd3f50 100644
                    <td>
                      <span className="badge text-bg-light">
                        {t(user.role_name)}
-@@ -338,19 +951,57 @@ const Users: FC = () => {
+@@ -338,19 +941,57 @@ const Users: FC = () => {
                      showDeleteModal={changeDeleteUserModalState}
                      showSuspenseModal={handleSuspenseUserModalState}
                    />
