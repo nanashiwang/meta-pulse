@@ -36,7 +36,7 @@ verify-notes:
 vet:
 	go vet $(GO_MODULES)
 
-test: test-operator-publishing test-forum-frontend-assets test-forum-mail-errors deploy-test test-community test-forum-session test-forum-optional-email test-forum-admin-user-list test-forum-captcha
+test: test-forum-badge-dismiss test-operator-publishing test-forum-frontend-assets test-forum-mail-errors deploy-test test-community test-forum-session test-forum-optional-email test-forum-admin-user-list test-forum-captcha
 	go test $(GO_MODULES)
 
 deploy-test:
@@ -192,3 +192,7 @@ test-forum-frontend-assets:
 test-operator-publishing:
 	bash services/forum/test-operator-publishing.sh
 	go test ./services/forum-plugin/user-center-pulse -run Publishing -count=1
+
+.PHONY: test-forum-badge-dismiss
+test-forum-badge-dismiss:
+	bash services/forum/test-badge-dismiss.sh

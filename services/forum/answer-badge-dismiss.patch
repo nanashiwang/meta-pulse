@@ -1,0 +1,107 @@
+--- a/ui/src/components/Modal/BadgeModal.tsx
++++ b/ui/src/components/Modal/BadgeModal.tsx
+@@ -17,7 +17,7 @@
+  * under the License.
+  */
+ 
+-import { FC, useEffect } from 'react';
++import { FC, useEffect, useRef, useState } from 'react';
+ import { useTranslation } from 'react-i18next';
+ import { useNavigate } from 'react-router-dom';
+ 
+@@ -43,18 +43,26 @@
+   const { t } = useTranslation('translation', { keyPrefix: 'badges.modal' });
+   const { user } = loggedUserInfoStore();
+   const navigate = useNavigate();
+-  const { data, mutate } = useQueryNotificationStatus();
++  const { mutate } = useQueryNotificationStatus();
++  const dismissed = useRef(new Set<string>());
++  const [, redraw] = useState(0);
++  const dismissalKey = user.username;
++  const show = visible && !dismissed.current.has(dismissalKey);
+ 
+   const handle = async () => {
+-    if (!data) return;
+-    await readNotification(badge?.notification_id);
+-    await mutate({
+-      ...data,
+-      badge_award: null,
+-    });
+-    clearTimeout(timeout);
+-    bg1?.destroy();
+-    bg2?.destroy();
++    const id = badge?.notification_id;
++    if (dismissed.current.has(dismissalKey)) return;
++    // Dismiss before I/O; stale polls and failed acknowledgements must not
++    // reopen the badge queue during the lifetime of this layout.
++    dismissed.current.add(dismissalKey);
++    redraw((value) => value + 1);
++    destroyAnimation();
++    try {
++      if (id) await readNotification(id);
++      await mutate();
++    } catch {
++      // Keep the notification available in achievements for a later retry.
++    }
+   };
+   const handleCancel = async () => {
+     await handle();
+@@ -104,14 +112,14 @@
+   };
+ 
+   useEffect(() => {
+-    if (visible) {
++    if (show) {
+       initAnimation();
+     } else {
+       destroyAnimation();
+     }
+ 
+     const handleVisibilityChange = () => {
+-      if (document.visibilityState === 'visible') {
++      if (show && document.visibilityState === 'visible') {
+         initAnimation();
+       } else {
+         destroyAnimation();
+@@ -123,13 +131,13 @@
+       document.removeEventListener('visibilitychange', handleVisibilityChange);
+       destroyAnimation();
+     };
+-  }, [visible]);
++  }, [show]);
+ 
+   return (
+     <Modal
+       id="badgeModal"
+       title={t('title')}
+-      visible={visible}
++      visible={show}
+       onCancel={handleCancel}
+       onConfirm={handleConfirm}
+       cancelText={t('close')}
+--- a/internal/service/notification/notification_service.go
++++ b/internal/service/notification/notification_service.go
+@@ -109,7 +109,22 @@
+ 
+ 	c := schema.NewRedDotBadgeAwardCache()
+ 	c.FromJSON(cacheData)
+-	award := c.GetBadgeAward()
++	// Cache is only a hint. Read state and ownership remain in the database.
++	var award *schema.RedDotBadgeAward
++	for award = c.GetBadgeAward(); award != nil; award = c.GetBadgeAward() {
++		notification, found, lookupErr := ns.notificationRepo.GetById(ctx, award.NotificationID)
++		if lookupErr != nil {
++			log.Errorf("get badge notification failed: %v", lookupErr)
++			return nil
++		}
++		if found && notification.UserID == userID && notification.IsRead == schema.NotificationNotRead && notification.Status == schema.NotificationStatusNormal {
++			break
++		}
++		c.RemoveBadgeAward(award.NotificationID)
++		if err := ns.notificationCommon.RemoveBadgeAwardAlertCache(ctx, userID, award.NotificationID); err != nil {
++			log.Errorf("remove stale badge notification failed: %v", err)
++		}
++	}
+ 	if award == nil {
+ 		return nil
+ 	}
