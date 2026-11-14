@@ -33,6 +33,7 @@ COPY services/forum/answer-admin-user-list.patch /build/answer-admin-user-list.p
 COPY services/forum/answer-admin-privileges-compact.patch /build/answer-admin-privileges-compact.patch
 COPY services/forum/answer-discussion-labels.patch /build/answer-discussion-labels.patch
 COPY services/forum/answer-operator-publishing.patch /build/answer-operator-publishing.patch
+COPY services/forum/answer-question-participants.patch /build/answer-question-participants.patch
 COPY services/forum/answer-question-author.patch /build/answer-question-author.patch
 COPY services/forum/answer-mail-errors.patch /build/answer-mail-errors.patch
 COPY services/forum/answer-badge-dismiss.patch /build/answer-badge-dismiss.patch
@@ -46,6 +47,7 @@ RUN python3 /build/normalize-source.py /build/answer \
     && patch -p1 --fuzz=0 < /build/answer-admin-privileges-compact.patch \
     && patch -p1 --fuzz=0 < /build/answer-mail-errors.patch \
     && patch -p1 --fuzz=0 < /build/answer-question-author.patch \
+    && patch -p1 --fuzz=0 < /build/answer-question-participants.patch \
     && patch -p1 --fuzz=0 < /build/answer-operator-publishing.patch \
     && patch -p1 --fuzz=0 < /build/answer-discussion-labels.patch \
     && patch -p1 --fuzz=0 < /build/answer-badge-dismiss.patch \

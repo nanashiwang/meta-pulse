@@ -720,3 +720,15 @@ html.community-wide:not(.preview-tools) .page{padding-bottom:calc(var(--communit
 
 /* Persistent personal workspace and same-origin native content. */
 .personal-native{min-width:0}.personal-native iframe{display:block;border:0;width:100%;height:640px;background:var(--surface)}.personal-native iframe[hidden]{display:none}.personal-native .prod-page-note{margin-top:16px}.personal-sidebar .account-menu-link[aria-current="page"]{background:var(--soft);color:var(--green)}
+
+/* Two-line discussion summary with public participants before views/replies. */
+.discussion-row{grid-template-columns:minmax(0,1fr) auto 56px 46px;grid-template-rows:auto;align-items:center;gap:12px;padding:12px 6px}
+.discussion-main{display:block;min-width:0}.discussion-heading{display:flex;align-items:center;gap:8px;min-width:0}
+.discussion-title{display:block;min-width:0;grid-column:auto;grid-row:auto}.discussion-title h3{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.discussion-heading>.badge{flex-shrink:0;font-size:10px;padding:1px 6px;max-width:10em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.discussion-excerpt{margin-top:2px}.discussion-participants{display:flex;align-items:center;gap:4px}
+.discussion-participants .discussion-avatar{display:block;grid-column:auto;grid-row:auto;width:26px;height:26px;line-height:0}
+.discussion-participants .avatar{width:26px;height:26px;border-radius:50%;font-size:11px}
+.discussion-view-count,.discussion-reply-count{grid-column:auto;grid-row:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0;width:100%;padding:0;border:0;background:none;color:var(--muted);font-size:11px;line-height:1.5;font-variant-numeric:tabular-nums}
+.discussion-view-count strong,.discussion-reply-count strong{font-size:13px;font-weight:500;color:var(--text)}
+@media(max-width:680px){.discussion-row{grid-template-columns:minmax(0,1fr) 40px 36px;gap:6px}.discussion-main{grid-column:1 / -1}.discussion-participants{grid-column:1;grid-row:2}.discussion-view-count{grid-column:2;grid-row:2}.discussion-reply-count{grid-column:3;grid-row:2}.discussion-heading{gap:5px}.discussion-participants .discussion-avatar,.discussion-participants .avatar{width:22px;height:22px}.discussion-participants{gap:3px}}

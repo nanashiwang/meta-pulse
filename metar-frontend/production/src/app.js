@@ -206,27 +206,29 @@
     const description = typeof question.description === 'string' ? question.description.replace(/\s+/g, ' ').trim() : '';
     const characters = Array.from(description);
     const excerpt = characters.length > 28 ? characters.slice(0, 28).join('') + '…' : description;
-    const reply = question.last_reply;
     const replyCount = Math.max(0, Number(question.answer_count) || 0);
-    const replySummary = replyCount === 0 ? esc(t('暂无回答 · 等你分享经验'))
-      : reply?.user_info && Number(reply.created_at) > 0
-        ? esc(t('最后回复：')) + publicAuthor(reply.user_info, esc(displayName(reply.user_info))) + ' · ' + esc(time(reply.created_at))
-        : esc(t('已有回答'));
+    const seen = new Set();
+    const participants = [author, ...(Array.isArray(question.participants) ? question.participants : [question.last_reply?.user_info])]
+      .filter(user => {
+        if (!user?.username) return false;
+        const key = user.username;
+        if (seen.has(key)) return false;
+        seen.add(key); return true;
+      }).slice(0, 5);
     return `<article class="discussion-row">
-      ${publicAuthor(author, avatar(author), 'discussion-avatar')}
       <div class="discussion-main">
-        ${external(questionHref(question.id || question.question_id), `<h3>${question.pin === 2 ? I('flag', 'sm') + `<span class="visually-hidden">${t("置顶")} </span>` : ''}${esc(question.title)}</h3>`, 'discussion-title')}
-        ${excerpt ? `<p class="discussion-excerpt">${esc(excerpt)}</p>` : ''}
-        <div class="discussion-meta">
-          ${publicAuthor(author, `<span>${esc(displayName(author))}</span>`, 'discussion-author')}
-          ${Number(question.created_at) > 0 ? `<span class="discussion-created">${esc(t('发布于'))} ${esc(time(question.created_at))}</span>` : ''}
+        <div class="discussion-heading">
+          ${external(questionHref(question.id || question.question_id), `<h3>${question.pin === 2 ? I('flag', 'sm') + `<span class="visually-hidden">${t("置顶")} </span>` : ''}${esc(question.title)}</h3>`, 'discussion-title')}
           ${[...tags.filter(tag=>tag.recommend), ...tags.filter(tag=>!tag.recommend)].slice(0,1).map((tag) => link(`/topic/${encodeURIComponent(tag.slug_name || tagName(tag))}`, esc(tagName(tag)), tag.recommend ? 'badge taxonomy-category-badge' : 'badge')).join('')}
           ${hasAcceptedAnswer ? badge(I('check', 'sm') + t("已采纳"), 'green') : ''}
-
         </div>
+        ${excerpt ? `<p class="discussion-excerpt">${esc(excerpt)}</p>` : ''}
       </div>
+      <div class="discussion-participants">
+        ${participants.map(user => publicAuthor(user, `<span title="${esc(displayName(user))}">${avatar(user)}<span class="visually-hidden">${esc(displayName(user))}</span></span>`, 'discussion-avatar')).join('')}
+      </div>
+      <div class="discussion-view-count"><strong>${number(Math.max(0, Number(question.view_count) || 0))}</strong><span>${t('浏览')}</span></div>
       ${external(questionHref(question.id || question.question_id), `<strong>${number(replyCount)}</strong><span>${t('回答')}</span>`, 'discussion-reply-count')}
-      <div class="discussion-last-reply">${replySummary}</div>
     </article>`;
   }
 

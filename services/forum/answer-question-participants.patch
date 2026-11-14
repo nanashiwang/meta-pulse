@@ -1,0 +1,196 @@
+diff --git a/internal/schema/question_schema.go b/internal/schema/question_schema.go
+--- a/internal/schema/question_schema.go
++++ b/internal/schema/question_schema.go
+@@ -385,24 +385,25 @@
+ )
+ 
+ type QuestionLastReply struct {
+-	UserID string `json:"-"`
+-	UserInfo *UserBasicInfo `json:"user_info"`
+-	CreatedAt int64 `json:"created_at"`
++	UserID    string         `json:"-"`
++	UserInfo  *UserBasicInfo `json:"user_info"`
++	CreatedAt int64          `json:"created_at"`
+ }
+ 
+ type QuestionPageResp struct {
+-	UserID string `json:"-"`
+-	UserInfo *UserBasicInfo `json:"user_info"`
+-	LastReply *QuestionLastReply `json:"last_reply,omitempty"`
+-	ID          string     `json:"id" `
+-	CreatedAt   int64      `json:"created_at"`
+-	Title       string     `json:"title"`
+-	UrlTitle    string     `json:"url_title"`
+-	Description string     `json:"description"`
+-	Pin         int        `json:"pin"`  // 1: unpin, 2: pin
+-	Show        int        `json:"show"` // 0: show, 1: hide
+-	Status      int        `json:"status"`
+-	Tags        []*TagResp `json:"tags"`
++	Participants []*UserBasicInfo   `json:"participants,omitempty"`
++	UserID       string             `json:"-"`
++	UserInfo     *UserBasicInfo     `json:"user_info"`
++	LastReply    *QuestionLastReply `json:"last_reply,omitempty"`
++	ID           string             `json:"id" `
++	CreatedAt    int64              `json:"created_at"`
++	Title        string             `json:"title"`
++	UrlTitle     string             `json:"url_title"`
++	Description  string             `json:"description"`
++	Pin          int                `json:"pin"`  // 1: unpin, 2: pin
++	Show         int                `json:"show"` // 0: show, 1: hide
++	Status       int                `json:"status"`
++	Tags         []*TagResp         `json:"tags"`
+ 
+ 	// question statistical information
+ 	ViewCount       int `json:"view_count"`
+diff --git a/internal/service/answer_common/answer.go b/internal/service/answer_common/answer.go
+--- a/internal/service/answer_common/answer.go
++++ b/internal/service/answer_common/answer.go
+@@ -30,6 +30,7 @@
+ )
+ 
+ type AnswerRepo interface {
++	GetQuestionParticipants(ctx context.Context, questionIDs []string) ([]*entity.Answer, error)
+ 	AddAnswer(ctx context.Context, answer *entity.Answer) (err error)
+ 	RemoveAnswer(ctx context.Context, id string) (err error)
+ 	RecoverAnswer(ctx context.Context, answerID string) (err error)
+diff --git a/internal/repo/answer/answer_repo.go b/internal/repo/answer/answer_repo.go
+--- a/internal/repo/answer/answer_repo.go
++++ b/internal/repo/answer/answer_repo.go
+@@ -21,6 +21,7 @@
+ 
+ import (
+ 	"context"
++	"strings"
+ 	"time"
+ 
+ 	"github.com/apache/answer/internal/base/constant"
+@@ -553,3 +554,19 @@
+ 	}
+ 	return nil
+ }
++
++// GetQuestionParticipants returns at most five distinct public answer authors per question.
++// The bounded projection shares the list's user lookup; no answer text is selected.
++func (ar *answerRepo) GetQuestionParticipants(ctx context.Context, questionIDs []string) ([]*entity.Answer, error) {
++	rows := make([]*entity.Answer, 0)
++	if len(questionIDs) == 0 {
++		return rows, nil
++	}
++	args := []interface{}{entity.AnswerStatusAvailable}
++	for _, id := range questionIDs {
++		args = append(args, id)
++	}
++	query := "SELECT question_id, user_id FROM (SELECT question_id, user_id, ROW_NUMBER() OVER (PARTITION BY question_id ORDER BY MAX(created_at) DESC, user_id ASC) AS participant_rank FROM answer WHERE status = ? AND question_id IN (" + strings.TrimSuffix(strings.Repeat("?,", len(questionIDs)), ",") + ") GROUP BY question_id, user_id) participants WHERE participant_rank <= 5 ORDER BY question_id, participant_rank"
++	err := ar.data.DB.Context(ctx).SQL(query, args...).Find(&rows)
++	return rows, err
++}
+diff --git a/internal/service/question_common/question.go b/internal/service/question_common/question.go
+--- a/internal/service/question_common/question.go
++++ b/internal/service/question_common/question.go
+@@ -369,7 +369,7 @@
+ 	userIDs := make([]string, 0)
+ 	for _, questionInfo := range questionList {
+ 		t := &schema.QuestionPageResp{
+-			UserID: questionInfo.UserID,
++			UserID:           questionInfo.UserID,
+ 			ID:               questionInfo.ID,
+ 			CreatedAt:        questionInfo.CreatedAt.Unix(),
+ 			Title:            questionInfo.Title,
+@@ -444,6 +444,14 @@
+ 	if err != nil {
+ 		return formattedQuestions, err
+ 	}
++	participantIDs := make(map[string][]string)
++	// A failed auxiliary projection must not hide the discussion list.
++	if participants, participantErr := qs.answerRepo.GetQuestionParticipants(ctx, questionIDs); participantErr == nil {
++		for _, participant := range participants {
++			participantIDs[participant.QuestionID] = append(participantIDs[participant.QuestionID], participant.UserID)
++			userIDs = append(userIDs, participant.UserID)
++		}
++	}
+ 	userInfoMap, err := qs.userCommon.BatchUserBasicInfoByID(ctx, userIDs)
+ 	if err != nil {
+ 		return formattedQuestions, err
+@@ -452,6 +460,17 @@
+ 	for _, item := range formattedQuestions {
+ 		// Author and last reply identities are independent of the activity operator.
+ 		item.UserInfo = userInfoMap[item.UserID]
++		if item.UserInfo != nil {
++			item.Participants = append(item.Participants, item.UserInfo)
++		}
++		for _, userID := range participantIDs[item.ID] {
++			if userID == item.UserID || len(item.Participants) >= 5 {
++				continue
++			}
++			if user := userInfoMap[userID]; user != nil {
++				item.Participants = append(item.Participants, user)
++			}
++		}
+ 		if item.LastReply != nil {
+ 			item.LastReply.UserInfo = userInfoMap[item.LastReply.UserID]
+ 		}
+diff --git a/internal/repo/answer/participants_test.go b/internal/repo/answer/participants_test.go
+--- /dev/null
++++ b/internal/repo/answer/participants_test.go
+@@ -0,0 +1,61 @@
++package answer
++
++import (
++	"context"
++	"github.com/apache/answer/internal/base/data"
++	"github.com/apache/answer/internal/entity"
++	"testing"
++	"xorm.io/xorm"
++	"xorm.io/xorm/names"
++)
++
++func TestMetarQuestionParticipants(t *testing.T) {
++	db, err := xorm.NewEngine("sqlite", ":memory:")
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer db.Close()
++	db.SetMaxOpenConns(1)
++	db.SetColumnMapper(names.GonicMapper{})
++	if _, err = db.Exec("CREATE TABLE answer (question_id TEXT, user_id TEXT, status INTEGER, created_at INTEGER)"); err != nil {
++		t.Fatal(err)
++	}
++	// Repeated replies from one user must not crowd out the other participants.
++	for _, row := range []struct {
++		q, u  string
++		s, at int
++	}{
++		{"q1", "a", entity.AnswerStatusAvailable, 100}, {"q1", "a", entity.AnswerStatusAvailable, 99},
++		{"q1", "b", entity.AnswerStatusAvailable, 90}, {"q1", "c", entity.AnswerStatusAvailable, 80},
++		{"q1", "d", entity.AnswerStatusAvailable, 70}, {"q1", "e", entity.AnswerStatusAvailable, 60},
++		{"q1", "f", entity.AnswerStatusAvailable, 50}, {"q1", "hidden", 999, 200},
++		{"q2", "other", entity.AnswerStatusAvailable, 300}, {"private", "secret", entity.AnswerStatusAvailable, 400},
++	} {
++		if _, err = db.Exec("INSERT INTO answer VALUES (?, ?, ?, ?)", row.q, row.u, row.s, row.at); err != nil {
++			t.Fatal(err)
++		}
++	}
++	repo := &answerRepo{data: &data.Data{DB: db}}
++	rows, err := repo.GetQuestionParticipants(context.Background(), []string{"q1", "q2"})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if len(rows) != 6 {
++		t.Fatalf("rows=%+v", rows)
++	}
++	for i, want := range []string{"a", "b", "c", "d", "e", "other"} {
++		if rows[i].UserID != want {
++			t.Fatalf("row %d: got %s want %s", i, rows[i].UserID, want)
++		}
++	}
++	rows, err = repo.GetQuestionParticipants(context.Background(), nil)
++	if err != nil || len(rows) != 0 {
++		t.Fatal(rows, err)
++	}
++	if _, err = db.Exec("DROP TABLE answer"); err != nil {
++		t.Fatal(err)
++	}
++	if _, err = repo.GetQuestionParticipants(context.Background(), []string{"q1"}); err == nil {
++		t.Fatal("query error swallowed")
++	}
++}

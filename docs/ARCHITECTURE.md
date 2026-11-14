@@ -1402,3 +1402,7 @@ Answer 的注册激活邮件、用户/管理员重发和后台测试邮件同步
 ### 个人中心原生内容容器（2026-11-14）
 
 /me/settings、/me/badges、/me/notifications 为私有静态壳层路由，原生 Answer 仍拥有设置写入、认证和通知权限。仅内嵌同源 settings profile/notify/account/interface、notifications inbox/achievement 与 badges 列表/详情；Nginx 在这些精确模式页面隐藏上游 DENY 并统一 SAMEORIGIN、frame-ancestors self、no-store，继续过滤 Cookie 与清除伪造服务身份头。登录、认证回调、后台及 API 不改变策略。不开放任意 URL、跨源桥接、postMessage 凭据通道或新数据权限。设置成功通过原生请求响应确认，失败不丢弃未保存输入。
+
+### 讨论参与者只读投影
+
+Answer QuestionPageResp 的可选 `participants` 字段复用公开 UserBasicInfo：当前列表问题 ID 范围内一次查询，以 available 回答按用户聚合最近时间、每帖至多五个候选，复用批量用户查询并与原作者合并为最多五人。无额外事实表，不读取回答正文，不使用编辑者归属；辅助查询失败退化为作者头像，不改变帖子权限或排序。原 `last_reply` 字段兼容保留，前端不再显示最后回复文字。

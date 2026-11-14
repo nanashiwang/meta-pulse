@@ -21,7 +21,7 @@ test('active posts show the publisher profile, name and avatar instead of the la
 });
 test('missing author data never impersonates the latest activity operator',()=>{
  const html=render({id:'123',operator:responder});
- assert.doesNotMatch(html,/xiao_li|小李|responder.jpg/);assert.match(html,/未知用户/);
+ assert.doesNotMatch(html,/xiao_li|小李|responder.jpg/);assert.doesNotMatch(html,/href="\/users\//);
 });
 test('personal and bookmark rows keep the supplied author regardless of activity type',()=>{
  for(const operation_type of ['asked','modified','answered']) {
@@ -38,16 +38,23 @@ test('explicit publisher always takes precedence over the legacy operator',()=>{
  assert.match(html,/href="\/users\/publisher"/);assert.doesNotMatch(html,/xiao_li|responder.jpg/);
 });
 
-test('last reply uses independent answer author and time even after another user edits',()=>{
- const html=render({id:'123',user_info:author,operator:{username:'editor'},operation_type:'modified',answer_count:3,created_at:100,last_reply:{user_info:responder,created_at:200}});
- assert.ok(html.includes('最后回复：<a href="/users/xiao_li">小李</a> · time-200'));
- assert.match(html,/discussion-author|发布者/);assert.match(html,/发布于 time-100/);
- assert.doesNotMatch(html,/editor|responder.jpg/);
+test('two-line rows omit attribution text and show views before answers',()=>{
+ const html=render({id:'123',user_info:author,answer_count:3,view_count:42,created_at:100,last_reply:{user_info:responder,created_at:200}});
+ assert.doesNotMatch(html,/最后回复|发布于|discussion-meta|discussion-last-reply/);
+ assert.ok(html.indexOf('42') < html.indexOf('回答'));
+ assert.match(html,/responder.jpg/);
 });
-test('unknown last reply is not invented and zero replies show the invitation',()=>{
- assert.match(render({id:'1',answer_count:0}),/暂无回答 · 等你分享经验/);
- const html=render({id:'1',answer_count:2,operator:responder,operation_type:'answered'});
- assert.match(html,/已有回答/);assert.doesNotMatch(html,/最后回复：|暂无回答/);
+test('participants preserve publisher first, deduplicate and cap at five',()=>{
+ const users=Array.from({length:8},(_,i)=>({username:'member'+i,display_name:'Member '+i,avatar:'/m'+i+'.jpg'}));
+ const html=render({id:'1',user_info:author,participants:[responder,author,responder,...users]});
+ assert.equal((html.match(/href="\/users\//g)||[]).length,5);
+ assert.ok(html.indexOf('/users/publisher') < html.indexOf('/users/xiao_li'));
+ assert.doesNotMatch(html,/member3|member4/);
+});
+test('zero replies show only the known publisher, never the activity editor',()=>{
+ const html=render({id:'1',user_info:author,answer_count:0,operator:responder});
+ assert.doesNotMatch(html,/xiao_li|最后回复|暂无回答/);
+ assert.match(html,/publisher/);
 });
 test('excerpt uses at most 28 Unicode characters without modifying the full post',()=>{
  const post={id:'1',description:'😀'.repeat(40)};

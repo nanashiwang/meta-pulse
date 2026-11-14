@@ -149,3 +149,5 @@ new-api 接收端与实际到账、生产普通账号流程、邮件与跨实例
 四类排行榜：/users?board=reputation|level|posts|answers；新增只读 /answer/api/v1/metar/ranking 使用growth经验余额及Answer公开帖子/回答统计，白名单kind、活跃已验证非工作人员、过滤后前100、计数字符串、失败独立提示；代码growth/ranking.go与ranking.js，测试ranking_routes_test.go、growth/ranking_test.go、ranking.test.js。
 
 排行榜切换优化：进入/users并行预加载四榜，切换复用本页内存；回到窗口超过60秒后台刷新，失败保留对应榜缓存并提示；离页/切账号清除，不持久存储。
+
+讨论列表两行摘要（2026-11-15）：标题后展示主分类，移除作者时间与最后回复第三行；统计区按参与者头像、浏览数、回答数排列。Answer `answer-question-participants.patch` 按当前页批量读取公开回答作者，作者首位、去重最多五人；查询失败保留作者，旧版本可降级展示最后回答者。复用 questionRow 与原有排序/分页，测试 question-author.test.js 与 Answer TestMetarQuestionParticipants。

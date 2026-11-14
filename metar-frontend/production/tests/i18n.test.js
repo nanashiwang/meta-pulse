@@ -435,7 +435,7 @@ test('Pulse 管理入口仅对 Answer 正常激活管理员显示，版主和伪
 test('统一入口打开原生互动页，旧详情不再读取只读副本，身份服务故障不阻断交接', async () => {
   const view = await shell({ user: { username: 'alice', display_name: 'Alice', mail_status: 1 }, content: true });
   assert.match(view.html(), /href="\/questions\/42" class="discussion-title"/);
-  assert.match(view.html(), /href="\/users\/alice" class="discussion-author"/);
+  assert.match(view.html(), /href="\/users\/alice" class="discussion-avatar"/);
   assert.match(view.html(), /href="\/me\/notifications"/);
   assert.match(view.nodes.app.innerHTML, /<div class="header-actions"><a href="\/users" class="icon-btn header-ranking" aria-label="Leaderboard" title="Leaderboard">[\s\S]*?<span class="visually-hidden">Leaderboard<\/span><\/a>/);
   await view.navigate('/question/42?commentId=9#answer-7');
