@@ -153,3 +153,5 @@ new-api 接收端与实际到账、生产普通账号流程、邮件与跨实例
 讨论列表两行摘要（2026-11-15）：标题后展示主分类，移除作者时间与最后回复第三行；统计区按参与者头像、浏览数、回答数排列。Answer `answer-question-participants.patch` 按当前页批量读取公开回答作者，作者首位、去重最多五人；查询失败保留作者，旧版本可降级展示最后回答者。复用 questionRow 与原有排序/分页，测试 question-author.test.js 与 Answer TestMetarQuestionParticipants。
 
 帖子阅读进度：Answer 插件 reading-progress.js 在帖子详情导航下方展示3px蓝线，仅按主帖正文位置计算，图片/窗口变化重算，回答评论不计入，短帖完整可见显示100%，非详情隐藏；无阅读奖励或上报。验证reading-progress.test.js。
+
+帖子投票：原生Ask底部与详情正文后；/answer/api/v1/metar/polls公开读取、/mine会话读取、/command同源会话写入。polls包拥有三张论坛库表，锁/版本/幂等防重复，投前隐藏聚合，不暴露选民；不关联权益。见TOPIC_POLLS.md、polls/*test.go、topic-polls.test.js。

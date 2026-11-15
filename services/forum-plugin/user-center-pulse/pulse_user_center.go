@@ -23,6 +23,7 @@ import (
 	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/growth"
 	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/i18n"
 	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/marketplace"
+	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/polls"
 	"github.com/segmentfault/pacman/log"
 )
 
@@ -48,6 +49,8 @@ var Info embed.FS
 // the Connector only binds one immutable new-api identity, while UserCenter
 // contributes optional Pulse branding for bound accounts.
 type UserCenter struct {
+	pollMu            sync.Mutex
+	polls             *polls.Store
 	ticketMu          sync.Mutex
 	ticketStore       *communitytickets.Store
 	ticketLoopOnce    sync.Once
@@ -353,12 +356,14 @@ func (uc *UserCenter) RegisterUnAuthRouter(r *gin.RouterGroup) {
 	uc.registerTaxonomyOrder(r, false)
 	uc.registerShareStatistics(r, plugin.SiteURL)
 	uc.registerPublicExperience(r)
+	uc.registerPolls(r, nil, plugin.SiteURL)
 	uc.registerMarketplacePublic(r)
 	uc.registerOperations(r, nil, false)
 	r.GET("/metar/events", uc.eventHandler("list", nil, false, plugin.SiteURL))
 }
 func (uc *UserCenter) RegisterAuthUserRouter(r *gin.RouterGroup) {
 	uc.registerCommunityRoutes(r, answerSessionUserID, plugin.SiteURL)
+	uc.registerPolls(r, answerSessionUserID, plugin.SiteURL)
 	uc.startCommunityTickets()
 	uc.registerOperations(r, answerSessionUserID, false)
 	uc.registerExperience(r, answerSessionUserID, false, plugin.SiteURL)

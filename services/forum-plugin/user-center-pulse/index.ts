@@ -1,4 +1,6 @@
 import './account-switch.js';
+import { installTopicPolls } from './topic-polls.js';
+import './topic-polls.css';
 import { installReadingProgress } from './reading-progress.js';
 installReadingProgress();
 import { installNativeFavicon } from './native-favicon';
@@ -108,3 +110,11 @@ export default {
 
 (window as any).__metarNativeAccountSwitch = true;
 (window as any).MetarAccountSwitch.install(() => loggedUserInfoStore.getState().user);
+
+installTopicPolls({
+  getUser: () => loggedUserInfoStore.getState().user,
+  getToken: () => localStorage.getItem('_a_ltk_') || '',
+  getLanguage: () => i18n.language,
+  subscribeUser: (fn) => loggedUserInfoStore.subscribe(fn),
+  onLanguageChanged: (fn) => i18n.on('languageChanged', fn),
+});

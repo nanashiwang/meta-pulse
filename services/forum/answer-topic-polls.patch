@@ -1,0 +1,111 @@
+diff --git a/ui/src/pages/Questions/Ask/index.tsx b/ui/src/pages/Questions/Ask/index.tsx
+--- a/ui/src/pages/Questions/Ask/index.tsx
++++ b/ui/src/pages/Questions/Ask/index.tsx
+@@ -331,53 +331,63 @@
+       });
+   };
+ 
++  const metarPollSubmitting = useRef(false);
+   const submitQuestion = async (params) => {
+-    setBlockState(false);
+-    const imgCode = saveCaptcha?.getCaptcha();
+-    if (imgCode?.verify) {
+-      params.captcha_code = imgCode.captcha_code;
+-      params.captcha_id = imgCode.captcha_id;
+-    }
+-    let res;
+-    if (checked) {
+-      res = await saveQuestionWithAnswer({
+-        ...params,
+-        answer_content: formData.answer_content.value,
+-      }).catch((err) => {
+-        if (err.isError) {
+-          const captchaErr = saveCaptcha?.handleCaptchaError(err.list);
+-          if (!(captchaErr && err.list.length === 1)) {
+-            const data = handleFormError(err, formData);
+-            setFormData({ ...data });
+-            const ele = document.getElementById(err.list[0].error_field);
+-            scrollToElementTop(ele);
++    if (metarPollSubmitting.current) return;
++    const metarPoll = (window as any).MetarPollComposer?.prepare();
++    if (metarPoll === false) return;
++    metarPollSubmitting.current = true;
++    try {
++      setBlockState(false);
++      const imgCode = saveCaptcha?.getCaptcha();
++      if (imgCode?.verify) {
++        params.captcha_code = imgCode.captcha_code;
++        params.captcha_id = imgCode.captcha_id;
++      }
++      let res;
++      if (checked) {
++        res = await saveQuestionWithAnswer({
++          ...params,
++          answer_content: formData.answer_content.value,
++        }).catch((err) => {
++          if (err.isError) {
++            const captchaErr = saveCaptcha?.handleCaptchaError(err.list);
++            if (!(captchaErr && err.list.length === 1)) {
++              const data = handleFormError(err, formData);
++              setFormData({ ...data });
++              const ele = document.getElementById(err.list[0].error_field);
++              scrollToElementTop(ele);
++            }
+           }
++        });
++      } else {
++        res = await saveQuestion(params).catch((err) => {
++          if (err.isError) {
++            const captchaErr = saveCaptcha?.handleCaptchaError(err.list);
++            if (!(captchaErr && err.list.length === 1)) {
++              const data = handleFormError(err, formData);
++              setFormData({ ...data });
++              const ele = document.getElementById(err.list[0].error_field);
++              scrollToElementTop(ele);
++            }
++          }
++        });
++      }
++
++      const id = res?.id || res?.question?.id;
++      if (id) {
++        await (window as any).MetarPollComposer?.attach(id, metarPoll);
++        await saveCaptcha?.close();
++        if (checked) {
++          navigate(pathFactory.questionLanding(id, res?.question?.url_title));
++        } else {
++          navigate(pathFactory.questionLanding(id, res?.url_title));
+         }
+-      });
+-    } else {
+-      res = await saveQuestion(params).catch((err) => {
+-        if (err.isError) {
+-          const captchaErr = saveCaptcha?.handleCaptchaError(err.list);
+-          if (!(captchaErr && err.list.length === 1)) {
+-            const data = handleFormError(err, formData);
+-            setFormData({ ...data });
+-            const ele = document.getElementById(err.list[0].error_field);
+-            scrollToElementTop(ele);
+-          }
+-        }
+-      });
+-    }
+-
+-    const id = res?.id || res?.question?.id;
+-    if (id) {
+-      await saveCaptcha?.close();
+-      if (checked) {
+-        navigate(pathFactory.questionLanding(id, res?.question?.url_title));
+-      } else {
+-        navigate(pathFactory.questionLanding(id, res?.url_title));
+-      }
+-    }
+-    removeDraft();
++      }
++      removeDraft();
++    } finally {
++      metarPollSubmitting.current = false;
++    }
+   };
+ 
+   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
