@@ -1,3 +1,4 @@
+import './search-suggestions.js';
 import './account-switch.js';
 import { installTopicPolls } from './topic-polls.js';
 import './topic-polls.css';
@@ -60,6 +61,7 @@ installNativeFavicon();
 installLocalRegistration(userCenterStore);
 installNavigationBridge();
 installNativeShell({
+  getUser: () => loggedUserInfoStore.getState().user,
   getLanguage: () => i18n.language,
   onLanguageChanged: (handler) => i18n.on('languageChanged', handler),
 });
@@ -118,3 +120,5 @@ installTopicPolls({
   subscribeUser: (fn) => loggedUserInfoStore.subscribe(fn),
   onLanguageChanged: (fn) => i18n.on('languageChanged', fn),
 });
+
+(window as any).MetarSearchSuggestions.install();

@@ -1,3 +1,4 @@
+import { decorateNativeHeader, headerIcon, headerAccess } from './header-presentation.js';
 import './return-navigation.js';
 import { mountNotificationNavigation } from './notification-navigation.js';
 import { installTheme } from './shared-theme.js';
@@ -38,7 +39,6 @@ export function installNativeShell(language, host = window) {
     ['/marketplace', '集市', 'Marketplace'],
     ['/models', '模型榜', 'Models'],
     ['/pulse', 'Pulse', 'Pulse'],
-    ['/tools', '工具', 'Tools'],
   ].map(([href, zh, en]) => {
     const link = doc.createElement('a');
     link.href = href;
@@ -46,7 +46,14 @@ export function installNativeShell(language, host = window) {
     nav.append(link);
     return { link, zh, en };
   });
-  links[0].link.setAttribute('aria-current', 'true');
+  links[0].link.setAttribute('aria-current', 'page');
+  const tools=doc.createElement('details');tools.className='metar-header-tools';
+  const toolsTitle=doc.createElement('summary');tools.append(toolsTitle);
+  const toolsPanel=doc.createElement('div');tools.append(toolsPanel);
+  const toolLinks=[['/tools','全部工具','All tools'],['/tools/network','Claude 访问环境检测','Claude environment check']].map(([href,zh,en])=>{const link=doc.createElement('a');link.href=href;toolsPanel.append(link);return {link,zh,en};});
+  nav.append(tools);
+  doc.addEventListener('click',event=>{if(!tools.contains(event.target)||event.target.closest('a'))tools.open=false;});
+  doc.addEventListener('keydown',event=>{if(event.key==='Escape')tools.open=false;if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){const input=doc.querySelector('#header form input[type=search]');if(input){event.preventDefault();input.focus();}}});
   const back = doc.createElement('button');
   back.type = 'button';
   back.className = 'page-back metar-back';
@@ -67,6 +74,8 @@ export function installNativeShell(language, host = window) {
     back.setAttribute('aria-label', english ? 'Back to home' : '返回主界面');
     mountNotificationNavigation(doc, host.location.pathname, english);
     nav.setAttribute('aria-label', english ? 'Main navigation' : '主导航');
+    const toolsText=english?'Tools':'工具';if(toolsTitle.textContent!==toolsText)toolsTitle.textContent=toolsText;
+    toolLinks.forEach(({link,zh,en})=>{const text=english?en:zh;if(link.textContent!==text)link.textContent=text;});
     links.forEach(({ link, zh, en }) => {
       const text = english ? en : zh;
       if (link.textContent !== text) link.textContent = text;
@@ -75,8 +84,9 @@ export function installNativeShell(language, host = window) {
     const title = english ? (dark ? 'Switch to light theme' : 'Switch to dark theme') : (dark ? '切换到浅色主题' : '切换到深色主题');
     toggle.setAttribute('aria-label', title);
     toggle.title = title;
-    const icon = dark ? '☀' : '☾';
-    if (toggle.textContent !== icon) toggle.textContent = icon;
+    decorateNativeHeader(doc,{english,dark,...headerAccess(language.getUser?.())});
+    const icon = dark ? 'sun' : 'moon';
+    if (toggle.dataset.icon !== icon) { toggle.innerHTML=headerIcon(icon);toggle.dataset.icon=icon; }
   };
   theme.subscribe(label);
   language.onLanguageChanged(label);
@@ -101,6 +111,8 @@ export function installNativeShell(language, host = window) {
     avatar?.parentElement.classList.add('metar-account-actions');
     if (nav.parentElement !== row) brand.after(nav);
     if (toggle.parentElement !== row) row.append(toggle);
+    const user=language.getUser?.();
+    decorateNativeHeader(doc,{english:language.getLanguage()==='en_US',dark:theme.current()==='dark',...headerAccess(user)});
     if (brand.getAttribute('aria-label') !== 'METAR') brand.setAttribute('aria-label', 'METAR');
     if (header !== observedHeader) {
       resize?.disconnect();

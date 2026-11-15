@@ -425,6 +425,8 @@
     syncNavigation();
     enhanceTaxonomy();
     void mountDiscussionRail();
+    void mountTagShortcuts();
+    void mountSearchSuggestions();
     void mountPersonalNative();
     if (['/me/drafts', '/events', '/admin/events'].includes(route().path)) memberView?.mount(view);
     if (route().path === '/admin/operations') operationsView?.mount(view);
@@ -470,6 +472,27 @@
     const message = inactive ? t("当前社区账号尚未激活，请先完成邮箱验证。") : errorMessage(error) || t("页面暂时无法加载。");
     renderView(`<section class="card prod-error">${I(inactive ? 'shield' : 'server')}<h2>${inactive ? t("账号尚未激活") : t("暂时没有读到社区数据")}</h2><p>${esc(message)}${t(" 社区数据不会由前端猜测或使用缓存数字替代。")}</p><div class="flex wrap prod-center-actions"><button type="button" class="btn primary" data-action="retry">${I('refresh')}${t("重新加载")}</button>${inactive ? external('/users/login?status=inactive', t("重新发送激活邮件"), 'btn') : external('/latest', t("浏览社区话题"), 'btn')}</div></section>${footer()}`);
     window.MetarSEO?.update(true);
+  }
+
+  let tagShortcutsCleanup = null;
+  async function mountTagShortcuts() {
+    tagShortcutsCleanup?.();tagShortcutsCleanup=null;
+    const node=document.querySelector('[data-tag-shortcuts]');if(!node)return;
+    const sequence=navigationSequence;
+    try {
+      await identityReady;
+      const owner=String(currentUser?.id||'guest'),key=taxonomy.scope(answer);
+      await loadFeatureScript('tag-shortcuts','MetarTagShortcuts');
+      if(sequence!==navigationSequence||!node.isConnected||key!==taxonomy.scope(answer))return;
+      const tag=route().path.startsWith('/topic/')?decodeURIComponent(route().path.slice(7)):'';
+      const cleanup=await window.MetarTagShortcuts.mount(node,{catalog:()=>taxonomy.catalog(answer),allTags:()=>taxonomy.allTags(answer),owner,selected:tag,order:route().query.get('order')||'active',english:getLanguage()==='en_US'});
+      if(sequence!==navigationSequence||!node.isConnected||key!==taxonomy.scope(answer)){cleanup?.();return;}
+      tagShortcutsCleanup=cleanup;
+    }catch(_){if(node.isConnected)node.innerHTML=link('/topics',t('类别与标签'),'textlink');}
+  }
+  async function mountSearchSuggestions() {
+    if(window.__metarSearchSuggestions)return;
+    try{await loadFeatureScript('search-suggestions','MetarSearchSuggestions');window.MetarSearchSuggestions.install(window,{navigate:value=>{if(personalNativeView&&!personalNativeView.confirmLeave())return;if(router.go(value))navigate();}});}catch(_){}
   }
 
   const questionOrders = () => ({ active: t("最近活跃"), newest: t("最新发布"), hot: t("热门"), score: t("高赞"), unanswered: t("待回答") });
@@ -675,7 +698,6 @@
     const page = Math.max(1, Number.parseInt(query.get('page') || '1', 10) || 1);
     const result = await answer.listQuestions({ page, pageSize: 20, order, tag });
     const catalog = navigationCatalogScope === taxonomy.scope(answer) ? navigationCatalog : null;
-    const filter = `<div class="taxonomy-filter" data-taxonomy-filter>${catalog ? taxonomy.filters(catalog, tag) : link('/topics', t('类别'), 'btn small') + link('/topics?view=tags', t('标签'), 'btn small') + (tag ? `<span class="badge prod-current-tag">${esc(tag)}</span>` : '')}</div>`;
     const list = Array.isArray(result?.list) ? result.list : [];
     const total = Number(result?.count) || 0;
     const base = tag ? `/topic/${encodeURIComponent(tag)}` : '/latest';
@@ -687,9 +709,10 @@
     const pager = totalPages > 1 ? `<div class="prod-pager">${page > 1 ? link(`${base}?order=${order}&page=${page - 1}`, t("上一页"), 'btn small') : ''}<span>${t("第 {page} / {total} 页", { page: number(page), total: number(totalPages) })}</span>${page < totalPages ? link(`${base}?order=${order}&page=${page + 1}`, t("下一页"), 'btn small') : ''}</div>` : '';
     return `<section class="community-discussions">
       ${pageTitle(title)}
+      <div data-tag-shortcuts><p class="muted">${t('正在加载…')}</p></div>
       <div class="community-layout">
         <div class="community-feed">
-          <div class="discussion-toolbar">${filter}<nav class="discussion-tabs" aria-label="${t('话题筛选')}">${tabs}</nav>${external(askPath, I('plus', 'sm') + t('新建话题'), 'btn primary')}</div>
+          <div class="discussion-toolbar"><nav class="discussion-tabs" aria-label="${t('话题筛选')}">${tabs}</nav>${external(askPath, I('plus', 'sm') + t('新建话题'), 'btn primary')}</div>
           ${list.length ? discussionList(list) : empty(order === 'unanswered' ? t("暂时没有待回答问题") : t("当前筛选没有内容"), t("可以调整筛选，或发起一个新问题。"), external(askPath, t("发起提问"), 'btn primary'), 'chat')}${pager}
         </div>
         <aside class="community-rail" data-discussion-rail aria-label="${t('社区侧栏')}"><details data-rail-disclosure open><summary class="rail-mobile-summary">${t('社区推荐')}</summary><div class="rail-disclosure-content">

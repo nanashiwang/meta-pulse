@@ -1,3 +1,4 @@
+import { headerIcon } from './header-presentation.js';
 export const LANGUAGE_KEY = 'metar-language';
 export const supportedLanguage = (value) => ['zh_CN', 'en_US'].includes(value) ? value : null;
 
@@ -64,6 +65,10 @@ export function installLanguageSwitcher(host) {
     option.textContent = label;
     select.append(option);
   }
+  const control=document.createElement('span');
+  control.className='metar-language-control';
+  control.innerHTML=headerIcon('language');
+  control.append(select);
   select.addEventListener('change', () => controller.select(select.value));
   controller.subscribe((language) => {
     select.value = language;
@@ -74,7 +79,7 @@ export function installLanguageSwitcher(host) {
   });
   function mount() {
     const header = document.querySelector('#header > .w-100');
-    if (header && select.parentElement !== header) header.append(select);
+    if (header && control.parentElement !== header) header.append(control);
   }
   new MutationObserver(mount).observe(document.documentElement, { childList: true, subtree: true });
   window.addEventListener('storage', (event) => {

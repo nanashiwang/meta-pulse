@@ -421,57 +421,13 @@ export function installTopicPolls(options, host = window) {
       (pending.question_id === question ||
         pending.question_id === data.question_id);
     if (!data.exists) {
-      if (!data.can_create) {
-        panel.hidden = true;
-        return;
-      }
+      if (!data.can_create || !matchingPending) { panel.hidden = true; return; }
       panel.hidden = false;
-      const details = el("details");
-      details.append(
-        el("summary", t("给这篇帖子添加投票", "Add a poll to this post")),
-      );
-      panel.append(details);
-      form(
-        details,
-        matchingPending ? pending.body.config : read("draft"),
-        async (config) => {
-          const body = {
-            op: "create",
-            question_id: question,
-            config,
-            version: 0,
-          };
-          await command(body);
-          remove("draft");
-          if (matchingPending) remove("pending-create");
-          await refresh();
-        },
-      );
-      if (matchingPending) {
-        details.open = true;
-        const notice = el(
-          "p",
-          t(
-            "帖子已发布，投票尚未确认保存。请重试，无需再次发帖。",
-            "Your post is published. Poll creation was not confirmed. Retry without posting again.",
-          ),
-          "metar-poll-error",
-        );
-        panel.prepend(
-          notice,
-          button(t("重试保存原投票", "Retry original poll"), async () => {
-            try {
-              await api("/command", pending.body, pending.key);
-              remove("pending-create");
-              remove("draft");
-              recovery = null;
-              await refresh();
-            } catch (e) {
-              notice.textContent = message(e.message);
-            }
-          }),
-        );
-      }
+      const notice = el('p', t('帖子已发布，投票尚未确认保存。请重试，无需再次发帖。', 'Your post is published. Poll creation was not confirmed. Retry without posting again.'), 'metar-poll-error');
+      panel.append(notice, button(t('重试保存原投票','Retry original poll'),async()=>{
+        const owner=user();
+        try{await api('/command',pending.body,pending.key);if(owner!==user())return;remove('pending-create');remove('draft');recovery=null;await refresh();}catch(e){notice.textContent=message(e.message);}
+      }));
       return;
     }
     panel.hidden = false;

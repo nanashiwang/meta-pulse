@@ -80,6 +80,8 @@ def build(output: Path, config_path: Path) -> None:
         "member-pages": (ROOT / "src/member-pages.js").read_text(encoding="utf-8"),
         "drafts-store": (ROOT.parents[1] / "services/forum-plugin/user-center-pulse/drafts-store.js").read_text(encoding="utf-8"),
         "personal-workspace": (ROOT / "src/personal-workspace.js").read_text(encoding="utf-8"),
+        "tag-shortcuts": (ROOT / "src/tag-shortcuts.js").read_text(encoding="utf-8"),
+        "search-suggestions": (ROOT.parents[1] / "services/forum-plugin/user-center-pulse/search-suggestions.js").read_text(encoding="utf-8"),
         "app": (ROOT / "src/app.js").read_text(encoding="utf-8"),
         "pulse-feed": (ROOT / "src/pulse-feed.js").read_text(encoding="utf-8"),
         "pulse-core": (ROOT / "src/pulse-core.js").read_text(encoding="utf-8"),
@@ -135,6 +137,8 @@ def build(output: Path, config_path: Path) -> None:
     (assets / "drafts-store.js").write_text(sources["drafts-store"], encoding="utf-8")
     (assets / "personal-workspace.js").write_text(sources["personal-workspace"], encoding="utf-8")
     shutil.copyfile(ROOT / "src/personal-workspace.css", assets / "personal-workspace.css")
+    (assets / "tag-shortcuts.js").write_text(sources["tag-shortcuts"], encoding="utf-8")
+    (assets / "search-suggestions.js").write_text(sources["search-suggestions"], encoding="utf-8")
     (assets / "app.js").write_text(sources["app"], encoding="utf-8")
     (assets / "pulse-feed.js").write_text(sources["pulse-feed"], encoding="utf-8")
     (assets / "pulse-core.js").write_text(sources["pulse-core"], encoding="utf-8")

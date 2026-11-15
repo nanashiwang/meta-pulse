@@ -155,3 +155,6 @@ new-api 接收端与实际到账、生产普通账号流程、邮件与跨实例
 帖子阅读进度：Answer 插件 reading-progress.js 在帖子详情导航下方展示3px蓝线，仅按主帖正文位置计算，图片/窗口变化重算，回答评论不计入，短帖完整可见显示100%，非详情隐藏；无阅读奖励或上报。验证reading-progress.test.js。
 
 帖子投票：原生Ask底部与详情正文后；/answer/api/v1/metar/polls公开读取、/mine会话读取、/command同源会话写入。polls包拥有三张论坛库表，锁/版本/幂等防重复，投前隐藏聚合，不暴露选民；不关联权益。见TOPIC_POLLS.md、polls/*test.go、topic-polls.test.js。
+
+
+原生顶栏对齐：header-presentation.js复用主页描边图标与实际角色入口；语言圆形图标、主题、工具菜单、搜索和紧凑布局，保留Answer原生事件与通知红点。自定义标签导航：主页显示全部与常用标签快捷入口，支持按标签筛选、添加、删除、排序并按账号/访客隔离保存；更多标签从实时目录读取。
