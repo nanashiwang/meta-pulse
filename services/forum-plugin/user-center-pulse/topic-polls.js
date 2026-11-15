@@ -1,4 +1,8 @@
 /* Topic polls are optional and do not grant reputation, EXP or tickets. */
+export function isPollComposerPath(path) {
+  return /^\/questions\/(?:ask|add)\/?$/.test(path);
+}
+
 export function validatePoll(config) {
   const title = String(config.title || "").trim(),
     options = (config.options || []).map((v) => String(v).trim());
@@ -265,7 +269,7 @@ export function installTopicPolls(options, host = window) {
     return { values, status, box };
   }
   function mountComposer() {
-    if (host.location.pathname !== "/questions/ask" || !user()) {
+    if (!isPollComposerPath(host.location.pathname) || !user()) {
       composer?.node.remove();
       composer = null;
       return;
@@ -681,7 +685,7 @@ export function installTopicPolls(options, host = window) {
     );
     const heading = doc.querySelector(".questionDetailPage .page-main h1"),
       article = heading?.parentElement?.querySelector("article.fmt");
-    if (!match || !article || ["ask", "edit", "linked"].includes(match[1])) {
+    if (!match || !article || ["ask", "add", "edit", "linked"].includes(match[1])) {
       epoch++;
       panel?.remove();
       panel = null;

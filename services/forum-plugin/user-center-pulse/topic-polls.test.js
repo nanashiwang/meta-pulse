@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  isPollComposerPath,
   validatePoll,
   resultPercent,
   installTopicPolls,
@@ -100,4 +101,11 @@ test("account change and unavailable persistence do not send a poll write", asyn
     config,
   });
   assert.equal(blocked.requests.length, 0);
+});
+
+test("both new-post routes include poll controls, but edit and detail routes do not", () => {
+  for (const path of ["/questions/ask", "/questions/add", "/questions/ask/", "/questions/add/"])
+    assert.equal(isPollComposerPath(path), true, path);
+  for (const path of ["/questions/123", "/questions/additional", "/questions/add/edit", "/posts/123/edit", "/posts/123/456/edit", "/admin/users"])
+    assert.equal(isPollComposerPath(path), false, path);
 });
