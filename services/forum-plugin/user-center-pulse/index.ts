@@ -1,4 +1,6 @@
 import './account-switch.js';
+import { installReadingProgress } from './reading-progress.js';
+installReadingProgress();
 import { installNativeFavicon } from './native-favicon';
 import './analytics-client.js';
 import ImageImportEditor from './image-import-editor';
