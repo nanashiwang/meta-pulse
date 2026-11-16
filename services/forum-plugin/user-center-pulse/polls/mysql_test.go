@@ -30,12 +30,12 @@ func fixture(t *testing.T) *Store {
 	}
 	t.Cleanup(func() { db.Close() })
 	db.SetMaxOpenConns(16)
-	for _, table := range []string{"metar_topic_poll_command", "metar_topic_poll_ballot", "metar_topic_poll", "question", "user"} {
+	for _, table := range []string{"metar_topic_poll_command", "metar_topic_poll_ballot", "metar_topic_poll", "question", "user_role_rel", "user"} {
 		if _, err = db.Exec("DROP TABLE IF EXISTS " + "`" + table + "`"); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for _, q := range []string{"CREATE TABLE `user`(id BIGINT PRIMARY KEY,status INT,mail_status INT) ENGINE=InnoDB", "INSERT INTO `user` VALUES(1,1,1),(2,1,1),(3,1,1),(4,1,2),(5,2,1)", "CREATE TABLE question(id BIGINT PRIMARY KEY,user_id BIGINT,status INT,`show` INT) ENGINE=InnoDB", "INSERT INTO question VALUES(100,1,1,1),(101,2,1,1),(102,1,11,1)"} {
+	for _, q := range []string{"CREATE TABLE `user`(id BIGINT PRIMARY KEY,status INT,mail_status INT,username VARCHAR(64) DEFAULT '',display_name VARCHAR(64) DEFAULT '') ENGINE=InnoDB", "INSERT INTO `user`(id,status,mail_status) VALUES(1,1,1),(2,1,1),(3,1,1),(4,1,2),(5,2,1)", "CREATE TABLE user_role_rel(user_id BIGINT,role_id INT) ENGINE=InnoDB", "INSERT INTO user_role_rel VALUES(1,1),(2,1),(3,2),(4,2),(5,2)", "CREATE TABLE question(id BIGINT PRIMARY KEY,user_id BIGINT,status INT,`show` INT) ENGINE=InnoDB", "INSERT INTO question VALUES(100,1,1,1),(101,2,1,1),(102,1,11,1)"} {
 		if _, err = db.Exec(q); err != nil {
 			t.Fatal(err)
 		}
@@ -176,5 +176,70 @@ func TestPollConcurrentChangeAndDeadlineMySQL(t *testing.T) {
 	v, err := s.Get(ctx, "100", "")
 	if err != nil || !v.Ended || !v.ResultsVisible {
 		t.Fatal(v, err)
+	}
+}
+
+func TestPollAdminVotersMySQL(t *testing.T) {
+	s := fixture(t)
+	ctx := context.Background()
+	if _, err := s.Execute(ctx, "1", "create-admin-view", Command{Op: "create", QuestionID: "100", Config: config()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Execute(ctx, "2", "vote-admin-view01", Command{Op: "vote", QuestionID: "100", Choices: []int{0, 2}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, user := range []string{"", "1", "2", "4", "5"} {
+		if _, err := s.Voters(ctx, "100", user, ""); !errors.Is(err, ErrForbidden) {
+			t.Fatalf("non-admin %q got %v", user, err)
+		}
+	}
+	page, err := s.Voters(ctx, "100", "3", "")
+	if err != nil || len(page.Items) != 1 || page.Items[0].UserID != "2" || len(page.Items[0].Choices) != 2 {
+		t.Fatalf("page=%+v err=%v", page, err)
+	}
+	if _, err = s.Execute(ctx, "2", "change-admin-view", Command{Op: "vote", QuestionID: "100", Choices: []int{1}, Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	page, err = s.Voters(ctx, "100", "3", "")
+	if err != nil || len(page.Items[0].Choices) != 1 || page.Items[0].Choices[0] != 1 {
+		t.Fatal(page, err)
+	}
+	// Fill enough unique users to exercise bounded keyset pages.
+	for i := 10; i < 65; i++ {
+		if _, err = s.DB.Exec("INSERT INTO metar_topic_poll_ballot(question_id,user_id,choices_json,version,updated_at) VALUES(?,?,'[0]',1,1)", "100", i); err != nil {
+			t.Fatal(err)
+		}
+	}
+	page, err = s.Voters(ctx, "100", "3", "")
+	if err != nil || len(page.Items) != 50 || page.NextCursor == "" {
+		t.Fatal(page, err)
+	}
+	next, err := s.Voters(ctx, "100", "3", page.NextCursor)
+	if err != nil || len(next.Items) != 6 || next.NextCursor != "" {
+		t.Fatal(next, err)
+	}
+	seen := map[string]bool{}
+	for _, v := range append(page.Items, next.Items...) {
+		if seen[v.UserID] {
+			t.Fatal("duplicate", v.UserID)
+		}
+		seen[v.UserID] = true
+	}
+	for _, query := range []string{"UPDATE user_role_rel SET role_id=3 WHERE user_id=3", "DELETE FROM user_role_rel WHERE user_id=3", "INSERT INTO user_role_rel VALUES(3,2),(3,2)"} {
+		if _, err = s.DB.Exec(query); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = s.Voters(ctx, "100", "3", ""); !errors.Is(err, ErrForbidden) {
+			t.Fatalf("role mutation accepted %s: %v", query, err)
+		}
+	}
+	s.DB.Exec("DELETE FROM user_role_rel WHERE user_id=3")
+	s.DB.Exec("INSERT INTO user_role_rel VALUES(3,2)")
+	s.DB.Exec("UPDATE question SET " + "`show`" + "=2 WHERE id=100")
+	if _, err = s.Voters(ctx, "100", "3", ""); !errors.Is(err, ErrNotFound) {
+		t.Fatal(err)
+	}
+	if _, err = s.Voters(ctx, "100", "3", "../2"); !errors.Is(err, ErrInvalid) {
+		t.Fatal(err)
 	}
 }

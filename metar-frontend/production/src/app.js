@@ -25,7 +25,7 @@
   const taxonomy = window.MetarTaxonomy;
   let taxonomyBusy = false;
   const pulse = new PulseAdapter(answer);
-  let growth = null, pulseAdmin = null, chatView = null, chatModeration = null, memberView = null, operationsView = null, marketplaceView = null, modelsView = null, modelsAdminView = null, publishingView = null, toolsView = null;
+  let growth = null, pulseAdmin = null, chatView = null, chatModeration = null, memberView = null, operationsView = null, marketplaceView = null, modelsView = null, modelsAdminView = null, publishingView = null, toolsView = null, awardsView = null;
   // Single tool inventory for the top-bar menu and the /tools hub.
   const TOOLS = Object.freeze([
     {path: '/tools/network', zh: 'Claude 访问环境检测', en: 'Claude environment check', descriptionZh: '六项设备信号评分、Claude 域名出口、WebRTC 与 DNS 状态，以及完整检测说明。', descriptionEn: 'Six local signals, Claude egress probes, WebRTC and DNS status, with a detailed guide.'},
@@ -246,7 +246,7 @@
     if (path.startsWith('/model/')) return t('模型详情');
     if (path.startsWith('/question/')) return t("问题详情");
     if (path.startsWith('/topic/')) return t("话题");
-    return ({ '/me/drafts': t('我的草稿'), '/events': t('近期活动'), '/admin/publishing': '内容运营', '/admin/operations': t('社区经营'), '/admin/events': t('活动管理'), '/chat': t('聊天'), '/admin/chat': t('聊天举报'), '/latest': t("最新话题"), '/topics': t("类别与标签"), '/admin/taxonomy': t('类别管理'), '/knowledge': t("知识库"), '/search': t("搜索"), '/models': t('模型评分榜'), '/models/leaderboard': t('模型评分榜'), '/admin/models': t('模型榜管理'), '/tools': t('工具'), '/tools/network': t('Claude 访问环境检测'), '/marketplace': t('Vibe Coding 集市'), '/marketplace/mine': t('我的集市发布'), '/marketplace/publish': t('发布到集市'), '/admin/marketplace': t('集市审核'), '/me/settings': t('账号设置'), '/me/badges': t('勋章'), '/me': t("个人空间"), '/me/bookmarks': t("我的收藏"), '/me/growth': t('社区成长'), '/me/notifications': t("通知中心"), '/settings/binding': t("账号绑定"), '/pulse': t("Pulse 权益"), '/admin/pulse': t("Pulse 配置"), '/publish': t("发布内容"), '/login': t("登录"), '/register': t("注册"), '/forgot': t("找回密码"), '/status': t("服务状态"), '/support': t("帮助中心"), '/guidelines': t("社区规范"), '/tos': t("服务条款"), '/privacy': t("隐私政策") })[path] || t("METAR 社区");
+    return ({ '/awards': t('优秀内容评选'), '/admin/awards': t('评选审核'), '/me/drafts': t('我的草稿'), '/events': t('近期活动'), '/admin/publishing': '内容运营', '/admin/operations': t('社区经营'), '/admin/events': t('活动管理'), '/chat': t('聊天'), '/admin/chat': t('聊天举报'), '/latest': t("最新话题"), '/topics': t("类别与标签"), '/admin/taxonomy': t('类别管理'), '/knowledge': t("知识库"), '/search': t("搜索"), '/models': t('模型评分榜'), '/models/leaderboard': t('模型评分榜'), '/admin/models': t('模型榜管理'), '/tools': t('工具'), '/tools/network': t('Claude 访问环境检测'), '/marketplace': t('Vibe Coding 集市'), '/marketplace/mine': t('我的集市发布'), '/marketplace/publish': t('发布到集市'), '/admin/marketplace': t('集市审核'), '/me/settings': t('账号设置'), '/me/badges': t('勋章'), '/me': t("个人空间"), '/me/bookmarks': t("我的收藏"), '/me/growth': t('社区成长'), '/me/notifications': t("通知中心"), '/settings/binding': t("账号绑定"), '/pulse': t("Pulse 权益"), '/admin/pulse': t("Pulse 配置"), '/publish': t("发布内容"), '/login': t("登录"), '/register': t("注册"), '/forgot': t("找回密码"), '/status': t("服务状态"), '/support': t("帮助中心"), '/guidelines': t("社区规范"), '/tos': t("服务条款"), '/privacy': t("隐私政策") })[path] || t("METAR 社区");
   }
 
   function languageControl() {
@@ -255,7 +255,7 @@
 
   function accountManagement(item) {
     if (currentUserState !== 'ready' || !isCommunityAdministrator(currentUser)) return '';
-    return `<div class="account-menu-group"><div class="account-menu-label">${t('管理')}</div>${item('/admin/pulse', t('Pulse 配置'), 'settings')}${item('/admin/growth', t('成长管理'), 'target')}${item('/admin/taxonomy', t('类别管理'), 'flag')}${item('/admin/marketplace', t('集市审核'), 'code')}${item('/admin/models', t('模型榜管理'), 'target')}${item('/admin/chat', t('聊天举报'), 'chat')}${item('/admin/events', t('活动管理'), 'calendar')}${item('/admin/operations', t('社区经营'), 'target')}${item('/admin/publishing', '内容运营', 'edit')}${external('/admin/dashboard', I('shield') + `<span>${t('社区管理')}</span>`, 'account-menu-link')}${external('/admin/pulse_user_center', I('link') + `<span>${t('社区连接配置')}</span>`, 'account-menu-link')}</div>`;
+    return `<div class="account-menu-group"><div class="account-menu-label">${t('管理')}</div>${item('/admin/pulse', t('Pulse 配置'), 'settings')}${item('/admin/growth', t('成长管理'), 'target')}${item('/admin/taxonomy', t('类别管理'), 'flag')}${item('/admin/marketplace', t('集市审核'), 'code')}${item('/admin/models', t('模型榜管理'), 'target')}${item('/admin/chat', t('聊天举报'), 'chat')}${item('/admin/events', t('活动管理'), 'calendar')}${item('/admin/awards', t('评选审核'), 'trophy')}${item('/admin/operations', t('社区经营'), 'target')}${item('/admin/publishing', '内容运营', 'edit')}${external('/admin/dashboard', I('shield') + `<span>${t('社区管理')}</span>`, 'account-menu-link')}${external('/admin/pulse_user_center', I('link') + `<span>${t('社区连接配置')}</span>`, 'account-menu-link')}</div>`;
   }
 
   const isPersonalPath = path => /^\/me(?:\/|$)/.test(path) || ['/settings/binding','/chat','/pulse'].includes(path);
@@ -265,7 +265,7 @@
     const { path, query } = route();
     const item = (url, label, icon) => link(url, I(icon) + `<span>${esc(label)}</span>`, `account-menu-link ${routeMatchesNavigation(path, query.toString(), url) ? 'active' : ''}`);
     const consoleBase = config.consoleUrl?.replace(/\/$/, '').replace(/\/console$/, '');
-    return `<aside class="personal-sidebar" aria-label="${t('我的空间')}"><div class="account-menu-group"><div class="account-menu-label">${t('我的空间')}</div>${item('/chat', t('聊天'), 'chat')}${item('/me', t('个人空间'), 'user')}${item('/me/growth', t('社区成长'), 'target')}${item('/me/bookmarks', t('我的收藏'), 'bookmark')}${item('/settings/binding', t('账号绑定'), 'link')}${item('/me/badges', t('勋章'), 'trophy')}${item('/me/settings', t('账号设置'), 'settings')}${item('/me/notifications', t('通知中心'), 'bell')}${item('/me/drafts', t('我的草稿'), 'edit')}</div>${accountManagement(item)}<div class="account-menu-group personal-console-group"><div class="account-menu-label">${t('元衡服务')}</div>${item('/pulse', getLanguage() === 'en_US' ? 'Check-in & draw' : '签到抽奖', 'target')}${consoleBase ? outbound(consoleBase + '/console', t('元衡API'), 'account-menu-link') : ''}</div><div class="account-menu-group personal-logout">${external('/users/logout', I('external') + `<span>${t('退出登录')}</span>`, 'account-menu-link')}</div></aside>`;
+    return `<aside class="personal-sidebar" aria-label="${t('我的空间')}"><div class="account-menu-group"><div class="account-menu-label">${t('我的空间')}</div>${item('/chat', t('聊天'), 'chat')}${item('/me', t('个人空间'), 'user')}${item('/me/growth', t('社区成长'), 'target')}${item('/me/bookmarks', t('我的收藏'), 'bookmark')}${item('/settings/binding', t('账号绑定'), 'link')}${item('/me/badges', t('勋章'), 'trophy')}${item('/awards?view=honors', t('头衔与评选勋章'), 'trophy')}${item('/me/settings', t('账号设置'), 'settings')}${item('/me/notifications', t('通知中心'), 'bell')}${item('/me/drafts', t('我的草稿'), 'edit')}</div>${accountManagement(item)}<div class="account-menu-group personal-console-group"><div class="account-menu-label">${t('元衡服务')}</div>${item('/pulse', getLanguage() === 'en_US' ? 'Check-in & draw' : '签到抽奖', 'target')}${consoleBase ? outbound(consoleBase + '/console', t('元衡API'), 'account-menu-link') : ''}</div><div class="account-menu-group personal-logout">${external('/users/logout', I('external') + `<span>${t('退出登录')}</span>`, 'account-menu-link')}</div></aside>`;
   }
 
   const isHomePath = (path = route().path) => /^\/(?:latest|questions|discover)?\/?$/.test(path);
@@ -429,6 +429,7 @@
     void mountSearchSuggestions();
     void mountPersonalNative();
     if (['/me/drafts', '/events', '/admin/events'].includes(route().path)) memberView?.mount(view);
+    if (['/awards','/admin/awards'].includes(route().path)) awardsView?.mount(view);
     if (route().path === '/admin/operations') operationsView?.mount(view);
     if (route().path.startsWith('/marketplace') || route().path === '/admin/marketplace') marketplaceView?.mount(view);
     if (route().path === '/admin/models') modelsAdminView?.mount(view);
@@ -710,6 +711,7 @@
     return `<section class="community-discussions">
       ${pageTitle(title)}
       <div data-tag-shortcuts><p class="muted">${t('正在加载…')}</p></div>
+      <p class="mb16">${link('/awards', I('trophy', 'sm') + t('优秀内容评选'), 'textlink')}</p>
       <div class="community-layout">
         <div class="community-feed">
           <div class="discussion-toolbar"><nav class="discussion-tabs" aria-label="${t('话题筛选')}">${tabs}</nav>${external(askPath, I('plus', 'sm') + t('新建话题'), 'btn primary')}</div>
@@ -734,12 +736,15 @@
     if (currentUserState === 'unavailable') return identityUnavailable(title);
     if (!currentUser) return loginRequired(title, t('请先登录社区账号。'));
     if (!isActiveUser(currentUser)) return accountUnavailable(title);
-    return pageTitle(title) + '<section class="personal-native" data-personal-native><p data-native-status role="status">' + t('正在加载…') + '</p><iframe title="' + esc(title) + '" hidden></iframe><p class="prod-page-note"><a data-native-original class="textlink" target="_blank" rel="noopener">' + t('在独立页面打开') + '</a></p></section>' + footer();
+    const honors=route().path==='/me/badges'&&!route().query.get('badge')?'<section class="card card-pad mb16"><h2>'+t('评选金色勋章')+'</h2><div data-award-badges>'+t('正在加载…')+'</div>'+link('/awards?view=honors',t('头衔与评选勋章'),'textlink')+'</section>':'';
+    return pageTitle(title) + honors + '<section class="personal-native" data-personal-native><p data-native-status role="status">' + t('正在加载…') + '</p><iframe title="' + esc(title) + '" hidden></iframe><p class="prod-page-note"><a data-native-original class="textlink" target="_blank" rel="noopener">' + t('在独立页面打开') + '</a></p></section>' + footer();
   }
   async function mountPersonalNative() {
     const root = document.querySelector('[data-personal-native]');
     if (!root) return;
     const sequence = navigationSequence;
+    const medalBox=document.querySelector('[data-award-badges]');
+    if(medalBox){answer.request('/metar/awards/honors').then(data=>{if(sequence!==navigationSequence||!medalBox.isConnected)return;medalBox.innerHTML=data.badges.length?data.badges.map(b=>'<span style="display:inline-block;margin:8px;padding:10px 14px;color:#76540c;background:#fff1bb;border:1px solid #e4bc55;border-radius:8px">🏅 '+esc(b.name)+' × '+number(b.count)+'</span>').join(''):t('暂无评选勋章');}).catch(()=>{if(medalBox.isConnected)medalBox.textContent=t('评选勋章暂时无法加载');});}
     try {
       await loadFeatureScript('personal-workspace','MetarPersonalWorkspace');
       if (sequence !== navigationSequence || !root.isConnected) return;
@@ -1171,6 +1176,21 @@
       operationsView = new window.MetarOperations.View(new AnswerAdapter({answerApiBase:'/answer/admin/api'}));
       return await operationsView.page();
     }
+    if (path === '/awards' || path === '/admin/awards') {
+      await identityReady;
+      if(path==='/admin/awards'){
+        if(currentUserState==='unavailable')return identityUnavailable(currentTitle());
+        if(!currentUser)return loginRequired(currentTitle(),t('请先登录社区账号。'));
+        if(!isCommunityAdministrator(currentUser))return empty(t('需要管理员权限'),'',link('/awards',t('优秀内容评选'),'btn'),'shield');
+      }
+      if(path==='/awards'&&route().query.get('view')==='honors'){
+ if(!currentUser)return loginRequired(currentTitle(),t('请先登录社区账号。'));
+ await loadFeatureScript('award-honors','MetarAwardHonors');awardsView=new window.MetarAwardHonors.View(answer);return await awardsView.page(route().query);
+ }
+ await loadFeatureScript('awards','MetarAwards');
+      awardsView=new window.MetarAwards.View(answer,new AnswerAdapter({answerApiBase:'/answer/admin/api'}));
+      return await awardsView.page(path,currentUser,route().query);
+    }
     if (['/me/drafts', '/events', '/admin/events'].includes(path)) {
       await identityReady;
       const title = currentTitle();
@@ -1462,6 +1482,7 @@
     modelsAdminView?.dispose();
     publishingView?.dispose();
     toolsView?.dispose();
+    awardsView?.dispose();
     const sequence = ++navigationSequence;
     const key = location.pathname + location.search;
     const session = answer.token();

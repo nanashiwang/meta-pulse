@@ -42,7 +42,9 @@
     "questions",
     "admin/publishing",
     "me/settings",
-    "me/badges"
+    "me/badges",
+    "awards",
+    "admin/awards"
   ],
   "detailPrefixes": [
     "question",

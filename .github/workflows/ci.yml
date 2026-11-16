@@ -178,10 +178,11 @@ jobs:
       - name: Topic poll concurrency and permissions
         env:
           MYSQL_CONTAINER: ${{ job.services.mysql.id }}
+          AWARDS_INTEGRATION_DSN: root:pulse_ci_test_only@tcp(127.0.0.1:3306)/community_awards_test?parseTime=true
           POLLS_INTEGRATION_DSN: root:pulse_ci_test_only@tcp(127.0.0.1:3306)/community_polls_test?parseTime=true
         run: |
-          docker exec "$MYSQL_CONTAINER" sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot -e "CREATE DATABASE community_polls_test;"'
-          go test ./services/forum-plugin/user-center-pulse/polls -count=1
+          docker exec "$MYSQL_CONTAINER" sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot -e "CREATE DATABASE community_polls_test; CREATE DATABASE community_awards_test;"'
+          go test ./services/forum-plugin/user-center-pulse/polls ./services/forum-plugin/user-center-pulse/awards -count=1
 
       - name: Administrator account switching and replay protection
         env:

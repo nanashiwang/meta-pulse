@@ -62,6 +62,8 @@ def build(output: Path, config_path: Path) -> None:
         "taxonomy": (ROOT / "src/taxonomy.js").read_text(encoding="utf-8"),
         "marketplace": (ROOT / "src/marketplace.js").read_text(encoding="utf-8"),
         "models": (ROOT / "src/models.js").read_text(encoding="utf-8"),
+        "award-honors": (ROOT / "src/award-honors.js").read_text(encoding="utf-8"),
+        "awards": (ROOT / "src/awards.js").read_text(encoding="utf-8"),
         "admin-publishing": (ROOT / "src/admin-publishing.js").read_text(encoding="utf-8"),
         "admin-models": (ROOT / "src/admin-models.js").read_text(encoding="utf-8"),
         "tools": (ROOT / "src/tools.js").read_text(encoding="utf-8"),
@@ -117,6 +119,8 @@ def build(output: Path, config_path: Path) -> None:
     (assets / "taxonomy.js").write_text(sources["taxonomy"], encoding="utf-8")
     (assets / "marketplace.js").write_text(sources["marketplace"], encoding="utf-8")
     (assets / "models.js").write_text(sources["models"], encoding="utf-8")
+    (assets / "award-honors.js").write_text(sources["award-honors"], encoding="utf-8")
+    (assets / "awards.js").write_text(sources["awards"], encoding="utf-8")
     (assets / "admin-publishing.js").write_text(sources["admin-publishing"], encoding="utf-8")
     (assets / "admin-models.js").write_text(sources["admin-models"], encoding="utf-8")
     (assets / "tools.js").write_text(sources["tools"], encoding="utf-8")

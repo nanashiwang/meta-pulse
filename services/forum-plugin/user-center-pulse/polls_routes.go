@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	mysql "github.com/go-sql-driver/mysql"
 	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/polls"
+	"log"
 	"net/url"
 	"os"
 	"time"
@@ -70,6 +71,7 @@ func (uc *UserCenter) registerPolls(r *gin.RouterGroup, session func(*gin.Contex
 		r.GET("/metar/polls", uc.pollHandler(nil, site, false))
 		return
 	}
+	r.GET("/metar/polls/voters", uc.pollVotersHandler(session))
 	r.GET("/metar/polls/mine", uc.pollHandler(session, site, false))
 	r.POST("/metar/polls/command", uc.pollHandler(session, site, true))
 }
@@ -148,5 +150,56 @@ func (uc *UserCenter) pollHandler(session func(*gin.Context) (string, error), si
 			return
 		}
 		c.JSON(200, gin.H{"data": result})
+	}
+}
+
+func (uc *UserCenter) pollVotersHandler(session func(*gin.Context) (string, error)) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store, private")
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("Vary", "Authorization")
+		q, err := url.ParseQuery(c.Request.URL.RawQuery)
+		if err != nil || len(q["question_id"]) != 1 || len(q) > 2 || len(q["after"]) > 1 || (len(q) == 2 && len(q["after"]) != 1) {
+			communityError(c, 400, "invalid_request")
+			return
+		}
+		if session == nil || c.GetHeader("Authorization") == "" {
+			communityError(c, 401, "authentication_required")
+			return
+		}
+		user, err := session(c)
+		if err != nil {
+			communityIdentityError(c, err)
+			return
+		}
+		id := pollQuestionID(q.Get("question_id"))
+		after := q.Get("after")
+		if id == "" || (after != "" && !canonicalCommunityID(after)) {
+			communityError(c, 400, "invalid_request")
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+		defer cancel()
+		store, err := uc.pollStore(ctx)
+		if err != nil {
+			communityError(c, 503, "poll_unavailable")
+			return
+		}
+		page, err := store.Voters(ctx, id, user, after)
+		if err != nil {
+			switch {
+			case errors.Is(err, polls.ErrForbidden):
+				communityError(c, 403, "forbidden")
+			case errors.Is(err, polls.ErrNotFound):
+				communityError(c, 404, "not_found")
+			case errors.Is(err, polls.ErrInvalid):
+				communityError(c, 400, "invalid_request")
+			default:
+				communityError(c, 503, "poll_unavailable")
+			}
+			return
+		}
+		log.Printf("poll voter inspection admin=%s question=%s count=%d", user, id, len(page.Items))
+		c.JSON(200, gin.H{"code": 200, "data": page})
 	}
 }

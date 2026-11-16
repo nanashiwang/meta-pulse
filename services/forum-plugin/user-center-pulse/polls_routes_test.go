@@ -18,6 +18,10 @@ func TestPollRoutesRejectBeforeDatabase(t *testing.T) {
 		{"GET", "/metar/polls?question_id=../1", "", "", "", 400},
 		{"GET", "/metar/polls?question_id=1&Authorization=secret", "", "", "", 400},
 		{"GET", "/metar/polls/mine?question_id=1", "", "", "", 401},
+		{"GET", "/metar/polls/voters?question_id=1", "", "", "", 401},
+		{"GET", "/metar/polls/voters?question_id=1&user_id=2", "", "Bearer x", "", 400},
+		{"GET", "/metar/polls/voters?question_id=1&after=1&after=2", "", "Bearer x", "", 400},
+		{"GET", "/metar/polls/voters?question_id=1&after=../2", "", "Bearer x", "", 400},
 		{"POST", "/metar/polls/command", `{"op":"close","question_id":"100"}`, "Bearer x", "https://evil.test", 403},
 		{"POST", "/metar/polls/command", `{"op":"vote","question_id":"100","choices":[0],"user_id":"2"}`, "Bearer x", "https://forum.test", 400},
 		{"POST", "/metar/polls/command", `{"op":"vote","question_id":"100","choices":[0],"choices":[1]}`, "Bearer x", "https://forum.test", 400},
@@ -50,5 +54,21 @@ func TestPollIdentityFailure(t *testing.T) {
 	r.ServeHTTP(w, req)
 	if w.Code == 200 {
 		t.Fatal("invalid identity accepted")
+	}
+}
+
+func TestPollVotersInvalidSession(t *testing.T) {
+	r := gin.New()
+	uc := &UserCenter{}
+	uc.registerPolls(r.Group(""), func(*gin.Context) (string, error) { return "", errors.New("bad session") }, func() string { return "https://forum.test" })
+	req := httptest.NewRequest("GET", "/metar/polls/voters?question_id=100", nil)
+	req.Header.Set("Authorization", "Bearer invalid")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code == 200 {
+		t.Fatal("invalid session accepted")
+	}
+	if w.Header().Get("Cache-Control") != "no-store, private" {
+		t.Fatal("private votes may be cached")
 	}
 }

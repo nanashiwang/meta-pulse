@@ -1,3 +1,8 @@
+import { installAwardTitles } from './award-titles.js';
+import './award-titles.css';
+installAwardTitles();
+import { installContentAwards } from './content-awards.js';
+import './content-awards.css';
 import './search-suggestions.js';
 import './account-switch.js';
 import { installTopicPolls } from './topic-polls.js';
@@ -55,7 +60,9 @@ installPasswordVisibility({
   onLanguageChanged: (handler) => i18n.on('languageChanged', handler),
 });
 
-(window as any).MetarAvatarCropper.install({ getLanguage: () => i18n.language });
+(window as any).MetarAvatarCropper.install({
+  getLanguage: () => i18n.language,
+});
 
 installNativeFavicon();
 installLocalRegistration(userCenterStore);
@@ -70,8 +77,18 @@ installNativeShell({
 // user profile/session is written and no new-api/Pulse request is involved.
 i18n.addResourceBundle('zh_CN', 'translation', zhCN.ui, true, false);
 i18n.addResourceBundle('en_US', 'translation', enUS.ui, true, false);
-i18n.addResource('zh_CN', 'translation', 'ask.form.fields.tags.label', '类别与标签');
-i18n.addResource('en_US', 'translation', 'ask.form.fields.tags.label', 'Categories and tags');
+i18n.addResource(
+  'zh_CN',
+  'translation',
+  'ask.form.fields.tags.label',
+  '类别与标签',
+);
+i18n.addResource(
+  'en_US',
+  'translation',
+  'ask.form.fields.tags.label',
+  'Categories and tags',
+);
 installLanguageSwitcher({
   getLanguage: () => i18n.language,
   changeLanguage: (language: string) => i18n.changeLanguage(language),
@@ -80,11 +97,13 @@ installLanguageSwitcher({
     return () => i18n.off('languageChanged', handler);
   },
   getUserLanguage: () => loggedUserInfoStore.getState().user.language,
-  setUserLanguage: (language: string) => loggedUserInfoStore.setState((state) => ({
-    user: { ...state.user, language },
-  })),
+  setUserLanguage: (language: string) =>
+    loggedUserInfoStore.setState((state) => ({
+      user: { ...state.user, language },
+    })),
   subscribeUser: (handler) => loggedUserInfoStore.subscribe(handler),
-  setDateLocale: (language: string) => dayjs.locale(language === 'en_US' ? 'en' : 'zh-cn'),
+  setDateLocale: (language: string) =>
+    dayjs.locale(language === 'en_US' ? 'en' : 'zh-cn'),
 });
 
 // The enabled plugin's module is loaded once by Answer's plugin registry.
@@ -97,21 +116,30 @@ export default {
 // Account-scoped drafts retain Answer's native editor and publish cleanup.
 (window as any).MetarDrafts.install(storageExpires, {
   getUser: () => loggedUserInfoStore.getState().user,
-  get storage() { return window.localStorage; },
+  get storage() {
+    return window.localStorage;
+  },
   url: () => window.location.href,
   error: () => {
     let notice = document.getElementById('metar-draft-error');
     if (!notice) {
       notice = document.createElement('div');
-      notice.id = 'metar-draft-error'; notice.setAttribute('role', 'alert');
-      notice.className = 'alert alert-warning'; document.body.prepend(notice);
+      notice.id = 'metar-draft-error';
+      notice.setAttribute('role', 'alert');
+      notice.className = 'alert alert-warning';
+      document.body.prepend(notice);
     }
-    notice.textContent = i18n.language === 'en_US' ? 'Draft could not be saved. Keep this page open and copy your text before leaving; check storage space or edits in another tab.' : '草稿未能保存。请保留本页并复制正文，再检查存储空间或其他标签页的编辑。';
+    notice.textContent =
+      i18n.language === 'en_US'
+        ? 'Draft could not be saved. Keep this page open and copy your text before leaving; check storage space or edits in another tab.'
+        : '草稿未能保存。请保留本页并复制正文，再检查存储空间或其他标签页的编辑。';
   },
 });
 
 (window as any).__metarNativeAccountSwitch = true;
-(window as any).MetarAccountSwitch.install(() => loggedUserInfoStore.getState().user);
+(window as any).MetarAccountSwitch.install(
+  () => loggedUserInfoStore.getState().user,
+);
 
 installTopicPolls({
   getUser: () => loggedUserInfoStore.getState().user,
@@ -122,3 +150,11 @@ installTopicPolls({
 });
 
 (window as any).MetarSearchSuggestions.install();
+
+installContentAwards({
+  getUser: () => loggedUserInfoStore.getState().user,
+  getToken: () => localStorage.getItem('_a_ltk_') || '',
+  getLanguage: () => i18n.language,
+  subscribeUser: (fn) => loggedUserInfoStore.subscribe(fn),
+  onLanguageChanged: (fn) => i18n.on('languageChanged', fn),
+});

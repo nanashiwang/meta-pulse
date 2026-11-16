@@ -1,0 +1,27 @@
+.metar-award-nomination {
+  margin: 20px 0;
+  padding: 16px;
+  border: 1px solid var(--metar-border);
+  border-radius: 10px;
+  background: var(--metar-surface);
+  font-size: 13px;
+}
+.metar-award-nomination p {
+  margin: 8px 0;
+  color: var(--metar-muted);
+}
+.metar-award-nomination a {
+  display: inline-block;
+  margin: 6px 16px 6px 0;
+}
+.metar-award-nomination button {
+  border: 1px solid var(--metar-border);
+  background: var(--metar-surface);
+  color: var(--metar-primary);
+  border-radius: 6px;
+  padding: 6px 12px;
+  margin: 6px 10px 6px 0;
+}
+.metar-award-nomination button:disabled {
+  opacity: 0.6;
+}

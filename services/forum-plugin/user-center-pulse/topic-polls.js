@@ -24,6 +24,19 @@ export function validatePoll(config) {
     throw Error("invalid_request");
   return { title, options, max_choices: max, days };
 }
+export function canInspectPollVoters(user) {
+  return (
+    Boolean(user?.id) &&
+    user.status === "normal" &&
+    user.mail_status === 1 &&
+    user.role_id === 2
+  );
+}
+export function voterChoiceLabels(choices, options) {
+  return (Array.isArray(choices) ? choices : [])
+    .filter((i) => Number.isInteger(i) && i >= 0 && i < options.length)
+    .map((i) => options[i]);
+}
 export function resultPercent(count, total) {
   return total > 0 ? Math.max(0, Math.min(100, (count * 100) / total)) : 0;
 }
@@ -304,7 +317,8 @@ export function installTopicPolls(options, host = window) {
       }
     };
     let actions = native.querySelector('button[type="submit"]');
-    while (actions && actions.parentElement !== native) actions = actions.parentElement;
+    while (actions && actions.parentElement !== native)
+      actions = actions.parentElement;
     if (actions) native.insertBefore(node, actions);
     else native.append(node);
     composer = { node, enabled, ...editor };
@@ -421,13 +435,35 @@ export function installTopicPolls(options, host = window) {
       (pending.question_id === question ||
         pending.question_id === data.question_id);
     if (!data.exists) {
-      if (!data.can_create || !matchingPending) { panel.hidden = true; return; }
+      if (!data.can_create || !matchingPending) {
+        panel.hidden = true;
+        return;
+      }
       panel.hidden = false;
-      const notice = el('p', t('帖子已发布，投票尚未确认保存。请重试，无需再次发帖。', 'Your post is published. Poll creation was not confirmed. Retry without posting again.'), 'metar-poll-error');
-      panel.append(notice, button(t('重试保存原投票','Retry original poll'),async()=>{
-        const owner=user();
-        try{await api('/command',pending.body,pending.key);if(owner!==user())return;remove('pending-create');remove('draft');recovery=null;await refresh();}catch(e){notice.textContent=message(e.message);}
-      }));
+      const notice = el(
+        "p",
+        t(
+          "帖子已发布，投票尚未确认保存。请重试，无需再次发帖。",
+          "Your post is published. Poll creation was not confirmed. Retry without posting again.",
+        ),
+        "metar-poll-error",
+      );
+      panel.append(
+        notice,
+        button(t("重试保存原投票", "Retry original poll"), async () => {
+          const owner = user();
+          try {
+            await api("/command", pending.body, pending.key);
+            if (owner !== user()) return;
+            remove("pending-create");
+            remove("draft");
+            recovery = null;
+            await refresh();
+          } catch (e) {
+            notice.textContent = message(e.message);
+          }
+        }),
+      );
       return;
     }
     panel.hidden = false;
@@ -590,12 +626,140 @@ export function installTopicPolls(options, host = window) {
                   : ""),
             )
           : t(
-              "投票后或截止后查看结果，不公开个人选择。",
-              "Results appear after voting or closing. Individual choices are not public.",
+              "投票后或截止后查看汇总结果。",
+              "Aggregate results appear after voting or closing.",
             ),
         "metar-poll-muted",
       ),
     );
+
+    panel.append(
+      el(
+        "p",
+        t(
+          "个人选择不公开，管理员可查看投票明细。",
+          "Individual choices are private to other members; administrators can inspect votes.",
+        ),
+        "metar-poll-muted",
+      ),
+    );
+    if (canInspectPollVoters(options.getUser?.())) {
+      const details = el("section", undefined, "metar-poll-voters");
+      details.hidden = true;
+      const toggle = button(
+        t("查看投票明细（管理员）", "View voters (admin)"),
+        () => {
+          details.hidden = !details.hidden;
+          if (!details.hidden) void loadVoters("");
+          else {
+            serial++;
+            details.replaceChildren();
+          }
+        },
+      );
+      actions.append(toggle);
+      panel.append(details);
+      let serial = 0;
+      async function loadVoters(after) {
+        const request = ++serial,
+          actor = user(),
+          currentQuestion = question,
+          currentEpoch = epoch;
+        details.replaceChildren(
+          el("p", t("正在加载投票明细…", "Loading votes…")),
+        );
+        try {
+          const query = new URLSearchParams({ question_id: currentQuestion });
+          if (after) query.set("after", after);
+          const page = await api("/voters?" + query);
+          if (
+            request !== serial ||
+            epoch !== currentEpoch ||
+            user() !== actor ||
+            question !== currentQuestion ||
+            !details.isConnected ||
+            details.hidden ||
+            !canInspectPollVoters(options.getUser?.())
+          )
+            return;
+          details.replaceChildren(
+            el(
+              "h4",
+              t(
+                "投票明细 · 仅管理员可见",
+                "Voter details · Administrators only",
+              ),
+            ),
+          );
+          const list = el("ul", undefined, "metar-poll-voter-list");
+          for (const voter of page.items || []) {
+            const row = el("li");
+            const name =
+              voter.display_name ||
+              voter.username ||
+              t("已删除账号", "Deleted account");
+            row.append(el("strong", name + " · ID " + voter.user_id));
+            row.append(
+              el(
+                "p",
+                voterChoiceLabels(voter.choices, data.options).join("、"),
+              ),
+            );
+            row.append(
+              el(
+                "small",
+                new Date(voter.updated_at * 1000).toLocaleString(
+                  en() ? "en-US" : "zh-CN",
+                ),
+              ),
+            );
+            list.append(row);
+          }
+          details.append(list);
+          if (!page.items?.length)
+            details.append(el("p", t("暂无投票记录。", "No votes yet.")));
+          const controls = el("div", undefined, "metar-poll-actions");
+          if (after)
+            controls.append(
+              button(t("回到第一页", "First page"), () => loadVoters("")),
+            );
+          if (page.next_cursor)
+            controls.append(
+              button(t("下一页", "Next page"), () =>
+                loadVoters(page.next_cursor),
+              ),
+            );
+          controls.append(
+            button(t("刷新明细", "Refresh details"), () => loadVoters("")),
+          );
+          details.append(controls);
+        } catch (error) {
+          if (
+            request !== serial ||
+            epoch !== currentEpoch ||
+            user() !== actor ||
+            !details.isConnected ||
+            details.hidden
+          )
+            return;
+          details.replaceChildren(
+            el(
+              "p",
+              error.message === "forbidden"
+                ? t(
+                    "仅管理员可查看投票明细。",
+                    "Only administrators can inspect votes.",
+                  )
+                : t(
+                    "投票明细加载失败，请重试。",
+                    "Could not load votes. Please retry.",
+                  ),
+            ),
+          );
+          details.append(button(t("重试", "Retry"), () => loadVoters(after)));
+        }
+      }
+    }
     const outstanding = read("command:" + question);
     if (outstanding) {
       status.textContent = t(
@@ -624,7 +788,11 @@ export function installTopicPolls(options, host = window) {
   function mount() {
     scheduled = false;
     const identity =
-      user() + ":" + (options.getLanguage?.() || doc.documentElement.lang);
+      user() +
+      ":" +
+      canInspectPollVoters(options.getUser?.()) +
+      ":" +
+      (options.getLanguage?.() || doc.documentElement.lang);
     if (identity !== scope) {
       scope = identity;
       epoch++;
@@ -641,7 +809,11 @@ export function installTopicPolls(options, host = window) {
     );
     const heading = doc.querySelector(".questionDetailPage .page-main h1"),
       article = heading?.parentElement?.querySelector("article.fmt");
-    if (!match || !article || ["ask", "add", "edit", "linked"].includes(match[1])) {
+    if (
+      !match ||
+      !article ||
+      ["ask", "add", "edit", "linked"].includes(match[1])
+    ) {
       epoch++;
       panel?.remove();
       panel = null;

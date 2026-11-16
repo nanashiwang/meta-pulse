@@ -140,7 +140,9 @@ new-api 接收端与实际到账、生产普通账号流程、邮件与跨实例
 
 精简讨论首页：单一顶部搜索、单分类与短摘要、固定回复框、隐藏列表等级；更多菜单保留热门/高赞，待回答三条、精选默认折叠，窄屏辅助区折叠，无关注时不展示空卡片；列表页页脚随文流动。
 
+勋章提示：`answer-badge-context.patch` 区分默认问答勋章中文等级、在新通知与弹窗显示内容标题/获奖条件；授奖去重、阈值和多次获取规则不变。缓存兼容回归随论坛补丁在 `test-operator-publishing.sh` 中执行。
 
+设置分支返回：`/users/settings/*` 与 `/settings/*` 共享来源区域，页面返回跳过同分支子页；旧 v2 历史同区域记录会在恢复时裁去，保留真实外部来源。
 
 个人中心工作区：me 子页面、绑定、聊天与 Pulse 保留左侧菜单；新增 /me/settings、/me/badges，并将通知收在 /me/notifications。原生设置/勋章/通知仅在白名单同源容器内显示，表单保存沿用 Answer，未保存有离开提示；后台与元衡外站保持独立。入口与测试为 personal-workspace.js / personal-workspace.test.js，需同时部署静态壳层与 Nginx。
 
@@ -156,9 +158,14 @@ new-api 接收端与实际到账、生产普通账号流程、邮件与跨实例
 
 帖子投票：原生Ask底部与详情正文后；/answer/api/v1/metar/polls公开读取、/mine会话读取、/command同源会话写入。polls包拥有三张论坛库表，锁/版本/幂等防重复，投前隐藏聚合，不暴露选民；不关联权益。见TOPIC_POLLS.md、polls/*test.go、topic-polls.test.js。
 
-
 原生顶栏对齐：header-presentation.js复用主页描边图标与实际角色入口；语言圆形图标、主题、工具菜单、搜索和紧凑布局，保留Answer原生事件与通知红点。自定义标签导航：主页显示全部与常用标签快捷入口，支持按标签筛选、添加、删除、排序并按账号/访客隔离保存；更多标签从实时目录读取。
 
 搜索推荐：共用 `search-suggestions.js` 从热门/最新各选五条，去重补足最多十条；空白搜索直接打开推荐帖子，输入后正常搜索。主页搜索图标为可键盘操作的提交按钮，原生发帖页沿用同一推荐逻辑。
 
 通知收件箱：`answer-notification-inbox.patch` 实现全部/评论/点赞的服务端分页筛选与25字评论预览；`personal-workspace.js` 保留筛选查询及同源内嵌边界。预览核查评论与父内容公开状态，原通知读取、未读动作沿用Answer。需同时部署forum和社区静态资源。
+
+投票管理明细：`polls/voters.go` 与 `/metar/polls/voters` 提供管理员专用50人游标分页；每次读取核验真实账号与唯一角色2，普通作者/版主不可查看。`topic-polls.js` 在卡片提供入口并公开说明管理可见性，明细使用当前选项、改票时间和账号标识，不混入公开汇总。
+
+优秀内容评选第一阶段：`awards/`、`awards_routes.go`、`content-awards.js`、`production/src/awards.js`。帖子提名日2/周10；作者首次采纳回应同步候选；周10/月5人，人工条件和理由、版本/幂等、公开名单、撤销与月奖复核。应奖50/100仅记录deferred，不调用Pulse、不授予头衔徽章。见CONTENT_AWARDS.md。
+
+评选荣誉与人工发放：`awards/honors.go`从唯一有效周/月奖记录计算7/30天可选头衔和金色编辑者/学者累计；`award-titles.js`替换帖子作者等级旁声望数字展示，保留Lv与实际声望。个人中心荣誉页支持选择/隐藏及历史来源；管理员paid仅登记人工发放备注、时间、操作者，不调用Pulse。

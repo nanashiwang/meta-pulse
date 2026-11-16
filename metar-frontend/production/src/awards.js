@@ -1,0 +1,543 @@
+(function (root) {
+  "use strict";
+  const esc = (v) =>
+    String(v ?? "").replace(
+      /[&<>"']/g,
+      (c) =>
+        ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;",
+        })[c],
+    );
+  const t = (zh, en) => (root.MetarI18n?.getLanguage() === "en_US" ? en : zh);
+  function currentWeek(now = new Date()) {
+    const local = new Date(now.getTime() + 8 * 3600000);
+    local.setUTCHours(0, 0, 0, 0);
+    local.setUTCDate(local.getUTCDate() - ((local.getUTCDay() + 6) % 7));
+    return local.toISOString().slice(0, 10);
+  }
+  const label = (kind) =>
+    kind === "post"
+      ? t("优秀帖子奖", "Excellent posts")
+      : t("优秀回应奖", "Helpful responses");
+  const errors = {
+    forbidden: [
+      "需要管理员权限，且不能审核自己的候选。",
+      "Administrator access required; self-review is not allowed.",
+    ],
+    conflict: [
+      "记录已变化，请刷新后重新审核。",
+      "Records changed. Refresh before reviewing.",
+    ],
+    review_not_ready: [
+      "尚未到审核时间，或所属月份仍有周奖未公布。",
+      "Review is not open yet, or a required weekly selection is unpublished.",
+    ],
+    period_closed: [
+      "本期已公布，不能再改动候选。",
+      "This period is already published.",
+    ],
+    nomination_limit: [
+      "本奖项名额已满，或同一用户已有入选内容。",
+      "The award limit has been reached.",
+    ],
+    not_found: [
+      "内容不可见、采纳已取消或候选已失效，请刷新。",
+      "Content or eligibility is no longer available.",
+    ],
+    invalid_request: [
+      "请填写审核理由，并核对两个审核条件。",
+      "Provide a reason and confirm both review criteria.",
+    ],
+  };
+  class View {
+    constructor(api, admin) {
+      this.api = api;
+      this.adminAPI = admin;
+      this.generation = 0;
+      this.busy = false;
+    }
+    dispose() {
+      this.generation++;
+      this.root = null;
+    }
+    async page(path, user, query) {
+      this.dispose();
+      this.path = path;
+      this.user = user;
+      this.admin = path === "/admin/awards";
+      this.period = {
+        type: query.get("type") === "month" ? "month" : "week",
+        key: query.get("key") || currentWeek(),
+        kind: query.get("kind") === "response" ? "response" : "post",
+      };
+      if (this.period.type === "month")
+        this.period.key = this.period.key.slice(0, 7);
+      this.pageNo = Math.max(1, Number(query.get("page") || 1));
+      this.pendingKey = "metar-awards-review-v1:" + user?.id;
+      this.pending = null;
+      if (this.admin) {
+        try {
+          this.pending = JSON.parse(
+            root.sessionStorage.getItem(this.pendingKey) || "null",
+          );
+        } catch (_) {}
+      }
+      this.data = await this.client().request("/metar/awards?" + this.query());
+      return this.html();
+    }
+    client() {
+      return this.admin ? this.adminAPI : this.api;
+    }
+    query() {
+      return new URLSearchParams({ ...this.period, page: String(this.pageNo) });
+    }
+    link(page = this.pageNo, patch = {}) {
+      return (
+        this.path +
+        "?" +
+        new URLSearchParams({ ...this.period, ...patch, page: String(page) })
+      );
+    }
+    html() {
+      const d = this.data,
+        criteria =
+          this.period.kind === "post"
+            ? [
+                t("内容有价值", "Valuable content"),
+                t("产生有效讨论", "Meaningful discussion"),
+              ]
+            : [
+                t("回答准确", "Accurate response"),
+                t("提供实际帮助", "Practical help"),
+              ];
+      const states = {
+        pending: t("待审核", "Pending"),
+        selected: t("已入选，待公布", "Selected, unpublished"),
+        rejected: t("未入选", "Not selected"),
+        awarded: t("已获奖", "Awarded"),
+        revoked: t("已撤销", "Revoked"),
+        review_required: t(
+          "需复核月奖资格",
+          "Monthly eligibility needs review",
+        ),
+      };
+      return (
+        `<section class="card card-pad"><div class="between wrap"><h1>` +
+        t("优秀内容评选", "Community content awards") +
+        `</h1><a data-router href="` +
+        (this.admin ? "/awards" : "/admin/awards") +
+        `">` +
+        (this.admin
+          ? t("查看获奖名单", "Published awards")
+          : this.user?.role_id === 2
+            ? t("管理审核", "Review awards")
+            : "") +
+        `</a></div><p class="muted">` +
+        t(
+          "周奖每类最多10人，月奖每类最多5人，不分排名、不强制补位。",
+          "Up to 10 weekly and 5 monthly winners per category. No ranking or forced allocation.",
+        ) +
+        `</p><p>` +
+        t(
+          "周奖50闪、月奖100闪由管理员手动发放；头衔与勋章在公布入选时获得。",
+          "Rewards are delivered manually; titles and medals are granted upon publication.",
+        ) +
+        `</p><p><a href="/awards?view=honors">我的头衔与勋章</a></p><details><summary>` +
+        t("参与规则", "Participation rules") +
+        `</summary><p>` +
+        t(
+          "在帖子中点击“优秀稿件”提名他人内容，每天最多2次、每周10次；同一帖不能重复提名。按发帖周归属，次周周二结束提名，周三审核。作者采纳回答后，以服务端首次采纳时间归属优秀回应候选。月度按评选周周一所属月份归类，需等待该月全部周奖公布。",
+          "Nominate others’ posts: 2 daily, 10 weekly, once per post. Nominations close next Tuesday; review begins Wednesday (Beijing time). Responses use first author acceptance. Monthly eligibility follows the month of the week’s Monday and waits for all weekly selections.",
+        ) +
+        `</p></details></section>
+ <form data-award-period class="card card-pad mt16"><div class="flex wrap"><label>` +
+        t("周期", "Period") +
+        `<select name="type"><option value="week" ` +
+        (this.period.type === "week" ? "selected" : "") +
+        `>` +
+        t("每周", "Weekly") +
+        `</option><option value="month" ` +
+        (this.period.type === "month" ? "selected" : "") +
+        `>` +
+        t("每月", "Monthly") +
+        `</option></select></label><label>` +
+        t("周一日期／月份", "Monday date / month") +
+        `<input name="key" type="` +
+        (this.period.type === "month" ? "month" : "date") +
+        `" value="` +
+        esc(this.period.key) +
+        `" required></label><label>` +
+        t("奖项", "Award") +
+        `<select name="kind"><option value="post" ` +
+        (this.period.kind === "post" ? "selected" : "") +
+        `>` +
+        label("post") +
+        `</option><option value="response" ` +
+        (this.period.kind === "response" ? "selected" : "") +
+        `>` +
+        label("response") +
+        `</option></select></label><button class="btn primary">` +
+        t("查看", "View") +
+        `</button></div></form>
+ <section class="mt16"><div class="between wrap"><h2>` +
+        esc(this.period.key) +
+        " · " +
+        label(this.period.kind) +
+        `</h2><span>` +
+        (d.status === "published"
+          ? t("已公布", "Published")
+          : t("尚未公布", "Unpublished")) +
+        `</span></div><p class="muted">` +
+        t("可开始审核：", "Review opens: ") +
+        esc(
+          new Date(d.review_at * 1000).toLocaleString("zh-CN", {
+            timeZone: "Asia/Shanghai",
+          }),
+        ) +
+        " (UTC+8)" +
+        `</p>
+ ` +
+        (this.admin
+          ? `<div class="flex wrap"><button class="btn" data-award="sync" ` +
+            (d.status === "published" ? "disabled" : "") +
+            `>` +
+            t("同步候选", "Sync nominees") +
+            `</button><button class="btn primary" data-award="publish" ` +
+            (d.status === "published" ? "disabled" : "") +
+            `>` +
+            t("公布本期名单", "Publish selection") +
+            `</button><button class="btn" data-award="audit">` +
+            t("审核记录", "Audit log") +
+            `</button></div>`
+          : "") +
+        `
+ ` +
+        (this.pending
+          ? `<p role="status">` +
+            t(
+              "有一次操作尚未确认，请重试原请求。",
+              "An operation is unconfirmed. Retry the original request.",
+            ) +
+            ` <button class="btn" data-award="retry">` +
+            t("重试原操作", "Retry original") +
+            `</button></p>`
+          : "") +
+        `<p data-award-error role="status"></p><div class="stack mt16">` +
+        (d.items.length
+          ? d.items
+              .map(
+                (c) =>
+                  `<article class="card card-pad" data-candidate="` +
+                  esc(c.subject_id) +
+                  `"><div class="between wrap"><h3>` +
+                  esc(c.name || "ID " + c.user_id) +
+                  `</h3><span class="badge">` +
+                  esc(states[c.status] || c.status) +
+                  `</span></div><p><a href="/questions/` +
+                  esc(c.question_id) +
+                  (c.answer_id !== "0" ? "/" + esc(c.answer_id) : "") +
+                  `" target="_blank" rel="noopener">` +
+                  esc(c.title) +
+                  ` ↗</a></p>` +
+                  (this.admin &&
+                  this.period.kind === "post" &&
+                  this.period.type === "week"
+                    ? `<p class="muted">` +
+                      t(
+                        "提名次数仅供参考：",
+                        "Nominations (reference only): ",
+                      ) +
+                      c.nominations +
+                      `</p>`
+                    : "") +
+                  (c.sources?.length
+                    ? "<p>" +
+                      t("月度来源：", "Weekly sources: ") +
+                      c.sources
+                        .map(
+                          (s) =>
+                            '<a target="_blank" rel="noopener" href="/questions/' +
+                            esc(s.question_id) +
+                            (s.answer_id !== "0"
+                              ? "/" + esc(s.answer_id)
+                              : "") +
+                            '">' +
+                            esc(s.week) +
+                            "</a>",
+                        )
+                        .join(" · ") +
+                      "</p>"
+                    : "") +
+                  (c.reason ? "<p>" + esc(c.reason) + "</p>" : "") +
+                  (c.amount
+                    ? "<p>" +
+                      c.amount +
+                      " " +
+                      t(
+                        c.reward_status === "manual_paid"
+                          ? "闪 · 已手动发放"
+                          : "闪 · 待手动发放",
+                        c.reward_status === "manual_paid"
+                          ? "reward units · Manually delivered"
+                          : "reward units · Pending manual delivery",
+                      ) +
+                      "</p>"
+                    : "") +
+                  (this.admin
+                    ? d.status === "open"
+                      ? `<label><input type="checkbox" data-criterion="one" ` +
+                        (c.criterion_one ? "checked" : "") +
+                        `> ` +
+                        criteria[0] +
+                        `</label> <label><input type="checkbox" data-criterion="two" ` +
+                        (c.criterion_two ? "checked" : "") +
+                        `> ` +
+                        criteria[1] +
+                        `</label><textarea maxlength="2000" data-reason placeholder="` +
+                        t(
+                          "必填：具体审核依据",
+                          "Required: specific review evidence",
+                        ) +
+                        `">` +
+                        esc(c.reason) +
+                        `</textarea><div class="flex mt8"><button class="btn primary" data-award="select" ` +
+                        (!c.eligible ? "disabled" : "") +
+                        `>` +
+                        t("入选", "Select") +
+                        `</button><button class="btn" data-award="reject">` +
+                        t("不入选", "Reject") +
+                        `</button></div>`
+                      : ["awarded", "review_required"].includes(c.status)
+                        ? `<textarea data-reason maxlength="2000" placeholder="` +
+                          t(
+                            "操作备注（手动发放需注明凭据／说明）",
+                            "Operation note or delivery reference (required)",
+                          ) +
+                          `"></textarea><button class="btn danger" data-award="revoke">` +
+                          t("撤销此奖项", "Revoke award") +
+                          `</button>` +
+                          (c.status === "awarded" &&
+                          c.reward_status !== "manual_paid"
+                            ? `<button class="btn primary" data-award="paid">确认已手动发放</button>`
+                            : "") +
+                          (c.payment_note
+                            ? `<p>发放人 ID ${esc(c.paid_by)} · ${esc(new Date(c.paid_at * 1000).toLocaleString())} · ${esc(c.payment_note)}</p>`
+                            : "") +
+                          (c.status === "review_required"
+                            ? `<label><input type="checkbox" data-criterion="one"> ` +
+                              criteria[0] +
+                              `</label><label><input type="checkbox" data-criterion="two"> ` +
+                              criteria[1] +
+                              `</label><button class="btn primary" data-award="reconfirm">` +
+                              t(
+                                "复核后保留月奖",
+                                "Confirm monthly eligibility",
+                              ) +
+                              `</button>`
+                            : "")
+                        : ""
+                    : "") +
+                  `</article>`,
+              )
+              .join("")
+          : '<p class="card card-pad">' +
+            t(
+              this.admin
+                ? "暂无候选。回应奖及月奖请先同步候选；帖子奖等待用户提名。"
+                : "本期尚无已公布的入选者。",
+              this.admin
+                ? "No nominees. Sync response/monthly nominees; posts require nominations."
+                : "No published winners for this period.",
+            ) +
+            "</p>") +
+        `</div><div class="flex mt16">` +
+        (this.pageNo > 1
+          ? '<a data-router class="btn" href="' +
+            esc(this.link(this.pageNo - 1)) +
+            '">' +
+            t("上一页", "Previous") +
+            "</a>"
+          : "") +
+        (d.more
+          ? '<a data-router class="btn" href="' +
+            esc(this.link(this.pageNo + 1)) +
+            '">' +
+            t("下一页", "Next") +
+            "</a>"
+          : "") +
+        `</div><div data-award-audit></div></section>`
+      );
+    }
+    mount(node) {
+      this.root = node;
+      const form = node.querySelector("[data-award-period]");
+      form.onsubmit = (e) => {
+        e.preventDefault();
+        const data = new FormData(form);
+        root.location.assign(
+          this.path +
+            "?" +
+            new URLSearchParams({
+              type: data.get("type"),
+              key:
+                data.get("type") === "week"
+                  ? currentWeek(new Date(data.get("key") + "T00:00:00+08:00"))
+                  : data.get("key"),
+              kind: data.get("kind"),
+            }),
+        );
+      };
+      form.elements.type.onchange = () => {
+        const month = form.elements.type.value === "month";
+        form.elements.key.type = month ? "month" : "date";
+        form.elements.key.value = month
+          ? this.period.key.slice(0, 7)
+          : currentWeek();
+      };
+      node
+        .querySelectorAll("[data-award]")
+        .forEach(
+          (b) => (b.onclick = () => this.action(b).catch((e) => this.error(e))),
+        );
+    }
+    error(e) {
+      if (!this.root) return;
+      const code = e?.details?.error || e.message;
+      this.root.querySelector("[data-award-error]").textContent = errors[code]
+        ? t(...errors[code])
+        : t(
+            "操作未确认，请重试原请求或刷新。",
+            "Operation unconfirmed. Retry the original request or refresh.",
+          );
+      if (this.pending && !this.root.querySelector('[data-award="retry"]')) {
+        const b = document.createElement("button");
+        b.className = "btn";
+        b.textContent = t("重试原操作", "Retry original");
+        b.dataset.award = "retry";
+        b.onclick = () =>
+          this.command(this.pending.command).catch((e) => this.error(e));
+        this.root.querySelector("[data-award-error]").append(b);
+      }
+    }
+    async action(b) {
+      if (this.busy) return;
+      const op = b.dataset.award;
+      if (op === "retry") {
+        if (this.pending) await this.command(this.pending.command);
+        return;
+      }
+      if (op === "audit") {
+        const gen = this.generation;
+        const rows = await this.adminAPI.request(
+          "/metar/awards/audit?" + this.query(),
+        );
+        if (gen !== this.generation || !this.root) return;
+        this.root.querySelector("[data-award-audit]").innerHTML =
+          '<section class="card card-pad mt16"><h3>' +
+          t("最近100条操作记录", "Last 100 audit entries") +
+          "</h3>" +
+          rows
+            .map(
+              (r) =>
+                "<p>" +
+                esc(new Date(r.created_at * 1000).toLocaleString()) +
+                " · " +
+                esc(r.operation) +
+                " · ID " +
+                esc(r.actor_id) +
+                " · " +
+                esc(r.reason) +
+                "</p>",
+            )
+            .join("") +
+          "</section>";
+        return;
+      }
+      if (
+        op === "publish" &&
+        !root.confirm(
+          t(
+            "公布后不能修改本期名单。允许零人入选；头衔和勋章将生效，闪由管理员另行手动发放。确认公布？",
+            "Publish and freeze this period? Zero winners is allowed. Rewards will not be credited.",
+          ),
+        )
+      )
+        return;
+      const item = b.closest("[data-candidate]");
+      const cmd = { op, period: this.period, version: this.data.version };
+      if (item) {
+        cmd.subject_id = item.dataset.candidate;
+        cmd.reason = item.querySelector("[data-reason]").value.trim();
+        cmd.criterion_one = !!item.querySelector('[data-criterion="one"]')
+          ?.checked;
+        cmd.criterion_two = !!item.querySelector('[data-criterion="two"]')
+          ?.checked;
+        if (!cmd.reason) throw Error("invalid_request");
+      }
+      if (
+        op === "revoke" &&
+        !root.confirm(
+          t(
+            "确认撤销？操作会保留审核记录，相关月奖可能需要复核。",
+            "Revoke this award? The audit trail is retained; related monthly awards may need review.",
+          ),
+        )
+      )
+        return;
+      if (
+        op === "paid" &&
+        !root.confirm("请确认已经完成手动发放。此操作只登记记录，不会转账。")
+      )
+        return;
+      await this.command(cmd);
+    }
+    async command(command) {
+      if (this.busy) return;
+      if (this.pending && this.pending.command !== command)
+        throw Error("pending");
+      this.pending ||= { command, key: root.crypto.randomUUID() };
+      root.sessionStorage.setItem(
+        this.pendingKey,
+        JSON.stringify(this.pending),
+      );
+      this.busy = true;
+      const gen = this.generation;
+      let confirmed = false;
+      try {
+        await this.adminAPI.request("/metar/awards/command", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Metar-Request": "1",
+            "Idempotency-Key": this.pending.key,
+          },
+          body: JSON.stringify(this.pending.command),
+        });
+        confirmed = true;
+        this.pending = null;
+        root.sessionStorage.removeItem(this.pendingKey);
+        const fresh = await this.client().request(
+          "/metar/awards?" + this.query(),
+        );
+        if (gen === this.generation && this.root) {
+          this.data = fresh;
+          this.root.innerHTML = this.html();
+          this.mount(this.root);
+        }
+      } catch (e) {
+        if (!confirmed && e?.status >= 400 && e.status < 500) {
+          this.pending = null;
+          root.sessionStorage.removeItem(this.pendingKey);
+        }
+        throw e;
+      } finally {
+        this.busy = false;
+      }
+    }
+  }
+  root.MetarAwards = { View, currentWeek, esc };
+})(typeof window === "undefined" ? globalThis : window);

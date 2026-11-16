@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   isPollComposerPath,
+  canInspectPollVoters,
+  voterChoiceLabels,
   validatePoll,
   resultPercent,
   installTopicPolls,
@@ -104,8 +106,42 @@ test("account change and unavailable persistence do not send a poll write", asyn
 });
 
 test("both new-post routes include poll controls, but edit and detail routes do not", () => {
-  for (const path of ["/questions/ask", "/questions/add", "/questions/ask/", "/questions/add/"])
+  for (const path of [
+    "/questions/ask",
+    "/questions/add",
+    "/questions/ask/",
+    "/questions/add/",
+  ])
     assert.equal(isPollComposerPath(path), true, path);
-  for (const path of ["/questions/123", "/questions/additional", "/questions/add/edit", "/posts/123/edit", "/posts/123/456/edit", "/admin/users"])
+  for (const path of [
+    "/questions/123",
+    "/questions/additional",
+    "/questions/add/edit",
+    "/posts/123/edit",
+    "/posts/123/456/edit",
+    "/admin/users",
+  ])
     assert.equal(isPollComposerPath(path), false, path);
+});
+
+test("only active verified administrators see the inspection entry", () => {
+  const admin = { id: "3", status: "normal", mail_status: 1, role_id: 2 };
+  assert.equal(canInspectPollVoters(admin), true);
+  for (const user of [
+    null,
+    {},
+    { ...admin, role_id: 1 },
+    { ...admin, role_id: 3 },
+    { ...admin, status: "suspended" },
+    { ...admin, mail_status: 2 },
+    { ...admin, role_id: "2" },
+  ])
+    assert.equal(canInspectPollVoters(user), false);
+});
+test("voter choices map to current poll labels without trusting invalid indexes", () => {
+  assert.deepEqual(voterChoiceLabels([0, 2], ["A", "B", "<img src=x>"]), [
+    "A",
+    "<img src=x>",
+  ]);
+  assert.deepEqual(voterChoiceLabels([-1, 99, "0", null], ["A"]), []);
 });

@@ -174,3 +174,28 @@
     min-height: 40px;
   }
 }
+
+.metar-poll-voters {
+  margin-top: 16px;
+  border-top: 1px solid var(--metar-border);
+  padding-top: 12px;
+}
+.metar-poll-voters h4 {
+  font-size: 14px;
+}
+.metar-poll-voter-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.metar-poll-voter-list li {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--metar-border);
+  overflow-wrap: anywhere;
+}
+.metar-poll-voter-list p {
+  margin: 4px 0;
+}
+.metar-poll-voter-list small {
+  color: var(--metar-muted);
+}

@@ -2,6 +2,12 @@
 'use strict';
 (() => {
   const EN = Object.freeze({
+ "评选金色勋章":"Gold award medals",
+ "暂无评选勋章":"No award medals yet",
+ "评选勋章暂时无法加载":"Award medals are temporarily unavailable",
+ "头衔与评选勋章": "Titles and award medals",
+ "优秀内容评选": "Community content awards",
+ "评选审核": "Award review",
     "在独立页面打开": "Open in a separate page",
     "设置尚未保存，确定离开？": "You have unsaved settings. Leave this page?",
     "设置页面加载较慢，可使用下方链接打开原页面。": "Loading is taking longer. Open the original page using the link below.",

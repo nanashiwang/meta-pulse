@@ -17,6 +17,7 @@ import (
 	"github.com/apache/answer/plugin"
 	"github.com/gin-gonic/gin"
 	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/analytics"
+	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/awards"
 	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/chat"
 	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/communitytickets"
 	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/events"
@@ -49,6 +50,8 @@ var Info embed.FS
 // the Connector only binds one immutable new-api identity, while UserCenter
 // contributes optional Pulse branding for bound accounts.
 type UserCenter struct {
+	awardMu           sync.Mutex
+	awards            *awards.Store
 	pollMu            sync.Mutex
 	polls             *polls.Store
 	ticketMu          sync.Mutex
@@ -356,6 +359,7 @@ func (uc *UserCenter) RegisterUnAuthRouter(r *gin.RouterGroup) {
 	uc.registerTaxonomyOrder(r, false)
 	uc.registerShareStatistics(r, plugin.SiteURL)
 	uc.registerPublicExperience(r)
+	uc.registerAwards(r, nil, false, plugin.SiteURL)
 	uc.registerPolls(r, nil, plugin.SiteURL)
 	uc.registerMarketplacePublic(r)
 	uc.registerOperations(r, nil, false)
@@ -368,6 +372,7 @@ func (uc *UserCenter) RegisterAuthUserRouter(r *gin.RouterGroup) {
 	uc.registerOperations(r, answerSessionUserID, false)
 	uc.registerExperience(r, answerSessionUserID, false, plugin.SiteURL)
 	uc.registerChat(r, answerSessionUserID, false, plugin.SiteURL)
+	uc.registerAwards(r, answerSessionUserID, false, plugin.SiteURL)
 	uc.registerEvents(r, answerSessionUserID, false, plugin.SiteURL)
 	uc.registerImageImport(r, answerSessionUserID, plugin.SiteURL)
 	uc.registerMarketplaceUser(r, answerSessionUserID, plugin.SiteURL)
@@ -383,6 +388,7 @@ func (uc *UserCenter) RegisterAuthAdminRouter(r *gin.RouterGroup) {
 	uc.registerOperations(r, answerAdminSessionUserID, true)
 	uc.registerExperience(r, answerAdminSessionUserID, true, plugin.SiteURL)
 	uc.registerChat(r, answerAdminSessionUserID, true, plugin.SiteURL)
+	uc.registerAwards(r, answerAdminSessionUserID, true, plugin.SiteURL)
 	uc.registerEvents(r, answerAdminSessionUserID, true, plugin.SiteURL)
 	uc.registerMarketplaceAdmin(r, answerAdminSessionUserID, plugin.SiteURL)
 	uc.registerIntelAdmin(r, answerAdminSessionUserID, plugin.SiteURL)

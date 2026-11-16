@@ -1,0 +1,217 @@
+diff --git a/i18n/zh_CN.yaml b/i18n/zh_CN.yaml
+--- a/i18n/zh_CN.yaml
++++ b/i18n/zh_CN.yaml
+@@ -736,32 +736,32 @@
+           other: 有150个答案被接受。
+       nice_answer:
+         name:
+-          other: 好答案
++          other: 好答案 · 铜级
+         desc:
+           other: 回答得分为10或以上。
+       good_answer:
+         name:
+-          other: 好答案
++          other: 好答案 · 银级
+         desc:
+           other: 回答得分为25或更多。
+       great_answer:
+         name:
+-          other: 优秀答案
++          other: 优秀答案 · 金级
+         desc:
+           other: 回答得分为50或以上。
+       nice_question:
+         name:
+-          other: 好问题
++          other: 好问题 · 铜级
+         desc:
+           other: 问题得分为10或以上。
+       good_question:
+         name:
+-          other: 好问题
++          other: 好问题 · 银级
+         desc:
+           other: 问题得分为25或更多。
+       great_question:
+         name:
+-          other: 很棒的问题
++          other: 优秀问题 · 金级
+         desc:
+           other: 问题得分为50或更多。
+       popular_question:
+diff --git a/internal/service/badge/badge_award_service.go b/internal/service/badge/badge_award_service.go
+--- a/internal/service/badge/badge_award_service.go
++++ b/internal/service/badge/badge_award_service.go
+@@ -176,6 +176,11 @@
+ 		return err
+ 	}
+ 
++	// Display-only snapshot of the awarded content, never an additional award.
++	extra := map[string]string{"badge_id": badgeData.ID, "badge_description": badgeData.Description}
++	if object, lookupErr := bs.objectInfoService.GetInfo(ctx, awardKey); lookupErr == nil && object != nil && !object.IsDeleted() {
++		extra["badge_content_title"] = object.Title
++	}
+ 	msg := &schema.NotificationMsg{
+ 		TriggerUserID:      badgeAward.UserID,
+ 		ReceiverUserID:     badgeAward.UserID,
+@@ -183,7 +188,7 @@
+ 		ObjectID:           badgeAward.ID,
+ 		ObjectType:         constant.BadgeAwardObjectType,
+ 		Title:              badgeData.Name,
+-		ExtraInfo:          map[string]string{"badge_id": badgeData.ID},
++		ExtraInfo:          extra,
+ 		NotificationAction: constant.NotificationEarnedBadge,
+ 	}
+ 	bs.notificationQueueService.Send(ctx, msg)
+diff --git a/internal/service/notification_common/notification.go b/internal/service/notification_common/notification.go
+--- a/internal/service/notification_common/notification.go
++++ b/internal/service/notification_common/notification.go
+@@ -127,6 +127,8 @@
+ 		req.ObjectInfo.Title = msg.Title
+ 		objectMap := make(map[string]string)
+ 		objectMap["badge_id"] = msg.ExtraInfo["badge_id"]
++		objectMap["badge_description"] = msg.ExtraInfo["badge_description"]
++		objectMap["badge_content_title"] = msg.ExtraInfo["badge_content_title"]
+ 		req.ObjectInfo.ObjectMap = objectMap
+ 	} else {
+ 		objInfo, err = ns.objectInfoService.GetInfo(ctx, req.ObjectInfo.ObjectID)
+@@ -205,7 +207,7 @@
+ 		log.Error("addRedDot Error", err.Error())
+ 	}
+ 	if req.ObjectInfo.ObjectType == constant.BadgeAwardObjectType {
+-		err = ns.AddBadgeAwardAlertCache(ctx, info.UserID, info.ID, req.ObjectInfo.ObjectMap["badge_id"])
++		err = ns.AddBadgeAwardAlertCache(ctx, info.UserID, info.ID, req.ObjectInfo.ObjectMap["badge_id"], req.ObjectInfo.ObjectMap["badge_content_title"])
+ 		if err != nil {
+ 			log.Error("AddBadgeAwardAlertCache Error", err.Error())
+ 		}
+@@ -282,7 +284,11 @@
+ }
+ 
+ // AddBadgeAwardAlertCache add badge award alert cache
+-func (ns *NotificationCommon) AddBadgeAwardAlertCache(ctx context.Context, userID, notificationID, badgeID string) (err error) {
++func (ns *NotificationCommon) AddBadgeAwardAlertCache(ctx context.Context, userID, notificationID, badgeID string, contentTitle ...string) (err error) {
++	title := ""
++	if len(contentTitle) > 0 {
++		title = contentTitle[0]
++	}
+ 	key := fmt.Sprintf(constant.RedDotCacheKey, constant.NotificationTypeBadgeAchievement, userID)
+ 	cacheData, exist, err := ns.data.Cache.GetString(ctx, key)
+ 	if err != nil {
+@@ -293,6 +299,7 @@
+ 		c.AddBadgeAward(&schema.RedDotBadgeAward{
+ 			NotificationID: notificationID,
+ 			BadgeID:        badgeID,
++			ContentTitle:   title,
+ 		})
+ 		return ns.data.Cache.SetString(ctx, key, c.ToJSON(), constant.RedDotCacheTime)
+ 	}
+@@ -301,6 +308,7 @@
+ 	c.AddBadgeAward(&schema.RedDotBadgeAward{
+ 		NotificationID: notificationID,
+ 		BadgeID:        badgeID,
++		ContentTitle:   title,
+ 	})
+ 	return ns.data.Cache.SetString(ctx, key, c.ToJSON(), constant.RedDotCacheTime)
+ }
+diff --git a/internal/service/notification/notification_service.go b/internal/service/notification/notification_service.go
+--- a/internal/service/notification/notification_service.go
++++ b/internal/service/notification/notification_service.go
+@@ -122,6 +122,7 @@
+ 		return nil
+ 	}
+ 	award.Name = translator.Tr(handler.GetLangByCtx(ctx), badgeInfo.Name)
++	award.Description = translator.Tr(handler.GetLangByCtx(ctx), badgeInfo.Description)
+ 	award.Icon = badgeInfo.Icon
+ 	award.Level = badgeInfo.Level
+ 	return award
+@@ -253,6 +254,12 @@
+ 			item.ObjectInfo.Title = translator.TrWithData(lang, constant.NotificationEarnedBadge, struct {
+ 				BadgeName string
+ 			}{BadgeName: badgeName})
++			if description := item.ObjectInfo.ObjectMap["badge_description"]; description != "" {
++				item.ObjectInfo.Title += " — " + translator.Tr(lang, description)
++			}
++			if title := item.ObjectInfo.ObjectMap["badge_content_title"]; title != "" {
++				item.ObjectInfo.Title += " · " + title
++			}
+ 			item.UserInfo = nil
+ 		}
+ 
+diff --git a/internal/schema/notification_schema.go b/internal/schema/notification_schema.go
+--- a/internal/schema/notification_schema.go
++++ b/internal/schema/notification_schema.go
+@@ -110,6 +110,8 @@
+ }
+ 
+ type RedDotBadgeAward struct {
++	ContentTitle   string            `json:"content_title,omitempty"`
++	Description    string            `json:"description,omitempty"`
+ 	NotificationID string            `json:"notification_id"`
+ 	BadgeID        string            `json:"badge_id"`
+ 	Name           string            `json:"name"`
+diff --git a/ui/src/common/interface.ts b/ui/src/common/interface.ts
+--- a/ui/src/common/interface.ts
++++ b/ui/src/common/interface.ts
+@@ -221,6 +221,8 @@
+ }
+ 
+ export interface NotificationBadgeAward {
++  content_title?: string;
++  description?: string;
+   notification_id: string;
+   badge_id: string;
+   name: string;
+diff --git a/ui/src/components/Modal/BadgeModal.tsx b/ui/src/components/Modal/BadgeModal.tsx
+--- a/ui/src/components/Modal/BadgeModal.tsx
++++ b/ui/src/components/Modal/BadgeModal.tsx
+@@ -154,6 +154,12 @@
+             />
+           )}
+           <h5 className="mt-3">{badge?.name}</h5>
++          {badge.content_title && (
++            <p className="text-break mb-2">{badge.content_title}</p>
++          )}
++          {badge.description && (
++            <p className="text-secondary mb-2">{badge.description}</p>
++          )}
+           <p>{t('content')}</p>
+         </div>
+       )}
+diff --git a/internal/schema/metar_badge_context_test.go b/internal/schema/metar_badge_context_test.go
+--- a/internal/schema/metar_badge_context_test.go
++++ b/internal/schema/metar_badge_context_test.go
+@@ -0,0 +1,33 @@
++package schema
++
++import (
++	"strings"
++	"testing"
++)
++
++func TestMetarBadgeContextCache(t *testing.T) {
++	c := NewRedDotBadgeAwardCache()
++	c.AddBadgeAward(&RedDotBadgeAward{NotificationID: "10", BadgeID: "1", ContentTitle: "<script>example</script>", Description: "score >= 10"})
++	c.AddBadgeAward(&RedDotBadgeAward{NotificationID: "11", BadgeID: "1", ContentTitle: "Another post"})
++	copy := NewRedDotBadgeAwardCache()
++	copy.FromJSON(c.ToJSON())
++	if len(copy.BadgeAwardList) != 2 || copy.BadgeAwardList["10"].ContentTitle != "<script>example</script>" {
++		t.Fatal("content must remain separate per notification")
++	}
++	copy.RemoveBadgeAward("10")
++	if len(copy.BadgeAwardList) != 1 || copy.BadgeAwardList["11"].ContentTitle != "Another post" {
++		t.Fatal("reading one award must not remove another")
++	}
++	if strings.Contains(c.ToJSON(), "<script>") {
++		t.Fatal("JSON must escape markup")
++	}
++}
++
++func TestMetarLegacyBadgeContextCache(t *testing.T) {
++	c := NewRedDotBadgeAwardCache()
++	c.FromJSON(`{"badge_award_list":{"10":{"notification_id":"10","badge_id":"1"}}}`)
++	award := c.GetBadgeAward()
++	if award == nil || award.BadgeID != "1" || award.ContentTitle != "" || award.Description != "" {
++		t.Fatal("legacy alerts must remain readable without invented context")
++	}
++}

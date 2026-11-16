@@ -1,0 +1,41 @@
+.questionDetailPage .metar-award-reputation {
+  display: none !important;
+}
+.metar-award-title {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 5px;
+  padding: 1px 7px;
+  border-radius: 5px;
+  background: var(--metar-tint, #edf4ef);
+  color: var(--metar-primary, #25634a);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.metar-award-title-glow {
+  color: #79520b;
+  background: linear-gradient(110deg, #fff4c4, #ffdd78, #fff6d8);
+  background-size: 200% 100%;
+  box-shadow: 0 0 8px #e8b84766;
+  animation: metar-title-glow 4s ease-in-out infinite;
+}
+.metar-award-medal {
+  color: #76540c;
+  background: #fff1bb;
+  border: 1px solid #e4bc55;
+  border-radius: 8px;
+  padding: 10px 14px;
+  display: inline-block;
+  margin: 6px;
+}
+@keyframes metar-title-glow {
+  50% {
+    background-position: 100% 0;
+    box-shadow: 0 0 12px #e8b84799;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .metar-award-title-glow {
+    animation: none;
+  }
+}
