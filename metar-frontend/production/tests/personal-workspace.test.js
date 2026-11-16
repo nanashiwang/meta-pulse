@@ -55,3 +55,22 @@ test('inbox filters round-trip inside the personal workspace without widening na
  assert.equal(workspaceURL('/users/notifications/achievement?filter=comments',origin),'/me/notifications?view=achievement');
  assert.equal(workspaceURL('/users/notifications/inbox/admin',origin),null);
 });
+
+test('legacy inbox tabs remain inside notifications and retain their original filter',()=>{
+ for(const filter of ['posts','invites','votes']){
+  const native='/users/notifications/inbox/'+filter;
+  assert.equal(workspaceURL(native,origin),'/me/notifications?view=inbox&filter='+filter);
+  assert.equal(nativeTarget('/me/notifications',new URLSearchParams('view=inbox&filter='+filter)),native);
+ }
+ assert.equal(workspaceURL('/users/notifications/inbox/posts?filter=likes',origin),'/me/notifications?view=inbox&filter=posts');
+ for(const path of ['/users/notifications/inbox/admin','/users/notifications/achievement/posts','/users/notifications/inbox/posts/extra'])assert.equal(workspaceURL(path,origin),null);
+});
+test('native notification sibling navigation updates only the existing frame and parent query',()=>{
+ const h=embedded();
+ for(const path of ['/users/notifications/inbox/posts','/users/notifications/inbox/invites','/users/notifications/inbox/votes','/users/notifications/inbox?filter=comments','/users/notifications/achievement']){
+  h.child.history.pushState({},'',path);
+  assert.equal(h.routes.at(-1),workspaceURL(path,origin));
+  assert.equal(h.child.location.pathname+ h.child.location.search,path);
+ }
+ h.view.dispose();
+});

@@ -86,7 +86,7 @@ def main():
             assert status == 200 and body == 'visit=test-session; metar_ops=' + visitor + '|||Bearer fixture', body
             assert headers.get('X-Robots-Tag') == 'noindex, nofollow'
             assert get('/answer/api/v1/user/info', request_headers=boundary_headers)[2] == 'visit=test-session|||Bearer fixture'
-            for path in ['/users/settings/profile', '/users/settings/notify', '/users/settings/account', '/users/settings/interface', '/users/notifications/inbox', '/badges', '/badges/Ab12']:
+            for path in ['/users/settings/profile', '/users/settings/notify', '/users/settings/account', '/users/settings/interface', '/users/notifications/inbox', '/users/notifications/inbox/posts', '/users/notifications/inbox/invites', '/users/notifications/inbox/votes', '/users/notifications/inbox/all', '/users/notifications/inbox?filter=comments', '/users/notifications/achievement', '/badges', '/badges/Ab12']:
                 status, headers, body = get(path, request_headers=boundary_headers)
                 assert status == 200 and body == 'visit=test-session|||Bearer fixture', (path, body)
                 assert headers['_frame_headers'] == ['SAMEORIGIN'], (path, headers)

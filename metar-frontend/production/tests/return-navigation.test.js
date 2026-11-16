@@ -63,3 +63,15 @@ test('personal siblings skip to entry while badge details return to their list',
  const h=setup('/latest?order=newest');for(const path of ['/me','/me/growth','/me/bookmarks','/me/badges'])h.host.history.pushState(null,'',path);
  h.host.history.pushState(null,'','/me/badges?badge=abc');h.nav.back('/latest');assert.equal(h.host.location.pathname,'/me/badges');h.nav.back('/latest');assert.equal(h.host.location.pathname,'/latest');assert.equal(h.host.location.search,'?order=newest');
 });
+
+test('native inbox legacy and new sibling filters skip back to the external entry',()=>{
+ const h=setup('/questions/7');
+ for(const path of ['/me/notifications?view=inbox','/users/notifications/inbox/posts','/users/notifications/inbox/invites','/users/notifications/inbox/votes','/users/notifications/inbox?filter=comments','/users/notifications/achievement'])h.host.history.pushState(null,'',path);
+ h.nav.back('/me');assert.equal(h.host.location.pathname,'/questions/7');
+});
+test('old native notification history snapshots cannot bounce between sibling tabs',()=>{
+ const h=setup('/latest');
+ h.nav.restore({url:'/users/notifications/inbox/invites',step:4,trail:[{url:'/latest',step:0},{url:'/me/notifications?view=inbox',step:1},{url:'/users/notifications/inbox/posts',step:2},{url:'/users/notifications/inbox/votes',step:3}]},'/users/notifications/inbox/invites');
+ assert.equal(h.nav.destination('',null),'/latest');assert.equal(h.nav.distance(),4);
+ const direct=setup('/users/notifications/inbox/posts');direct.host.history.pushState(null,'','/users/notifications/inbox/invites');direct.nav.back('/me');assert.equal(direct.host.replaced,'/me');
+});
