@@ -44,3 +44,14 @@ test('cancelled native tab switch cannot change the iframe URL or parent route',
  const h=embedded();h.view.revision=1;h.child.history.pushState({},'','/users/settings/notify');assert.equal(h.child.location.pathname,'/users/settings/profile');assert.equal(h.routes.length,1);
  h.host.confirm=()=>true;h.child.history.pushState({},'','/users/settings/notify');assert.equal(h.child.location.pathname,'/users/settings/notify');assert.equal(h.routes.at(-1),'/me/settings?tab=notify');h.view.dispose();
 });
+
+test('inbox filters round-trip inside the personal workspace without widening native paths',()=>{
+ for(const filter of ['all','comments','likes']){
+  const native='/users/notifications/inbox?filter='+filter;
+  assert.equal(nativeTarget('/me/notifications',new URLSearchParams('view=inbox&filter='+filter)),native);
+  assert.equal(workspaceURL(native,origin),'/me/notifications?view=inbox&filter='+filter);
+ }
+ assert.equal(nativeTarget('/me/notifications',new URLSearchParams('view=inbox&filter=admin')),'/users/notifications/inbox');
+ assert.equal(workspaceURL('/users/notifications/achievement?filter=comments',origin),'/me/notifications?view=achievement');
+ assert.equal(workspaceURL('/users/notifications/inbox/admin',origin),null);
+});

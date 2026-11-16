@@ -4,7 +4,7 @@
  const tabs=new Set(['profile','notify','account','interface']);
   function nativeTarget(path,query=new URLSearchParams()){
   if(path==='/me/settings')return '/users/settings/'+(tabs.has(query.get('tab'))?query.get('tab'):'profile');
-  if(path==='/me/notifications')return '/users/notifications/'+(query.get('view')==='achievement'?'achievement':'inbox');
+  if(path==='/me/notifications'){if(query.get('view')==='achievement')return '/users/notifications/achievement';const filter=query.get('filter');return '/users/notifications/inbox'+(['all','comments','likes'].includes(filter)?'?filter='+filter:'');}
   if(path==='/me/badges'){
    const id=query.get('badge');if(id&&!/^[a-zA-Z0-9]+$/.test(id))return null;
    const params=new URLSearchParams();for(const key of ['username','page'])if(query.get(key))params.set(key,query.get(key));
@@ -17,7 +17,7 @@
    const setting=u.pathname.match(/^\/users\/settings\/([a-zA-Z0-9_-]+)\/?$/);
    if(setting&&tabs.has(setting[1]))return '/me/settings?tab='+setting[1];
    const notice=u.pathname.match(/^\/users\/notifications\/(inbox|achievement)\/?$/);
-   if(notice)return '/me/notifications?view='+notice[1];
+   if(notice){const filter=u.searchParams.get('filter');return '/me/notifications?view='+notice[1]+(notice[1]==='inbox'&&['all','comments','likes'].includes(filter)?'&filter='+filter:'');}
    const badge=u.pathname.match(/^\/badges(?:\/([a-zA-Z0-9]+))?\/?$/);
    if(badge){const p=new URLSearchParams();if(badge[1])p.set('badge',badge[1]);for(const key of ['username','page'])if(u.searchParams.get(key))p.set(key,u.searchParams.get(key));return '/me/badges'+(p.size?'?'+p:'');}
   }catch(_){}return null;
