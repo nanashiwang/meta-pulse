@@ -138,30 +138,36 @@
  
  import classNames from 'classnames';
  
-@@ -41,9 +41,12 @@
+@@ -41,9 +41,16 @@
  const Notifications = () => {
    const [page, setPage] = useState(1);
    const [notificationData, setNotificationData] = useState<any>([]);
 -  const { t } = useTranslation('translation', { keyPrefix: 'notifications' });
 -  const inboxTypeNavs = ['all', 'posts', 'invites', 'votes'];
 -  const { type = 'inbox', subType = inboxTypeNavs[0] } = useParams();
-+  const { t, i18n } = useTranslation('translation', { keyPrefix: 'notifications' });
++  const { t, i18n } = useTranslation('translation', {
++    keyPrefix: 'notifications',
++  });
 +  const inboxTypeNavs = ['all', 'comments', 'likes'];
 +  const { type = 'inbox', subType: legacySubType } = useParams();
 +  const location = useLocation();
 +  const requested = new URLSearchParams(location.search).get('filter');
-+  const subType = inboxTypeNavs.includes(requested || '') ? requested! : (legacySubType || 'all');
++  const subType = inboxTypeNavs.includes(requested || '')
++    ? requested!
++    : legacySubType || 'all';
  
    const queryParams: {
      type: string;
-@@ -138,14 +141,16 @@
+@@ -138,14 +145,18 @@
            <>
              <Nav className="inbox-nav small">
                {inboxTypeNavs.map((nav) => {
 -                const navLinkHref = `/users/notifications/inbox/${nav}`;
 -                const navLinkName = t(`inbox_type.${nav}`);
 +                const navLinkHref = `/users/notifications/inbox?filter=${nav}`;
-+                const labels = i18n.language.startsWith('zh') ? { all: '全部', comments: '评论', likes: '点赞' } : { all: 'All', comments: 'Comments', likes: 'Likes' };
++                const labels = i18n.language.startsWith('zh')
++                  ? { all: '全部', comments: '评论', likes: '点赞' }
++                  : { all: 'All', comments: 'Comments', likes: 'Likes' };
 +                const navLinkName = labels[nav];
                  return (
                    <Nav.Item key={nav}>
@@ -173,7 +179,7 @@
                        }}
                        className={classNames('nav-link', {
                          disabled: nav === subType,
-@@ -184,4 +189,7 @@
+@@ -184,4 +195,7 @@
    );
  };
  
@@ -184,16 +190,18 @@
 +}
 --- a/ui/src/pages/Users/Notifications/components/Inbox/index.tsx
 +++ b/ui/src/pages/Users/Notifications/components/Inbox/index.tsx
-@@ -48,7 +48,7 @@
+@@ -48,7 +48,9 @@
              url = `/questions/${question}/${item.object_info.object_id}`;
              break;
            case 'comment':
 -            url = `/questions/${question}/${answer}?commentId=${comment}`;
-+            url = `/questions/${question}${answer ? `/${answer}` : ''}?commentId=${comment}`;
++            url = `/questions/${question}${
++              answer ? `/${answer}` : ''
++            }?commentId=${comment}`;
              break;
            default:
              url = '';
-@@ -74,8 +74,13 @@
+@@ -74,8 +76,21 @@
                  {item.object_info.title}
                </Link>
              </div>
@@ -201,8 +209,16 @@
 +            <div className="text-secondary small d-flex flex-wrap align-items-baseline gap-2">
                <FormatTime time={item.update_time} />
 +              {item.object_info.object_map?.comment_preview && (
-+                <Link className="metar-comment-preview text-secondary" style={{ overflowWrap: 'anywhere', minWidth: 0 }} to={url} onClick={() => handleReadNotification(item.id)}>
-+                  {Array.from(String(item.object_info.object_map.comment_preview)).slice(0, 26).join('')}
++                <Link
++                  className="metar-comment-preview text-secondary"
++                  style={{ overflowWrap: 'anywhere', minWidth: 0 }}
++                  to={url}
++                  onClick={() => handleReadNotification(item.id)}>
++                  {Array.from(
++                    String(item.object_info.object_map.comment_preview),
++                  )
++                    .slice(0, 26)
++                    .join('')}
 +                </Link>
 +              )}
              </div>
