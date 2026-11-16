@@ -8,6 +8,8 @@ cp -R "$SOURCE/." "$WORK/"
 chmod -R u+w "$WORK"
 cd "$WORK"
 patch -p1 --fuzz=0 < "$ROOT/services/forum/answer-session-retention.patch"
+patch -p1 --fuzz=0 < "$ROOT/services/forum/answer-admin-session.patch"
+cp "$ROOT/services/forum/session-tests/admin_session_test.go" internal/repo/auth/metar_admin_session_test.go
 cp "$ROOT/services/forum/session-tests/retention_test.go" internal/repo/auth/metar_retention_test.go
 cp "$ROOT/services/forum/session-tests/middleware/retention_test.go" internal/base/middleware/metar_retention_test.go
 GOWORK=off go test -race ./internal/repo/auth ./internal/base/middleware -run TestMetar -count=1

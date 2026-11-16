@@ -1,0 +1,62 @@
+--- a/internal/repo/auth/auth.go
++++ b/internal/repo/auth/auth.go
+@@ -198,18 +198,38 @@
+ }
+ 
+ // GetAdminUserCacheInfo get admin user cache info
+-func (ar *authRepo) GetAdminUserCacheInfo(ctx context.Context, accessToken string) (userInfo *entity.UserCacheInfo, err error) {
+-	userInfoCache, exist, err := ar.data.Cache.GetString(ctx, constant.AdminTokenCacheKey+accessToken)
+-	if err != nil {
+-		err = errors.InternalServer(reason.DatabaseError).WithError(err).WithStack()
+-		return
+-	}
+-	if !exist {
++func (ar *authRepo) GetAdminUserCacheInfo(ctx context.Context, accessToken string) (*entity.UserCacheInfo, error) {
++	// Admin access follows the live community session, not an independently expiring cache.
++	// Never reconstruct an expired/revoked bearer from the legacy admin record.
++	info, err := ar.GetUserCacheInfo(ctx, accessToken)
++	if err != nil || info == nil {
++		return nil, err
++	}
++	if ar.data.DB == nil {
++		return nil, errors.InternalServer(reason.DatabaseError)
++	}
++	var user entity.User
++	found, err := ar.data.DB.Context(ctx).Where("id = ?", info.UserID).Get(&user)
++	if err != nil {
++		return nil, errors.InternalServer(reason.DatabaseError).WithError(err).WithStack()
++	}
++	if !found || user.Status != entity.UserStatusAvailable || user.MailStatus != entity.EmailStatusAvailable {
+ 		return nil, nil
+ 	}
+-	userInfo = &entity.UserCacheInfo{}
+-	_ = json.Unmarshal([]byte(userInfoCache), userInfo)
+-	return userInfo, nil
++	roles := make([]struct {
++		RoleID int `xorm:"role_id"`
++	}, 0)
++	err = ar.data.DB.Context(ctx).Table("user_role_rel").Where("user_id = ?", info.UserID).Limit(2).Find(&roles)
++	if err != nil {
++		return nil, errors.InternalServer(reason.DatabaseError).WithError(err).WithStack()
++	}
++	if len(roles) != 1 || roles[0].RoleID != 2 {
++		return nil, nil
++	}
++	info.RoleID = roles[0].RoleID
++	info.UserStatus = user.Status
++	info.EmailStatus = user.MailStatus
++	return info, nil
+ }
+ 
+ // SetAdminUserCacheInfo set admin user cache info
+--- a/internal/base/constant/cache_key.go
++++ b/internal/base/constant/cache_key.go
+@@ -30,7 +30,7 @@
+ 	UserVisitCacheTime                         = 30 * 24 * 60 * 60
+ 	UserVisitCookiesCacheKey                   = "visit"
+ 	AdminTokenCacheKey                         = "answer:admin:token:"
+-	AdminTokenCacheTime                        = 7 * 24 * time.Hour
++	AdminTokenCacheTime                        = UserTokenCacheTime
+ 	UserTokenMappingCacheKey                   = "answer:user-token:mapping:"
+ 	UserEmailCodeCacheKey                      = "answer:user:email-code:"
+ 	UserEmailCodeCacheTime                     = 10 * time.Minute

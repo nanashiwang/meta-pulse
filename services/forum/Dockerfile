@@ -27,6 +27,7 @@ RUN mkdir -p /tmp/answer-source /build \
     && ANSWER_DIR="$(go env GOPATH)/pkg/mod/github.com/apache/answer@v1.7.1" \
     && cp -r "$ANSWER_DIR" /build/answer \
     && chmod -R u+w /build/answer
+COPY services/forum/answer-admin-session.patch /build/answer-admin-session.patch
 COPY services/forum/answer-session-retention.patch /build/answer-session-retention.patch
 COPY services/forum/answer-optional-admin-email.patch /build/answer-optional-admin-email.patch
 COPY services/forum/answer-admin-user-list.patch /build/answer-admin-user-list.patch
@@ -45,6 +46,7 @@ COPY services/forum/normalize-source.py /build/normalize-source.py
 RUN python3 /build/normalize-source.py /build/answer \
     && cd /build/answer \
     && patch -p1 --fuzz=0 < /build/answer-session-retention.patch \
+    && patch -p1 --fuzz=0 < /build/answer-admin-session.patch \
     && patch -p1 --fuzz=0 < /build/answer-optional-admin-email.patch \
     && patch -p1 --fuzz=0 < /build/answer-admin-user-list.patch \
     && patch -p1 --fuzz=0 < /build/answer-admin-privileges-compact.patch \

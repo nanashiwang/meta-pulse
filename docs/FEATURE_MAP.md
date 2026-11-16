@@ -169,3 +169,5 @@ new-api 接收端与实际到账、生产普通账号流程、邮件与跨实例
 优秀内容评选第一阶段：`awards/`、`awards_routes.go`、`content-awards.js`、`production/src/awards.js`。帖子提名日2/周10；作者首次采纳回应同步候选；周10/月5人，人工条件和理由、版本/幂等、公开名单、撤销与月奖复核。应奖50/100仅记录deferred，不调用Pulse、不授予头衔徽章。见CONTENT_AWARDS.md。
 
 评选荣誉与人工发放：`awards/honors.go`从唯一有效周/月奖记录计算7/30天可选头衔和金色编辑者/学者累计；`award-titles.js`替换帖子作者等级旁声望数字展示，保留Lv与实际声望。个人中心荣誉页支持选择/隐藏及历史来源；管理员paid仅登记人工发放备注、时间、操作者，不调用Pulse。
+
+管理员会话：answer-admin-session.patch取消独立7天管理员缓存门槛，使用有效社区bearer加数据库实时账号/角色校验；退出、重置密码、降权和封禁仍拒绝。session-tests/admin_session_test.go覆盖有效期与撤销边界。
