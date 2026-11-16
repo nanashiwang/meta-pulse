@@ -2,6 +2,7 @@ package pulse_user_center
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -12,11 +13,15 @@ import (
 )
 
 type adminCommunityStatistics struct {
-	Posts     int64 `json:"posts,string"`
-	PostLikes int64 `json:"post_likes,string"`
-	Comments  int64 `json:"comments,string"`
-	Likes     int64 `json:"likes,string"`
-	Shares    int64 `json:"shares,string"`
+	RangeStart    string `json:"range_start"`
+	RangeEnd      string `json:"range_end"`
+	RangeComments int64  `json:"range_comments,string"`
+	RangeLikes    int64  `json:"range_likes,string"`
+	Posts         int64  `json:"posts,string"`
+	PostLikes     int64  `json:"post_likes,string"`
+	Comments      int64  `json:"comments,string"`
+	Likes         int64  `json:"likes,string"`
+	Shares        int64  `json:"shares,string"`
 }
 type adminTicketStatistics struct {
 	Remaining        string `json:"remaining"`
@@ -29,11 +34,38 @@ type adminTicketStatistics struct {
 }
 
 func (g *mysqlBindingGuard) adminCommunityStatistics(ctx context.Context, ids []string) (map[string]*adminCommunityStatistics, error) {
+	return g.adminCommunityStatisticsAt(ctx, ids, time.Now())
+}
+func beijingStatisticsStart(now time.Time) time.Time {
+	local := now.In(time.FixedZone("Asia/Shanghai", 8*3600))
+	return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, local.Location())
+}
+func (g *mysqlBindingGuard) adminCommunityStatisticsAt(ctx context.Context, ids []string, now time.Time) (map[string]*adminCommunityStatistics, error) {
+	rangeStart := beijingStatisticsStart(now)
+	return g.adminCommunityStatisticsRange(ctx, ids, rangeStart, rangeStart.AddDate(0, 0, 1), now)
+}
+func parseStatisticsRange(from, to string, now time.Time) (time.Time, time.Time, error) {
+	zone := time.FixedZone("Asia/Shanghai", 8*3600)
+	if from == "" && to == "" {
+		start := beijingStatisticsStart(now)
+		return start, start.AddDate(0, 0, 1), nil
+	}
+	start, e1 := time.ParseInLocation("2006-01-02", from, zone)
+	end, e2 := time.ParseInLocation("2006-01-02", to, zone)
+	if e1 != nil || e2 != nil || start.Format("2006-01-02") != from || end.Format("2006-01-02") != to || end.Before(start) || end.After(beijingStatisticsStart(now)) {
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid statistics dates")
+	}
+	return start, end.AddDate(0, 0, 1), nil
+}
+func (g *mysqlBindingGuard) adminCommunityStatisticsRange(ctx context.Context, ids []string, from, to, now time.Time) (map[string]*adminCommunityStatistics, error) {
 	result := make(map[string]*adminCommunityStatistics, len(ids))
+	if len(ids) == 0 {
+		return result, nil
+	}
 	args := make([]any, len(ids))
 	for i, id := range ids {
 		args[i] = id
-		result[id] = &adminCommunityStatistics{}
+		result[id] = &adminCommunityStatistics{RangeStart: from.Format("2006-01-02"), RangeEnd: to.AddDate(0, 0, -1).Format("2006-01-02")}
 	}
 	in := "(?" + strings.Repeat(",?", len(ids)-1) + ")"
 	queries := []string{
@@ -74,6 +106,41 @@ func (g *mysqlBindingGuard) adminCommunityStatistics(ctx context.Context, ids []
 				stat.Likes = n
 			case 4:
 				stat.Shares = n
+			}
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil, err
+		}
+	}
+	start, end := from.Unix(), to.Unix()
+	if end > now.Unix()+1 {
+		end = now.Unix() + 1
+	}
+	rangeQueries := []string{
+		"SELECT user_id,COUNT(*) FROM comment WHERE status=1 AND created_at>=FROM_UNIXTIME(?) AND created_at<FROM_UNIXTIME(?) AND user_id IN " + in + " GROUP BY user_id",
+		"SELECT a.trigger_user_id,COUNT(*) FROM activity a JOIN config c ON c.id=a.activity_type WHERE a.cancelled=0 AND c.`key` IN ('question.voted_up','answer.voted_up','comment.voted_up') AND a.created_at>=FROM_UNIXTIME(?) AND a.created_at<FROM_UNIXTIME(?) AND a.trigger_user_id IN " + in + " GROUP BY a.trigger_user_id",
+	}
+	for kind, query := range rangeQueries {
+		params := append([]any{start, end}, args...)
+		rows, err := g.db.QueryContext(ctx, query, params...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var id string
+			var n int64
+			if err = rows.Scan(&id, &n); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			if stat := result[id]; stat != nil {
+				if kind == 0 {
+					stat.RangeComments = n
+				} else {
+					stat.RangeLikes = n
+				}
 			}
 		}
 		err = rows.Err()

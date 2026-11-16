@@ -46,7 +46,9 @@ func (uc *UserCenter) registerAdminUserBindings(r *gin.RouterGroup, session func
 			return
 		}
 		var body struct {
-			UserIDs []string `json:"user_ids"`
+			UserIDs   []string `json:"user_ids"`
+			StartDate string   `json:"start_date"`
+			EndDate   string   `json:"end_date"`
 		}
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 4096)
 		decoder := json.NewDecoder(c.Request.Body)
@@ -58,6 +60,12 @@ func (uc *UserCenter) registerAdminUserBindings(r *gin.RouterGroup, session func
 		var trailing any
 		if decoder.Decode(&trailing) != io.EOF || len(body.UserIDs) == 0 || len(body.UserIDs) > maxAdminBindingLookup {
 			communityError(c, http.StatusBadRequest, "invalid_request")
+			return
+		}
+		now := time.Now()
+		from, to, rangeErr := parseStatisticsRange(body.StartDate, body.EndDate, now)
+		if rangeErr != nil {
+			communityError(c, 400, "invalid_date_range")
 			return
 		}
 		seen := make(map[string]bool, len(body.UserIDs))
@@ -91,9 +99,9 @@ func (uc *UserCenter) registerAdminUserBindings(r *gin.RouterGroup, session func
 			return
 		}
 		if reader, ok := uc.Guard.(interface {
-			adminCommunityStatistics(context.Context, []string) (map[string]*adminCommunityStatistics, error)
+			adminCommunityStatisticsRange(context.Context, []string, time.Time, time.Time, time.Time) (map[string]*adminCommunityStatistics, error)
 		}); ok {
-			if stats, e := reader.adminCommunityStatistics(ctx, ids); e == nil {
+			if stats, e := reader.adminCommunityStatisticsRange(ctx, ids, from, to, now); e == nil {
 				for id, stat := range stats {
 					info := result[id]
 					info.Statistics = stat

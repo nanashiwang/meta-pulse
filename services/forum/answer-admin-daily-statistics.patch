@@ -1,0 +1,312 @@
+--- a/ui/src/pages/Admin/Users/index.tsx
++++ b/ui/src/pages/Admin/Users/index.tsx
+@@ -98,6 +98,8 @@
+   'post_count',
+   'post_likes',
+   'comments',
++  'range_comments',
++  'range_likes',
+   'likes',
+   'shares',
+ 
+@@ -125,6 +127,10 @@
+     posts: string;
+     post_likes: string;
+     comments: string;
++    range_comments?: string;
++    range_start?: string;
++    range_end?: string;
++    range_likes?: string;
+     likes: string;
+     shares: string;
+   };
+@@ -154,6 +160,8 @@
+ const fetchBindings = async (
+   ids: string[],
+   signal?: AbortSignal,
++  startDate?: string,
++  endDate?: string,
+ ): Promise<Record<string, BindingInfo>> => {
+   const token = String(readStored(LOGGED_TOKEN_STORAGE_KEY) || '');
+   const response = await fetch('/answer/admin/api/metar/accounts/bindings', {
+@@ -166,7 +174,11 @@
+       'Content-Type': 'application/json',
+       'X-Metar-Request': '1',
+     },
+-    body: JSON.stringify({ user_ids: ids }),
++    body: JSON.stringify({
++      user_ids: ids,
++      start_date: startDate,
++      end_date: endDate,
++    }),
+   });
+   if (!response.ok) throw new Error(String(response.status));
+   const result = await response.json();
+@@ -187,6 +199,28 @@
+     userId: '',
+   });
+   const [urlSearchParams, setUrlSearchParams] = useSearchParams();
++  const today = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
++  const startDate = urlSearchParams.get('start_date') || today;
++  const endDate = urlSearchParams.get('end_date') || today;
++  const [draftStart, setDraftStart] = useState(startDate);
++  const [draftEnd, setDraftEnd] = useState(endDate);
++  const [rangeError, setRangeError] = useState(false);
++  useEffect(() => {
++    setDraftStart(startDate);
++    setDraftEnd(endDate);
++  }, [startDate, endDate]);
++  const applyRange = (event) => {
++    event.preventDefault();
++    if (!draftStart || !draftEnd || draftStart > draftEnd || draftEnd > today) {
++      setRangeError(true);
++      return;
++    }
++    setRangeError(false);
++    urlSearchParams.set('start_date', draftStart);
++    urlSearchParams.set('end_date', draftEnd);
++    urlSearchParams.delete('page');
++    setUrlSearchParams(urlSearchParams);
++  };
+   const curFilter = urlSearchParams.get('filter') || UserFilterKeys[0];
+   const curPage = Math.max(
+     1,
+@@ -242,7 +276,14 @@
+   const [sortError, setSortError] = useState(false);
+   const [reload, setReload] = useState(0);
+   const identity = String(currentUser?.user_id || '');
+-  const loadKey = JSON.stringify([curFilter, curQuery, identity, reload]);
++  const loadKey = JSON.stringify([
++    curFilter,
++    curQuery,
++    identity,
++    reload,
++    startDate,
++    endDate,
++  ]);
+   const sortedMode = Boolean(sortKey);
+   const refreshUsers = () => {
+     setReload((value) => value + 1);
+@@ -281,11 +322,13 @@
+     loadAllUsers(
+       fetchPage,
+       async (ids, signal) => {
+-        const rows = await fetchBindings(ids, signal);
++        const rows = await fetchBindings(ids, signal, startDate, endDate);
+         if (
+           ids.some(
+             (id) =>
+               !rows[id]?.statistics ||
++              rows[id]?.statistics?.range_start !== startDate ||
++              rows[id]?.statistics?.range_end !== endDate ||
+               (rows[id]?.api_user_id && !rows[id]?.tickets),
+           )
+         )
+@@ -306,7 +349,7 @@
+       controller.abort();
+       window.clearTimeout(timer);
+     };
+-  }, [sortedMode, loadKey, curQuery, curFilter]);
++  }, [sortedMode, loadKey, curQuery, curFilter, startDate, endDate]);
+   const readyAll = allUsers?.key === loadKey ? allUsers : null;
+   const sortedList = useMemo(
+     () =>
+@@ -322,7 +365,16 @@
+       }
+     : nativeData;
+   const isLoading = sortedMode ? !readyAll && !sortError : nativeLoading;
+-  const visibleBindings = sortedMode ? readyAll?.bindings : bindings;
++  const visibleBindings = sortedMode
++    ? readyAll?.bindings
++    : bindings &&
++        Object.values(bindings).every(
++          (row) =>
++            row.statistics?.range_start === startDate &&
++            row.statistics?.range_end === endDate,
++        )
++      ? bindings
++      : null;
+   const setSort = (key) => {
+     if (key) {
+       urlSearchParams.set('sort', key);
+@@ -375,9 +427,17 @@
+     }
+     let active = true;
+     setBindings(null);
+-    fetchBindings(idsKey.split(','))
++    fetchBindings(idsKey.split(','), undefined, startDate, endDate)
+       .then((result) => {
+         if (!active) return;
++        if (
++          Object.values(result).some(
++            (row) =>
++              row.statistics?.range_start !== startDate ||
++              row.statistics?.range_end !== endDate,
++          )
++        )
++          throw Error('statistics range unavailable');
+         setBindings(result);
+         setBindingsFailed(false);
+       })
+@@ -389,7 +449,7 @@
+     return () => {
+       active = false;
+     };
+-  }, [idsKey, nativeData, sortedMode]);
++  }, [idsKey, nativeData, sortedMode, startDate, endDate]);
+ 
+   const userModal = useUserModal({
+     onConfirm: (userModel) => {
+@@ -693,6 +753,55 @@
+           {t('metar_sort_error')}
+         </p>
+       )}
++      <Form
++        className="d-flex flex-wrap align-items-end gap-2 mb-3"
++        onSubmit={applyRange}>
++        <Form.Group>
++          <Form.Label>{t('metar_range_start')}</Form.Label>
++          <Form.Control
++            type="date"
++            value={draftStart}
++            max={draftEnd || today}
++            onChange={(e) => setDraftStart(e.target.value)}
++            required
++          />
++        </Form.Group>
++        <Form.Group>
++          <Form.Label>{t('metar_range_end')}</Form.Label>
++          <Form.Control
++            type="date"
++            value={draftEnd}
++            min={draftStart}
++            max={today}
++            onChange={(e) => setDraftEnd(e.target.value)}
++            required
++          />
++        </Form.Group>
++        <Button type="submit" size="sm">
++          {t('metar_range_apply')}
++        </Button>
++        <Button
++          type="button"
++          size="sm"
++          variant="outline-secondary"
++          onClick={() => {
++            urlSearchParams.delete('start_date');
++            urlSearchParams.delete('end_date');
++            urlSearchParams.delete('page');
++            setUrlSearchParams(urlSearchParams);
++            setRangeError(false);
++          }}>
++          {t('metar_range_today')}
++        </Button>
++        <span className="small text-secondary">
++          {t('metar_range_hint')} {startDate} — {endDate}
++        </span>
++        {rangeError && (
++          <span role="alert" className="text-danger">
++            {t('metar_range_invalid')}
++          </span>
++        )}
++      </Form>
+       <Table
+         responsive
+         hover
+@@ -736,6 +845,10 @@
+               sortHeader('post_likes', t('metar_col_post_likes'))}
+             {show('comments') &&
+               sortHeader('comments', t('metar_col_comments'))}
++            {show('range_comments') &&
++              sortHeader('range_comments', t('metar_col_range_comments'))}
++            {show('range_likes') &&
++              sortHeader('range_likes', t('metar_col_range_likes'))}
+             {show('likes') && sortHeader('likes', t('metar_col_likes'))}
+             {show('shares') && sortHeader('shares', t('metar_col_shares'))}
+             {show('api_account') &&
+@@ -864,6 +977,18 @@
+                   <td>
+                     {visibleBindings?.[String(user.user_id)]?.statistics
+                       ?.comments ?? '—'}
++                  </td>
++                )}
++                {show('range_comments') && (
++                  <td>
++                    {visibleBindings?.[String(user.user_id)]?.statistics
++                      ?.range_comments ?? '—'}
++                  </td>
++                )}
++                {show('range_likes') && (
++                  <td>
++                    {visibleBindings?.[String(user.user_id)]?.statistics
++                      ?.range_likes ?? '—'}
+                   </td>
+                 )}
+                 {show('likes') && (
+--- a/ui/src/pages/Admin/Users/metar-statistics.js
++++ b/ui/src/pages/Admin/Users/metar-statistics.js
+@@ -13,6 +13,8 @@
+   'post_count',
+   'post_likes',
+   'comments',
++  'range_comments',
++  'range_likes',
+   'likes',
+   'shares',
+   'api_account',
+@@ -31,7 +33,16 @@
+   const info = bindings?.[String(user.user_id)];
+   if (key.startsWith('tickets_')) return info?.tickets?.[key.slice(8)];
+   if (key.startsWith('reward_')) return info?.tickets?.[key];
+-  if (['post_likes', 'comments', 'likes', 'shares'].includes(key))
++  if (
++    [
++      'post_likes',
++      'comments',
++      'range_comments',
++      'range_likes',
++      'likes',
++      'shares',
++    ].includes(key)
++  )
+     return info?.statistics?.[key];
+   if (key === 'post_count')
+     return info?.statistics?.posts ?? user.question_count;
+--- a/i18n/zh_CN.yaml
++++ b/i18n/zh_CN.yaml
+@@ -1995,6 +1995,16 @@
+       metar_sort_status: "状态"
+       metar_col_post_count: "发帖数"
+       metar_col_post_likes: "发帖获赞数"
++      metar_range_start: "开始日期"
++      metar_range_end: "结束日期"
++      metar_range_apply: "应用时间范围"
++      metar_range_today: "今天"
++      metar_range_hint: "仅影响评论和点赞范围统计（北京时间，含结束当天）："
++      metar_range_invalid: "请填写有效日期，开始日期不能晚于结束日期，不能选择未来日期。"
++      metar_col_range_comments: "范围内评论数"
++      metar_col_range_likes: "范围内点赞数"
++      metar_sort_range_comments: "范围内评论数"
++      metar_sort_range_likes: "范围内点赞数"
+       metar_col_comments: "评论数"
+       metar_col_likes: "点赞数"
+       metar_col_shares: "帖子被分享数"
+--- a/i18n/en_US.yaml
++++ b/i18n/en_US.yaml
+@@ -2034,6 +2034,16 @@
+       metar_sort_status: "Status"
+       metar_col_post_count: "Posts"
+       metar_col_post_likes: "Post likes received"
++      metar_range_start: "Start date"
++      metar_range_end: "End date"
++      metar_range_apply: "Apply range"
++      metar_range_today: "Today"
++      metar_range_hint: "Comment/like range only (Beijing time, end date inclusive):"
++      metar_range_invalid: "Choose valid dates, with start before end and no future dates."
++      metar_col_range_comments: "Comments in range"
++      metar_col_range_likes: "Likes given in range"
++      metar_sort_range_comments: "Comments in range"
++      metar_sort_range_likes: "Likes given in range"
+       metar_col_comments: "Comments / answers"
+       metar_col_likes: "Likes given"
+       metar_col_shares: "Post shares"

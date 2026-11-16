@@ -5,6 +5,17 @@ const fs=require('node:fs');
 const patch=fs.readFileSync(__dirname+'/../answer-admin-user-list.patch','utf8');
 const section=patch.split('diff --git a/ui/src/pages/Admin/Users/metar-statistics.js b/ui/src/pages/Admin/Users/metar-statistics.js')[1].split('\ndiff --git ')[0];
 const source=section.split('\n').filter(line=>line.startsWith('+')&&!line.startsWith('+++')).map(line=>line.slice(1)).join('\n');
+let dailySource=source;
+const dailyPatch=fs.readFileSync(__dirname+'/../answer-admin-daily-statistics.patch','utf8').replaceAll('\r\n','\n');
+const helperSection=dailyPatch.split('+++ b/ui/src/pages/Admin/Users/metar-statistics.js')[1].split('--- a/')[0];
+const original=source.replaceAll('\r\n','\n').split('\n');let output=[],cursor=0;
+for(const hunk of helperSection.split('@@ ').slice(1)){
+ const match=/^-(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(hunk);if(!match)continue;
+ const start=Number(match[1])-1;output.push(...original.slice(cursor,start));cursor=start;
+ for(const line of hunk.slice(hunk.indexOf('\n')+1).split('\n')){if(line.startsWith(' ')){assert.equal(original[cursor],line.slice(1));output.push(original[cursor++]);}else if(line.startsWith('-')){assert.equal(original[cursor++],line.slice(1));}else if(line.startsWith('+'))output.push(line.slice(1));}
+}
+output.push(...original.slice(cursor));dailySource=output.join('\n');
+const dailyModule=import('data:text/javascript;base64,'+Buffer.from(dailySource).toString('base64'));
 const modulePromise=import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
 test('sorts across pages before slicing, exact integers and missing values last in both directions',async()=>{
  const {loadAllUsers,sortUsers}=await modulePromise;
@@ -39,3 +50,5 @@ test('failure, cancellation, changed counts and duplicates never return partial 
  const controller=new AbortController();
  await assert.rejects(loadAllUsers(async()=>{controller.abort();return {count:1,list:[{user_id:'1'}]};},empty,controller.signal));
 });
+
+test('range columns sort numerically across results and keep unavailable values last',async()=>{const {sortUsers,sortKeys}=await dailyModule;const users=[{user_id:'1'},{user_id:'2'},{user_id:'3'}],bindings={'1':{statistics:{range_comments:'2',range_likes:'9'}},'2':{statistics:{range_comments:'10',range_likes:'0'}}};assert.ok(sortKeys.includes('range_comments'));assert.ok(sortKeys.includes('range_likes'));assert.deepEqual(sortUsers(users,bindings,'range_comments','desc').map(u=>u.user_id),['2','1','3']);assert.deepEqual(sortUsers(users,bindings,'range_likes','asc').map(u=>u.user_id),['2','1','3']);});

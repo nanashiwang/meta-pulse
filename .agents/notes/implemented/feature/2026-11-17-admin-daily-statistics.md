@@ -1,0 +1,25 @@
+# Agent Note: 用户管理自定义时间范围统计
+
+Status: implemented
+
+## Problem
+
+用户将今日评论与点赞改为自定义日期范围，需要查询、翻页与全结果排序保持相同范围。
+
+## Decision
+
+增加start_date/end_date，默认北京时间今天。严格解析年月日，拒绝单边/倒序/未来日期；结束日期含全天，采用次日00:00的半开边界，当前日截断到查询时刻。使用Unix秒与FROM_UNIXTIME匹配数据库会话时区。
+
+返回range_comments/range_likes及range_start/range_end。评论只含正常comment及回复，点赞按主动trigger_user_id和未取消voted_up活动创建时间统计。前端日期存入URL，变更重置分页并重载排序缓存，仅展示匹配范围的数据；累计列、权限和奖励规则不变。
+
+## Alternatives considered
+
+固定今天不能满足追溯；覆盖累计列会改变原有口径。新增范围字段和日期选择器保留累计查询，不以前端当前页估算全局排序。
+
+## Consequences
+
+每批增加两次时间与用户集合限定的聚合。宽范围可能较慢，沿用请求超时和失败提示。补丁沿用answer-admin-daily-statistics文件名，实际已为自定义范围；需重建forum和语言资源。
+
+## Verification
+
+插件Go测试通过，覆盖北京日界、自定义区间、结束日期和非法日期。新增MySQL回归覆盖历史单日、午夜前后、未来活动、删除/待审评论及取消点赞，DSN未提供时跳过。实际补丁排序代码测试通过，TSX经过上游Prettier格式化。

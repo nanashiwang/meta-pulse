@@ -274,3 +274,17 @@ html:lang(en).metar-native .metar-primary-nav>a[href="/pulse"]::before{content:'
 @media(max-width:380px){.metar-native #header a[href="/users"]{display:none!important}}
 
 .metar-native #header .navbar-brand.nav-text{color:var(--metar-text)!important}
+
+/* Keep every user filter and statistics column reachable on narrow screens. */
+.metar-admin-users .admin-container,.metar-admin-users .page-main{min-width:0;max-width:100%}
+.metar-admin-users .hstack:has(.metar-user-filters){min-width:0;max-width:100%}
+.metar-admin-users .metar-user-filters.md-show{display:flex!important;flex:0 1 auto;min-width:0;max-width:100%;overflow-x:auto;overflow-y:hidden;white-space:nowrap;scrollbar-width:auto;padding-bottom:7px}
+.metar-admin-users .metar-user-filters.md-show>.btn{flex:0 0 auto}
+.metar-admin-users .metar-user-filters.md-hide{display:none!important}
+.metar-admin-users .table-responsive{width:100%;min-width:0;overflow-x:auto;scrollbar-width:auto}
+.metar-admin-users .metar-user-rewards{white-space:nowrap}
+.metar-user-scrollbar{position:sticky;top:var(--metar-header-height,52px);z-index:6;background:var(--metar-surface,#fff);border:1px solid var(--metar-border,#ddd);border-radius:8px;margin:8px 0;padding:8px 12px}
+.metar-user-scrollbar[hidden]{display:none!important}.metar-user-scrollbar label{display:flex;align-items:center;gap:12px;margin:0;font-size:12px;color:var(--metar-muted,#667)}
+.metar-user-scrollbar input{min-width:60px;flex:1;width:100%;accent-color:var(--metar-primary,#28674c);cursor:ew-resize}
+
+.metar-admin-users .dropdown-menu:has([id^="metar-col-"]){max-height:min(65vh,480px);overflow-y:auto;min-width:220px;max-width:calc(100vw - 24px)}

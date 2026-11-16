@@ -30,6 +30,8 @@ RUN mkdir -p /tmp/answer-source /build \
 COPY services/forum/answer-admin-session.patch /build/answer-admin-session.patch
 COPY services/forum/answer-session-retention.patch /build/answer-session-retention.patch
 COPY services/forum/answer-optional-admin-email.patch /build/answer-optional-admin-email.patch
+COPY services/forum/answer-admin-daily-statistics.patch /build/answer-admin-daily-statistics.patch
+COPY services/forum/answer-admin-user-layout.patch /build/answer-admin-user-layout.patch
 COPY services/forum/answer-admin-user-list.patch /build/answer-admin-user-list.patch
 COPY services/forum/answer-admin-privileges-compact.patch /build/answer-admin-privileges-compact.patch
 COPY services/forum/answer-discussion-labels.patch /build/answer-discussion-labels.patch
@@ -49,6 +51,8 @@ RUN python3 /build/normalize-source.py /build/answer \
     && patch -p1 --fuzz=0 < /build/answer-admin-session.patch \
     && patch -p1 --fuzz=0 < /build/answer-optional-admin-email.patch \
     && patch -p1 --fuzz=0 < /build/answer-admin-user-list.patch \
+    && patch -p1 --fuzz=0 < /build/answer-admin-user-layout.patch \
+    && patch -p1 --fuzz=0 < /build/answer-admin-daily-statistics.patch \
     && patch -p1 --fuzz=0 < /build/answer-admin-privileges-compact.patch \
     && patch -p1 --fuzz=0 < /build/answer-mail-errors.patch \
     && patch -p1 --fuzz=0 < /build/answer-question-author.patch \

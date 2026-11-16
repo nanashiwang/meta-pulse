@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -59,6 +60,8 @@ func TestAdminUserBindingsRejectsBeforeLookup(t *testing.T) {
 		mutate func(*http.Request, *bindingTestGuard)
 		status int
 	}{
+		"invalid date range":   {`{"user_ids":["12"],"start_date":"2026-11-10","end_date":"2026-11-01"}`, nil, 400},
+		"partial date range":   {`{"user_ids":["12"],"start_date":"2026-11-01"}`, nil, 400},
 		"trailing object":      {`{"user_ids":["12"]} {"extra":true}`, nil, 400},
 		"trailing bracket":     {`{"user_ids":["12"]}]`, nil, 400},
 		"trailing brace":       {`{"user_ids":["12"]}}`, nil, 400},
@@ -99,7 +102,7 @@ func TestAdminUserBindingsLookupFailureIsUnavailable(t *testing.T) {
 
 type statisticsBindingGuard struct{ bindingTestGuard }
 
-func (*statisticsBindingGuard) adminCommunityStatistics(_ context.Context, ids []string) (map[string]*adminCommunityStatistics, error) {
+func (*statisticsBindingGuard) adminCommunityStatisticsRange(_ context.Context, ids []string, from, to, now time.Time) (map[string]*adminCommunityStatistics, error) {
 	result := map[string]*adminCommunityStatistics{}
 	for _, id := range ids {
 		result[id] = &adminCommunityStatistics{Posts: 2, PostLikes: 3, Comments: 4, Likes: 5, Shares: 6}

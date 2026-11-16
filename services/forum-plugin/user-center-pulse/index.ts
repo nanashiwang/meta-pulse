@@ -1,3 +1,5 @@
+import { installAdminUserScroll } from './admin-user-scroll.js';
+installAdminUserScroll();
 import { installAwardTitles } from './award-titles.js';
 import './award-titles.css';
 installAwardTitles();

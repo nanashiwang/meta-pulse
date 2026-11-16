@@ -1,0 +1,29 @@
+--- a/ui/src/pages/Admin/Users/index.tsx
++++ b/ui/src/pages/Admin/Users/index.tsx
+@@ -576,6 +576,7 @@
+             sortKey="filter"
+             i18nKeyPrefix="admin.users"
+             maxBtnCount={UserFilterKeys.length}
++            wrapClassName="metar-user-filters"
+           />
+           {curFilter === 'deleted' && Number(data?.count) > 0 ? (
+             <Button
+@@ -830,14 +831,16 @@
+                   </td>
+                 )}
+                 {show('rewards') && (
+-                  <td>
++                  <td className="metar-user-rewards">
+                     {quotaText(
+                       visibleBindings?.[String(user.user_id)]?.tickets
+                         ?.reward_quota,
+                       visibleBindings?.[String(user.user_id)]?.tickets
+                         ?.quota_per_unit,
+                     )}
+-                    <br />
++                    <span className="mx-2" aria-hidden="true">
++                      /
++                    </span>
+                     {visibleBindings?.[String(user.user_id)]?.tickets
+                       ?.reward_experience ?? '—'}{' '}
+                     EXP
