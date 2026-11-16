@@ -52,7 +52,7 @@
           ? d.badges
               .map(
                 (b) =>
-                  '<span style="display:inline-block;padding:12px;margin:8px;background:#fff1bb;color:#76540c;border:1px solid #e4bc55;border-radius:8px">🏅 ' +
+                  '<span class="award-medal">🏅 ' +
                   esc(b.name) +
                   " × " +
                   b.count +

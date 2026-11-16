@@ -19,7 +19,7 @@ export function headerIcon(name) {
 }
 export function decorateNativeHeader(doc, {english=false,dark=false,chat=false,review=false}={}) {
  const row=doc.querySelector('#header > .w-100');if(!row)return;
- const icon=(node,name)=>{if(!node)return;let decoration=node.querySelector(':scope > .metar-header-decoration');if(!decoration){decoration=doc.createElement('span');decoration.className='metar-header-decoration';decoration.setAttribute('aria-hidden','true');node.append(decoration);}if(decoration.dataset.icon!==name){decoration.innerHTML=headerIcon(name);decoration.dataset.icon=name;}node.classList.add('metar-header-action');};
+ const icon=(node,name)=>{if(!node)return;let decoration=node.querySelector(':scope > .metar-header-decoration');if(!decoration){decoration=doc.createElement('span');decoration.className='metar-header-decoration';decoration.setAttribute('aria-hidden','true');node.append(decoration);}if(decoration.dataset.icon!==name){decoration.innerHTML=headerIcon(name);decoration.dataset.icon=name;}if(!node.classList.contains('metar-header-action'))node.classList.add('metar-header-action');};
  icon(row.querySelector('a[href="/users"]'),'target');
  icon(row.querySelector('a[href="/users/notifications/inbox"]'),'bell');
  icon(row.querySelector('a[href="/users/notifications/achievement"]'),'trophy');
@@ -27,6 +27,6 @@ export function decorateNativeHeader(doc, {english=false,dark=false,chat=false,r
  const add=(cls,href,show,label,name)=>{let link=row.querySelector('.'+cls);if(!show){link?.remove();return;}if(!link){link=doc.createElement('a');link.className=cls;link.href=href;row.append(link);}if(link.getAttribute('aria-label')!==label){link.setAttribute('aria-label',label);link.title=label;}icon(link,name);};
  add('metar-header-chat','/chat',chat,english?'Chat':'聊天','chat');
  // The role comes from Answer's current user store, never from DOM inference.
- add('metar-header-review','/review',review&&!row.querySelector('.navbar-nav a[href="/review"]'),english?'Review':'审查','shield');
+ add('metar-header-review','/review',(review||Boolean(doc.querySelector('#sideNav a[href="/review"]')))&&!row.querySelector('.navbar-nav a[href="/review"]:not(.metar-header-review)'),english?'Review':'审查','shield');
  const input=row.querySelector('form input[type="search"]');if(input){const placeholder=english?'Search questions and answers…':'搜索真实问题与回答…';if(!input.dataset.metarSuggestion&&input.placeholder!==placeholder)input.placeholder=placeholder;if(input.getAttribute('aria-label')!==placeholder)input.setAttribute('aria-label',placeholder);const form=input.closest('form');const search=form.querySelector('.search-wrap');if(search&&!search.querySelector('.metar-header-icon')){const decoration=doc.createElement('span');decoration.className='metar-header-decoration';decoration.innerHTML=headerIcon('search');search.append(decoration);}if(!form.querySelector('.metar-search-shortcut')){const key=doc.createElement('kbd');key.className='metar-search-shortcut';key.textContent='⌘ K';form.append(key);}}
 }

@@ -744,7 +744,7 @@
     if (!root) return;
     const sequence = navigationSequence;
     const medalBox=document.querySelector('[data-award-badges]');
-    if(medalBox){answer.request('/metar/awards/honors').then(data=>{if(sequence!==navigationSequence||!medalBox.isConnected)return;medalBox.innerHTML=data.badges.length?data.badges.map(b=>'<span style="display:inline-block;margin:8px;padding:10px 14px;color:#76540c;background:#fff1bb;border:1px solid #e4bc55;border-radius:8px">🏅 '+esc(b.name)+' × '+number(b.count)+'</span>').join(''):t('暂无评选勋章');}).catch(()=>{if(medalBox.isConnected)medalBox.textContent=t('评选勋章暂时无法加载');});}
+    if(medalBox){answer.request('/metar/awards/honors').then(data=>{if(sequence!==navigationSequence||!medalBox.isConnected)return;medalBox.innerHTML=data.badges.length?data.badges.map(b=>'<span class="award-medal">🏅 '+esc(b.name)+' × '+number(b.count)+'</span>').join(''):t('暂无评选勋章');}).catch(()=>{if(medalBox.isConnected)medalBox.textContent=t('评选勋章暂时无法加载');});}
     try {
       await loadFeatureScript('personal-workspace','MetarPersonalWorkspace');
       if (sequence !== navigationSequence || !root.isConnected) return;

@@ -740,3 +740,5 @@ html.community-wide:not(.preview-tools) .page{padding-bottom:calc(var(--communit
 .searchbox .search-submit{position:absolute;left:8px;top:4px;width:26px;height:24px;z-index:1;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;border:0;padding:0;background:transparent;color:inherit;cursor:pointer}.searchbox .search-submit:focus-visible{outline:2px solid var(--green);outline-offset:4px}
 
 .searchbox .search-submit .ico{width:16px;height:16px;color:var(--muted)}
+
+.award-medal{display:inline-block;margin:8px;padding:10px 14px;color:#76540c;background:#fff1bb;border:1px solid #e4bc55;border-radius:8px}

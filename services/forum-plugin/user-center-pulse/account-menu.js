@@ -42,23 +42,7 @@ export function installAccountMenu(state, host = window) {
     trigger.tabIndex = 0;
     trigger.setAttribute('aria-label', english ? 'Account menu' : '账号菜单');
     const canReview = Boolean(doc.querySelector('#sideNav a[href="/review"]'));
-    const administrator = user?.role_id === 2 && user.mail_status === 1 && user.status === 'normal';
-    const achievement = doc.querySelector('#header a[href="/users/notifications/achievement"]');
-    let review = doc.querySelector('#header .metar-header-review');
-    if (achievement && (canReview || administrator)) {
-      if (!review) {
-        review = doc.createElement('a');
-        review.href = '/review';
-        review.className = 'metar-header-review icon-link nav-link d-flex align-items-center justify-content-center p-0 me-2';
-        const icon = doc.createElement('i');
-        icon.className = 'bi bi-shield-check fs-4';
-        icon.setAttribute('aria-hidden', 'true');
-        review.append(icon);
-      }
-      review.title = english ? 'Review' : '审查';
-      review.setAttribute('aria-label', review.title);
-      if (achievement.nextElementSibling !== review) achievement.after(review);
-    } else review?.remove();
+    // Native header presentation owns the review shortcut; do not move or recreate it here.
     if (!menu) return;
     const groups = accountLinks(user, english, canReview);
     const signature = JSON.stringify([user.username, user.display_name, groups]);

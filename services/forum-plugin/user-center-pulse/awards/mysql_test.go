@@ -244,7 +244,7 @@ func TestMonthWaitsDeduplicatesAndRechecksSourcesMySQL(t *testing.T) {
 	execute(t, s, "3", "month-select0001", c, true)
 	execute(t, s, "3", "month-publish001", Command{Op: "publish", Period: p, Version: 2}, true)
 	list, err = s.List(ctx, "", p, 1, false)
-	if err != nil || len(list.Items) != 1 || list.Items[0].Amount != 100 || list.Items[0].RewardStatus != "deferred" {
+	if err != nil || len(list.Items) != 1 || list.Items[0].Amount != 100 || list.Items[0].RewardStatus != "manual_pending" {
 		t.Fatal(list, err)
 	}
 	execute(t, s, "3", "week-revoke-source", Command{Op: "revoke", Period: Period{"week", weeks[0], "post"}, SubjectID: "100", Reason: "来源撤销"}, true)
