@@ -277,3 +277,43 @@ func testFlowID(label string) string {
 	digest := sha256.Sum256([]byte(label))
 	return hex.EncodeToString(digest[:])
 }
+
+func TestCanonicalNewAPIBrowserEntrypoints(t *testing.T) {
+	for _, tt := range []struct{ input, want string }{
+		{"https://meta-api.vip", "https://meta-api.com"},
+		{" https://meta-api.vip/ ", "https://meta-api.com"},
+		{"https://cn.meta-api.vip", "https://meta-api.com"},
+		{"https://nan.meta-api.vip", "https://meta-api.com"},
+		{"https://meta-api.com", "https://meta-api.com"},
+		{"https://api.example.test", "https://api.example.test"},
+		{"https://meta-api.vip.attacker.test", "https://meta-api.vip.attacker.test"},
+		{"https://meta-api.vip:8443", "https://meta-api.vip:8443"},
+		{"https://meta-api.vip/custom", "https://meta-api.vip/custom"},
+		{"http://meta-api.vip", "http://meta-api.vip"},
+	} {
+		t.Run(tt.input, func(t *testing.T) {
+			store := newMemoryLoginStore()
+			uc := &UserCenter{Config: &Config{NewAPIBaseURL: tt.input}, Logins: store}
+			ctx := newTestContext("")
+			if got := uc.ConnectorSender(ctx, ""); got != tt.want+forumSSOBootstrapPath {
+				t.Fatalf("login=%q", got)
+			}
+			if len(store.flows) != 1 || len(ctx.Writer.Header().Values("Set-Cookie")) != 1 {
+				t.Fatal("missing browser flow")
+			}
+			if uc.Description().Url != tt.want {
+				t.Fatal("branding origin mismatch")
+			}
+			items := uc.ControlCenterItems()
+			if items[0].Url != tt.want+"/console/pulse" || items[1].Url != tt.want+"/console" {
+				t.Fatal("console origin mismatch")
+			}
+			if uc.ConfigFields()[0].Value != tt.want {
+				t.Fatal("config UI origin mismatch")
+			}
+			if uc.Config.NewAPIBaseURL != tt.input {
+				t.Fatal("stored configuration mutated")
+			}
+		})
+	}
+}

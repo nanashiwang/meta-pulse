@@ -32,6 +32,18 @@ type Config struct {
 	LevelBadgeEnabled      bool   `json:"level_badge_enabled"`
 }
 
+// newAPIBrowserURL keeps existing installations on the canonical login origin.
+// Match whole origins only: custom deployments, paths and ports remain explicit.
+func (c Config) newAPIBrowserURL() string {
+	base := strings.TrimRight(strings.TrimSpace(c.NewAPIBaseURL), "/")
+	switch base {
+	case "https://meta-api.vip", "https://cn.meta-api.vip", "https://nan.meta-api.vip":
+		return "https://meta-api.com"
+	default:
+		return base
+	}
+}
+
 func (uc *UserCenter) ConfigFields() []plugin.ConfigField {
 	config := uc.configSnapshot()
 	return []plugin.ConfigField{
@@ -44,7 +56,7 @@ func (uc *UserCenter) ConfigFields() []plugin.ConfigField {
 			UIOptions: plugin.ConfigFieldUIOptions{
 				InputType: plugin.InputTypeText,
 			},
-			Value: config.NewAPIBaseURL,
+			Value: config.newAPIBrowserURL(),
 		},
 		{
 			Name:        "pulse_base_url",

@@ -1412,3 +1412,4 @@ Answer QuestionPageResp 的可选 `participants` 字段复用公开 UserBasicInf
 Answer仍为账号、帖子与可见性事实源；UserCenter插件在论坛库新增metar_topic_poll、metar_topic_poll_ballot、metar_topic_poll_command。每帖唯一投票、账号+帖子唯一选择、账号+请求键唯一操作指纹；事务锁帖子/投票并校验选择版本，锁后时间判断截止；既有授奖/财务链路不变。投票前仅本人可见自己的选择，聚合在投后或截止公开，选民身份不通过接口暴露。
 
 帖子先由Answer原生接口保存，客户端得到ID后创建附属投票，两步不承诺原子性；失败保留账号隔离恢复记录、同键重试，不重复创建帖子。创建仅作者，参与仅活跃且邮箱验证会话；公开读和写入均重查帖子状态，隐藏/删除/待审不公开。原生Ask补丁与前端插件必须配套部署，数据库表随论坛备份。
+元衡浏览器登录主域为 `https://meta-api.com`。Connector、品牌与控制台入口将已保存的 HTTPS 元衡旧根地址 `meta-api.vip`、`cn.meta-api.vip`、`nan.meta-api.vip` 精确映射到该主域，自定义地址保持原值。登录仍先经过同源 `/api/forum/sso/bootstrap`，只有主域有效会话可以复用；不跨域搬运 Cookie，不改变签名回调、一对一绑定或 Answer 本地登录。需部署新版 forum 生效。

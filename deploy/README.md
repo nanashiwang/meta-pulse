@@ -85,7 +85,7 @@ services:
 3. 插件配置：
 
    ```text
-   newapi_base_url       https://meta-api.vip
+   newapi_base_url       https://meta-api.com
    pulse_base_url        http://pulse-api:8088
    sso_hmac_secret       与 new-api PULSE_FORUM_SSO_SECRET 相同
    sso_hmac_secret_previous  仅密钥轮换窗口使用
@@ -94,7 +94,7 @@ services:
    level_badge_enabled   true
    ```
 
-已部署站点的“登录元衡用户”跳转地址来自 Answer 后台 Meta Pulse 插件的 `newapi_base_url`，不是静态前端配置。请将该字段设置为 `https://meta-api.vip` 并保存；更新仓库不会覆盖数据库中已保存的插件配置。
+已部署站点的“登录元衡用户”跳转地址来自 Answer 后台 Meta Pulse 插件的 `newapi_base_url`，不是静态前端配置。请将该字段设置为 `https://meta-api.com` 并保存；新版插件在生成浏览器入口时会将已保存的 HTTPS 元衡旧根地址（`meta-api.vip`、`cn.meta-api.vip`、`nan.meta-api.vip`）兼容到 `.com`，并在配置界面展示有效地址；不会主动改写数据库。自定义部署地址保持原值。需重建并部署 forum 后生效。
 
 4. 在 new-api 线上只增加：
 

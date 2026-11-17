@@ -114,7 +114,7 @@ func (uc *UserCenter) Description() plugin.UserCenterDesc {
 		Name:        "Meta Pulse",
 		DisplayName: plugin.MakeTranslator(i18n.InfoName),
 		Icon:        "",
-		Url:         config.NewAPIBaseURL,
+		Url:         config.newAPIBrowserURL(),
 
 		// Answer v1.7.1 always exposes its UserCenter redirect endpoints when a
 		// UserCenter plugin is enabled. Leaving these empty makes the login button
@@ -134,8 +134,8 @@ func (uc *UserCenter) Description() plugin.UserCenterDesc {
 func (uc *UserCenter) ControlCenterItems() []plugin.ControlCenter {
 	config := uc.configSnapshot()
 	return []plugin.ControlCenter{
-		{Name: "Meta Pulse", Label: "Meta Pulse", Url: config.NewAPIBaseURL + "/console/pulse"},
-		{Name: "Console", Label: "API Console", Url: config.NewAPIBaseURL + "/console"},
+		{Name: "Meta Pulse", Label: "Meta Pulse", Url: config.newAPIBrowserURL() + "/console/pulse"},
+		{Name: "Console", Label: "API Console", Url: config.newAPIBrowserURL() + "/console"},
 	}
 }
 
@@ -189,7 +189,7 @@ func (uc *UserCenter) ConnectorSender(ctx *plugin.GinContext, _ string) string {
 	})
 	ctx.Header("Cache-Control", "no-store")
 	ctx.Header("Referrer-Policy", "no-referrer")
-	return uc.Config.NewAPIBaseURL + forumSSOBootstrapPath
+	return uc.Config.newAPIBrowserURL() + forumSSOBootstrapPath
 }
 
 // ConnectorReceiver verifies the fixed new-api Login Ticket, requires a
