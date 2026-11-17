@@ -393,7 +393,7 @@ python3 - "$tmp/repo/.data/deploy-backups" <<'CHECK'
 import json, pathlib, sys
 states = [json.loads(p.read_text())['status'] for p in pathlib.Path(sys.argv[1]).glob('*/.update-state.json')]
 assert states.count('success') == 1, states
-assert states.count('failed') >= 6, states
+assert states.count('failed') == 0, states
 assert 'running' not in states, states
 CHECK
 printf '备份保留、预览、更新/验收失败、TERM 与真实并发互斥回归通过\n'

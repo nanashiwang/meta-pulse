@@ -54,7 +54,7 @@ class RetentionTest(unittest.TestCase):
         self.finish(current, 1)
         self.assertEqual([p.name for p in self.root.iterdir()], [current])
 
-    def test_protected_failed_interrupted_legacy_pin_and_bad_state(self):
+    def test_superseded_failed_interrupted_and_protected_unknown_pin(self):
         protected = [self.backup(i, status) for i, status in enumerate(('failed', 'running', None))]
         pinned = self.backup(3)
         (self.root / pinned / r.PIN).touch()
@@ -64,8 +64,39 @@ class RetentionTest(unittest.TestCase):
         current = self.backup(6, 'running')
         self.finish(current, 1)
         self.assertFalse((self.root / old).exists())
-        for name in protected + [pinned, bad, current]:
+        for name in protected[:2]:
+            self.assertFalse((self.root / name).exists())
+        for name in protected[2:] + [pinned, bad, current]:
             self.assertTrue((self.root / name).is_dir())
+
+    def test_no_success_or_newer_failures_are_not_deleted(self):
+        failed = self.backup(0, 'failed')
+        interrupted = self.backup(1, 'running')
+        self.assertEqual(self.plan(1), [])
+        success = self.backup(2)
+        newer = self.backup(3, 'failed')
+        self.assertEqual(set(self.plan(1)), {failed, interrupted})
+        with r.backup_root(str(self.repo)) as fd:
+            r.prune(fd, 1)
+            r.prune(fd, 1)
+        self.assertEqual({p.name for p in self.root.iterdir()}, {success, newer})
+
+    def test_unsafe_success_does_not_allow_failed_cleanup(self):
+        self.backup(0, 'failed')
+        success = self.backup(1)
+        (self.root / success / 'escape').symlink_to(self.repo)
+        self.assertEqual(self.plan(1), [])
+
+    def test_default_prune_retains_one_and_zero_preserves_failures(self):
+        self.backup(0, 'failed')
+        self.backup(1)
+        newest = self.backup(2)
+        self.assertEqual(self.plan(0), [])
+        result = subprocess.run(['bash', '-c', 'exec 9>"$1"; exec python3 "$2" prune "$3"',
+                                 'test', str(self.repo / 'update.lock'), r.__file__, str(self.repo)],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([p.name for p in self.root.iterdir()], [newest])
 
     def test_clock_rollback_still_preserves_current(self):
         newest = self.backup(9)

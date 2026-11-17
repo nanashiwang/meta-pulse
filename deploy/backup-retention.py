@@ -114,6 +114,20 @@ def plan(fd, keep, current=""):
     if current:
         valid_name(current)
     candidates = []
+    stale = []
+    # Only a safe successful recovery baseline can supersede failed attempts.
+    successful = []
+    for entry in os.listdir(fd):
+        if not NAME.fullmatch(entry):
+            continue
+        try:
+            with directory(entry, fd) as child:
+                if state(child, entry) == "success":
+                    walk(child, os.fstat(fd).st_dev)
+                    successful.append(entry)
+        except (OSError, ValueError):
+            continue
+    baseline = current if current in successful else max(successful, default="")
     for name in sorted(os.listdir(fd), reverse=True):
         if not NAME.fullmatch(name):
             print("KEEP unknown " + repr(name))
@@ -121,11 +135,13 @@ def plan(fd, keep, current=""):
         try:
             with directory(name, fd) as child:
                 status = state(child, name)
-                if name == current or exists(child, PIN) or status != "success":
+                if (name == current or exists(child, PIN)
+                        or status not in ("success", "failed", "running")
+                        or (status != "success" and (not baseline or name >= baseline))):
                     print("KEEP protected " + name)
                     continue
                 walk(child, os.fstat(fd).st_dev)
-            candidates.append(name)
+            (candidates if status == "success" else stale).append(name)
         except (OSError, ValueError) as exc:
             print("KEEP unsafe " + name + ": " + str(exc))
     # Current successful backup counts toward N, but is protected regardless of clock order.
@@ -134,8 +150,8 @@ def plan(fd, keep, current=""):
         with directory(current, fd) as child:
             if state(child, current) == "success":
                 slots = max(0, keep - 1)
-    victims = candidates[slots:] if keep else []
-    for name in candidates:
+    victims = candidates[slots:] + stale if keep else []
+    for name in candidates + stale:
         print(("DELETE " if name in victims else "KEEP retained ") + name)
     return victims
 
@@ -145,11 +161,16 @@ def finish(fd, name, keep):
     with directory(name, fd) as child:
         if state(child, name) != "running":
             raise ValueError("当前备份不是 running，拒绝标记成功")
+        walk(child, os.fstat(fd).st_dev)
         write_state(child, name, "success")
-    for victim in plan(fd, keep, name):
+    prune(fd, keep, name)
+
+
+def prune(fd, keep, current=""):
+    for victim in plan(fd, keep, current):
         # Recheck policy and the whole tree before each removal, under the same lock.
         with directory(victim, fd) as child:
-            if state(child, victim) != "success" or exists(child, PIN):
+            if state(child, victim) not in ("success", "failed", "running") or exists(child, PIN):
                 raise ValueError("备份状态已变化，停止清理")
             walk(child, os.fstat(fd).st_dev)
             walk(child, os.fstat(fd).st_dev, delete=True)
@@ -159,10 +180,10 @@ def finish(fd, name, keep):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("create", "failed", "finish", "preview"))
+    parser.add_argument("action", choices=("create", "failed", "finish", "preview", "prune"))
     parser.add_argument("repo")
     parser.add_argument("--name", default="")
-    parser.add_argument("--keep", default="3")
+    parser.add_argument("--keep", default="1")
     args = parser.parse_args()
     try:
         keep = keep_count(args.keep)
@@ -171,6 +192,8 @@ def main():
         with backup_root(args.repo, create=args.action == "create") as fd:
             if args.action == "preview":
                 plan(fd, keep)
+            elif args.action == "prune":
+                prune(fd, keep)
             else:
                 valid_name(args.name)
                 if args.action == "create":
@@ -184,7 +207,7 @@ def main():
                         if state(child, args.name) == "running":
                             write_state(child, args.name, "failed")
     except FileNotFoundError:
-        if args.action == "preview":
+        if args.action in ("preview", "prune") and not (Path(args.repo) / ".data/deploy-backups").exists():
             print("没有可预览的部署备份目录")
             return 0
         raise

@@ -14,7 +14,7 @@ SKIP_WORKER=0
 REF=""
 RELEASE_TAG=""
 ACCEPT_INGEST=0
-BACKUP_KEEP="${META_PULSE_BACKUP_KEEP:-3}"
+BACKUP_KEEP="${META_PULSE_BACKUP_KEEP:-1}"
 BACKUP_PREVIEW=0
 
 usage() {
@@ -25,7 +25,7 @@ usage() {
 .env 只读校验，不会初始化或轮换凭据；缺失配置时停止。脚本使用 Git 锁避免并发更新。
 
 选项：
-  --backup-keep N   保留最近 N 份成功更新备份（默认 3；0 禁用清理）
+  --backup-keep N   保留最近 N 份成功更新备份（默认 1；0 禁用清理）
   --backup-preview  仅预览现有备份清理计划，不更新、不删除
   --accept-ingest   更新后执行 180 秒只读摄入验收（需 python3）
   --env-file PATH   使用指定生产配置文件（默认：.env）
@@ -193,7 +193,7 @@ fi
 BACKUP_NAME="$(date -u +%Y%m%dT%H%M%SZ)-$OLD_COMMIT-$$"
 BACKUP_DIR="$REPO_ROOT/.data/deploy-backups/$BACKUP_NAME"
 python3 "$SCRIPT_DIR/backup-retention.py" create "$REPO_ROOT" --name "$BACKUP_NAME" --keep "$BACKUP_KEEP"
-# EXIT also covers explicit die, TERM and INT; SIGKILL leaves running protected.
+# EXIT also covers explicit die, TERM and INT; SIGKILL leaves running protected until a later successful update.
 on_exit() {
   local rc=$?
   trap - EXIT
