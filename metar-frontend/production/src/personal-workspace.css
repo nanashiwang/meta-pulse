@@ -6,3 +6,5 @@ html.metar-personal-content #main{padding-top:0!important;margin-top:0!important
 html.metar-personal-content .container{max-width:100%;padding-left:16px;padding-right:16px}
 html.metar-personal-content .settings-nav{flex:0 0 160px}
 @media(max-width:600px){html.metar-personal-content .settings-nav{flex:0 0 100%}}
+html.metar-personal-content .metar-award-badge-icon{font-size:96px}
+html.metar-personal-content .metar-award-badge-earned{position:absolute;top:1rem;right:1rem}

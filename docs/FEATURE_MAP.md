@@ -183,8 +183,8 @@ new-api 接收端与实际到账、生产普通账号流程、邮件与跨实例
 
 签到奖池政策升级：`checkin_reward_policy.go` 与 `meta-pulse-tool apply-checkin-reward-policy` 使用原规则发布事务，一次性切换至每券期望2.5闪；`deploy/update.sh` 在迁移后执行，后续升级保留管理员新规则。推荐预设同步；旧券期限与历史中奖结果不变。
 
-金色评选勋章目录：`/me/badges` 与 `/awards?view=honors` 共用 `award-honors.js` 的 `badges()`，固定展示编辑者/学者图形、条件、未获得或已获得次数；服务故障仅显示状态不可用，不伪造授奖。
+金色评选勋章目录：`/me/badges` 将评选作为 Answer 原生徽章网格的一组；`/awards?view=honors` 保留独立荣誉目录。共用 `award-honors.js` 的勋章数据模型，显示编辑者/学者的条件和获得状态，故障不伪造授奖。
 
-签到到账明细（2026-11-18）：`growth/store.go` 的 `Summary.checkin_receipt` 读取当天本人签到账本净经验，签到闪从独立服务器待发记录和Pulse结算状态投影，未绑定/绑定前为not_issued；`app.js` 的个人空间与Pulse签到入口展示实际明细，缺字段不猜金额。获取券区域移除期望值说明，签到赠券和抽奖规则保持。
+签到到账明细（2026-11-18）：`growth/store.go` 的 `Summary.checkin_receipt` 读取当天本人签到账本净经验，签到闪从独立服务器待发记录和Pulse结算状态投影，未绑定/绑定前为not_issued；`app.js` 的个人空间在签到和公开主页按钮下靠右展示 `3exp · 0.00⚡️` 形式的实际回执，结算状态保留在提示中；Pulse签到入口保留详细明细，金额缺失时不猜数。获取券区域移除期望值说明，签到赠券和抽奖规则保持。
 
 每日随机签到闪：Forum communitytickets/flash.go生成并提交固定分闪记录；checkin_flash.go复核保护绑定后签名交付，后台与页面复用同一记录。Pulse service/checkin_flash.go按用户/日幂等创建独立快照、checkin奖励、预算和原SettlementOutbox；只读状态返回原金额及pending/settled/blocked/reversed。客户端只发空签到对象，展示服务器回执；0.01～1.50等概率，不扣券，覆盖2026-11-18起缺记录签到。

@@ -43,11 +43,11 @@ test('in-flight clicks cannot duplicate posts; old responses cannot change a new
 });
 
 test('profile renders credited EXP and exact flash text from the check-in receipt',async()=>{
- const h=harness();await h.mount();await h.button.onclick();assert.match(h.status.textContent,/10 EXP/);assert.match(h.status.textContent,/0.00 闪（未发放）/);
+ const h=harness();await h.mount();await h.button.onclick();assert.equal(h.status.textContent,'10exp · 0.00⚡️');assert.match(h.status.title,/0.00 闪（未发放）/);
 });
 test('signed-in revisit and lost response recover the original actual receipt',async()=>{
- const h=harness();h.amount(0);h.receipt({day:'2026-11-18',experience:15,flash_amount:'0.00',flash_status:'not_issued'});await h.mount();assert.match(h.status.textContent,/15 EXP/);assert.equal(h.calls.filter(c=>c.options).length,0);
- const lost=harness();await lost.mount();lost.failPost(true);await lost.button.onclick();assert.match(lost.status.textContent,/10 EXP/);assert.equal(lost.calls.filter(c=>c.options).length,1);
+ const h=harness();h.amount(0);h.receipt({day:'2026-11-18',experience:15,flash_amount:'0.00',flash_status:'not_issued'});await h.mount();assert.equal(h.status.textContent,'15exp · 0.00⚡️');assert.equal(h.calls.filter(c=>c.options).length,0);
+ const lost=harness();await lost.mount();lost.failPost(true);await lost.button.onclick();assert.equal(lost.status.textContent,'10exp · 0.00⚡️');assert.equal(lost.calls.filter(c=>c.options).length,1);
 });
 test('missing or malformed receipts never invent zero or substitute future claim amounts',async()=>{
  for(const receipt of [null,{day:'2026-11-18',experience:-1,flash_amount:'0.00',flash_status:'not_issued'},{day:'2026-11-18',experience:10,flash_amount:'1e3',flash_status:'settled'},{day:'2026-11-18',experience:10,flash_amount:'2.50',flash_status:'not_issued'}]){
@@ -56,10 +56,15 @@ test('missing or malformed receipts never invent zero or substitute future claim
 });
 
 test('server-created cents are shown as pending then settled, without another POST or reroll',async()=>{
- const h=harness();h.receipt({day:'2026-11-18',experience:2,flash_amount:'0.30',flash_status:'pending'});await h.mount();await h.button.onclick();assert.match(h.status.textContent,/0.30 闪（发放中）/);assert.equal(h.timers.size,1);
- h.receipt({day:'2026-11-18',experience:2,flash_amount:'0.30',flash_status:'settled'});await h.tick();assert.match(h.status.textContent,/0.30 闪（已到账）/);assert.equal(h.calls.filter(c=>c.options).length,1);assert.equal(h.timers.size,0);
+ const h=harness();h.receipt({day:'2026-11-18',experience:2,flash_amount:'0.30',flash_status:'pending'});await h.mount();await h.button.onclick();assert.equal(h.status.textContent,'2exp · 0.30⚡️');assert.match(h.status.title,/0.30 闪（发放中）/);assert.equal(h.timers.size,1);
+ h.receipt({day:'2026-11-18',experience:2,flash_amount:'0.30',flash_status:'settled'});await h.tick();assert.equal(h.status.textContent,'2exp · 0.30⚡️');assert.match(h.status.title,/0.30 闪（已到账）/);assert.equal(h.calls.filter(c=>c.options).length,1);assert.equal(h.timers.size,0);
 });
 test('pending revisit queries status without a new check-in; blocked is not credited',async()=>{
  const h=harness();h.amount(0);h.receipt({day:'2026-11-18',experience:2,flash_amount:'0.01',flash_status:'pending'});await h.mount();assert.equal(h.timers.size,1);
- h.receipt({day:'2026-11-18',experience:2,flash_amount:'0.01',flash_status:'blocked'});await h.tick();assert.match(h.status.textContent,/0.01 闪（待处理）/);assert.equal(h.calls.filter(c=>c.options).length,0);assert.equal(h.timers.size,0);
+ h.receipt({day:'2026-11-18',experience:2,flash_amount:'0.01',flash_status:'blocked'});await h.tick();assert.equal(h.status.textContent,'2exp · 0.01⚡️');assert.match(h.status.title,/0.01 闪（待处理）/);assert.equal(h.calls.filter(c=>c.options).length,0);assert.equal(h.timers.size,0);
 });
+
+ test('preparing receipts use a dash instead of inventing a zero flash amount',async()=>{
+  const h=harness();h.amount(0);h.receipt({day:'2026-11-18',experience:3,flash_status:'preparing'});await h.mount();
+  assert.equal(h.status.textContent,'3exp · —⚡️');assert.match(h.status.title,/服务器生成/);
+ });

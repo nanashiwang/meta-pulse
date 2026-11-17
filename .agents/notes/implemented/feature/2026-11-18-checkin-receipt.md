@@ -12,7 +12,7 @@ Status: implemented
 
 ## Decision
 
-Summary返回可选checkin_receipt，按当前上海自然日从本人签到事件的账本净额投影experience；day用于标识回执。flash_amount为0.00且flash_status=not_issued，明确没有直接签到闪。已签到重访与丢响应恢复都读同一账本，不能按余额差、总经验、现有规则金额或抽奖记录猜金额。两个入口显示服务器回执；旧服务/读失败时显示明细暂不可用，不显示假零。
+Summary返回可选checkin_receipt，按当前上海自然日从本人签到事件的账本净额投影experience；day用于标识回执。flash_amount为0.00且flash_status=not_issued，明确没有直接签到闪。已签到重访与丢响应恢复都读同一账本，不能按余额差、总经验、现有规则金额或抽奖记录猜金额。两个入口显示服务器回执。个人空间在操作按钮下靠右显示紧凑回执 `3exp · 0.00⚡️`，包含实际金额和完整状态提示；Pulse 保留详细回执。旧服务或读取失败时不显示假零；金额正在生成时用 `—`。
 
 ## Alternatives considered
 

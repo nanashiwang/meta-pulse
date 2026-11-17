@@ -28,8 +28,8 @@
   try{return method==='PUT'&&new URL(value,origin).origin===origin&&new Set(['/answer/api/v1/user/info','/answer/api/v1/user/interface','/answer/api/v1/user/notification/config','/answer/api/v1/user/password']).has(new URL(value,origin).pathname);}catch(_){return false;}
  }
  class View{
-  constructor(root,{target,onRoute,onNavigate,onExit,onSaved,t,host=window}){
-   this.host=host;this.root=root;this.frame=root.querySelector('iframe');this.status=root.querySelector('[data-native-status]');this.options={target,onRoute,onNavigate,onExit,onSaved,t};this.cleanups=[];this.revision=0;this.savedRevision=0;this.path=target;this.disposed=false;
+  constructor(root,{target,onRoute,onNavigate,onExit,onSaved,onContent,t,host=window}){
+   this.host=host;this.root=root;this.frame=root.querySelector('iframe');this.status=root.querySelector('[data-native-status]');this.options={target,onRoute,onNavigate,onExit,onSaved,onContent,t};this.cleanups=[];this.revision=0;this.savedRevision=0;this.path=target;this.disposed=false;
    this.frame.addEventListener('load',()=>this.loaded());
    this.timer=host.setTimeout(()=>this.fail(),15000);
    this.before=e=>{if(this.dirty()){e.preventDefault();e.returnValue='';}};host.addEventListener('beforeunload',this.before);
@@ -73,6 +73,8 @@
     const next=new URL(anchor.href);const mapped=workspaceURL(next.href,self.host.location.origin);if(mapped){if(mapped.startsWith('/me/badges')){e.preventDefault();e.stopImmediatePropagation();if(self.confirmLeave())self.options.onNavigate(mapped);return;}if(next.pathname!==child.location.pathname){if(!self.confirmLeave()){e.preventDefault();e.stopImmediatePropagation();return;}approvedTarget=next.href;}return;}
     e.preventDefault();e.stopImmediatePropagation();if(self.confirmLeave())self.options.onExit(next.href);
    };doc.addEventListener('click',click,true);this.cleanups.push(()=>doc.removeEventListener('click',click,true));
+   const detachContent=this.options.onContent?.(doc,url);
+   if(detachContent)this.cleanups.push(detachContent);
    this.options.onRoute(workspaceURL(url.href,this.host.location.origin),true);
   }
   dispose(){this.disposed=true;this.clear();this.host.clearTimeout(this.timer);this.host.removeEventListener('beforeunload',this.before);}

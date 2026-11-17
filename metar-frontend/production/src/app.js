@@ -759,27 +759,18 @@
     if (currentUserState === 'unavailable') return identityUnavailable(title);
     if (!currentUser) return loginRequired(title, t('请先登录社区账号。'));
     if (!isActiveUser(currentUser)) return accountUnavailable(title);
-    const hasMedals = route().path === '/me/badges' && !route().query.get('badge');
-    if (hasMedals) {
-      try { await loadFeatureScript('award-honors','MetarAwardHonors'); } catch (_) { /* Keep native badges available if the honors module fails. */ }
-    }
-    const honors=hasMedals?'<section class="card card-pad mb16"><h2>'+t('评选金色勋章')+'</h2><div data-award-badges>'+(window.MetarAwardHonors ? window.MetarAwardHonors.badges(null) : '<p>'+t('编辑者：获得周度或月度优秀帖子奖。')+'</p><p>'+t('学者：获得周度或月度优秀回应奖。')+'</p><p>'+t('评选勋章暂时无法加载')+'</p>')+'</div>'+link('/awards?view=honors',t('头衔与评选勋章'),'textlink')+'</section>':'';
-    return pageTitle(title) + honors + '<section class="personal-native" data-personal-native><p data-native-status role="status">' + t('正在加载…') + '</p><iframe title="' + esc(title) + '" hidden></iframe><p class="prod-page-note"><a data-native-original class="textlink" target="_blank" rel="noopener">' + t('在独立页面打开') + '</a></p></section>' + footer();
+    return pageTitle(title) + '<section class="personal-native" data-personal-native><p data-native-status role="status">' + t('正在加载…') + '</p><iframe title="' + esc(title) + '" hidden></iframe><p class="prod-page-note"><a data-native-original class="textlink" target="_blank" rel="noopener">' + t('在独立页面打开') + '</a></p></section>' + footer();
   }
   async function mountPersonalNative() {
     const root = document.querySelector('[data-personal-native]');
     if (!root) return;
     const sequence = navigationSequence;
-    const medalBox=document.querySelector('[data-award-badges]');
-    if (medalBox && window.MetarAwardHonors) {
-      const user = currentUser?.id, identity = identitySequence;
-      const current = () => sequence === navigationSequence && identity === identitySequence && user === currentUser?.id && medalBox.isConnected;
-      answer.request('/metar/awards/honors').then(data => {
-        if (current()) medalBox.innerHTML = window.MetarAwardHonors.badges(data.badges);
-      }).catch(() => { if (current()) medalBox.innerHTML = window.MetarAwardHonors.badges(null, true); });
-    }
     try {
-      await loadFeatureScript('personal-workspace','MetarPersonalWorkspace');
+      const badgeList = route().path === '/me/badges' && !route().query.get('badge');
+      await Promise.all([
+        loadFeatureScript('personal-workspace','MetarPersonalWorkspace'),
+        badgeList ? loadFeatureScript('award-honors','MetarAwardHonors').catch(() => {}) : null,
+      ]);
       if (sequence !== navigationSequence || !root.isConnected) return;
       const target = window.MetarPersonalWorkspace.nativeTarget(route().path,route().query);
       if (!target) throw new Error('invalid personal route');
@@ -787,6 +778,12 @@
       personalNativeStep = history.state?.metarReturnV2?.step || 0;
       personalNativeView = new window.MetarPersonalWorkspace.View(root, {
         target, t,
+        onContent: badgeList ? (doc, url) => {
+          if (url.pathname !== '/badges' || !window.MetarAwardHonors) return;
+          const user = currentUser?.id, identity = identitySequence;
+          return window.MetarAwardHonors.mountBadgeGroup(doc, answer,
+            () => sequence === navigationSequence && identity === identitySequence && user === currentUser?.id && root.isConnected);
+        } : null,
         onRoute: (path, replace = false) => {
           if (sequence !== navigationSequence || path === location.pathname + location.search) return;
           const details = route().path === '/me/badges';
@@ -852,15 +849,16 @@
     const username = currentUser.username;
     const [profile, questions, experience] = await Promise.all([answer.getProfile(username), answer.listPersonalQuestions(username), isActiveUser(currentUser) ? growthView().then(view => view.compact()).catch(() => '') : Promise.resolve('')]);
     const list = Array.isArray(questions?.list) ? questions.list : [];
-    return `<div class="content-grid"><div class="stack"><section class="card prod-user-card"><div class="between wrap">${avatar(profile, 'large')}<div class="flex wrap profile-header-actions">${isActiveUser(currentUser) ? `<div class="profile-checkin" data-profile-checkin><button type="button" class="btn primary" disabled>${t("正在读取签到状态…")}</button><small class="muted" role="status" aria-live="polite"></small></div>` : ''}${external(profileHref(username), t("公开主页"), 'btn')}</div></div><h1 class="mt16">${esc(displayName(profile))}</h1><p class="muted mt8">@${esc(profile.username || username)}${profile.location ? ` · ${esc(profile.location)}` : ''}</p><p class="mt16">${esc(profile.bio || t("这位成员暂未填写个人简介。"))}</p><div class="profile-numbers"><div><strong>${number(questions?.count)}</strong><span>${t("发布问题")}</span></div><div><strong>${number(profile.answer_count)}</strong><span>${t("参与回答")}</span></div><div><strong>${number(profile.rank)}</strong><span>${t("社区声望")}</span></div></div>${currentUser.mail_status === 2 ? `<div class="prod-status error mt16">${I('shield')}<div><strong>${t("邮箱尚未激活")}</strong><p>${t("请先验证邮箱，或在登录页面重新发送激活邮件。")}</p></div></div>` : ''}</section><div data-profile-growth>${experience}</div><section class="card prod-feed"><div class="section-heading"><h2>${t("最近发布")}</h2><span class="muted">${t("发布记录")}</span></div>${list.length ? list.map((item) => questionRow({ ...item, user_info: profile })).join('') : empty(t("还没有发布问题"), t("从一个具体、可复现的问题开始。"), external(config.answerAskPath, t("发起问题"), 'btn primary'), 'chat')}</section></div><aside class="stack"><section class="card card-pad"><h3>${t("账号快捷入口")}</h3><ul class="mini-list"><li>${link('/me/bookmarks', `<span>${t("我的收藏")}</span>`)}</li><li>${external('/users/notifications/inbox', `<span>${t("通知中心")}</span>`)}</li><li>${link('/settings/binding', `<span>${t("元衡账号绑定")}</span><small>${t("可选")}</small>`)}</li><li>${link('/pulse', `<span>${t("Pulse 权益")}</span><small>${t("绑定后")}</small>`)}</li><li>${external('/users/logout', `<span>${t("退出登录")}</span>`)}</li></ul></section></aside></div>${footer()}`;
+    return `<div class="content-grid"><div class="stack"><section class="card prod-user-card"><div class="between wrap">${avatar(profile, 'large')}<div class="profile-header-actions"${isActiveUser(currentUser) ? ' data-profile-checkin' : ''}>${isActiveUser(currentUser) ? `<button type="button" class="btn primary" disabled>${t("正在读取签到状态…")}</button>` : ''}${external(profileHref(username), t("公开主页"), 'btn')}${isActiveUser(currentUser) ? '<small class="profile-checkin-status muted" role="status"></small>' : ''}</div></div><h1 class="mt16">${esc(displayName(profile))}</h1><p class="muted mt8">@${esc(profile.username || username)}${profile.location ? ` · ${esc(profile.location)}` : ''}</p><p class="mt16">${esc(profile.bio || t("这位成员暂未填写个人简介。"))}</p><div class="profile-numbers"><div><strong>${number(questions?.count)}</strong><span>${t("发布问题")}</span></div><div><strong>${number(profile.answer_count)}</strong><span>${t("参与回答")}</span></div><div><strong>${number(profile.rank)}</strong><span>${t("社区声望")}</span></div></div>${currentUser.mail_status === 2 ? `<div class="prod-status error mt16">${I('shield')}<div><strong>${t("邮箱尚未激活")}</strong><p>${t("请先验证邮箱，或在登录页面重新发送激活邮件。")}</p></div></div>` : ''}</section><div data-profile-growth>${experience}</div><section class="card prod-feed"><div class="section-heading"><h2>${t("最近发布")}</h2><span class="muted">${t("发布记录")}</span></div>${list.length ? list.map((item) => questionRow({ ...item, user_info: profile })).join('') : empty(t("还没有发布问题"), t("从一个具体、可复现的问题开始。"), external(config.answerAskPath, t("发起问题"), 'btn primary'), 'chat')}</section></div><aside class="stack"><section class="card card-pad"><h3>${t("账号快捷入口")}</h3><ul class="mini-list"><li>${link('/me/bookmarks', `<span>${t("我的收藏")}</span>`)}</li><li>${external('/users/notifications/inbox', `<span>${t("通知中心")}</span>`)}</li><li>${link('/settings/binding', `<span>${t("元衡账号绑定")}</span><small>${t("可选")}</small>`)}</li><li>${link('/pulse', `<span>${t("Pulse 权益")}</span><small>${t("绑定后")}</small>`)}</li><li>${external('/users/logout', `<span>${t("退出登录")}</span>`)}</li></ul></section></aside></div>${footer()}`;
   }
 
-  function checkinReceiptText(summary) {
+  function checkinReceiptText(summary, compact = false) {
     const r = summary?.checkin_receipt;
-    if (r && r.flash_status === 'preparing' && Number.isSafeInteger(r.experience) && r.experience >= 0) return t('今日签到：{experience} EXP 已到账，闪奖励金额正在由服务器生成。',{experience:String(r.experience)});
+    if (r && r.flash_status === 'preparing' && Number.isSafeInteger(r.experience) && r.experience >= 0) return compact ? `${r.experience}exp · —⚡️` : t('今日签到：{experience} EXP 已到账，闪奖励金额正在由服务器生成。',{experience:String(r.experience)});
     if (!r || !/^\d{4}-\d{2}-\d{2}$/.test(r.day) || !Number.isSafeInteger(r.experience) || r.experience < 0 || !/^(0|[1-9]\d{0,11})\.\d{2}$/.test(r.flash_amount)) return '';
     const labels = {not_issued:t('未发放'), settled:t('已到账'), pending:t('发放中'), blocked:t('待处理'), reversed:t('已撤销'), unavailable:t('到账状态暂不可用')};
     if (!Object.hasOwn(labels,r.flash_status) || (r.flash_status === 'not_issued' && r.flash_amount !== '0.00')) return '';
+    if (compact) return `${r.experience}exp · ${r.flash_amount}⚡️`;
     return t('今日签到奖励：{experience} EXP 已到账 · {flash} 闪（{state}）', {experience:String(r.experience),flash:r.flash_amount,state:labels[r.flash_status]});
   }
 
@@ -871,7 +869,16 @@
     const button = root.querySelector('button'), status = root.querySelector('[role="status"]');
     const user = currentUser?.id, sequence = navigationSequence, identity = identitySequence;
     const current = () => root.isConnected && user === currentUser?.id && identity === identitySequence && sequence === navigationSequence;
-    let busy = false, known = false, confirmed = false, receiptText = '', flashPending = false, attempts = 0, timer;
+    let busy = false, known = false, confirmed = false, receipt, flashPending = false, attempts = 0, timer;
+    const rememberReceipt = summary => {
+      receipt = summary;
+      flashPending = ['preparing','pending','unavailable'].includes(summary?.checkin_receipt?.flash_status);
+    };
+    const showStatus = (message = '') => {
+      const detail = confirmed && checkinReceiptText(receipt);
+      status.textContent = detail ? checkinReceiptText(receipt, true) : message;
+      status.title = detail || '';
+    };
     const schedule = () => {
       clearTimeout(timer);
       if (!current() || !flashPending || attempts >= 12) return;
@@ -892,9 +899,8 @@
       if (!current()) return;
       known = true;
       confirmed = summary.checkin_amount === 0;
-      receiptText = checkinReceiptText(summary);
-      flashPending = ['preparing','pending','unavailable'].includes(summary?.checkin_receipt?.flash_status);
-      if (confirmed) status.textContent = receiptText || t('今日已签到，到账明细暂不可用。');
+      rememberReceipt(summary);
+      if (confirmed) showStatus(t('今日已签到，到账明细暂不可用。'));
     };
     const updateGrowth = async () => {
       try {
@@ -907,24 +913,24 @@
     };
     button.onclick = async () => {
       if (busy || confirmed || !current()) return;
-      busy = true; show(); status.textContent = '';
+      busy = true; show(); showStatus();
       try {
         await read();
         if (!current()) return;
         if (!confirmed) {
           const summary = await answer.request('/metar/experience/checkin', {method:'POST', headers:{'Content-Type':'application/json','X-Metar-Request':'1'}, body:'{}'});
-          if (current()) { receiptText = checkinReceiptText(summary); flashPending = ['preparing','pending','unavailable'].includes(summary?.checkin_receipt?.flash_status); }
           if (!current()) return;
+          rememberReceipt(summary);
           confirmed = true;
         }
-        status.textContent = receiptText || t('今日已签到，到账明细暂不可用。');
+        showStatus(t('今日已签到，到账明细暂不可用。'));
         await updateGrowth();
       } catch (_) {
         // A lost response may already have committed the daily check-in.
         known = false;
         try { await read(); } catch (_) { /* Keep the retry entry available. */ }
         if (!current()) return;
-        status.textContent = confirmed ? receiptText || t('今日已签到，到账明细暂不可用。') : t('签到未确认，请点击重试签到。');
+        showStatus(t(confirmed ? '今日已签到，到账明细暂不可用。' : '签到未确认，请点击重试签到。'));
         if (confirmed) await updateGrowth();
       } finally {
         busy = false;
@@ -933,7 +939,7 @@
     };
     busy = true;
     try { await read(); }
-    catch (_) { if (current()) status.textContent = t('签到状态暂不可用，请点击重试签到。'); }
+    catch (_) { if (current()) showStatus(t('签到状态暂不可用，请点击重试签到。')); }
     finally { busy = false; if (current()) { show(); schedule(); } }
   }
 

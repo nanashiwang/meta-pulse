@@ -48,10 +48,11 @@
       "内容不可见、采纳已取消或候选已失效，请刷新。",
       "Content or eligibility is no longer available.",
     ],
-    invalid_request: [
-      "请填写审核理由，并核对两个审核条件。",
-      "Provide a reason and confirm both review criteria.",
-    ],
+    invalid_request: ["操作信息有误，请检查后重试。", "Check the operation details and try again."],
+    reason_required: ["请先填写审核理由。", "Enter a review reason first."],
+    criteria_required: ["入选或保留奖项前，请确认两项审核条件。", "Confirm both criteria before selecting or retaining the award."],
+    saved_refresh_failed: ["操作已保存，但名单刷新失败。请刷新页面查看结果。", "Saved, but the list could not reload. Refresh to see the result."],
+    pending: ["还有一次操作未确认，请先重试原操作。", "Retry the previous unconfirmed operation first."],
   };
   class View {
     constructor(api, admin) {
@@ -102,8 +103,12 @@
         new URLSearchParams({ ...this.period, ...patch, page: String(page) })
       );
     }
+    reviewOpen() {
+      return this.data.status === "open" && Date.now() >= this.data.review_at * 1000;
+    }
     html() {
       const d = this.data,
+        reviewOpen = this.reviewOpen(),
         criteria =
           this.period.kind === "post"
             ? [
@@ -199,15 +204,17 @@
           }),
         ) +
         " (UTC+8)" +
-        `</p>
- ` +
+        `</p>` +
+        (this.admin && d.status === "open" && !reviewOpen
+          ? '<p class="muted mt8">' + t("本期审核尚未开放。到上述时间后，刷新页面即可审核。", "Review has not opened. Refresh after the time shown above.") + '</p>'
+          : '') +
         (this.admin
           ? `<div class="flex wrap"><button class="btn" data-award="sync" ` +
             (d.status === "published" ? "disabled" : "") +
             `>` +
             t("同步候选", "Sync nominees") +
             `</button><button class="btn primary" data-award="publish" ` +
-            (d.status === "published" ? "disabled" : "") +
+            (!reviewOpen ? "disabled" : "") +
             `>` +
             t("公布本期名单", "Publish selection") +
             `</button><button class="btn" data-award="audit">` +
@@ -305,12 +312,13 @@
                         `">` +
                         esc(c.reason) +
                         `</textarea><div class="flex mt8"><button class="btn primary" data-award="select" ` +
-                        (!c.eligible ? "disabled" : "") +
+                        (!reviewOpen || !c.eligible ? "disabled" : "") +
                         `>` +
                         t("入选", "Select") +
-                        `</button><button class="btn" data-award="reject">` +
-                        t("不入选", "Reject") +
-                        `</button></div>`
+                        `</button><button type="button" class="btn" data-award="reject" ` +
+                        (!reviewOpen ? "disabled" : "") +
+                        `>` + t("不入选", "Reject") + `</button></div>` +
+                        (!reviewOpen ? '<p class="muted mt8">' + t("尚未到审核时间", "Review not open yet") + '</p>' : "")
                       : ["awarded", "review_required"].includes(c.status)
                         ? `<textarea data-reason maxlength="2000" placeholder="` +
                           t(
@@ -341,6 +349,7 @@
                             : "")
                         : ""
                     : "") +
+                  (this.admin ? '<p class="award-review-feedback" data-award-feedback role="status"></p>' : "") +
                   `</article>`,
               )
               .join("")
@@ -373,8 +382,10 @@
       );
     }
     mount(node) {
-      this.root = node;
       const form = node.querySelector("[data-award-period]");
+      if (!form) return;
+      this.root = node;
+      const gen = this.generation;
       form.onsubmit = (e) => {
         e.preventDefault();
         const data = new FormData(form);
@@ -401,26 +412,40 @@
       node
         .querySelectorAll("[data-award]")
         .forEach(
-          (b) => (b.onclick = () => this.action(b).catch((e) => this.error(e))),
+          (b) => (b.onclick = () => this.action(b).catch((e) => {
+            if (gen === this.generation && node === this.root) this.error(e, b);
+          })),
         );
     }
-    error(e) {
-      if (!this.root) return;
+    feedbackTarget(button) {
+      return button?.closest("[data-candidate]")?.querySelector("[data-award-feedback]") || this.root?.querySelector("[data-award-error]");
+    }
+    error(e, button) {
+      const target = this.feedbackTarget(button);
+      if (!target) return;
       const code = e?.details?.error || e.message;
-      this.root.querySelector("[data-award-error]").textContent = errors[code]
+      target.classList.remove("green");
+      target.classList.add("danger");
+      target.textContent = Object.hasOwn(errors, code)
         ? t(...errors[code])
         : t(
             "操作未确认，请重试原请求或刷新。",
             "Operation unconfirmed. Retry the original request or refresh.",
           );
       if (this.pending && !this.root.querySelector('[data-award="retry"]')) {
-        const b = document.createElement("button");
+        const b = target.ownerDocument.createElement("button");
+        b.type = "button";
         b.className = "btn";
         b.textContent = t("重试原操作", "Retry original");
         b.dataset.award = "retry";
-        b.onclick = () =>
-          this.command(this.pending.command).catch((e) => this.error(e));
-        this.root.querySelector("[data-award-error]").append(b);
+        const gen = this.generation;
+        b.onclick = () => {
+          if (!this.pending) return;
+          this.command(this.pending.command).catch((e) => {
+            if (gen === this.generation) this.error(e, button);
+          });
+        };
+        target.append(b);
       }
     }
     async action(b) {
@@ -457,6 +482,9 @@
           "</section>";
         return;
       }
+      if (["select", "reject", "publish"].includes(op) && !this.reviewOpen()) {
+        throw Error("review_not_ready");
+      }
       if (
         op === "publish" &&
         !root.confirm(
@@ -471,12 +499,20 @@
       const cmd = { op, period: this.period, version: this.data.version };
       if (item) {
         cmd.subject_id = item.dataset.candidate;
-        cmd.reason = item.querySelector("[data-reason]").value.trim();
+        const reason = item.querySelector("[data-reason]");
+        cmd.reason = reason.value.trim();
         cmd.criterion_one = !!item.querySelector('[data-criterion="one"]')
           ?.checked;
         cmd.criterion_two = !!item.querySelector('[data-criterion="two"]')
           ?.checked;
-        if (!cmd.reason) throw Error("invalid_request");
+        if (!cmd.reason) {
+          reason.focus();
+          throw Error("reason_required");
+        }
+        if (["select", "reconfirm"].includes(op) && (!cmd.criterion_one || !cmd.criterion_two)) {
+          item.querySelector('[data-criterion="' + (!cmd.criterion_one ? 'one' : 'two') + '"]')?.focus();
+          throw Error("criteria_required");
+        }
       }
       if (
         op === "revoke" &&
@@ -493,7 +529,11 @@
         !root.confirm("请确认已经完成手动发放。此操作只登记记录，不会转账。")
       )
         return;
-      await this.command(cmd);
+      const feedback = this.feedbackTarget(b);
+      if (feedback) feedback.textContent = "";
+      b.disabled = true;
+      try { await this.command(cmd); }
+      finally { b.disabled = false; }
     }
     async command(command) {
       if (this.busy) return;
@@ -527,9 +567,18 @@
           this.data = fresh;
           this.root.innerHTML = this.html();
           this.mount(this.root);
+          if (command.op === "reject" || command.op === "select") {
+            const candidate = [...this.root.querySelectorAll("[data-candidate]")].find(row => row.dataset.candidate === command.subject_id);
+            const target = candidate?.querySelector("[data-award-feedback]") || this.feedbackTarget();
+            if (target) {
+              target.classList.add("green");
+              target.textContent = command.op === "reject" ? t("已保存为不入选。", "Rejection saved.") : t("已保存为入选。", "Selection saved.");
+            }
+          }
         }
       } catch (e) {
-        if (!confirmed && e?.status >= 400 && e.status < 500) {
+        if (confirmed) throw Error("saved_refresh_failed");
+        if (e?.status >= 400 && e.status < 500) {
           this.pending = null;
           root.sessionStorage.removeItem(this.pendingKey);
         }

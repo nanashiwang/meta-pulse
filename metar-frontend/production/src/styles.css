@@ -756,12 +756,11 @@ html.community-wide:not(.preview-tools) .page{padding-bottom:calc(var(--communit
 .award-medal{display:inline-block;margin:8px;padding:10px 14px;color:#76540c;background:#fff1bb;border:1px solid #e4bc55;border-radius:8px}
 
 /* Personal-space check-in sits beside the public-profile action. */
-.profile-header-actions { align-items: flex-start; justify-content: flex-end; }
-.profile-checkin { display: flex; flex-direction: column; gap: 6px; max-width: 240px; }
-.profile-checkin [role="status"]:empty { display: none; }
-.profile-checkin [role="status"] { font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
-.profile-checkin .btn { align-self: flex-end; white-space: nowrap; }
-@media (max-width: 480px) { .profile-checkin { max-width: 150px; } }
+.profile-header-actions { display: grid; grid-template-columns: repeat(2, auto); align-items: start; justify-content: end; gap: 4px 10px; max-width: 100%; }
+.profile-header-actions:not([data-profile-checkin]) { grid-template-columns: auto; }
+.profile-checkin-status { grid-column: 1 / -1; justify-self: end; text-align: right; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.profile-checkin-status:empty { display: none; }
+@media(max-width:480px) { .profile-header-actions { column-gap: 6px; } .profile-header-actions .btn { padding-inline: 8px; white-space: normal; } }
 
 .award-medal-catalog { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin:12px 0; }
 .award-medal-card { display:flex; align-items:center; gap:14px; padding:16px; border:1px solid #bc913c; border-radius:10px; background:color-mix(in srgb,#d6a32c 8%,var(--surface)); min-width:0; }
@@ -773,3 +772,6 @@ html.community-wide:not(.preview-tools) .page{padding-bottom:calc(var(--communit
 .award-medal-card.is-earned { border-color:#b98118; background:color-mix(in srgb,#d6a32c 15%,var(--surface)); }
 [data-theme="dark"] .award-medal-tier { color:#edc466; }
 @media(max-width:600px) { .award-medal-catalog { grid-template-columns:1fr; } }
+
+.award-review-feedback:not(:empty){margin-top:8px;font-size:13px}
+.award-review-feedback .btn{margin-inline-start:8px}
