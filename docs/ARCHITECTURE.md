@@ -1413,3 +1413,9 @@ Answer仍为账号、帖子与可见性事实源；UserCenter插件在论坛库�
 
 帖子先由Answer原生接口保存，客户端得到ID后创建附属投票，两步不承诺原子性；失败保留账号隔离恢复记录、同键重试，不重复创建帖子。创建仅作者，参与仅活跃且邮箱验证会话；公开读和写入均重查帖子状态，隐藏/删除/待审不公开。原生Ask补丁与前端插件必须配套部署，数据库表随论坛备份。
 元衡浏览器登录主域为 `https://meta-api.com`。Connector、品牌与控制台入口将已保存的 HTTPS 元衡旧根地址 `meta-api.vip`、`cn.meta-api.vip`、`nan.meta-api.vip` 精确映射到该主域，自定义地址保持原值。登录仍先经过同源 `/api/forum/sso/bootstrap`，只有主域有效会话可以复用；不跨域搬运 Cookie，不改变签名回调、一对一绑定或 Answer 本地登录。需部署新版 forum 生效。
+
+### 受阻结算的产品投影（2026-11-17）
+
+历史与原 Action 查询批量读取 Outbox 状态：额度 Grant 为 pending 且 Outbox 为 dead/conflict 时，只在用户安全投影返回 settlement_dead（发放受阻，待处理）。数据库 Grant 保持 pending，原编号恢复、Query/Reconcile 与预算状态机不变；已到账/撤销和经验奖励不受此映射影响。
+
+社区 `/admin/pulse` 通过 Answer 实时管理员权限与独立 admin HMAC 读取既有运营概览，仅返回观测时间、受阻及重试数量。缺失/失败快照显示不可用，不视为零异常；不暴露错误原文、私有规则、用户或签名字段。告警为管理页访问时显示，既有监控指标保留，不代表新增邮件或站内信通知。

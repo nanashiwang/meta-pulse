@@ -415,6 +415,11 @@
       if (!Number.isSafeInteger(value.period_id) || value.period_id <= 0 || value.period_key !== body.key || value.status !== 'active') throw new AdapterError('invalid period result', {code:'settings_pending'});
       return value;
     }
+    async settlementHealth() {
+      const value = await this.request('settlement-health');
+      if (!Number.isSafeInteger(value.blocked_count) || value.blocked_count < 0 || !Number.isSafeInteger(value.retry_count) || value.retry_count < 0 || typeof value.observed_at !== 'string' || !Number.isFinite(Date.parse(value.observed_at))) throw new AdapterError('invalid settlement health', {code:'invalid_response'});
+      return {blocked_count:value.blocked_count, retry_count:value.retry_count, observed_at:value.observed_at};
+    }
     async settings() { return this.validateSettings(await this.request('settings')); }
     validateSettings(value) {
       if (!Number.isSafeInteger(value?.revision) || value.revision < 0 || typeof value.config?.newapi_internal_base_url !== 'string' || !/^(0|[1-9][0-9]*)$/.test(value.config?.quota_per_unit) || typeof value.config?.actions_enabled !== 'boolean' || typeof value.config?.reward_shadow_mode !== 'boolean' || !value.secrets || typeof value.secrets !== 'object') {

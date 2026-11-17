@@ -34,6 +34,8 @@ func (b RewardBudget) CanReserve(amount int64) bool {
 }
 
 type RewardGrant struct {
+	// SettlementStatus is read-only context for product history; never a grant state.
+	SettlementStatus   string
 	ID                 uint64
 	GrantID            string
 	PeriodID           uint64

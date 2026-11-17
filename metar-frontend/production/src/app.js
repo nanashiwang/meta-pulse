@@ -82,7 +82,7 @@
   let pulseCoreReady = false;
   let pulseRefreshing = false;
   let pulseStatusTimer = 0, pulseStatusAttempts = 0, pulseStatusEpoch = 0, pulseHasPendingRewards = false;
-  const pulseRewardStates = { pending: '发放中', settling: '发放中', settled: '已到账', reversed: '已撤销', failed: '等待处理', settlement_dead: '等待处理' };
+  const pulseRewardStates = { pending: '发放中', settling: '发放中', settled: '已到账', reversed: '已撤销', failed: '等待处理', settlement_dead: '发放受阻，待处理' };
   const pulseRewardPending = reward => ['pending', 'settling'].includes(reward?.status);
   const knowledge = new KnowledgeAdapter(config);
   const app = document.getElementById('app');

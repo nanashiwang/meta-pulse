@@ -308,7 +308,7 @@ test('Pulse 记录入口、状态与失败提示完整翻译，奖励编号安�
   assert.match(view.html(), /<dialog[^>]*data-pulse-history[^>]*aria-labelledby="pulse-history-title">/);
   assert.doesNotMatch(view.html(), /Current prize pool and rules|Probability \d|Credit chance:/);
   assert.match(view.html(), /Credited/);
-  assert.match(view.html(), /Awaiting processing/);
+  assert.match(view.html(), /Delivery blocked, awaiting review/);
   await view.changeLanguage('zh_CN');
   assert.match(view.html(), /可用脉冲券：2/);
   assert.match(view.html(), /奖励记录/);

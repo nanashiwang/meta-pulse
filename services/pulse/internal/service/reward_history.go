@@ -64,7 +64,7 @@ func (s *RewardHistoryService) List(ctx context.Context, userID uint64, limit in
 		if strings.TrimSpace(grant.GrantID) == "" || grant.UserID != userID {
 			return nil, errors.New("reward history contains invalid grant")
 		}
-		result = append(result, RewardHistoryItem{GrantID: grant.GrantID, PeriodID: grant.PeriodID, ActionID: grant.ActionID, RewardType: grant.RewardType, Amount: grant.Amount, Status: grant.Status, CreatedAt: grant.CreatedAt})
+		result = append(result, RewardHistoryItem{GrantID: grant.GrantID, PeriodID: grant.PeriodID, ActionID: grant.ActionID, RewardType: grant.RewardType, Amount: grant.Amount, Status: rewardHistoryStatus(grant), CreatedAt: grant.CreatedAt})
 	}
 	return result, nil
 }
@@ -90,9 +90,17 @@ func (s *RewardHistoryService) FindAction(ctx context.Context, userID uint64, ac
 			if g.UserID != userID || g.ActionID != actionID {
 				return ports.ErrConflict
 			}
-			result = append(result, RewardHistoryItem{GrantID: g.GrantID, PeriodID: g.PeriodID, ActionID: g.ActionID, RewardType: g.RewardType, Amount: g.Amount, Status: g.Status, CreatedAt: g.CreatedAt})
+			result = append(result, RewardHistoryItem{GrantID: g.GrantID, PeriodID: g.PeriodID, ActionID: g.ActionID, RewardType: g.RewardType, Amount: g.Amount, Status: rewardHistoryStatus(g), CreatedAt: g.CreatedAt})
 		}
 		return nil
 	})
 	return result, err
+}
+
+// Keep recoverable pending grants intact; only the user-facing projection changes.
+func rewardHistoryStatus(g ports.RewardGrant) string {
+	if g.Status == RewardStatusPending && g.RewardType == "newapi_quota" && (g.SettlementStatus == OutboxStatusDead || g.SettlementStatus == OutboxStatusConflict) {
+		return GrantStatusDead
+	}
+	return g.Status
 }

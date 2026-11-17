@@ -36,13 +36,21 @@
       if (this.periods) this.periods.quotaPerUnit = Number(this.snapshot.config.quota_per_unit);
       const periodsHTML = this.periods ? await this.periods.page() : '';
       if (epoch !== this.epoch) return '';
+      let healthHTML;
+      try {
+        const health = await this.api.settlementHealth();
+        healthHTML = `<section class="prod-status ${health.blocked_count ? 'error' : ''} mt24" role="${health.blocked_count ? 'alert' : 'status'}"><div><strong>${esc(t(health.blocked_count ? '有 {count} 笔奖励发放受阻，待处理' : '暂无发放受阻奖励', {count:health.blocked_count}))}</strong><p>${esc(t('自动重试中：{count} 笔', {count:health.retry_count}))}</p>${health.blocked_count ? `<p>${esc(t('请核对接收端限额与原奖励单，确认到账状态后恢复。'))}</p>` : ''}</div></section>`;
+      } catch (_) {
+        healthHTML = `<section class="prod-status error mt24" role="status"><p>${esc(t('暂时无法读取奖励发放状态，请重新加载核对。'))}</p></section>`;
+      }
+      if (epoch !== this.epoch) return '';
       const data = this.snapshot;
       const keyField = ([key, label, description], previous = false) => {
         const name = previous ? `${key}_PREVIOUS` : key;
         const state = data.secrets[name];
         return `<div class="prod-secret-field"><div class="between wrap"><label for="${name}">${esc(t(label))}${previous ? ` · ${t('上一密钥')}` : ''}</label><span class="badge ${state.configured ? 'green' : ''}" data-secret-status="${name}">${t(state.configured ? '已配置' : '未配置')}</span></div><p class="prod-field-help">${esc(t(description))}</p><code class="prod-field-code">${name}</code><div class="prod-secret-input"><input id="${name}" name="${name}" type="password" autocomplete="new-password" spellcheck="false" autocapitalize="off" maxlength="512" placeholder="${t('留空保留现有密钥')}" aria-label="${esc(t(label))}${previous ? ` · ${t('上一密钥')}` : ''}"><button type="button" class="btn small" data-action="admin-secret-show" data-key="${name}">${t('显示输入')}</button><button type="button" class="btn small" data-action="admin-secret-copy" data-key="${name}">${t('复制输入')}</button>${previous ? '' : `<button type="button" class="btn small" data-action="admin-secret-generate" data-key="${name}">${t('生成新密钥')}</button>`}</div>${previous ? `<label class="prod-check"><input type="checkbox" name="clear_${name}"> ${t('清除上一密钥')}</label>` : ''}</div>`;
       };
-      return `${periodsHTML}<div class="prod-status mt24"><div><strong>${t('配置保存在服务端')}</strong><p>${t('已有密钥不会回显，留空保留。新密钥仅在本页输入区显示。首次配对时两端填写相同值；已有密钥轮换请按下方顺序操作。')}</p></div></div>
+      return `${healthHTML}${periodsHTML}<div class="prod-status mt24"><div><strong>${t('配置保存在服务端')}</strong><p>${t('已有密钥不会回显，留空保留。新密钥仅在本页输入区显示。首次配对时两端填写相同值；已有密钥轮换请按下方顺序操作。')}</p></div></div>
       <form data-form="admin-pulse" class="prod-admin-form" autocomplete="off">
         <fieldset><section class="card card-pad mt24"><h2>${t('连接与运行')}</h2><p class="muted mt8">${t('运行环境沿用服务器部署配置。')}</p><div class="prod-admin-grid mt24">
           <div class="prod-admin-field"><label for="newapi_internal_base_url">${t('new-api 私网地址')}</label><input id="newapi_internal_base_url" name="newapi_internal_base_url" type="url" required maxlength="2048" ${data.newapi_target_locked ? 'readonly aria-readonly="true"' : ''} value="${esc(data.config.newapi_internal_base_url)}" placeholder="http://new-api-private:3000"><p class="prod-field-help">${t('填写 Pulse 可访问的 HTTP(S) 根地址，不含用户名、密码、路径、查询参数。')}</p><p class="prod-field-help">${t(data.newapi_target_locked ? '结算目标已锁定，迁址需维护窗口处理。' : '已有奖励记录后不能切换 new-api 资金来源；迁移需单独审计处理。')}</p></div>

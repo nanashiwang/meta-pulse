@@ -175,3 +175,16 @@ test('冲突重新读取后目标已锁定时同步权威地址，其他输入�
   assert.equal(payload.revision, 7);
   assert.equal(payload.config.newapi_internal_base_url, 'http://locked-target:3000');
 });
+
+test('settlement alert distinguishes blocked, healthy and unavailable without exposing upstream extras', async () => {
+  const h = harness();
+  h.context.MetarI18n.setLanguage('en_US');
+  for (const blocked of [2,0,null]) {
+    h.context.fetch = async (url) => response(url.endsWith('/settlement-health') ? (blocked === null ? {} : {blocked_count:blocked,retry_count:1,observed_at:'2026-11-17T00:00:00Z',private:'DO_NOT_DISPLAY'}) : h.snapshot());
+    const html = await h.view.page();
+    assert.doesNotMatch(html,/DO_NOT_DISPLAY/);
+    if (blocked===2) assert.match(html,/2 reward deliveries blocked/);
+    else if (blocked===0) assert.match(html,/No blocked reward deliveries/);
+    else { assert.match(html,/status is unavailable/); assert.doesNotMatch(html,/No blocked reward deliveries/); }
+  }
+});

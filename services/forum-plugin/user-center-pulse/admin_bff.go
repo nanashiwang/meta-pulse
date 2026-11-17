@@ -37,6 +37,7 @@ func (uc *UserCenter) registerAdminSettingsRoutes(r *gin.RouterGroup, session fu
 	r.GET("/metar/pulse/settings", uc.adminSettingsHandler("settings", session, siteURL))
 	r.PUT("/metar/pulse/settings", uc.adminSettingsHandler("settings", session, siteURL))
 	r.POST("/metar/pulse/secret", uc.adminSettingsHandler("secret", session, siteURL))
+	r.GET("/metar/pulse/settlement-health", uc.adminSettingsHandler("settlement-health", session, siteURL))
 	r.GET("/metar/pulse/winners", uc.adminRewardFeedHandler(session))
 }
 
@@ -106,7 +107,9 @@ func (uc *UserCenter) adminSettingsHandler(operation string, session func(*gin.C
 			return
 		}
 		var result any
-		if operation == "periods" {
+		if operation == "settlement-health" {
+			result, err = adminSettlementHealthProjection(data)
+		} else if operation == "periods" {
 			result, err = adminPeriodsProjection(c.Request.Method, data)
 		} else {
 			result, err = adminSettingsProjection(operation, data)

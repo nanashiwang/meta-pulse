@@ -183,7 +183,7 @@ func (r *rewardRepository) ListGrantsForUser(ctx context.Context, userID uint64,
 	for i := range models {
 		result[i] = rewardGrantFromModel(models[i])
 	}
-	return result, nil
+	return result, r.loadHistorySettlementStatuses(ctx, result)
 }
 
 // New requests are serialized by the stable action identity. These fallback
@@ -200,7 +200,35 @@ func (r *rewardRepository) ListPulseGrantsByAction(ctx context.Context, userID u
 	for _, model := range models {
 		grants = append(grants, rewardGrantFromModel(model))
 	}
-	return grants, nil
+	return grants, r.loadHistorySettlementStatuses(ctx, grants)
+}
+
+// Batch the bounded history lookup without changing persisted Grant states.
+func (r *rewardRepository) loadHistorySettlementStatuses(ctx context.Context, grants []ports.RewardGrant) error {
+	ids := make([]uint64, 0, len(grants))
+	for _, g := range grants {
+		if g.Status == "pending" && g.RewardType == "newapi_quota" {
+			ids = append(ids, g.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	var rows []struct {
+		RewardGrantID uint64
+		Status        string
+	}
+	if err := r.db.WithContext(ctx).Table("pulse_settlement_outbox").Select("reward_grant_id, status").Where("reward_grant_id IN ?", ids).Find(&rows).Error; err != nil {
+		return fmt.Errorf("read history settlement states: %w", err)
+	}
+	states := make(map[uint64]string, len(rows))
+	for _, row := range rows {
+		states[row.RewardGrantID] = row.Status
+	}
+	for i := range grants {
+		grants[i].SettlementStatus = states[grants[i].ID]
+	}
+	return nil
 }
 
 func (r *rewardRepository) FindGrantByAction(ctx context.Context, periodID, userID uint64, actionID string) (*ports.RewardGrant, error) {
