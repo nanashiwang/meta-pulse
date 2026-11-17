@@ -211,8 +211,9 @@ cmp "$tmp/original.env" "$tmp/repo/.env"
 awk '
  / stop -t 15 pulse-api$/{stopped=1}
  / migrate-up$/{if(!stopped) exit 1; migrated=1}
- / up -d pulse-api/{if(!migrated) exit 1; started=1}
- END {if(!stopped || !migrated || !started) exit 1}
+ / apply-checkin-reward-policy$/{if(!migrated) exit 1; policy=1}
+ / up -d pulse-api/{if(!policy) exit 1; started=1}
+ END {if(!stopped || !migrated || !policy || !started) exit 1}
 ' "$MOCK_LOG"
 grep -q 'run --rm --no-deps --entrypoint nginx gateway -t' "$MOCK_LOG"
 grep -q 'up -d gateway' "$MOCK_LOG"
@@ -335,7 +336,7 @@ p = pathlib.Path(sys.argv[1])
 (p / '.update-state.json').write_text(json.dumps({'schema': 1, 'name': sys.argv[2], 'status': 'success'}))
 (p / 'pulse.sql').write_text('rollback fixture')
 STATE
-for stage in 'mysqldump' ' build ' 'migrate-up' health 'nginx -t'; do
+for stage in 'mysqldump' ' build ' 'migrate-up' 'apply-checkin-reward-policy' health 'nginx -t'; do
   # Match actual Docker argv without relying on a mock timeout.
   case "$stage" in
     ' build ') stage='build pulse-api' ;;

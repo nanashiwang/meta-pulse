@@ -72,6 +72,11 @@ func main() {
 			logger.Error("period close failed", "error", err)
 			os.Exit(1)
 		}
+	case "apply-checkin-reward-policy":
+		if err := runCheckinRewardPolicy(); err != nil {
+			logger.Error("check-in reward policy upgrade failed", "error", err)
+			os.Exit(1)
+		}
 	case "period-create":
 		if err := runPeriodCreate(os.Args[2:]); err != nil {
 			logger.Error("period create failed", "error", err)
@@ -251,7 +256,7 @@ func runMigration(up bool) error {
 
 func usage() {
 	fmt.Println("Meta Pulse operator tool")
-	fmt.Println("commands: infra-check | config-check --role <api|worker|tool> | migrate-up | migrate-status | reconcile | ledger-check | period-close | period-create | reward-retry --grant-id <pg_...>")
+	fmt.Println("commands: infra-check | config-check --role <api|worker|tool> | migrate-up | migrate-status | reconcile | ledger-check | period-close | period-create | apply-checkin-reward-policy | reward-retry --grant-id <pg_...>")
 }
 
 // runConfigCheck never opens a database or emits credential values.

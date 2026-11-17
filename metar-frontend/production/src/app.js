@@ -732,12 +732,16 @@
     </section>${footer()}`;
   }
 
-  function personalNativePage() {
+  async function personalNativePage() {
     const title = currentTitle();
     if (currentUserState === 'unavailable') return identityUnavailable(title);
     if (!currentUser) return loginRequired(title, t('请先登录社区账号。'));
     if (!isActiveUser(currentUser)) return accountUnavailable(title);
-    const honors=route().path==='/me/badges'&&!route().query.get('badge')?'<section class="card card-pad mb16"><h2>'+t('评选金色勋章')+'</h2><div data-award-badges>'+t('正在加载…')+'</div>'+link('/awards?view=honors',t('头衔与评选勋章'),'textlink')+'</section>':'';
+    const hasMedals = route().path === '/me/badges' && !route().query.get('badge');
+    if (hasMedals) {
+      try { await loadFeatureScript('award-honors','MetarAwardHonors'); } catch (_) { /* Keep native badges available if the honors module fails. */ }
+    }
+    const honors=hasMedals?'<section class="card card-pad mb16"><h2>'+t('评选金色勋章')+'</h2><div data-award-badges>'+(window.MetarAwardHonors ? window.MetarAwardHonors.badges(null) : '<p>'+t('编辑者：获得周度或月度优秀帖子奖。')+'</p><p>'+t('学者：获得周度或月度优秀回应奖。')+'</p><p>'+t('评选勋章暂时无法加载')+'</p>')+'</div>'+link('/awards?view=honors',t('头衔与评选勋章'),'textlink')+'</section>':'';
     return pageTitle(title) + honors + '<section class="personal-native" data-personal-native><p data-native-status role="status">' + t('正在加载…') + '</p><iframe title="' + esc(title) + '" hidden></iframe><p class="prod-page-note"><a data-native-original class="textlink" target="_blank" rel="noopener">' + t('在独立页面打开') + '</a></p></section>' + footer();
   }
   async function mountPersonalNative() {
@@ -745,7 +749,13 @@
     if (!root) return;
     const sequence = navigationSequence;
     const medalBox=document.querySelector('[data-award-badges]');
-    if(medalBox){answer.request('/metar/awards/honors').then(data=>{if(sequence!==navigationSequence||!medalBox.isConnected)return;medalBox.innerHTML=data.badges.length?data.badges.map(b=>'<span class="award-medal">🏅 '+esc(b.name)+' × '+number(b.count)+'</span>').join(''):t('暂无评选勋章');}).catch(()=>{if(medalBox.isConnected)medalBox.textContent=t('评选勋章暂时无法加载');});}
+    if (medalBox && window.MetarAwardHonors) {
+      const user = currentUser?.id, identity = identitySequence;
+      const current = () => sequence === navigationSequence && identity === identitySequence && user === currentUser?.id && medalBox.isConnected;
+      answer.request('/metar/awards/honors').then(data => {
+        if (current()) medalBox.innerHTML = window.MetarAwardHonors.badges(data.badges);
+      }).catch(() => { if (current()) medalBox.innerHTML = window.MetarAwardHonors.badges(null, true); });
+    }
     try {
       await loadFeatureScript('personal-workspace','MetarPersonalWorkspace');
       if (sequence !== navigationSequence || !root.isConnected) return;
@@ -1029,15 +1039,15 @@
     const dialogHeader = (id, title) => `<div class="prod-pulse-dialog-header"><h2 id="${id}-title">${t(title)}</h2><form method="dialog"><button type="submit" class="prod-pulse-dialog-close" aria-label="${t('关闭窗口')}" autofocus>×</button></form></div>`;
     const bind = link('/settings/binding', t('去绑定元衡 API 账号 ') + I('arrow', 'sm'), 'btn primary');
     return `${coreReady ? window.MetarPulseCore.markup({ t }) : `<section class="card card-pad"><h1>${esc(t('可用脉冲券：{count}', { count: number(0) }))}</h1><div class="actions"><button type="button" class="btn primary" disabled>${t('开启一次脉冲 · 1 券')}</button><button type="button" class="btn primary" disabled>${t('五连抽 · 5 券')}</button></div></section>`}
-      <div data-pulse-details><section class="card card-pad mt24 prod-pulse-bind" data-pulse-bind role="status"><div class="between wrap"><h2>${I('link')} ${t('尚未绑定元衡 API 账号')}</h2>${badge(t('未绑定'))}</div><p class="muted mt8">${t('抽奖券、额度奖励和抽奖记录都归属你的元衡 API 账号。完成一次绑定后，每日签到和社区互动即可获得抽奖券，额度奖励直接到账 API 账号。社区账号仍可独立使用。')}</p><div class="actions mt16">${bind}${link('/latest', t('继续浏览社区'), 'btn')}</div></section></div>
+      <div data-pulse-details><section class="card card-pad mt24 prod-pulse-bind" data-pulse-bind role="status"><div class="between wrap"><h2>${I('link')} ${t('尚未绑定元衡 API 账号')}</h2>${badge(t('未绑定'))}</div><p class="muted mt8">${t('抽奖券、额度奖励和抽奖记录都归属你的元衡 API 账号。完成绑定后，可通过周一、周五签到和有效社区互动获得抽奖券，额度奖励直接到账 API 账号。社区账号仍可独立使用。')}</p><div class="actions mt16">${bind}${link('/latest', t('继续浏览社区'), 'btn')}</div></section></div>
       ${communityTasksMarkup(false)}
       <dialog id="pulse-benefits" class="prod-pulse-dialog prod-pulse-benefits-dialog" aria-labelledby="pulse-benefits-title">${dialogHeader('pulse-benefits', '我的权益')}<div data-pulse-benefits-body><p>${t('尚未绑定元衡 API 账号，暂无抽奖券和权益。')}</p><div class="actions mt16">${bind}</div></div></dialog>${footer()}`;
   }
 
   function communityTasksMarkup(bound = true) {
-    return `<section class="card card-pad mt24" data-community-tasks><div class="between wrap"><h2>${t('获取抽奖券')}</h2><button class="btn" data-task-checkin>${t(bound ? '每日签到 · +1 券' : '每日签到 · 领经验')}</button></div>
-      <ul class="mini-list"><li>${t('帖子每收到 10 次评论 +1 券，每天最多 2 券。')}</li><li>${t('给别人点赞每 40 次或评论每 20 次 +1 券，分别累计，合计每天最多 3 券。')}</li><li>${t('每日签到 +1 券；社区任务每天最多 6 券。')}</li></ul>
-      ${bound ? '' : `<p class="prod-page-note">${t('未绑定账号签到可领经验；绑定元衡 API 后签到另得 1 张抽奖券，绑定前不补发。')}</p>`}
+    return `<section class="card card-pad mt24" data-community-tasks><div class="between wrap"><h2>${t('获取抽奖券')}</h2><button class="btn" data-task-checkin>${t('每日签到 · 领经验')}</button></div>
+      <ul class="mini-list"><li>${t('帖子每收到 10 次评论 +1 券，每天最多 2 券。')}</li><li>${t('给别人点赞每 40 次或评论每 20 次 +1 券，分别累计，合计每天最多 3 券。')}</li><li>${t('周一、周五签到各送 3 张券，每周共 6 张；其他日期签到仅领取经验。')}</li></ul>
+      ${bound ? '' : `<p class="prod-page-note">${t('未绑定账号签到可领经验；绑定元衡 API 后，周一、周五签到各得 3 张抽奖券，绑定前不补发。')}</p>`}
       <p class="muted mt12">${t('按北京时间每日重置，仅统计绑定后及功能上线后的有效互动。评论包含回答和评论；自评自赞不计，撤赞重赞不重复计数。')}</p>
       <p class="muted">${t('互动达标后自动发券，通常需等待片刻。Meta API 消费不再获得抽奖券。')}</p>
       <p role="status" data-task-progress>${t('正在读取今日进度…')}</p><div class="actions"><button class="btn" data-task-refresh>${t('刷新任务进度')}</button><button class="btn" data-action="pulse-refresh">${t('刷新权益')}</button>${link('/latest',t('参与讨论'),'btn')}</div></section>`;
@@ -1074,26 +1084,28 @@
           syncing = awaitingCheckin && !confirmed;
           if (confirmed) awaitingCheckin = false;
           checkin.textContent = t(confirmed ? '今日已签到' : '每日签到 · 领经验');
-          status.textContent = t(confirmed ? '今日已签到' : '未绑定账号签到可领经验；绑定元衡 API 后签到另得 1 张抽奖券，绑定前不补发。');
+          status.textContent = t(confirmed ? '今日已签到' : '未绑定账号签到可领经验；绑定元衡 API 后，周一、周五签到各得 3 张抽奖券，绑定前不补发。');
           return;
         }
         const progress = await pulse.request('tasks');
         if (!current()) return;
-        if (!['likes','comments','received','earned','delivered'].every(k=>Number.isSafeInteger(progress[k]) && progress[k]>=0) || progress.earned>6 || progress.delivered>progress.earned || typeof progress.checked_in !== 'boolean') throw new Error('invalid task progress');
+        if (!['likes','comments','received','earned','delivered'].every(k=>Number.isSafeInteger(progress[k]) && progress[k]>=0) || progress.earned>8 || progress.delivered>progress.earned || typeof progress.checked_in !== 'boolean') throw new Error('invalid task progress');
+        const target = progress.checkin_ticket_target ?? 1;
+        if (![0,1,3].includes(target)) throw new Error('invalid check-in target');
         const ineligible = progress.checkin_ineligible_reason || '';
-        if (!['', 'before_binding', 'before_start'].includes(ineligible) || (ineligible && !progress.checked_in)) throw new Error('invalid check-in eligibility');
+        if (!['', 'before_binding', 'before_start', 'not_scheduled'].includes(ineligible) || (ineligible && !progress.checked_in)) throw new Error('invalid check-in eligibility');
         confirmed ||= progress.checked_in;
         if (ineligible) awaitingCheckin = false;
         checkin.disabled = signing || confirmed;
-        checkin.textContent = t(confirmed ? '今日已签到' : '每日签到 · +1 券');
+        checkin.textContent = t(confirmed ? '今日已签到' : target === 3 ? '每日签到 · +3 券' : target === 1 ? '每日签到 · +1 券' : '每日签到 · 领经验');
         if (lastDelivered === null) lastDelivered = progress.delivered;
         const deliveryChanged = lastDelivered !== progress.delivered;
         const wasSyncing = syncing;
-        syncing = (!ineligible && (awaitingCheckin || progress.checked_in) && progress.checkin_delivered !== true) || progress.delivered < progress.earned;
-        status.textContent = ineligible ? t(ineligible === 'before_binding' ? '今日已签到；签到发生在账号绑定前，今天不补发签到券。明天签到可获券。' : '今日已签到；签到发生在赠券功能启用前，今天不补发签到券。明天签到可获券。') : syncing ? t('签到与赠券正在同步，到账后将自动更新抽奖券。') : t('今日点赞 {likes} 次 · 评论 {comments} 次 · 收到评论 {received} 次；已获得 {earned}/6 券，已入账 {delivered} 券。',progress);
+        syncing = (!ineligible && target > 0 && (awaitingCheckin || progress.checked_in) && progress.checkin_delivered !== true) || progress.delivered < progress.earned;
+        status.textContent = ineligible ? t(ineligible === 'not_scheduled' ? '今日已签到；今天仅领取经验，周一、周五签到各赠 3 张券。' : ineligible === 'before_binding' ? '今日已签到；签到发生在账号绑定前，今天不补发签到券。请在后续周一或周五签到领券。' : '今日已签到；签到发生在赠券功能启用前，今天不补发签到券。请在后续周一或周五签到领券。') : syncing ? t('签到与赠券正在同步，到账后将自动更新抽奖券。') : t('今日点赞 {likes} 次 · 评论 {comments} 次 · 收到评论 {received} 次；已获得 {earned}/{limit} 券，已入账 {delivered} 券。',{...progress,limit:5+target});
         // Refresh the authoritative selection as well as the count: a newly
         // delivered ticket may enable single or five draws. Never invent +1.
-        if (deliveryChanged || (!ineligible && (awaitingCheckin || progress.checked_in) && progress.checkin_delivered === undefined && attempts % 3 === 2) || (!syncing && (awaitingCheckin || wasSyncing || refreshBenefits))) {
+        if (deliveryChanged || (!ineligible && target > 0 && (awaitingCheckin || progress.checked_in) && progress.checkin_delivered === undefined && attempts % 3 === 2) || (!syncing && (awaitingCheckin || wasSyncing || refreshBenefits))) {
           const refreshed = await refreshPulse();
           if (refreshed) lastDelivered = progress.delivered;
           else syncing = true;

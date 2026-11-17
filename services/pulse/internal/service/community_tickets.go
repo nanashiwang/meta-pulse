@@ -17,7 +17,7 @@ import (
 )
 
 // The signed community BFF supplies durable task receipts, never browser counts.
-// Day/category/ordinal form a finite namespace: at most six tickets per user/day.
+// Day/category/ordinal form a finite namespace: at most eight new tickets on Monday/Friday (five from interaction).
 type CommunityTicket struct {
 	Day      string `json:"day"`
 	Category string `json:"category"`
@@ -38,9 +38,26 @@ func NewCommunityTicketService(unit ports.UnitOfWork) *CommunityTicketService {
 
 var communityZone = time.FixedZone("Asia/Shanghai", 8*3600)
 
+// Legacy receipts remain deliverable; new scheduled receipts have their own namespace.
+func communityTicketCap(task CommunityTicket, day time.Time) int {
+	switch task.Category {
+	case "received":
+		return 2
+	case "participation":
+		return 3
+	case "checkin":
+		return 1
+	case "checkin_weekly":
+		if task.Day >= "2026-11-17" && (day.Weekday() == time.Monday || day.Weekday() == time.Friday) {
+			return 3
+		}
+	}
+	return 0
+}
+
 func (s *CommunityTicketService) Grant(ctx context.Context, user uint64, task CommunityTicket) (CommunityTicketResult, error) {
 	day, err := time.ParseInLocation("2006-01-02", task.Day, communityZone)
-	cap := map[string]int{"received": 2, "participation": 3, "checkin": 1}[task.Category]
+	cap := communityTicketCap(task, day)
 	if user == 0 || err != nil || day.Format("2006-01-02") != task.Day || day.After(s.now()) || task.Ordinal < 1 || task.Ordinal > cap {
 		return CommunityTicketResult{}, ports.ErrConflict
 	}
@@ -62,6 +79,15 @@ func (s *CommunityTicketService) Grant(ctx context.Context, user uint64, task Co
 		}
 		if len(receipt.ResponseJSON) > 0 {
 			return json.Unmarshal(receipt.ResponseJSON, &result)
+		}
+		if task.Category == "checkin" {
+			policy, err := r.PeriodAdmin.FindByKeyForUpdate(ctx, CheckinRewardPolicyKey)
+			if err != nil && !errors.Is(err, ports.ErrNotFound) {
+				return err
+			}
+			if err == nil && task.Day > policy.StartsAt.In(communityZone).Format("2006-01-02") {
+				return ports.ErrConflict
+			}
 		}
 		now := s.now().UTC().Truncate(time.Second)
 		p, e := r.Period.FindActiveAtCurrent(ctx, now)

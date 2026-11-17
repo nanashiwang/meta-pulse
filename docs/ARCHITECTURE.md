@@ -450,7 +450,7 @@ SUM(ledger.amount) = account.balance
 
 自 v0.2.82 起，按用户授权停止 API 消费获券。Worker、实时摄入和 backfill 共用的 UsageIngestService 仅记录 Usage、付费证明去重、贡献账本/快照、UserPeriodStat 与游标，不创建券分录或发行批次，不再计算 entitlement；保留历史 `entitled_tickets` 值。消费与退款均不增减券，退款仍验证原消费关联和累计冲正上限后冲正贡献。不会改写既有 Ledger、旧券数量/期限或中奖结果，历史异常可用审计调整处理。
 
-新券仅来自下文社区任务赠券（2+3+1 日上限）。API 绑定仍用于身份与奖励交付；new-api 计费、余额和 Benefit 结算边界不变。历史 `ticket_threshold_milli` / `funding_policy`、铸券 operation 和离线 backtest 经济模拟保留兼容及审计用途，不是可重新开启消费获券的开关。管理页不再提供兑换门槛；创建新规则沿用历史字段，不原地修改 Active 规则。
+新券仅来自下文社区任务赠券（互动每日 2+3，签到周一/周五各 3 张）。API 绑定仍用于身份与奖励交付；new-api 计费、余额和 Benefit 结算边界不变。历史 `ticket_threshold_milli` / `funding_policy`、铸券 operation 和离线 backtest 经济模拟保留兼容及审计用途，不是可重新开启消费获券的开关。管理页不再提供兑换门槛；创建新规则沿用历史字段，不原地修改 Active 规则。
 
 所有消费采集 Worker 和离线工具必须使用此版本；仅升级网页/API 不能阻止旧 Worker 发券。回滚旧消费代码会恢复该来源，升级与回滚需统一进程版本。
 
@@ -1269,7 +1269,7 @@ Answer 库中的 `metar_exp_ledger` 是 EXP 事实源、`metar_exp_account` 是�
 
 幂等身份：签到 `user+Asia/Shanghai日期`，问题/回答/采纳 `kind+object`，点赞 `object+actor`，精选 `object`，脉冲经验 `grant_id`；管理员请求 `actor+request_key`，同 key 不同 payload 冲突。撤销墓碑禁止迟到成功响应恢复奖励。来源记录在首次采集时冻结规则，后续版本变更不能增加该来源奖励。
 
-经验路由使用 Answer 官方认证组，从服务器会话读取本人身份，禁止 query token、客户端指定领取身份或金额；写请求校验同源。成长管理额外实时读取本地角色和账号状态。公开投影仅含等级与装扮，不暴露本人账本。经验池独立初始化和降级，Pulse 或 EXP 故障不得阻断论坛本地功能。签到 UI 统一到 `/pulse`，未绑定成员直接使用 Answer 经验接口，不调用 Pulse/BFF；绑定成员签到后只读轮询 tasks，确认交付后刷新权威抽奖资格，不在浏览器预加券数。tasks.checked_in 来自当前自然日的 EXP 签到事实；checkin_ineligible_reason 只读说明 before_binding / before_start，签到完成与赠券资格分开，既不补发历史券也不重写事件。
+经验路由使用 Answer 官方认证组，从服务器会话读取本人身份，禁止 query token、客户端指定领取身份或金额；写请求校验同源。成长管理额外实时读取本地角色和账号状态。公开投影仅含等级与装扮，不暴露本人账本。经验池独立初始化和降级，Pulse 或 EXP 故障不得阻断论坛本地功能。签到 UI 位于 `/me` 资料卡右上角与 `/pulse`，未绑定成员直接使用 Answer 经验接口，不调用 Pulse/BFF；绑定成员签到后只读轮询 tasks，确认交付后刷新权威抽奖资格，不在浏览器预加券数。tasks.checked_in 来自当前自然日的 EXP 签到事实；checkin_ineligible_reason 只读说明 before_binding / before_start / not_scheduled，签到完成与赠券资格分开，既不补发历史券也不重写事件。
 
 ### Pulse → Answer 经验奖励交付
 
@@ -1319,7 +1319,7 @@ Answer 官方 editor 插件在帖子/回答的编辑上下文中识别图片，�
 
 ## 社区任务赠券边界（2026-11-06）
 
-用户明确授权在原真实付费产券之外增加限额社区赠券。一般内容奖励、社区经营、活动报名、EXP 均不产生 contribution；此新增例外仅允许收到评论、主动评论/点赞和签到产生 `ticket_bonus`，日上限分别为 2、3、1。未绑定与绑定前事件不补发，资格来自 Answer 的真实记录和受保护绑定，不来自浏览器计数。
+用户明确授权在原真实付费产券之外增加限额社区赠券。一般内容奖励、社区经营、活动报名、EXP 均不产生 contribution；此新增例外仅允许收到评论、主动评论/点赞和签到产生 `ticket_bonus`，互动日上限分别为 2、3；签到仅北京时间周一、周五各 3 张，每周共 6 张。未绑定与绑定前事件不补发，资格来自 Answer 的真实记录和受保护绑定，不来自浏览器计数。
 
 Answer 插件的 `communitytickets` 维护 `metar_ticket_config/cursor/source/day/outbox`：冻结上线起点、四类来源游标、永久来源去重、用户自然日事务锁及赠券回执。按 Answer v1.7.1 的 comment/answer/activity 与现有 metar_exp_event 签到读取；公开可用内容、账号状态、绑定时间和自互动排除在服务端校验。只存来源 ID 与计数所需元数据，不复制正文。点赞按操作者与对象永久去重，评论按原始内容 ID 去重。日计数以 Asia/Shanghai 计算，分项取整，不跨日携带余数；新门槛只统计当前有效来源。已生成回执不因撤赞删帖返还当日名额或重新生成。
 
@@ -1419,3 +1419,9 @@ Answer仍为账号、帖子与可见性事实源；UserCenter插件在论坛库�
 历史与原 Action 查询批量读取 Outbox 状态：额度 Grant 为 pending 且 Outbox 为 dead/conflict 时，只在用户安全投影返回 settlement_dead（发放受阻，待处理）。数据库 Grant 保持 pending，原编号恢复、Query/Reconcile 与预算状态机不变；已到账/撤销和经验奖励不受此映射影响。
 
 社区 `/admin/pulse` 通过 Answer 实时管理员权限与独立 admin HMAC 读取既有运营概览，仅返回观测时间、受阻及重试数量。缺失/失败快照显示不可用，不视为零异常；不暴露错误原文、私有规则、用户或签名字段。告警为管理页访问时显示，既有监控指标保留，不代表新增邮件或站内信通知。
+
+## 周一周五签到与奖池政策切换（2026-11-17）
+
+签到经验仍由 Answer 每日一次记录；社区采集按原事件的上海日期生成三条 `checkin_weekly` 回执，仅周一、周五有效。政策实际发布日及之前的旧 `checkin` 单券回执保留恢复；之后日期拒绝旧类别新增。互动来源和管理员赠券不变。任务投影新增 `checkin_ticket_target`，`checkin_delivered` 仅在该签到的全部回执交付后为真，部分到账仍刷新可用券。
+
+部署命令 `apply-checkin-reward-policy` 沿用规则守卫、当前规则 CAS、不可变快照创建及审计发布 `rules-checkin-20261117-v1`，每券额度期望为 2.5 闪（包含经验奖项概率分母）；读取 API 角色运行时配置的 quota_per_unit，以整数生成额度奖项。保留当前规则额度资格天数、贡献兼容元数据及预算模式/额度，不修改历史奖励、旧规则与已发券期限。没有启用规则时不创建隐式活动，新站从管理员新预设创建。固定政策 key 存在后升级不再覆盖后续管理员配置；发布失败阻止新 API 启动。

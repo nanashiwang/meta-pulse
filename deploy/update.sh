@@ -315,11 +315,18 @@ preflight_infrastructure
 
 # Drain every old API replica before the new idempotency implementation can
 # accept writes. New-api's model/billing/login services are not stopped.
+if (( SKIP_FORUM == 0 )); then
+  log "停止旧社区采集器，保留待交付赠券回执"
+  compose stop -t 15 forum
+fi
 log "排空旧 Pulse API 写请求（不影响 new-api 主链路）"
 compose stop -t 15 pulse-api
 
 log "执行数据库迁移（只前进，不执行 down）"
 compose run --rm --no-deps --entrypoint meta-pulse-tool pulse-api migrate-up
+
+log "发布签到活动奖池（每券期望 2.5 闪，仅首次升级执行）"
+compose run --rm --no-deps --entrypoint meta-pulse-tool pulse-api apply-checkin-reward-policy
 
 services_to_start=(pulse-api)
 (( SKIP_WORKER == 0 )) && services_to_start+=(pulse-worker)

@@ -750,3 +750,14 @@ html.community-wide:not(.preview-tools) .page{padding-bottom:calc(var(--communit
 .profile-checkin [role="status"] { font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .profile-checkin .btn { align-self: flex-end; white-space: nowrap; }
 @media (max-width: 480px) { .profile-checkin { max-width: 150px; } }
+
+.award-medal-catalog { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin:12px 0; }
+.award-medal-card { display:flex; align-items:center; gap:14px; padding:16px; border:1px solid #bc913c; border-radius:10px; background:color-mix(in srgb,#d6a32c 8%,var(--surface)); min-width:0; }
+.award-medal-icon { width:52px; height:64px; flex:0 0 52px; }
+.award-medal-card strong { display:block; font-size:17px; color:var(--text); }
+.award-medal-tier { display:block; font-size:11px; color:#916712; margin-top:3px; }
+.award-medal-card p { font-size:12px; margin:6px 0; overflow-wrap:anywhere; }
+.award-medal-card small { color:var(--muted); }
+.award-medal-card.is-earned { border-color:#b98118; background:color-mix(in srgb,#d6a32c 15%,var(--surface)); }
+[data-theme="dark"] .award-medal-tier { color:#edc466; }
+@media(max-width:600px) { .award-medal-catalog { grid-template-columns:1fr; } }

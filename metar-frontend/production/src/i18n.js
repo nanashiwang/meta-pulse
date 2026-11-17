@@ -2,6 +2,19 @@
 'use strict';
 (() => {
   const EN = Object.freeze({
+"抽奖券、额度奖励和抽奖记录都归属你的元衡 API 账号。完成绑定后，可通过周一、周五签到和有效社区互动获得抽奖券，额度奖励直接到账 API 账号。社区账号仍可独立使用。": "Tickets, credit prizes and draw history belong to your Metar API account. After linking, earn tickets by checking in on Mondays and Fridays or through eligible community interactions. Credit prizes are delivered to the API account. Your community account remains independent.",
+    "编辑者：获得周度或月度优秀帖子奖。": "Editor: win a weekly or monthly Outstanding Post award.",
+    "学者：获得周度或月度优秀回应奖。": "Scholar: win a weekly or monthly Outstanding Response award.",
+    "每日签到 · +3 券": "Daily check-in · +3 tickets",
+    "周一、周五签到各送 3 张券，每周共 6 张；其他日期签到仅领取经验。": "Earn 3 tickets on Monday and Friday, 6 per week. Other check-ins award experience only.",
+    "未绑定账号签到可领经验；绑定元衡 API 后，周一、周五签到各得 3 张抽奖券，绑定前不补发。": "Unlinked members can check in for experience. Linked API accounts earn 3 tickets on Monday and Friday; earlier check-ins are not backfilled.",
+    "今日已签到；今天仅领取经验，周一、周五签到各赠 3 张券。": "Checked in today for experience. Monday and Friday check-ins each award 3 tickets.",
+    "今日已签到；签到发生在账号绑定前，今天不补发签到券。请在后续周一或周五签到领券。": "Checked in before linking. No tickets are backfilled today; check in on a future Monday or Friday to earn tickets.",
+    "今日已签到；签到发生在赠券功能启用前，今天不补发签到券。请在后续周一或周五签到领券。": "Checked in before ticket rewards started. No tickets are backfilled today; check in on a future Monday or Friday to earn tickets.",
+    "今日点赞 {likes} 次 · 评论 {comments} 次 · 收到评论 {received} 次；已获得 {earned}/{limit} 券，已入账 {delivered} 券。": "Today: {likes} likes · {comments} comments · {received} comments received; {earned}/{limit} tickets earned, {delivered} delivered.",
+    "载入 2.5 ⚡️ 期望方案": "Load 2.5 ⚡️ expected-value preset",
+    "推荐方案：额度中奖率 90%，奖励 1/2/5/10/50/100 ⚡️，每券期望 2.5 ⚡️ 与 0.57 EXP；到期券平均 5.7 EXP。额度奖项按当前换算比例生成。": "Recommended pool: 90% credit win rate, prizes of 1/2/5/10/50/100 ⚡️, expected 2.5 ⚡️ and 0.57 EXP per ticket; expired tickets average 5.7 EXP. Credits use the current conversion rate.",
+    "采用 2.5 ⚡️ 期望方案：额度中奖率 90%，每券期望 2.5 ⚡️，最高 100 ⚡️。": "Use the 2.5 ⚡️ preset: 90% credit win rate, expected 2.5 ⚡️ per ticket, up to 100 ⚡️.",
     "签到中…": "Checking in…",
     "每日签到": "Daily check-in",
     "正在读取签到状态…": "Loading check-in status…",

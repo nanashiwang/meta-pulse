@@ -1,0 +1,29 @@
+# Agent Note: 周一周五签到赠券与 2.5 闪奖池
+
+Status: implemented
+
+## Problem
+
+用户要求签到仅在周一、周五各给 3 张券，每券闪期望改为 2.5，并提交推送。当前签到每日一券，推荐奖池每券 5 闪；仅改网页预设不会改变数据库中已启用奖池。
+
+## Existing capabilities and impact
+
+复用 [社区采集](../../../../services/forum-plugin/user-center-pulse/communitytickets/store.go)、[Pulse 发券](../../../../services/pulse/internal/service/community_tickets.go) 的持久回执、幂等和账本，及 [不可变规则发布](../../../../services/pulse/internal/service/period_create.go)。[原社区赠券](2026-11-06-community-tickets.md) 的互动 2+3 日限保持，本次只调整签到；[个人空间入口](2026-11-17-profile-checkin.md) 继续使用经验签到，未绑定也可领经验。[概率奖池](2026-11-08-pulse-probability-only-rewards.md) 的 5 闪预设由本篇替代，历史随机结果保持。
+
+## Decision
+
+按北京时间事件所属日期判断周一/周五，三张分别有持久回执。使用 checkin_weekly 类别区分新规则，保留政策实际发布日及之前的旧签到回执交付，之后日期不接受旧类别新发券。进度提供签到目标张数，已有旧单券回执仍保持原资格，不通过后续互动重新分配三张。升级先停止旧Forum采集器，再停止API、迁移并发布奖池。三张全部交付才算签到赠券完成；非赠券日只领经验且不等待券。升级命令以固定政策 key 发布一次新不可变规则，后续升级不覆盖管理员新配置；默认预设与实际升级规则均为 2.5 闪。
+
+## Alternatives considered
+
+- 只改签到按钮和推荐奖池：修改少，但后台仍每日发券且实际奖池不变。
+- 原地修改启用奖池：容易实施，但破坏不可变经济快照与历史随机重放。
+- 同一签到回执一次记 3 张：请求少，但混淆现有每回执一张的审计和恢复；继续三条独立幂等回执。
+
+## Verification
+
+前端282项测试通过，相关Pulse服务、路由、工具及Forum主包/赠券/评选Go测试与vet通过；Pulse API和工具构建成功。新增上海日期/周一周五门槛、非赠券日不等待、三券部分到账、奖池整数期望、一次性发布/后续人工规则保留/失败回滚/空站与草稿拒绝回归。真实MySQL和Linux部署演练本地无环境，集成用例及升级顺序/失败保护脚本已更新，待CI执行。
+
+## Consequences
+
+需完整升级 Forum、Pulse 和静态资源；本次推送不代表生产部署。每日随机闪仍未实现。互动赠券与管理员赠券不在本次取消范围。

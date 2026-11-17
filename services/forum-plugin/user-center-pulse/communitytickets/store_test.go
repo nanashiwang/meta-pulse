@@ -17,7 +17,7 @@ func TestEntitlements(t *testing.T) {
 		check           bool
 		p, received, ci int
 	}{{39, 19, 9, false, 0, 0, 0}, {40, 20, 10, true, 2, 1, 1}, {20, 10, 0, false, 0, 0, 0}, {120, 60, 30, true, 3, 2, 1}} {
-		got := Entitlements(v.l, v.c, v.r, v.check)
+		got := Entitlements(v.l, v.c, v.r, v.check, "2026-11-06")
 		if got["participation"] != v.p || got["received"] != v.received || got["checkin"] != v.ci {
 			t.Fatal(got, v)
 		}
@@ -346,5 +346,94 @@ func TestMySQLCheckinAtBindingBoundaryAndBeforeFeatureStart(t *testing.T) {
 	p, err = s.Progress(ctx, "2")
 	if err != nil || !p.CheckedIn || p.CheckinIneligibleReason != "before_start" {
 		t.Fatalf("feature boundary: %+v %v", p, err)
+	}
+}
+
+func TestScheduledCheckinEntitlements(t *testing.T) {
+	for _, day := range []string{"2026-11-20", "2026-11-23", "2026-11-27", "2026-11-30"} {
+		got := Entitlements(120, 60, 30, true, day)
+		if got["checkin_weekly"] != 3 || got["checkin"] != 0 || got["participation"] != 3 || got["received"] != 2 {
+			t.Fatal(day, got)
+		}
+	}
+	for _, day := range []string{"2026-11-17", "2026-11-18", "2026-11-19", "2026-11-21", "2026-11-22", "invalid", "2026-02-30"} {
+		if got := ScheduledCheckinTickets(day); got != 0 {
+			t.Fatal(day, got)
+		}
+	}
+	if got := Entitlements(0, 0, 0, false, "2026-11-20"); got["checkin_weekly"] != 0 {
+		t.Fatal(got)
+	}
+	if ScheduledCheckinTickets(Day(time.Date(2026, 11, 19, 16, 0, 0, 0, time.UTC))) != 3 {
+		t.Fatal("Shanghai Friday midnight")
+	}
+	if ScheduledCheckinTickets(Day(time.Date(2026, 11, 20, 16, 0, 0, 0, time.UTC))) != 0 {
+		t.Fatal("Shanghai Saturday midnight")
+	}
+}
+
+func TestMySQLWeeklyCheckinThreeReceiptsAndPartialDelivery(t *testing.T) {
+	s, now := fixture(t)
+	ctx := context.Background()
+	*now = time.Date(2026, 11, 20, 8, 0, 0, 0, time.UTC)
+	must(t, s.DB, "INSERT INTO metar_exp_event VALUES(1,2,'checkin',?)", now.Unix())
+	for i := 0; i < 3; i++ {
+		if err := s.Collect(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pending, err := s.Pending(ctx)
+	if err != nil || len(pending) != 3 {
+		t.Fatal(pending, err)
+	}
+	p, err := s.Progress(ctx, "2")
+	if err != nil || p.CheckinTicketTarget != 3 || p.Earned != 3 || p.CheckinDelivered {
+		t.Fatal(p, err)
+	}
+	if err = s.Ack(ctx, pending[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	p, err = s.Progress(ctx, "2")
+	if err != nil || p.CheckinDelivered || p.Delivered != 1 {
+		t.Fatal(p, err)
+	}
+	for _, r := range pending[1:] {
+		if err = s.Ack(ctx, r.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p, err = s.Progress(ctx, "2")
+	if err != nil || !p.CheckinDelivered || p.Delivered != 3 {
+		t.Fatal(p, err)
+	}
+	*now = now.AddDate(0, 0, 1)
+	must(t, s.DB, "INSERT INTO metar_exp_event VALUES(2,2,'checkin',?)", now.Unix())
+	if err = s.Collect(ctx); err != nil {
+		t.Fatal(err)
+	}
+	p, err = s.Progress(ctx, "2")
+	if err != nil || !p.CheckedIn || p.CheckinTicketTarget != 0 || p.Earned != 0 || p.CheckinIneligibleReason != "not_scheduled" {
+		t.Fatal(p, err)
+	}
+}
+
+func TestMySQLLegacyCheckinIsNotToppedUpByLaterInteraction(t *testing.T) {
+	s, now := fixture(t)
+	ctx := context.Background()
+	*now = time.Date(2026, 11, 20, 8, 0, 0, 0, time.UTC)
+	must(t, s.DB, "INSERT INTO metar_exp_event VALUES(1,2,'checkin',?)", now.Unix())
+	must(t, s.DB, "INSERT INTO metar_ticket_source(source_key,user_id,earned_day,kind,stream,source_id) VALUES('checkin:2:checkin:1',2,?,'checkin','checkin',1)", Day(*now))
+	must(t, s.DB, "INSERT INTO metar_ticket_outbox(user_id,external_id,earned_day,category,ordinal) VALUES(2,'102',?,'checkin',1)", Day(*now))
+	must(t, s.DB, "INSERT INTO answer VALUES(1,2,1,1,?)", *now)
+	if err := s.Collect(ctx); err != nil {
+		t.Fatal(err)
+	}
+	pending, err := s.Pending(ctx)
+	if err != nil || len(pending) != 1 || pending[0].Category != "checkin" {
+		t.Fatal(pending, err)
+	}
+	p, err := s.Progress(ctx, "2")
+	if err != nil || p.CheckinTicketTarget != 1 || p.Earned != 1 {
+		t.Fatal(p, err)
 	}
 }

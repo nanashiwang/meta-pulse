@@ -106,3 +106,13 @@ test('an eligible EXP check-in not yet collected starts polling on page entry',a
  h.setTask(progress({checked_in:true,earned:1,delivered:1}));await h.tick();
  assert.equal(h.counts().updates,1);assert.equal(h.timers.size,0);
 });
+
+test('non-ticket weekdays still check in for EXP without waiting for a ticket',async()=>{
+ const h=harness();h.setTask(progress({checkin_ticket_target:0}));await h.mount();assert.equal(h.checkin.textContent,'每日签到 · 领经验');
+ h.setTask(progress({checked_in:true,checkin_ticket_target:0,checkin_ineligible_reason:'not_scheduled'}));await h.checkin.onclick();assert.equal(h.checkin.textContent,'今日已签到');assert.equal(h.timers.size,0);assert.match(h.status.textContent,/今天仅领取经验/);
+});
+test('Monday and Friday three-ticket check-in waits for all three while exposing partial delivery',async()=>{
+ const h=harness();h.setTask(progress({checkin_ticket_target:3}));await h.mount();assert.equal(h.checkin.textContent,'每日签到 · +3 券');
+ h.setTask(progress({checked_in:true,checkin_ticket_target:3,earned:3,delivered:1,checkin_delivered:false}));await h.checkin.onclick();assert.equal(h.timers.size,1);assert.equal(h.counts().updates,1);
+ h.setTask(progress({checked_in:true,checkin_ticket_target:3,earned:3,delivered:3,checkin_delivered:true}));await h.tick();assert.equal(h.timers.size,0);assert.equal(h.counts().updates,2);
+});

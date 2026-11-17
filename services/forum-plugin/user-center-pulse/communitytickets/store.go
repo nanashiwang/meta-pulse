@@ -86,6 +86,7 @@ type Progress struct {
 	CheckedIn               bool   `json:"checked_in"`
 	Earned                  int    `json:"earned"`
 	Delivered               int    `json:"delivered"`
+	CheckinTicketTarget     int    `json:"checkin_ticket_target"`
 	CheckinDelivered        bool   `json:"checkin_delivered"`
 	CheckinIneligibleReason string `json:"checkin_ineligible_reason,omitempty"`
 }
@@ -113,6 +114,7 @@ func (s *Store) Ack(ctx context.Context, id uint64) error {
 func (s *Store) Progress(ctx context.Context, user string) (Progress, error) {
 	now := s.Now()
 	p := Progress{Day: Day(now)}
+	p.CheckinTicketTarget = ScheduledCheckinTickets(p.Day)
 	counts, err := countSources(ctx, s.DB, user, p.Day)
 	if err != nil {
 		return p, err
@@ -143,9 +145,19 @@ ORDER BY e.id DESC LIMIT 1`, user, dayStart.Unix(), dayStart.AddDate(0, 0, 1).Un
 			p.CheckinIneligibleReason = "before_binding"
 		case occurred < started:
 			p.CheckinIneligibleReason = "before_start"
+		case p.CheckinTicketTarget == 0:
+			p.CheckinIneligibleReason = "not_scheduled"
 		}
 	}
-	err = s.DB.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(delivered),0),COALESCE(MAX(category='checkin' AND delivered=1),0) FROM metar_ticket_outbox WHERE user_id=? AND earned_day=?`, user, p.Day).Scan(&p.Earned, &p.Delivered, &p.CheckinDelivered)
+	var issued, delivered, legacy int
+	err = s.DB.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(delivered),0),COALESCE(SUM(category IN('checkin','checkin_weekly')),0),COALESCE(SUM(category IN('checkin','checkin_weekly') AND delivered=1),0),COALESCE(SUM(category='checkin'),0) FROM metar_ticket_outbox WHERE user_id=? AND earned_day=?`, user, p.Day).Scan(&p.Earned, &p.Delivered, &issued, &delivered, &legacy)
+	p.CheckinDelivered = issued > 0 && delivered == issued
+	if legacy > 0 {
+		p.CheckinTicketTarget = legacy
+		if p.CheckinIneligibleReason == "not_scheduled" {
+			p.CheckinIneligibleReason = ""
+		}
+	}
 	return p, err
 }
 
@@ -294,8 +306,19 @@ func (s *Store) record(ctx context.Context, e source, stream, kind, user string)
 	if err != nil {
 		return err
 	}
-	limits := Entitlements(counts["like"], counts["comment"], counts["received"], counts["checkin"] > 0)
-	for _, category := range []string{"received", "participation", "checkin"} {
+	limits := Entitlements(counts["like"], counts["comment"], counts["received"], counts["checkin"] > 0, day)
+	// A check-in already issued by the old collector keeps its original receipt.
+	// Later interactions must not reclassify that same check-in into three more.
+	if limits["checkin_weekly"] > 0 {
+		var legacy int
+		if err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM metar_ticket_outbox WHERE user_id=? AND earned_day=? AND category='checkin'", user, day).Scan(&legacy); err != nil {
+			return err
+		}
+		if legacy > 0 {
+			delete(limits, "checkin_weekly")
+		}
+	}
+	for _, category := range []string{"received", "participation", "checkin", "checkin_weekly"} {
 		for i := 1; i <= limits[category]; i++ {
 			if _, err = tx.ExecContext(ctx, `INSERT IGNORE INTO metar_ticket_outbox(user_id,external_id,earned_day,category,ordinal) VALUES(?,?,?,?,?)`, user, external, day, category, i); err != nil {
 				return err
@@ -304,10 +327,32 @@ func (s *Store) record(ctx context.Context, e source, stream, kind, user string)
 	}
 	return tx.Commit()
 }
-func Entitlements(likes, comments, received int, checkin bool) map[string]int {
-	result := map[string]int{"participation": min(3, likes/40+comments/20), "received": min(2, received/10), "checkin": 0}
+
+// ScheduledCheckinStart is the inclusive Shanghai date of the new policy.
+const ScheduledCheckinStart = "2026-11-17"
+
+func ScheduledCheckinTickets(day string) int {
+	d, err := time.ParseInLocation("2006-01-02", day, zone)
+	if err != nil || d.Format("2006-01-02") != day {
+		return 0
+	}
+	if day < ScheduledCheckinStart {
+		return 1
+	}
+	if d.Weekday() == time.Monday || d.Weekday() == time.Friday {
+		return 3
+	}
+	return 0
+}
+
+func Entitlements(likes, comments, received int, checkin bool, day string) map[string]int {
+	result := map[string]int{"participation": min(3, likes/40+comments/20), "received": min(2, received/10)}
 	if checkin {
-		result["checkin"] = 1
+		category := "checkin_weekly"
+		if day < ScheduledCheckinStart {
+			category = "checkin"
+		}
+		result[category] = ScheduledCheckinTickets(day)
 	}
 	return result
 }

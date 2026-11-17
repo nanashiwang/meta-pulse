@@ -11,6 +11,22 @@
           "'": "&#39;",
         })[c],
     );
+  const translate = (zh, en) => root.MetarI18n?.locale().startsWith('en') ? en : zh;
+  function badges(rows, unavailable = false) {
+    if (rows !== null && !Array.isArray(rows)) throw new Error('invalid badge data');
+    const types = [
+      {kind:'post',name:'编辑者',en:'Editor',condition:translate('获得周度或月度优秀帖子奖','Win a weekly or monthly Outstanding Post award')},
+      {kind:'response',name:'学者',en:'Scholar',condition:translate('获得周度或月度优秀回应奖','Win a weekly or monthly Outstanding Response award')},
+    ];
+    return '<div class="award-medal-catalog">' + types.map(type => {
+      const badge = rows?.find(b => b.kind === type.kind || (!b.kind && b.name === type.name));
+      const count = badge?.count ?? 0;
+      if (!Number.isSafeInteger(count) || count < 0) throw new Error('invalid badge count');
+      const state = unavailable ? translate('获得状态暂不可用','Award status unavailable') : rows === null ? translate('正在读取获得状态…','Loading award status…') : count > 0 ? translate('已获得','Earned') + ' × ' + count : translate('尚未获得','Not earned yet');
+      const name = translate(type.name,type.en);
+      return '<article class="award-medal-card' + (count > 0 ? ' is-earned' : '') + '"><svg class="award-medal-icon" viewBox="0 0 64 76" aria-hidden="true"><path d="M17 2h12l9 22-12 7z" fill="#c08320"/><path d="M35 2h12L38 31l-12-7z" fill="#f1bf45"/><circle cx="32" cy="45" r="27" fill="#e6b644" stroke="#ac7616" stroke-width="2"/><circle cx="32" cy="45" r="21" fill="#ffe5a0" stroke="#bb8729"/><path d="m32 30 4.4 9 10 1.5-7.2 7 1.7 10-8.9-4.7-8.9 4.7 1.7-10-7.2-7 10-1.5z" fill="#b57b13"/></svg><div><strong>' + esc(name) + (count > 0 ? ' × ' + count : '') + '</strong><span class="award-medal-tier">' + translate('永久金色勋章','Permanent gold medal') + '</span><p>' + esc(type.condition) + '</p><small>' + esc(state) + '</small></div></article>';
+    }).join('') + '</div>';
+  }
   class View {
     constructor(api) {
       this.api = api;
@@ -48,18 +64,7 @@
           )
           .join("") +
         '</select></label><button class="btn primary mt8">保存展示选择</button><p data-honor-status role="status"></p></form><h2 class="mt24">永久金色勋章</h2>' +
-        (d.badges.length
-          ? d.badges
-              .map(
-                (b) =>
-                  '<span class="award-medal">🏅 ' +
-                  esc(b.name) +
-                  " × " +
-                  b.count +
-                  "</span>",
-              )
-              .join("")
-          : "<p>暂无评选勋章</p>") +
+        badges(d.badges) +
         '<h2 class="mt24">获得记录</h2>' +
         d.records
           .map(
@@ -124,5 +129,5 @@
       };
     }
   }
-  root.MetarAwardHonors = { View };
+  root.MetarAwardHonors = { View, badges };
 })(window);

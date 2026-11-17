@@ -181,7 +181,7 @@ func TestMySQLUnlimitedQuotaBudget(t *testing.T) {
 	database, db := openMySQLIntegration(t)
 	unit, _ := mysqlstore.NewUnitOfWork(database)
 	ctx := context.Background()
-	now := time.Date(2092, 1, 1, 0, 0, 0, 0, time.UTC)
+	now := time.Date(2092, 1, 4, 0, 0, 0, 0, time.UTC)
 	key := fmt.Sprintf("unlimited-%d", time.Now().UnixNano())
 	svc, _ := NewPeriodCreateService(unit, func() time.Time { return now })
 	p, err := svc.CreateFromAdmin(ctx, PeriodAdminRequest{Key: key, Continuous: true, QuotaValidityDays: 30, QuotaBudgetUnlimited: true, ExperienceBudgetUnlimited: true, MultiplierBps: 10000, TicketThresholdMilli: 1000, Rewards: []PeriodRewardSpec{{Key: "quota", Amount: 100, Weight: 1}, {Key: "exp", RewardType: ExperienceRewardType, Amount: 10, Weight: 1}}, Reason: "unlimited quota test"}, "test", key)
@@ -192,7 +192,7 @@ func TestMySQLUnlimitedQuotaBudget(t *testing.T) {
 	user := uint64(time.Now().UnixNano()%1000000000 + 2000000000)
 	bonus := NewCommunityTicketService(unit)
 	bonus.now = func() time.Time { return now }
-	if _, err = bonus.Grant(ctx, user, CommunityTicket{now.In(communityZone).Format("2006-01-02"), "checkin", 1}); err != nil {
+	if _, err = bonus.Grant(ctx, user, CommunityTicket{now.In(communityZone).Format("2006-01-02"), "checkin_weekly", 1}); err != nil {
 		t.Fatal(err)
 	}
 	rules := NewRewardRulesService(unit, true)

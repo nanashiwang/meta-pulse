@@ -66,3 +66,7 @@
 新增metar_award_title_preference保存个人展示选择；metar_award_manual_payment保存人工已发放记录，唯一键为周期/奖项/获奖用户。管理页需先完成实际人工发放，再输入凭据或说明并确认；状态显示manual_pending/manual_paid。重复操作不能多登记，普通用户不能标记已发放，作废/待复核奖项不能登记。审计记录保留。
 
 GET /metar/awards/profile?username=...为公开头衔；GET /metar/awards/honors为本人荣誉分页；成员command的title操作仅能选择本人有效头衔。管理员command的paid操作核对当前权限与周期版本，仅记录人工发放事实。均不请求Pulse。
+
+### 金色勋章目录（2026-11-17）
+
+个人中心“勋章”和“头衔与评选勋章”均固定展示金色编辑者、学者。未获奖也能查看图形与获得条件，显示“尚未获得”；有有效奖项时显示累计次数。接口加载失败时显示获得状态不可用，不能当成零次数。授奖和撤销仍以有效获奖记录为事实源，原生 Answer 行为勋章不受影响。
