@@ -35,7 +35,7 @@ def main():
         fixture_config.write_text((ROOT / 'deploy/nginx/meta-pulse.conf').read_text()
             .replace('server forum:80;', 'server forum:8080;')
             .replace('set $intel_upstream http://intel-api:8090;', 'set $intel_upstream http://127.0.0.1:8080;')
-            + '\nserver { listen 8080; add_header X-Frame-Options DENY always; location / { return 200 "$http_cookie|$http_new_api_user|$http_x_pulse_signature|$http_authorization"; } }\n')
+            + '\nserver { listen 8080; client_max_body_size 0; add_header X-Frame-Options DENY always; location / { return 200 "$http_cookie|$http_new_api_user|$http_x_pulse_signature|$http_authorization"; } }\n')
         try:
             run('docker', 'run', '-d', '--rm', '--name', name, '--add-host', 'forum:127.0.0.1',
                 '-p', '127.0.0.1::443', '-p', '127.0.0.1::80',
@@ -45,11 +45,11 @@ def main():
             port = int(run('docker', 'port', name, '443/tcp').rsplit(':', 1)[1])
             http_port = int(run('docker', 'port', name, '80/tcp').rsplit(':', 1)[1])
 
-            def get(path, user_agent='Mozilla/5.0', host='metarhub.com', method='GET', https=True, request_headers=None, binary=False):
+            def get(path, user_agent='Mozilla/5.0', host='metarhub.com', method='GET', https=True, request_headers=None, binary=False, request_body=None):
                 conn = (http.client.HTTPSConnection('localhost', port, context=context, timeout=5)
                         if https else http.client.HTTPConnection('localhost', http_port, timeout=5))
                 try:
-                    conn.request(method, path, headers={'Host': host, 'User-Agent': user_agent, **(request_headers or {})})
+                    conn.request(method, path, body=request_body, headers={'Host': host, 'User-Agent': user_agent, **(request_headers or {})})
                     res = conn.getresponse()
                     headers = dict(res.getheaders())
                     headers['_frame_headers'] = [v for k, v in res.getheaders() if k.lower() == 'x-frame-options']
@@ -79,6 +79,20 @@ def main():
                         assert '/metar-assets/app.js' in body and 'https://metarhub.com/' in body
             assert get('/questions/42')[2] == '|||'  # details still use Answer
             assert get('/questions/ask')[2] == '|||'
+            # Real request bodies cross the production upload location. The
+            # fixture echoes identity; Answer retains actual file validation.
+            upload_headers = {'Cookie': 'visit=fixture; unrelated=secret',
+                              'Authorization': 'fixture-token', 'New-Api-User': '999',
+                              'X-Pulse-Signature': 'forged'}
+            for size in [1024, 2 * 1024 * 1024, 8 * 1024 * 1024 + 1024]:
+                status, _, body = get('/answer/api/v1/file', method='POST',
+                    request_headers=upload_headers, request_body=b'x' * size)
+                assert status == 200 and body == 'visit=fixture|||fixture-token', (size, status, body[:100])
+            assert get('/answer/api/v1/file', method='POST',
+                       request_headers={'Content-Length': str(10 * 1024 * 1024)})[0] == 413
+            assert get('/answer/api/v1/question', method='POST',
+                       request_headers={'Content-Length': str(2 * 1024 * 1024)})[0] == 413
+
             visitor = 'a' * 64
             boundary_headers = {'Cookie': 'visit=test-session; metar_ops=' + visitor + '; secret=unrelated',
                                 'Authorization': 'Bearer fixture', 'New-Api-User': '999', 'X-Pulse-Signature': 'forged'}

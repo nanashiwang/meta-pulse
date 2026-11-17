@@ -42,8 +42,8 @@ grep -q 'add_header Referrer-Policy "no-referrer" always;' "$config" || die 'cal
 grep -q 'proxy_set_header Cookie \$forum_cookie;' "$config" || die 'forum Cookie allowlist is missing'
 grep -A18 'location \^~ /metar/api/intel/' "$config" | grep -q 'proxy_set_header Authorization "";' || die 'public Intel proxy Authorization stripping is missing'
 [ "$(grep -c 'proxy_set_header Authorization "";' "$config")" -eq 2 ] || die 'only callback and public Intel proxy may strip Authorization; Answer API auth must remain usable'
-[ "$(grep -c 'proxy_set_header X-Pulse-Signature "";' "$config")" -eq 13 ] || die 'all forum routes must strip browser Pulse signatures'
-[ "$(grep -c 'proxy_set_header New-Api-User "";' "$config")" -eq 13 ] || die 'all forum routes must strip new-api identity headers'
+[ "$(grep -c 'proxy_set_header X-Pulse-Signature "";' "$config")" -eq 14 ] || die 'all forum routes must strip browser Pulse signatures'
+[ "$(grep -c 'proxy_set_header New-Api-User "";' "$config")" -eq 14 ] || die 'all forum routes must strip new-api identity headers'
 grep -A12 'location /blog/' "$config" | grep -q 'Strict-Transport-Security' || die 'blog location lost inherited security headers'
 grep -q 'location = / {' "$config" || die 'METAR exact homepage route is missing'
 grep -A14 'location = / {' "$config" | grep -qF 'try_files /blog/metar/index.html =404;' || die 'community homepage must serve the built shell and fail closed'
@@ -110,3 +110,5 @@ echo 'gateway config tests passed'
 
 [ "$(grep -c 'proxy_set_header Cookie $analytics_cookie;' "$config")" -eq 1 ] || die 'analytics cookie must stay on its own endpoint'
 grep -A20 'location \^~ /answer/api/v1/metar/analytics/' "$config" | grep -q 'limit_req zone=community_analytics' || die 'analytics must be rate limited'
+
+grep -A3 'location = /answer/api/v1/file {' "$config" | grep -q 'client_max_body_size 9m;' || die 'native upload limit is missing'
