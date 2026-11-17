@@ -128,6 +128,8 @@ new-api 接收端与实际到账、生产普通账号流程、邮件与跨实例
 
 `/admin/publishing` → [后台页面](../metar-frontend/production/src/admin-publishing.js)、[管理员发布服务](../services/forum-plugin/user-center-pulse/admin_publishing.go)、[Answer 原生适配](../services/forum/answer-operator-publishing.patch)。仅登记的无外部绑定运营账号，显式代发标识、JSON 文件/粘贴预览、持久化定时批次、同批父项引用、评论及评论回复、取消/原请求核对继续；[定时队列](../services/forum-plugin/user-center-pulse/publishing_plans.go)复用单项幂等与未知结果核对；规则见 [内容运营](CONTENT_OPERATIONS.md)，测试 `make test-operator-publishing`。
 
+全站列表首页从 Answer 公开 `announcement` 帖中取最新一条置顶帖作为公告，空结果或失败自动隐藏。桌面右栏首位是「优秀内容评选」活动卡，窄屏放在列表前；见 `community-announcement.test.js`。
+
 帖子列表右栏包含「等你来回答」（Answer unanswered 前五条）与「精选阅读」（既有 feeds / 好文收藏、score 排序前五条），独立异步加载，隐藏查看全部并用细分隔线区分帖子，保留已关注标签；见 `discussion-rail.test.js`。
 
 共享固定页脚背景贴合视口或手机导航边缘；个人侧栏保持边界。正文按 ResizeObserver 测得的页脚高度预留底部空间，防止换行后挡住末项；验证见 `footer.test.js`。

@@ -1,0 +1,28 @@
+# Agent Note: 社区首页公告与评选入口
+
+Status: implemented
+
+## Problem
+
+常用标签下的评选文字链接与站务公告会竞争首屏位置。公告需要能撤下，又不应让论坛运营为此多维护一套系统。
+
+## Existing capabilities and impact
+
+[讨论列表](../../../../metar-frontend/production/src/app.js)已经查询 Answer 的公开标签帖子，且已有 [优秀内容评选](2026-11-16-content-awards-selection.md)公开入口。只调整列表首屏，不改变评选规则、管理权限或原生发帖流程。
+
+## Decision
+
+全站列表首页用已有的 Answer 公开帖子接口，取按置顶、发布时间排序的第一条 `announcement` 帖。只有该帖已置顶才显示一条公告，点击进入原帖；没有置顶帖或加载失败时不占位。评选改为右栏第一张活动卡，窄屏时移到列表前，不藏在折叠的社区推荐里。
+
+## Alternatives considered
+
+只取最新公告会让旧通知下不来；另建公告配置和后台会重复 Answer 已有的标签、置顶和可见性规则。评选与「新建话题」并排会让筛选工具栏更挤，采用用户选定的右栏卡片。
+
+## Consequences
+
+- 运营使用原生发帖、置顶、取消置顶管理首页，不发布样例，不新增后台。
+- 置顶仍影响原生帖子排序；撤下一条后如另有置顶公告则显示下一条。将 `announcement` 设为保留标签，避免普通内容混入站务分类。
+
+## Verification
+
+`community-announcement.test.js` 覆盖公开公告查询、无置顶或失败时隐藏、过期响应丢弃及入口不重复。用构建产物和模拟 Answer 响应检查桌面右栏、320/390px 窄屏布局及两处链接。

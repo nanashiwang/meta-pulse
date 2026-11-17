@@ -113,6 +113,7 @@
     book: '<path d="M12 5C8 2 5 3 3 4v15c3-1 6-1 9 1 3-2 6-2 9-1V4c-2-1-5-2-9 1Zm0 0v15"/>',
     pulse: '<path d="M2 12h5l3-8 4 16 3-8h5"/>',
     code: '<path d="m7 6-6 6 6 6m10-12 6 6-6 6m-3-15-4 18"/>',
+    megaphone: '<path d="m3 11 17-5v12L3 14v-3Zm4 4 2 5h3l-2-4M20 8l2-2m-2 10 2 2"/>',
     bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>',
     plus: '<path d="M12 4v16M4 12h16"/>',
     arrow: '<path d="M4 12h16m-5-5 5 5-5 5"/>',
@@ -425,6 +426,7 @@
     syncNavigation();
     enhanceTaxonomy();
     void mountDiscussionRail();
+    void mountCommunityAnnouncement();
     void mountTagShortcuts();
     void mountSearchSuggestions();
     void mountPersonalNative();
@@ -662,6 +664,25 @@
       : '<p class="rail-content-state">' + esc(t(unanswered ? '暂时没有待回答问题' : '暂无精选内容')) + '</p>';
   }
 
+  async function mountCommunityAnnouncement() {
+    const node = document.querySelector('[data-community-announcement]');
+    if (!node) return;
+    const sequence = navigationSequence, scope = taxonomy.scope(answer);
+    try {
+      // Answer sorts pinned posts first for newest, then by creation time. Pin 2 means pinned.
+      const result = await answer.listQuestions({page:1, pageSize:1, order:'newest', tag:'announcement'});
+      const post = Array.isArray(result?.list) ? result.list[0] : null;
+      if (!node.isConnected || sequence !== navigationSequence || scope !== taxonomy.scope(answer)) return;
+      if (post?.pin !== 2 || !post.id || typeof post.title !== 'string' || !post.title.trim()) return;
+      node.innerHTML = external(questionHref(post.id),
+        `<strong class="announcement-label">${I('megaphone', 'sm')}${t('站务公告')}</strong><span class="announcement-title">${esc(post.title)}</span><span class="announcement-more">${t('查看详情')}${I('arrow', 'sm')}</span>`,
+        'community-announcement-link');
+      node.hidden = false;
+    } catch (_) {
+      // Optional site notice: never replace the feed with an error or leave an empty bar.
+    }
+  }
+
   let railMediaCleanup = null;
   async function mountDiscussionRail() {
     railMediaCleanup?.();
@@ -712,8 +733,9 @@
     return `<section class="community-discussions">
       ${pageTitle(title)}
       <div data-tag-shortcuts><p class="muted">${t('正在加载…')}</p></div>
-      <p class="mb16">${link('/awards', I('trophy', 'sm') + t('优秀内容评选'), 'textlink')}</p>
+      ${!tag && page === 1 ? '<div data-community-announcement hidden></div>' : ''}
       <div class="community-layout">
+        ${link('/awards', `<span class="community-award-icon">${I('trophy')}</span><span class="community-award-copy"><small>${t('社区活动')}</small><strong>${t('优秀内容评选')}</strong></span>${I('arrow', 'sm')}`, 'community-award')}
         <div class="community-feed">
           <div class="discussion-toolbar"><nav class="discussion-tabs" aria-label="${t('话题筛选')}">${tabs}</nav>${external(askPath, I('plus', 'sm') + t('新建话题'), 'btn primary')}</div>
           ${list.length ? discussionList(list) : empty(order === 'unanswered' ? t("暂时没有待回答问题") : t("当前筛选没有内容"), t("可以调整筛选，或发起一个新问题。"), external(askPath, t("发起提问"), 'btn primary'), 'chat')}${pager}
