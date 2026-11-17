@@ -3,11 +3,14 @@ package mysql
 import (
 	"context"
 	"fmt"
-	"github.com/nanashiwang/meta-pulse/migrations"
 	"os"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
+
+	"github.com/nanashiwang/meta-pulse/migrations"
+	"github.com/pressly/goose/v3"
 )
 
 func TestMySQLTicketStatistics(t *testing.T) {
@@ -23,13 +26,20 @@ func TestMySQLTicketStatistics(t *testing.T) {
 	if err = migrations.Up(context.Background(), db.SQL()); err != nil {
 		t.Fatal(err)
 	}
-	// Simulate MySQL completing DDL after the caller timed out, before Goose
-	// recorded version 20. Retrying must preserve the existing index and data.
-	if _, err = db.SQL().Exec("DELETE FROM goose_db_version WHERE version_id>=20"); err != nil {
+	// Replay only the completed index DDL, as if its caller timed out before
+	// recording success. Leave later migrations and shared Goose history intact.
+	const name = "00020_admin_ticket_statistics_index.sql"
+	src, err := migrations.FS.ReadFile(name)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err = migrations.Up(context.Background(), db.SQL()); err != nil {
-		t.Fatalf("resume completed statistics index: %v", err)
+	provider, err := goose.NewProvider(goose.DialectMySQL, db.SQL(), fstest.MapFS{name: {Data: src}}, goose.WithDisableVersioning(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	applied, err := provider.Up(context.Background())
+	if err != nil || len(applied) != 1 || applied[0].Source.Version != 20 {
+		t.Fatalf("resume completed statistics index: %v (%v)", err, applied)
 	}
 	tx := db.GORM().Begin()
 	defer tx.Rollback()
