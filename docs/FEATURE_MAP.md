@@ -192,3 +192,6 @@ new-api 接收端与实际到账、生产普通账号流程、邮件与跨实例
 图片粘贴与上传（2026-11-18）：原生发帖、回答、编辑、图片工具栏及外链导入共用 `/answer/api/v1/file`；[网关](../deploy/nginx/meta-pulse.conf)只对此精确路径设置 9 MiB 请求上限，容纳默认 4 MiB 图片与 8 MiB 附件及 multipart。Answer 保留会话、格式、大小与存储校验。真实网关回归见 [test-seo.py](../deploy/nginx/test-seo.py)，生产需更新网关后生效。
 
 新版抽奖：`draw_bonus.go` 按不可变规则执行有效券必得闪 + 10% EXP，到期券仍只抽 EXP。`00022` 在同一 Grant 区分主奖与附加经验交付，保留单次扣券、重放和期限语义。本人历史、结算统计和后台概率预览按两类奖励分别展示。
+
+
+AI 内容自报：`services/forum/answer-ai-content-disclosure.patch` 为原生发帖、回答、评论、回复及编辑提供可选声明，原生启动迁移追加默认未标注字段，联合发帖分别保存，METAR 帖子列表读取公开声明。保留原生权限和评选规则，不做检测。

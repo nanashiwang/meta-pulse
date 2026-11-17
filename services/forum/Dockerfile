@@ -44,6 +44,7 @@ COPY services/forum/answer-badge-context.patch /build/answer-badge-context.patch
 COPY services/forum/answer-ranking-top100.patch /build/answer-ranking-top100.patch
 COPY services/forum/answer-notification-inbox.patch /build/answer-notification-inbox.patch
 COPY services/forum/answer-topic-polls.patch /build/answer-topic-polls.patch
+COPY services/forum/answer-ai-content-disclosure.patch /build/answer-ai-content-disclosure.patch
 COPY services/forum/normalize-source.py /build/normalize-source.py
 RUN python3 /build/normalize-source.py /build/answer \
     && cd /build/answer \
@@ -63,7 +64,9 @@ RUN python3 /build/normalize-source.py /build/answer \
     && patch -p1 --fuzz=0 < /build/answer-badge-context.patch \
     && patch -p1 --fuzz=0 < /build/answer-ranking-top100.patch \
     && patch -p1 --fuzz=0 < /build/answer-topic-polls.patch \
-    && patch -p1 --fuzz=0 < /build/answer-notification-inbox.patch
+    && patch -p1 --fuzz=0 < /build/answer-notification-inbox.patch \
+    && patch -p1 --fuzz=0 < /build/answer-ai-content-disclosure.patch
+RUN cd /build/answer && CGO_ENABLED=0 go test ./internal/migrations -run '^TestMetarAIContent' -count=1
 ENV ANSWER_MODULE=/build/answer
 
 WORKDIR /build

@@ -64,6 +64,8 @@
     "设置尚未保存，确定离开？": "You have unsaved settings. Leave this page?",
     "设置页面加载较慢，可使用下方链接打开原页面。": "Loading is taking longer. Open the original page using the link below.",
     "更多": "More",
+    "含 AI 生成内容": "Includes AI-generated content",
+    "作者自行声明，非平台检测。": "Self-reported by the author, not detected by the platform.",
     "有效券必得闪，另有 10% 概率加送经验。": "Eligible tickets always award credits, with a 10% chance of bonus EXP.",
     "载入必得闪推荐方案": "Load the guaranteed-credit preset",
     "推荐方案：有效券必得 1/2/5/10/50/100 ⚡️，另有 10% 概率获得经验；到期券仅抽经验。": "Preset: eligible tickets always award 1/2/5/10/50/100 ⚡️, with a 10% chance of bonus EXP. Expired tickets award only EXP.",

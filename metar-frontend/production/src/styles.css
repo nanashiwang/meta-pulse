@@ -775,3 +775,5 @@ html.community-wide:not(.preview-tools) .page{padding-bottom:calc(var(--communit
 
 .award-review-feedback:not(:empty){margin-top:8px;font-size:13px}
 .award-review-feedback .btn{margin-inline-start:8px}
+
+.ai-content-label{display:inline-block;flex:none;max-width:42%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:1px 5px;border:1px solid var(--border);border-radius:4px;background:var(--soft);color:var(--community-secondary);font-size:11px;font-weight:500}

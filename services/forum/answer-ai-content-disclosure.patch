@@ -1,0 +1,1270 @@
+diff --git a/cmd/main.go b/cmd/main.go
+index f166d23..4adad97 100644
+--- a/cmd/main.go
++++ b/cmd/main.go
+@@ -29,6 +29,7 @@ import (
+ 	"github.com/apache/answer/internal/base/constant"
+ 	"github.com/apache/answer/internal/base/cron"
+ 	"github.com/apache/answer/internal/base/path"
++	"github.com/apache/answer/internal/migrations"
+ 	"github.com/apache/answer/internal/schema"
+ 	"github.com/gin-gonic/gin"
+ 	"github.com/segmentfault/pacman"
+@@ -71,6 +72,11 @@ func runApp() {
+ 	if err != nil {
+ 		panic(err)
+ 	}
++	// The forum image starts Answer directly. Apply pending schema versions
++	// before any content repository can query the upgraded tables.
++	if err := migrations.Migrate(c.Debug, c.Data.Database, c.Data.Cache, ""); err != nil {
++		panic(fmt.Errorf("migrate Answer before startup: %w", err))
++	}
+ 	app, cleanup, err := initApplication(
+ 		c.Debug, c.Server, c.Data.Database, c.Data.Cache, c.I18n, c.Swaggerui, c.ServiceConfig, c.UI, log.GetLogger())
+ 	if err != nil {
+diff --git a/internal/controller/question_controller.go b/internal/controller/question_controller.go
+index 9d9d72a..1cc3228 100644
+--- a/internal/controller/question_controller.go
++++ b/internal/controller/question_controller.go
+@@ -584,6 +584,7 @@ func (qc *QuestionController) AddQuestionByAnswer(ctx *gin.Context) {
+ 		answerReq.QuestionID = uid.DeShortID(questionInfo.ID)
+ 		answerReq.UserID = middleware.GetLoginUserIDFromContext(ctx)
+ 		answerReq.Content = req.AnswerContent
++		answerReq.ContainsAIGenerated = req.AnswerContainsAIGenerated
+ 		answerReq.HTML = req.AnswerHTML
+ 		answerID, err := qc.answerService.Insert(ctx, answerReq)
+ 		if err != nil {
+diff --git a/internal/entity/answer_entity.go b/internal/entity/answer_entity.go
+index 4c9436e..e742710 100644
+--- a/internal/entity/answer_entity.go
++++ b/internal/entity/answer_entity.go
+@@ -53,6 +53,8 @@ type Answer struct {
+ 	CommentCount   int       `xorm:"not null default 0 INT(11) comment_count"`
+ 	VoteCount      int       `xorm:"not null default 0 INT(11) vote_count"`
+ 	RevisionID     string    `xorm:"not null default 0 BIGINT(20) revision_id"`
++
++	ContainsAIGenerated bool `xorm:"'contains_ai_generated' notnull default 0" json:"contains_ai_generated"`
+ }
+ 
+ type AnswerSearch struct {
+diff --git a/internal/entity/comment_entity.go b/internal/entity/comment_entity.go
+index 248016f..4c00374 100644
+--- a/internal/entity/comment_entity.go
++++ b/internal/entity/comment_entity.go
+@@ -47,6 +47,8 @@ type Comment struct {
+ 	Status         int           `xorm:"not null default 0 TINYINT(4) status"`
+ 	OriginalText   string        `xorm:"not null MEDIUMTEXT original_text"`
+ 	ParsedText     string        `xorm:"not null MEDIUMTEXT parsed_text"`
++
++	ContainsAIGenerated bool `xorm:"'contains_ai_generated' notnull default 0" json:"contains_ai_generated"`
+ }
+ 
+ // TableName comment table name
+diff --git a/internal/entity/question_entity.go b/internal/entity/question_entity.go
+index 9e5dcd1..2277879 100644
+--- a/internal/entity/question_entity.go
++++ b/internal/entity/question_entity.go
+@@ -74,6 +74,8 @@ type Question struct {
+ 	PostUpdateTime   time.Time `xorm:"post_update_time TIMESTAMP"`
+ 	RevisionID       string    `xorm:"not null default 0 BIGINT(20) revision_id"`
+ 	LinkedCount      int       `xorm:"not null default 0 INT(11) linked_count"`
++
++	ContainsAIGenerated bool `xorm:"'contains_ai_generated' notnull default 0" json:"contains_ai_generated"`
+ }
+ 
+ // TableName question table name
+diff --git a/internal/migrations/metar_ai_disclosure.go b/internal/migrations/metar_ai_disclosure.go
+new file mode 100644
+index 0000000..95c140c
+--- /dev/null
++++ b/internal/migrations/metar_ai_disclosure.go
+@@ -0,0 +1,31 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one
++ * or more contributor license agreements.  See the NOTICE file
++ * distributed with this work for additional information
++ * regarding copyright ownership.  The ASF licenses this file
++ * to you under the Apache License, Version 2.0 (the
++ * "License"); you may not use this file except in compliance
++ * with the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing,
++ * software distributed under the License is distributed on an
++ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++ * KIND, either express or implied.  See the License for the
++ * specific language governing permissions and limitations
++ * under the License.
++ */
++
++package migrations
++
++import (
++	"context"
++
++	"github.com/apache/answer/internal/entity"
++	"xorm.io/xorm"
++)
++
++func addAIContentDisclosure(ctx context.Context, x *xorm.Engine) error {
++	return x.Context(ctx).Sync(new(entity.Question), new(entity.Answer), new(entity.Comment))
++}
+diff --git a/internal/migrations/metar_ai_disclosure_test.go b/internal/migrations/metar_ai_disclosure_test.go
+new file mode 100644
+index 0000000..8ecc61d
+--- /dev/null
++++ b/internal/migrations/metar_ai_disclosure_test.go
+@@ -0,0 +1,80 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one
++ * or more contributor license agreements.  See the NOTICE file
++ * distributed with this work for additional information
++ * regarding copyright ownership.  The ASF licenses this file
++ * to you under the Apache License, Version 2.0 (the
++ * "License"); you may not use this file except in compliance
++ * with the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing,
++ * software distributed under the License is distributed on an
++ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++ * KIND, either express or implied.  See the License for the
++ * specific language governing permissions and limitations
++ * under the License.
++ */
++
++package migrations
++
++import (
++	"context"
++	"testing"
++
++	"github.com/apache/answer/internal/base/data"
++	"github.com/apache/answer/internal/entity"
++	commentrepo "github.com/apache/answer/internal/repo/comment"
++)
++
++func TestMetarAIContentLegacyRowsAndCommentEdits(t *testing.T) {
++	ctx := context.Background()
++	db, err := data.NewDB(false, &data.Database{Driver: "sqlite", Connection: ":memory:"})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer db.Close()
++	db.SetMaxOpenConns(1)
++	if err = addAIContentDisclosure(ctx, db); err != nil {
++		t.Fatal(err)
++	}
++	for _, table := range []string{"question", "answer", "comment"} {
++		if _, err = db.Exec("ALTER TABLE " + table + " DROP COLUMN contains_ai_generated"); err != nil {
++			t.Fatal(err)
++		}
++		if _, err = db.Exec("INSERT INTO "+table+" (id, original_text, parsed_text) VALUES (1, ?, ?)", "legacy body", "<p>legacy body</p>"); err != nil {
++			t.Fatal(err)
++		}
++	}
++	for i := 0; i < 2; i++ {
++		if err = addAIContentDisclosure(ctx, db); err != nil {
++			t.Fatal(err)
++		}
++	}
++	for _, table := range []string{"question", "answer", "comment"} {
++		var row struct {
++			ContainsAIGenerated bool `xorm:"'contains_ai_generated'"`
++			OriginalText        string
++		}
++		found, err := db.Table(table).Where("id = ?", 1).Get(&row)
++		if err != nil || !found || row.ContainsAIGenerated || row.OriginalText != "legacy body" {
++			t.Fatalf("%s old row: %+v, found %v, error %v", table, row, found, err)
++		}
++	}
++	repo := commentrepo.NewCommentRepo(&data.Data{DB: db}, nil)
++	yes, no := true, false
++	for _, step := range []struct {
++		flag *bool
++		want bool
++	}{{&yes, true}, {nil, true}, {&no, false}} {
++		if err = repo.UpdateCommentContent(ctx, "1", "edited comment", "<p>edited comment</p>", step.flag); err != nil {
++			t.Fatal(err)
++		}
++		var saved entity.Comment
++		found, err := db.ID(1).Get(&saved)
++		if err != nil || !found || saved.ContainsAIGenerated != step.want || saved.OriginalText != "edited comment" {
++			t.Fatalf("comment: %+v, found %v, error %v", saved, found, err)
++		}
++	}
++}
+diff --git a/internal/migrations/migrations.go b/internal/migrations/migrations.go
+index 2fbfbb7..d5815ed 100644
+--- a/internal/migrations/migrations.go
++++ b/internal/migrations/migrations.go
+@@ -104,6 +104,7 @@ var migrations = []Migration{
+ 	NewMigration("v1.5.1", "add plugin kv storage", addPluginKVStorage, true),
+ 	NewMigration("v1.6.0", "move user config to interface", moveUserConfigToInterface, true),
+ 	NewMigration("v1.7.0", "add optional tags", addOptionalTags, true),
++	NewMigration("v1.7.1-metar-ai-disclosure", "add AI content disclosure", addAIContentDisclosure, true),
+ }
+ 
+ func GetMigrations() []Migration {
+@@ -175,7 +176,7 @@ func Migrate(debug bool, dbConf *data.Database, cacheConf *data.CacheConf, upgra
+ 			fmt.Printf("[migrate] migrate to db version %d failed: %s\n", currentDBVersion+1, err.Error())
+ 			return err
+ 		}
+-		if migrationFunc.ShouldCleanCache() {
++		if migrationFunc.ShouldCleanCache() && cache != nil {
+ 			if err := cache.Flush(context.Background()); err != nil {
+ 				fmt.Printf("[migrate] flush cache failed: %s\n", err.Error())
+ 			}
+diff --git a/internal/repo/comment/comment_repo.go b/internal/repo/comment/comment_repo.go
+index 10b7b30..bf4a3e3 100644
+--- a/internal/repo/comment/comment_repo.go
++++ b/internal/repo/comment/comment_repo.go
+@@ -81,11 +81,14 @@ func (cr *commentRepo) RemoveComment(ctx context.Context, commentID string) (err
+ 
+ // UpdateCommentContent update comment
+ func (cr *commentRepo) UpdateCommentContent(
+-	ctx context.Context, commentID string, originalText string, parsedText string) (err error) {
+-	_, err = cr.data.DB.Context(ctx).ID(commentID).Update(&entity.Comment{
+-		OriginalText: originalText,
+-		ParsedText:   parsedText,
+-	})
++	ctx context.Context, commentID string, originalText string, parsedText string, aiDeclaration *bool) (err error) {
++	comment := &entity.Comment{OriginalText: originalText, ParsedText: parsedText}
++	cols := []string{"original_text", "parsed_text"}
++	if aiDeclaration != nil {
++		comment.ContainsAIGenerated = *aiDeclaration
++		cols = append(cols, "contains_ai_generated")
++	}
++	_, err = cr.data.DB.Context(ctx).ID(commentID).Cols(cols...).Update(comment)
+ 	if err != nil {
+ 		err = errors.InternalServer(reason.DatabaseError).WithError(err).WithStack()
+ 	}
+diff --git a/internal/schema/answer_schema.go b/internal/schema/answer_schema.go
+index 9ac4bca..e0e823e 100644
+--- a/internal/schema/answer_schema.go
++++ b/internal/schema/answer_schema.go
+@@ -58,6 +58,8 @@ type AnswerAddReq struct {
+ 	CaptchaCode string `json:"captcha_code"`
+ 	IP          string `json:"-"`
+ 	UserAgent   string `json:"-"`
++
++	ContainsAIGenerated bool `json:"contains_ai_generated"`
+ }
+ 
+ func (req *AnswerAddReq) Check() (errFields []*validator.FormErrorField, err error) {
+@@ -87,6 +89,8 @@ type AnswerUpdateReq struct {
+ 	CanEdit      bool   `json:"-"`
+ 	CaptchaID    string `json:"captcha_id"`
+ 	CaptchaCode  string `json:"captcha_code"`
++
++	ContainsAIGenerated *bool `json:"contains_ai_generated,omitempty"`
+ }
+ 
+ func (req *AnswerUpdateReq) Check() (errFields []*validator.FormErrorField, err error) {
+@@ -137,6 +141,8 @@ type AnswerInfo struct {
+ 
+ 	// MemberActions
+ 	MemberActions []*PermissionMemberAction `json:"member_actions"`
++
++	ContainsAIGenerated bool `json:"contains_ai_generated"`
+ }
+ 
+ type AdminAnswerInfo struct {
+diff --git a/internal/schema/comment_schema.go b/internal/schema/comment_schema.go
+index 015da07..2d9a031 100644
+--- a/internal/schema/comment_schema.go
++++ b/internal/schema/comment_schema.go
+@@ -54,6 +54,8 @@ type AddCommentReq struct {
+ 
+ 	IP        string `json:"-"`
+ 	UserAgent string `json:"-"`
++
++	ContainsAIGenerated bool `json:"contains_ai_generated"`
+ }
+ 
+ func (req *AddCommentReq) Check() (errFields []*validator.FormErrorField, err error) {
+@@ -95,6 +97,8 @@ type UpdateCommentReq struct {
+ 	// whether user can delete it
+ 	CaptchaID   string `json:"captcha_id"` // captcha_id
+ 	CaptchaCode string `json:"captcha_code"`
++
++	ContainsAIGenerated *bool `json:"contains_ai_generated,omitempty"`
+ }
+ 
+ func (req *UpdateCommentReq) Check() (errFields []*validator.FormErrorField, err error) {
+@@ -115,6 +119,8 @@ type UpdateCommentResp struct {
+ 	OriginalText string `json:"original_text"`
+ 	// parsed comment content
+ 	ParsedText string `json:"parsed_text"`
++
++	ContainsAIGenerated bool `json:"contains_ai_generated"`
+ }
+ 
+ // GetCommentListReq get comment list all request
+@@ -211,6 +217,8 @@ type GetCommentResp struct {
+ 
+ 	// MemberActions
+ 	MemberActions []*PermissionMemberAction `json:"member_actions"`
++
++	ContainsAIGenerated bool `json:"contains_ai_generated"`
+ }
+ 
+ func (r *GetCommentResp) SetFromComment(comment *entity.Comment) {
+diff --git a/internal/schema/question_schema.go b/internal/schema/question_schema.go
+index 802b34a..c51b088 100644
+--- a/internal/schema/question_schema.go
++++ b/internal/schema/question_schema.go
+@@ -91,6 +91,8 @@ type QuestionAdd struct {
+ 	CaptchaCode string `json:"captcha_code"`
+ 	IP          string `json:"-"`
+ 	UserAgent   string `json:"-"`
++
++	ContainsAIGenerated bool `json:"contains_ai_generated"`
+ }
+ 
+ func (req *QuestionAdd) Check() (errFields []*validator.FormErrorField, err error) {
+@@ -122,6 +124,9 @@ type QuestionAddByAnswer struct {
+ 	CaptchaCode string `json:"captcha_code"`
+ 	IP          string `json:"-"`
+ 	UserAgent   string `json:"-"`
++
++	ContainsAIGenerated       bool `json:"contains_ai_generated"`
++	AnswerContainsAIGenerated bool `json:"answer_contains_ai_generated"`
+ }
+ 
+ func (req *QuestionAddByAnswer) Check() (errFields []*validator.FormErrorField, err error) {
+@@ -195,6 +200,8 @@ type QuestionUpdate struct {
+ 	QuestionPermission
+ 	CaptchaID   string `json:"captcha_id"` // captcha_id
+ 	CaptchaCode string `json:"captcha_code"`
++
++	ContainsAIGenerated *bool `json:"contains_ai_generated,omitempty"`
+ }
+ 
+ type QuestionRecoverReq struct {
+@@ -267,6 +274,8 @@ type QuestionInfoResp struct {
+ 	// MemberActions
+ 	MemberActions  []*PermissionMemberAction `json:"member_actions"`
+ 	ExtendsActions []*PermissionMemberAction `json:"extends_actions"`
++
++	ContainsAIGenerated bool `json:"contains_ai_generated"`
+ }
+ 
+ // UpdateQuestionResp update question resp
+@@ -423,6 +432,8 @@ type QuestionPageResp struct {
+ 	OperatedAt    int64                     `json:"operated_at"`
+ 	Operator      *QuestionPageRespOperator `json:"operator"`
+ 	OperationType string                    `json:"operation_type"`
++
++	ContainsAIGenerated bool `json:"contains_ai_generated"`
+ }
+ 
+ type QuestionPageRespOperator struct {
+diff --git a/internal/service/answer_common/answer.go b/internal/service/answer_common/answer.go
+index 15a4e07..3c2c136 100644
+--- a/internal/service/answer_common/answer.go
++++ b/internal/service/answer_common/answer.go
+@@ -104,6 +104,7 @@ func (as *AnswerCommon) ShowFormat(ctx context.Context, data *entity.Answer) *sc
+ 	info.ID = data.ID
+ 	info.QuestionID = data.QuestionID
+ 	info.Content = data.OriginalText
++	info.ContainsAIGenerated = data.ContainsAIGenerated
+ 	info.HTML = data.ParsedText
+ 	info.Accepted = data.Accepted
+ 	info.VoteCount = data.VoteCount
+diff --git a/internal/service/comment/comment_service.go b/internal/service/comment/comment_service.go
+index dc599e6..eeca3bf 100644
+--- a/internal/service/comment/comment_service.go
++++ b/internal/service/comment/comment_service.go
+@@ -52,7 +52,7 @@ import (
+ type CommentRepo interface {
+ 	AddComment(ctx context.Context, comment *entity.Comment) (err error)
+ 	RemoveComment(ctx context.Context, commentID string) (err error)
+-	UpdateCommentContent(ctx context.Context, commentID string, original string, parsedText string) (err error)
++	UpdateCommentContent(ctx context.Context, commentID string, original string, parsedText string, aiDeclaration *bool) (err error)
+ 	UpdateCommentStatus(ctx context.Context, commentID string, status int) (err error)
+ 	GetComment(ctx context.Context, commentID string) (comment *entity.Comment, exist bool, err error)
+ 	GetCommentPage(ctx context.Context, commentQuery *CommentQuery) (
+@@ -131,6 +131,7 @@ func (cs *CommentService) AddComment(ctx context.Context, req *schema.AddComment
+ 	resp *schema.GetCommentResp, err error) {
+ 	comment := &entity.Comment{}
+ 	_ = copier.Copy(comment, req)
++	comment.ContainsAIGenerated = req.ContainsAIGenerated
+ 	comment.Status = entity.CommentStatusAvailable
+ 
+ 	objInfo, err := cs.objectInfoService.GetInfo(ctx, req.ObjectID)
+@@ -294,14 +295,22 @@ func (cs *CommentService) UpdateComment(ctx context.Context, req *schema.UpdateC
+ 		return nil, errors.BadRequest(reason.CommentCannotEditAfterDeadline)
+ 	}
+ 
+-	if err = cs.commentRepo.UpdateCommentContent(ctx, old.ID, req.OriginalText, req.ParsedText); err != nil {
++	aiDeclaration := req.ContainsAIGenerated
++	if req.UserID != old.UserID {
++		aiDeclaration = nil
++	}
++	if err = cs.commentRepo.UpdateCommentContent(ctx, old.ID, req.OriginalText, req.ParsedText, aiDeclaration); err != nil {
+ 		return nil, err
+ 	}
++	if aiDeclaration != nil {
++		old.ContainsAIGenerated = *aiDeclaration
++	}
+ 	resp = &schema.UpdateCommentResp{
+ 		CommentID:    old.ID,
+ 		OriginalText: req.OriginalText,
+ 		ParsedText:   req.ParsedText,
+ 	}
++	resp.ContainsAIGenerated = old.ContainsAIGenerated
+ 	cs.eventQueueService.Send(ctx, schema.NewEvent(constant.EventCommentUpdate, req.UserID).TID(old.ID).
+ 		CID(old.ID, old.UserID))
+ 	return resp, nil
+@@ -328,6 +337,7 @@ func (cs *CommentService) GetComment(ctx context.Context, req *schema.GetComment
+ 		OriginalText:   comment.OriginalText,
+ 		ParsedText:     comment.ParsedText,
+ 	}
++	resp.ContainsAIGenerated = comment.ContainsAIGenerated
+ 
+ 	// get comment user info
+ 	if len(resp.UserID) > 0 {
+@@ -424,6 +434,7 @@ func (cs *CommentService) convertCommentEntity2Resp(ctx context.Context, req *sc
+ 		OriginalText:   comment.OriginalText,
+ 		ParsedText:     comment.ParsedText,
+ 	}
++	commentResp.ContainsAIGenerated = comment.ContainsAIGenerated
+ 
+ 	// get comment user info
+ 	if len(commentResp.UserID) > 0 {
+diff --git a/internal/service/content/answer_service.go b/internal/service/content/answer_service.go
+index f904b82..c77f19a 100644
+--- a/internal/service/content/answer_service.go
++++ b/internal/service/content/answer_service.go
+@@ -257,6 +257,7 @@ func (as *AnswerService) Insert(ctx context.Context, req *schema.AnswerAddReq) (
+ 	insertData := &entity.Answer{}
+ 	insertData.UserID = req.UserID
+ 	insertData.OriginalText = req.Content
++	insertData.ContainsAIGenerated = req.ContainsAIGenerated
+ 	insertData.ParsedText = req.HTML
+ 	insertData.Accepted = schema.AnswerAcceptedFailed
+ 	insertData.QuestionID = req.QuestionID
+@@ -364,14 +365,20 @@ func (as *AnswerService) Update(ctx context.Context, req *schema.AnswerUpdateReq
+ 		return "", errors.BadRequest(reason.QuestionNotFound)
+ 	}
+ 
+-	// If the content is the same, ignore it
+-	if answerInfo.OriginalText == req.Content {
++	declaredAI := answerInfo.ContainsAIGenerated
++	declareAI := req.ContainsAIGenerated != nil && req.UserID == answerInfo.UserID
++	if declareAI {
++		declaredAI = *req.ContainsAIGenerated
++	}
++	// If the content and author declaration are the same, ignore it.
++	if answerInfo.OriginalText == req.Content && declaredAI == answerInfo.ContainsAIGenerated {
+ 		return "", nil
+ 	}
+ 
+ 	insertData := &entity.Answer{}
+ 	insertData.ID = req.ID
+ 	insertData.UserID = answerInfo.UserID
++	insertData.ContainsAIGenerated = declaredAI
+ 	insertData.QuestionID = questionInfo.ID
+ 	insertData.OriginalText = req.Content
+ 	insertData.ParsedText = req.HTML
+@@ -398,7 +405,11 @@ func (as *AnswerService) Update(ctx context.Context, req *schema.AnswerUpdateReq
+ 		if err != nil {
+ 			return "", err
+ 		}
+-		if err = as.answerRepo.UpdateAnswer(ctx, insertData, []string{"original_text", "parsed_text", "updated_at", "last_edit_user_id"}); err != nil {
++		cols := []string{"original_text", "parsed_text", "updated_at", "last_edit_user_id"}
++		if declareAI {
++			cols = append(cols, "contains_ai_generated")
++		}
++		if err = as.answerRepo.UpdateAnswer(ctx, insertData, cols); err != nil {
+ 			return "", err
+ 		}
+ 		err = as.questionCommon.UpdatePostTime(ctx, questionInfo.ID)
+diff --git a/internal/service/content/question_service.go b/internal/service/content/question_service.go
+index b8372a7..6d781cb 100644
+--- a/internal/service/content/question_service.go
++++ b/internal/service/content/question_service.go
+@@ -368,6 +368,7 @@ func (qs *QuestionService) AddQuestion(ctx context.Context, req *schema.Question
+ 	question := &entity.Question{}
+ 	now := time.Now()
+ 	question.UserID = req.UserID
++	question.ContainsAIGenerated = req.ContainsAIGenerated
+ 	question.Title = req.Title
+ 	question.OriginalText = req.Content
+ 	question.ParsedText = req.HTML
+@@ -928,6 +929,11 @@ func (qs *QuestionService) UpdateQuestion(ctx context.Context, req *schema.Quest
+ 	question.UpdatedAt = now
+ 	question.PostUpdateTime = now
+ 	question.UserID = dbinfo.UserID
++	question.ContainsAIGenerated = dbinfo.ContainsAIGenerated
++	declareAI := req.ContainsAIGenerated != nil && req.UserID == dbinfo.UserID
++	if declareAI {
++		question.ContainsAIGenerated = *req.ContainsAIGenerated
++	}
+ 	question.LastEditUserID = req.UserID
+ 
+ 	minimumContentLength, err := qs.questioncommon.GetMinimumContentLength(ctx)
+@@ -962,7 +968,7 @@ func (qs *QuestionService) UpdateQuestion(ctx context.Context, req *schema.Quest
+ 	isChange := qs.tagCommon.CheckTagsIsChange(ctx, tagNameList, oldtagNameList)
+ 
+ 	// If the content is the same, ignore it
+-	if dbinfo.Title == req.Title && dbinfo.OriginalText == req.Content && !isChange {
++	if dbinfo.Title == req.Title && dbinfo.OriginalText == req.Content && !isChange && question.ContainsAIGenerated == dbinfo.ContainsAIGenerated {
+ 		return
+ 	}
+ 
+@@ -1037,7 +1043,11 @@ func (qs *QuestionService) UpdateQuestion(ctx context.Context, req *schema.Quest
+ 		if err != nil {
+ 			return questionInfo, err
+ 		}
+-		saveerr := qs.questionRepo.UpdateQuestion(ctx, question, []string{"title", "original_text", "parsed_text", "updated_at", "post_update_time", "last_edit_user_id"})
++		cols := []string{"title", "original_text", "parsed_text", "updated_at", "post_update_time", "last_edit_user_id"}
++		if declareAI {
++			cols = append(cols, "contains_ai_generated")
++		}
++		saveerr := qs.questionRepo.UpdateQuestion(ctx, question, cols)
+ 		if saveerr != nil {
+ 			return questionInfo, saveerr
+ 		}
+diff --git a/internal/service/question_common/question.go b/internal/service/question_common/question.go
+index 413f9b5..cbb6021 100644
+--- a/internal/service/question_common/question.go
++++ b/internal/service/question_common/question.go
+@@ -388,6 +388,7 @@ func (qs *QuestionCommon) FormatQuestionsPage(
+ 			Show:             questionInfo.Show,
+ 			Operator:         &schema.QuestionPageRespOperator{ID: questionInfo.UserID},
+ 		}
++		t.ContainsAIGenerated = questionInfo.ContainsAIGenerated
+ 
+ 		questionIDs = append(questionIDs, questionInfo.ID)
+ 		userIDs = append(userIDs, questionInfo.UserID)
+@@ -678,6 +679,7 @@ func (qs *QuestionCommon) ShowFormat(ctx context.Context, data *entity.Question)
+ 	info.Title = data.Title
+ 	info.UrlTitle = htmltext.UrlTitle(data.Title)
+ 	info.Content = data.OriginalText
++	info.ContainsAIGenerated = data.ContainsAIGenerated
+ 	info.HTML = data.ParsedText
+ 	info.ViewCount = data.ViewCount
+ 	info.UniqueViewCount = data.UniqueViewCount
+diff --git a/ui/src/common/interface.ts b/ui/src/common/interface.ts
+index 8b31deb..dcc2f8d 100644
+--- a/ui/src/common/interface.ts
++++ b/ui/src/common/interface.ts
+@@ -79,6 +79,7 @@ export interface TagInfo extends TagBase {
+   status: string;
+ }
+ export interface QuestionParams extends ImgCodeReq {
++  contains_ai_generated?: boolean;
+   title: string;
+   url_title?: string;
+   content: string;
+@@ -86,6 +87,7 @@ export interface QuestionParams extends ImgCodeReq {
+ }
+ 
+ export interface QuestionWithAnswer extends QuestionParams {
++  answer_contains_ai_generated?: boolean;
+   answer_content: string;
+ }
+ 
+@@ -95,6 +97,7 @@ export interface ListResult<T = any> {
+ }
+ 
+ export interface AnswerParams extends ImgCodeReq {
++  contains_ai_generated?: boolean;
+   content: string;
+   html: string;
+   question_id: string;
+@@ -238,6 +241,7 @@ export interface NotificationStatus {
+ }
+ 
+ export interface QuestionDetailRes {
++  contains_ai_generated?: boolean;
+   id: string;
+   title: string;
+   content: string;
+@@ -266,6 +270,7 @@ export interface AnswersReq extends Paging {
+ }
+ 
+ export interface AnswerItem {
++  contains_ai_generated?: boolean;
+   id: string;
+   question_id: string;
+   content: string;
+@@ -277,6 +282,7 @@ export interface AnswerItem {
+ }
+ 
+ export interface PostAnswerReq extends ImgCodeReq {
++  contains_ai_generated?: boolean;
+   content: string;
+   html?: string;
+   question_id: string;
+diff --git a/ui/src/components/Comment/components/ActionBar/index.tsx b/ui/src/components/Comment/components/ActionBar/index.tsx
+index 12385cf..2d1cdf0 100644
+--- a/ui/src/components/Comment/components/ActionBar/index.tsx
++++ b/ui/src/components/Comment/components/ActionBar/index.tsx
+@@ -25,6 +25,7 @@ import { Link } from 'react-router-dom';
+ import classNames from 'classnames';
+ 
+ import { Icon, FormatTime } from '@/components';
++import { AIContentBadge } from '@/components/MetarAIContent';
+ 
+ const ActionBar = ({
+   nickName,
+@@ -37,6 +38,7 @@ const ActionBar = ({
+   onVote,
+   onAction,
+   userStatus = '',
++  containsAI = false,
+ }) => {
+   const { t } = useTranslation('translation', { keyPrefix: 'comment' });
+ 
+@@ -53,6 +55,7 @@ const ActionBar = ({
+         ) : (
+           <span>{nickName}</span>
+         )}
++        <AIContentBadge declared={containsAI} />
+         <span className="mx-1">•</span>
+         <FormatTime time={createdAt} className="me-3 flex-shrink-0" />
+         <Button
+diff --git a/ui/src/components/Comment/components/Form/index.tsx b/ui/src/components/Comment/components/Form/index.tsx
+index e1f22f0..ef49304 100644
+--- a/ui/src/components/Comment/components/Form/index.tsx
++++ b/ui/src/components/Comment/components/Form/index.tsx
+@@ -26,23 +26,31 @@ import classNames from 'classnames';
+ import { TextArea, Mentions } from '@/components';
+ import { usePageUsers, usePromptWithUnload } from '@/hooks';
+ import { parseEditMentionUser } from '@/utils';
++import { AIContentDisclosure } from '@/components/MetarAIContent';
+ 
+ const Index = ({
+   className = '',
+   value: initialValue = '',
++  initialContainsAI = false,
++  canDeclareAI = true,
+   onSendReply,
+   type = '',
+   onCancel,
+   mode,
+ }) => {
+   const [value, setValue] = useState('');
++  const [declaration, setDeclaration] = useState<boolean>();
++  const containsAI = declaration ?? initialContainsAI;
+   const [immData, setImmData] = useState('');
+   const pageUsers = usePageUsers();
+   const { t } = useTranslation('translation', { keyPrefix: 'comment' });
+   const [validationErrorMsg, setValidationErrorMsg] = useState('');
+ 
+   usePromptWithUnload({
+-    when: type === 'edit' ? immData !== value : Boolean(value),
++    when:
++      type === 'edit'
++        ? immData !== value || containsAI !== initialContainsAI
++        : Boolean(value || containsAI),
+   });
+   useEffect(() => {
+     if (!initialValue) {
+@@ -59,7 +67,7 @@ const Index = ({
+     setValue(val);
+   };
+   const handleSendReply = () => {
+-    onSendReply(value).catch((ex) => {
++    onSendReply(value, canDeclareAI ? containsAI : undefined).catch((ex) => {
+       if (ex.isError) {
+         setValidationErrorMsg(ex.msg);
+       }
+@@ -92,6 +100,9 @@ const Index = ({
+         <Form.Control.Feedback type="invalid">
+           {validationErrorMsg}
+         </Form.Control.Feedback>
++        {canDeclareAI && (
++          <AIContentDisclosure checked={containsAI} onChange={setDeclaration} />
++        )}
+       </div>
+       {type === 'edit' ? (
+         <div className="d-flex flex-row flex-md-column ms-0 ms-md-2 mt-2 mt-md-0">
+diff --git a/ui/src/components/Comment/components/Reply/index.tsx b/ui/src/components/Comment/components/Reply/index.tsx
+index d23b42b..5adf2ab 100644
+--- a/ui/src/components/Comment/components/Reply/index.tsx
++++ b/ui/src/components/Comment/components/Reply/index.tsx
+@@ -24,16 +24,18 @@ import { useTranslation } from 'react-i18next';
+ import classNames from 'classnames';
+ 
+ import { TextArea, Mentions } from '@/components';
++import { AIContentDisclosure } from '@/components/MetarAIContent';
+ import { usePageUsers, usePromptWithUnload } from '@/hooks';
+ 
+ const Index = ({ userName, onSendReply, onCancel, mode }) => {
+   const [value, setValue] = useState('');
++  const [containsAI, setContainsAI] = useState(false);
+   const pageUsers = usePageUsers();
+   const { t } = useTranslation('translation', { keyPrefix: 'comment' });
+   const [validationErrorMsg, setValidationErrorMsg] = useState('');
+ 
+   usePromptWithUnload({
+-    when: Boolean(value),
++    when: Boolean(value || containsAI),
+   });
+ 
+   const handleChange = (e) => {
+@@ -43,7 +45,7 @@ const Index = ({ userName, onSendReply, onCancel, mode }) => {
+     setValue(val);
+   };
+   const handleSendReply = () => {
+-    onSendReply(value).catch((ex) => {
++    onSendReply(value, containsAI).catch((ex) => {
+       if (ex.isError) {
+         setValidationErrorMsg(ex.msg);
+       }
+@@ -76,6 +78,7 @@ const Index = ({ userName, onSendReply, onCancel, mode }) => {
+           <Form.Control.Feedback type="invalid">
+             {validationErrorMsg}
+           </Form.Control.Feedback>
++          <AIContentDisclosure checked={containsAI} onChange={setContainsAI} />
+         </div>
+         <div className="d-flex flex-row flex-md-column ms-0 ms-md-2 mt-2 mt-md-0">
+           <Button
+diff --git a/ui/src/components/Comment/index.tsx b/ui/src/components/Comment/index.tsx
+index 53e96ca..7ade312 100644
+--- a/ui/src/components/Comment/index.tsx
++++ b/ui/src/components/Comment/index.tsx
+@@ -43,7 +43,7 @@ import {
+   updateComment,
+   postVote,
+ } from '@/services';
+-import { commentReplyStore } from '@/stores';
++import { commentReplyStore, loggedUserInfoStore } from '@/stores';
+ import Reactions from '@/pages/Questions/Detail/components/Reactions';
+ 
+ import { Form, ActionBar, Reply } from './components';
+@@ -71,6 +71,7 @@ const Comment: FC<IProps> = ({ objectId, mode, commentId, children }) => {
+     page_size: pageSize,
+   });
+   const [comments, setComments] = useState<any>([]);
++  const username = loggedUserInfoStore((state) => state.user?.username);
+ 
+   const reportModal = useReportModal();
+ 
+@@ -170,6 +171,7 @@ const Comment: FC<IProps> = ({ objectId, mode, commentId, children }) => {
+               comment.showEdit = false;
+               comment.parsed_text = res.parsed_text;
+               comment.original_text = res.original_text;
++              comment.contains_ai_generated = res.contains_ai_generated;
+             }
+             return comment;
+           }),
+@@ -239,6 +241,7 @@ const Comment: FC<IProps> = ({ objectId, mode, commentId, children }) => {
+     const params = {
+       object_id: objectId,
+       original_text: commentMarkDown,
++      contains_ai_generated: item.contains_ai_generated,
+       mention_username_list: userNames,
+       ...(item.type === 'reply'
+         ? {
+@@ -425,10 +428,17 @@ const Comment: FC<IProps> = ({ objectId, mode, commentId, children }) => {
+                 <Form
+                   className="mt-2"
+                   value={item.original_text}
++                  initialContainsAI={item.contains_ai_generated === true}
++                  canDeclareAI={Boolean(username && username === item.username)}
+                   type="edit"
+                   mode={mode}
+-                  onSendReply={(value) =>
+-                    handleSendReply({ ...item, value, type: 'edit' })
++                  onSendReply={(value, contains_ai_generated) =>
++                    handleSendReply({
++                      ...item,
++                      value,
++                      contains_ai_generated,
++                      type: 'edit',
++                    })
+                   }
+                   onCancel={() => handleCancel(item.comment_id)}
+                 />
+@@ -458,14 +468,20 @@ const Comment: FC<IProps> = ({ objectId, mode, commentId, children }) => {
+                 <Reply
+                   userName={item.user_display_name}
+                   mode={mode}
+-                  onSendReply={(value) =>
+-                    handleSendReply({ ...item, value, type: 'reply' })
++                  onSendReply={(value, contains_ai_generated) =>
++                    handleSendReply({
++                      ...item,
++                      value,
++                      contains_ai_generated,
++                      type: 'reply',
++                    })
+                   }
+                   onCancel={() => handleCancel(item.comment_id)}
+                 />
+               ) : null}
+               {item.showEdit || currentReplyId === item.comment_id ? null : (
+                 <ActionBar
++                  containsAI={item.contains_ai_generated === true}
+                   nickName={item.user_display_name}
+                   username={item.username}
+                   createdAt={item.created_at}
+@@ -521,7 +537,9 @@ const Comment: FC<IProps> = ({ objectId, mode, commentId, children }) => {
+               comments.length <= 0 ? 'mt-3' : 'mt-2',
+               comments.length <= 0 && 'bg-light p-3 rounded',
+             )}
+-            onSendReply={(value) => handleSendReply({ value, type: 'comment' })}
++            onSendReply={(value, contains_ai_generated) =>
++              handleSendReply({ value, contains_ai_generated, type: 'comment' })
++            }
+             onCancel={() => setVisibleComment(!visibleComment)}
+           />
+         )}
+diff --git a/ui/src/components/MetarAIContent/index.tsx b/ui/src/components/MetarAIContent/index.tsx
+new file mode 100644
+index 0000000..d42af53
+--- /dev/null
++++ b/ui/src/components/MetarAIContent/index.tsx
+@@ -0,0 +1,86 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one
++ * or more contributor license agreements.  See the NOTICE file
++ * distributed with this work for additional information
++ * regarding copyright ownership.  The ASF licenses this file
++ * to you under the Apache License, Version 2.0 (the
++ * "License"); you may not use this file except in compliance
++ * with the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing,
++ * software distributed under the License is distributed on an
++ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++ * KIND, either express or implied.  See the License for the
++ * specific language governing permissions and limitations
++ * under the License.
++ */
++
++import { useId } from 'react';
++import { useTranslation } from 'react-i18next';
++
++// Keep copy with the component so warm language caches on upgraded sites
++// display the disclosure in the current language without being invalidated.
++const zh = {
++  declaration: '本文包含 AI 生成内容',
++  answerDeclaration: '这条回答包含 AI 生成内容',
++  hint: '实质内容由 AI 起草、改写或生成时，请勾选。仅查错字、调整格式或轻度润色不必勾选。发布前请核实事实、引用和代码。',
++  badge: '含 AI 生成内容',
++  badgeHint: '作者自行声明，非平台检测。',
++};
++const en = {
++  declaration: 'This content includes AI-generated material',
++  answerDeclaration: 'This answer includes AI-generated material',
++  hint: 'Check this if AI drafted, rewrote, or generated substantive content. Minor proofreading, formatting, or polishing does not require disclosure. Verify facts, citations, and code before posting.',
++  badge: 'Includes AI-generated content',
++  badgeHint: 'Self-reported by the author, not detected by the platform.',
++};
++function useCopy() {
++  const { i18n } = useTranslation();
++  return /^zh(?:[_-]|$)/i.test(i18n.language) ? zh : en;
++}
++
++interface DisclosureProps {
++  checked: boolean;
++  onChange: (checked: boolean) => void;
++  answer?: boolean;
++}
++
++export const AIContentDisclosure = ({
++  checked,
++  onChange,
++  answer,
++}: DisclosureProps) => {
++  const copy = useCopy();
++  const id = useId();
++  return (
++    <div className="form-check my-2 small">
++      <input
++        id={id}
++        type="checkbox"
++        className="form-check-input"
++        checked={checked}
++        onChange={(event) => onChange(event.target.checked)}
++        aria-describedby={`${id}-hint`}
++      />
++      <label className="form-check-label" htmlFor={id}>
++        {answer ? copy.answerDeclaration : copy.declaration}
++      </label>
++      <div id={`${id}-hint`} className="form-text">
++        {copy.hint}
++      </div>
++    </div>
++  );
++};
++
++export const AIContentBadge = ({ declared }: { declared?: boolean }) => {
++  const copy = useCopy();
++  return declared === true ? (
++    <span
++      className="badge bg-light text-secondary border ms-2 align-middle fw-normal"
++      title={copy.badgeHint}>
++      {copy.badge}
++    </span>
++  ) : null;
++};
+diff --git a/ui/src/pages/Questions/Ask/index.tsx b/ui/src/pages/Questions/Ask/index.tsx
+index 2cbff02..b74d42e 100644
+--- a/ui/src/pages/Questions/Ask/index.tsx
++++ b/ui/src/pages/Questions/Ask/index.tsx
+@@ -28,7 +28,8 @@ import isEqual from 'lodash/isEqual';
+ import debounce from 'lodash/debounce';
+ import fm from 'front-matter';
+ 
+-import { writeSettingStore } from '@/stores';
++import { loggedUserInfoStore, writeSettingStore } from '@/stores';
++import { AIContentDisclosure } from '@/components/MetarAIContent';
+ import { usePageTags, usePromptWithUnload } from '@/hooks';
+ import { Editor, EditorRef, TagSelector } from '@/components';
+ import type * as Type from '@/common/interface';
+@@ -95,12 +96,19 @@ const Ask = () => {
+   const [formData, setFormData] = useState<FormDataItem>(initFormData);
+   const [immData, setImmData] = useState<FormDataItem>(initFormData);
+   const [checked, setCheckState] = useState(false);
++  const [containsAI, setContainsAI] = useState(false);
++  const [answerContainsAI, setAnswerContainsAI] = useState(false);
++  const [originalAI, setOriginalAI] = useState(false);
++  const [author, setAuthor] = useState<string>();
++  const user = loggedUserInfoStore((state) => state.user);
+   const [blockState, setBlockState] = useState(false);
+   const [focusType, setForceType] = useState('');
+   const [hasDraft, setHasDraft] = useState(false);
+   const resetForm = () => {
+     setFormData(initFormData);
+     setCheckState(false);
++    setContainsAI(false);
++    setAnswerContainsAI(false);
+     setForceType('');
+   };
+   const [similarQuestions, setSimilarQuestions] = useState([]);
+@@ -124,6 +132,7 @@ const Ask = () => {
+   const writeInfo = writeSettingStore((state) => state.write);
+ 
+   const isEdit = qid !== undefined;
++  const canDeclareAI = !isEdit || Boolean(author && author === user?.username);
+ 
+   const saveCaptcha = useCaptchaPlugin('question');
+   const editCaptcha = useCaptchaPlugin('edit');
+@@ -162,6 +171,8 @@ const Ask = () => {
+           formData.content.value = draft.content;
+           formData.tags.value = draft.tags;
+           formData.answer_content.value = draft.answer_content;
++          setContainsAI(draft.contains_ai_generated === true);
++          setAnswerContainsAI(draft.answer_contains_ai_generated === true);
+           setCheckState(Boolean(draft.answer_content));
+           setHasDraft(true);
+         }
+@@ -185,6 +196,7 @@ const Ask = () => {
+       if (
+         editTitle.value !== title.value ||
+         editContent.value !== content.value ||
++        containsAI !== originalAI ||
+         !isEqual(
+           editTags.value.map((v) => v.slug_name),
+           tags.value.map((v) => v.slug_name),
+@@ -210,6 +222,8 @@ const Ask = () => {
+           tags: tags.value,
+           content: content.value,
+           answer_content: answer_content.value,
++          contains_ai_generated: containsAI,
++          answer_contains_ai_generated: answerContainsAI,
+         },
+         callback: () => setHasDraft(true),
+       });
+@@ -218,7 +232,7 @@ const Ask = () => {
+       removeDraft();
+       setBlockState(false);
+     }
+-  }, [formData]);
++  }, [formData, containsAI, answerContainsAI, originalAI]);
+ 
+   usePromptWithUnload({
+     when: blockState,
+@@ -231,6 +245,9 @@ const Ask = () => {
+       return;
+     }
+     questionDetail(qid).then((res) => {
++      setAuthor(res.user_info?.username);
++      setContainsAI(res.contains_ai_generated === true);
++      setOriginalAI(res.contains_ai_generated === true);
+       formData.title.value = res.title;
+       formData.content.value = res.content;
+       formData.tags.value = res.tags.map((item) => {
+@@ -349,6 +366,7 @@ const Ask = () => {
+         res = await saveQuestionWithAnswer({
+           ...params,
+           answer_content: formData.answer_content.value,
++          answer_contains_ai_generated: answerContainsAI,
+         }).catch((err) => {
+           if (err.isError) {
+             const captchaErr = saveCaptcha?.handleCaptchaError(err.list);
+@@ -398,6 +416,7 @@ const Ask = () => {
+       title: formData.title.value,
+       content: formData.content.value,
+       tags: formData.tags.value,
++      contains_ai_generated: canDeclareAI ? containsAI : undefined,
+     };
+ 
+     if (isEdit) {
+@@ -584,6 +603,19 @@ const Ask = () => {
+                 </Form.Control.Feedback>
+               </Form.Group>
+             )}
++            {canDeclareAI && (
++              <AIContentDisclosure
++                checked={containsAI}
++                onChange={setContainsAI}
++              />
++            )}
++            {checked && (
++              <AIContentDisclosure
++                answer
++                checked={answerContainsAI}
++                onChange={setAnswerContainsAI}
++              />
++            )}
+             {!checked && (
+               <div className="mt-3">
+                 <Button type="submit" className="me-2">
+diff --git a/ui/src/pages/Questions/Detail/components/Answer/index.tsx b/ui/src/pages/Questions/Detail/components/Answer/index.tsx
+index bd0ecbb..ea99716 100644
+--- a/ui/src/pages/Questions/Detail/components/Answer/index.tsx
++++ b/ui/src/pages/Questions/Detail/components/Answer/index.tsx
+@@ -35,6 +35,7 @@ import { scrollToElementTop, bgFadeOut } from '@/utils';
+ import { AnswerItem } from '@/common/interface';
+ import { acceptanceAnswer } from '@/services';
+ import { useRenderHtmlPlugin } from '@/utils/pluginKit';
++import { AIContentBadge } from '@/components/MetarAIContent';
+ 
+ interface Props {
+   data: AnswerItem;
+@@ -119,6 +120,7 @@ const Index: FC<Props> = ({
+             isLogged={isLogged}
+             timelinePath={`/posts/${data.question_id}/${data.id}/timeline`}
+           />
++          <AIContentBadge declared={data.contains_ai_generated} />
+         </div>
+ 
+         {data?.accepted === 2 && (
+diff --git a/ui/src/pages/Questions/Detail/components/Question/index.tsx b/ui/src/pages/Questions/Detail/components/Question/index.tsx
+index f13fa31..d2f6acc 100644
+--- a/ui/src/pages/Questions/Detail/components/Question/index.tsx
++++ b/ui/src/pages/Questions/Detail/components/Question/index.tsx
+@@ -33,6 +33,7 @@ import {
+   ImgViewer,
+ } from '@/components';
+ import { useRenderHtmlPlugin } from '@/utils/pluginKit';
++import { AIContentBadge } from '@/components/MetarAIContent';
+ import { formatCount, guard } from '@/utils';
+ import { following } from '@/services';
+ import { pathFactory } from '@/router/pathFactory';
+@@ -100,6 +101,11 @@ const Index: FC<Props> = ({ data, initPage, hasAnswer, isLogged }) => {
+             ? ` [${t('closed', { keyPrefix: 'question' })}]`
+             : ''}
+         </Link>
++        {data.contains_ai_generated === true && (
++          <small className="fs-6">
++            <AIContentBadge declared />
++          </small>
++        )}
+       </h1>
+ 
+       <div className="d-flex flex-wrap align-items-center small mb-4 text-secondary border-bottom pb-3">
+diff --git a/ui/src/pages/Questions/Detail/components/WriteAnswer/index.tsx b/ui/src/pages/Questions/Detail/components/WriteAnswer/index.tsx
+index 01c1a01..b807d4f 100644
+--- a/ui/src/pages/Questions/Detail/components/WriteAnswer/index.tsx
++++ b/ui/src/pages/Questions/Detail/components/WriteAnswer/index.tsx
+@@ -29,6 +29,7 @@ import { usePromptWithUnload } from '@/hooks';
+ import { useCaptchaPlugin } from '@/utils/pluginKit';
+ import { Editor, Modal, TextArea } from '@/components';
+ import { FormDataType, PostAnswerReq } from '@/common/interface';
++import { AIContentDisclosure } from '@/components/MetarAIContent';
+ import { postAnswer } from '@/services';
+ import { guard, handleFormError, SaveDraft, storageExpires } from '@/utils';
+ import { DRAFT_ANSWER_STORAGE_KEY } from '@/common/constants';
+@@ -63,6 +64,7 @@ const Index: FC<Props> = ({ visible = false, data, callback }) => {
+   const [focusType, setFocusType] = useState('');
+   const [editorFocusState, setEditorFocusState] = useState(false);
+   const [hasDraft, setHasDraft] = useState(false);
++  const [containsAI, setContainsAI] = useState(false);
+   const [showTips, setShowTips] = useState(data.loggedUserRank < 100);
+   const aCaptcha = useCaptchaPlugin('answer');
+   const writeInfo = writeSettingStore((state) => state.write);
+@@ -83,6 +85,7 @@ const Index: FC<Props> = ({ visible = false, data, callback }) => {
+     const draft = storageExpires.get(DRAFT_ANSWER_STORAGE_KEY);
+     if (draft?.questionId === data.qid && draft?.content) {
+       setShowEditor(true);
++      setContainsAI(draft.contains_ai_generated === true);
+       setFormData({
+         content: {
+           value: draft.content,
+@@ -106,13 +109,14 @@ const Index: FC<Props> = ({ visible = false, data, callback }) => {
+       saveDraft.save({
+         questionId: data?.qid,
+         content: content.value,
++        contains_ai_generated: containsAI,
+       });
+ 
+       setHasDraft(true);
+     } else if (draft?.questionId === data.qid && !content.value) {
+       removeDraft();
+     }
+-  }, [formData.content.value]);
++  }, [formData.content.value, containsAI]);
+ 
+   const checkValidated = (): boolean => {
+     let bol = true;
+@@ -140,6 +144,7 @@ const Index: FC<Props> = ({ visible = false, data, callback }) => {
+   };
+ 
+   const resetForm = () => {
++    setContainsAI(false);
+     setFormData({
+       content: {
+         value: '',
+@@ -162,6 +167,7 @@ const Index: FC<Props> = ({ visible = false, data, callback }) => {
+       question_id: data?.qid,
+       content: formData.content.value,
+       html: marked.parse(formData.content.value),
++      contains_ai_generated: containsAI,
+     };
+     const imgCode = aCaptcha?.getCaptcha();
+     if (imgCode?.verify) {
+@@ -172,6 +178,7 @@ const Index: FC<Props> = ({ visible = false, data, callback }) => {
+       .then(async (res) => {
+         await aCaptcha?.close();
+         setShowEditor(false);
++        setContainsAI(false);
+         setFormData({
+           content: {
+             value: '',
+@@ -324,6 +331,13 @@ const Index: FC<Props> = ({ visible = false, data, callback }) => {
+         </Form.Group>
+       )}
+ 
++      {showEditor && (
++        <AIContentDisclosure
++          answer
++          checked={containsAI}
++          onChange={setContainsAI}
++        />
++      )}
+       {data.answered && !showEditor ? (
+         // the 0th answer is the oldest one
+         <Link
+diff --git a/ui/src/pages/Questions/EditAnswer/index.tsx b/ui/src/pages/Questions/EditAnswer/index.tsx
+index 3be7bef..a1679e5 100644
+--- a/ui/src/pages/Questions/EditAnswer/index.tsx
++++ b/ui/src/pages/Questions/EditAnswer/index.tsx
+@@ -31,6 +31,8 @@ import { useCaptchaPlugin, useRenderHtmlPlugin } from '@/utils/pluginKit';
+ import { pathFactory } from '@/router/pathFactory';
+ import { Editor, EditorRef, Icon, htmlRender } from '@/components';
+ import type * as Type from '@/common/interface';
++import { AIContentDisclosure } from '@/components/MetarAIContent';
++import { loggedUserInfoStore } from '@/stores';
+ import {
+   useQueryAnswerInfo,
+   modifyAnswer,
+@@ -68,6 +70,15 @@ const Index = () => {
+   const [formData, setFormData] = useState<FormDataItem>(initFormData);
+   const [immData, setImmData] = useState(initFormData);
+   const [contentChanged, setContentChanged] = useState(false);
++  const [declaration, setDeclaration] = useState<boolean>();
++  const user = loggedUserInfoStore((state) => state.user);
++  const canDeclareAI = Boolean(
++    user?.username && user.username === data?.info?.user_info?.username,
++  );
++  const originalAI = data?.info?.contains_ai_generated === true;
++  const containsAI = declaration ?? originalAI;
++
++  useEffect(() => setDeclaration(undefined), [aid]);
+   const editCaptcha = useCaptchaPlugin('edit');
+ 
+   useEffect(() => {
+@@ -108,12 +119,21 @@ const Index = () => {
+ 
+   useEffect(() => {
+     const { content, description } = formData;
+-    if (immData.content.value !== content.value || description.value) {
++    if (
++      immData.content.value !== content.value ||
++      description.value ||
++      containsAI !== originalAI
++    ) {
+       setContentChanged(true);
+     } else {
+       setContentChanged(false);
+     }
+-  }, [formData.content.value, formData.description.value]);
++  }, [
++    formData.content.value,
++    formData.description.value,
++    containsAI,
++    originalAI,
++  ]);
+ 
+   const handleAnswerChange = (value: string) =>
+     setFormData({
+@@ -160,6 +180,7 @@ const Index = () => {
+       question_id: qid,
+       id: aid,
+       edit_summary: formData.description.value,
++      contains_ai_generated: canDeclareAI ? containsAI : undefined,
+     };
+     editCaptcha?.resolveCaptchaReq(params);
+ 
+@@ -310,6 +331,13 @@ const Index = () => {
+               </Form.Control.Feedback>
+             </Form.Group>
+ 
++            {canDeclareAI && (
++              <AIContentDisclosure
++                answer
++                checked={containsAI}
++                onChange={setDeclaration}
++              />
++            )}
+             <div className="mt-3">
+               <Button type="submit" className="me-2">
+                 {t('btn_save_edits')}
+diff --git a/ui/src/utils/saveDraft.ts b/ui/src/utils/saveDraft.ts
+index 6d7f181..2fa0266 100644
+--- a/ui/src/utils/saveDraft.ts
++++ b/ui/src/utils/saveDraft.ts
+@@ -31,11 +31,14 @@ export type QuestionDraft = {
+     content: string;
+     tags: any[];
+     answer_content: string;
++    contains_ai_generated?: boolean;
++    answer_contains_ai_generated?: boolean;
+   };
+   callback?: () => void;
+ };
+ 
+ export type AnswerDraft = {
++  contains_ai_generated?: boolean;
+   questionId: string;
+   content: string;
+   callback?: () => void;
+@@ -69,12 +72,13 @@ class SaveDraft {
+     }
+ 
+     if (this.type === 'answer') {
+-      const { content, questionId, callback } = data as AnswerDraft;
++      const { content, questionId, contains_ai_generated, callback } =
++        data as AnswerDraft;
+       if (!questionId || !content) {
+         return;
+       }
+ 
+-      this.storeDraft({ content, questionId }, callback);
++      this.storeDraft({ content, questionId, contains_ai_generated }, callback);
+     }
+   }, 3000);
+ 

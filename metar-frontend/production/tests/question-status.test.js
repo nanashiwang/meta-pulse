@@ -46,3 +46,11 @@ test('rerendering after acceptance and cancellation follows the latest server va
   post.accepted_answer_id = '0';
   assert.doesNotMatch(render(post), /badge green/);
 });
+
+test('only an explicit author declaration displays the AI content label', () => {
+  const post = {id:'123',title:'Question',accepted_answer_id:'0'};
+  for (const flag of [undefined,null,false,0,'true','false',{}]) {
+    assert.doesNotMatch(render({...post,contains_ai_generated:flag}), /ai-content-label|含 AI 生成内容/);
+  }
+  assert.match(render({...post,contains_ai_generated:true}), /class="ai-content-label" title="作者自行声明，非平台检测。">含 AI 生成内容/);
+});

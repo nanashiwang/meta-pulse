@@ -220,6 +220,7 @@
       <div class="discussion-main">
         <div class="discussion-heading">
           ${external(questionHref(question.id || question.question_id), `<h3>${question.pin === 2 ? I('flag', 'sm') + `<span class="visually-hidden">${t("置顶")} </span>` : ''}${esc(question.title)}</h3>`, 'discussion-title')}
+          ${question.contains_ai_generated === true ? `<span class="ai-content-label" title="${t('作者自行声明，非平台检测。')}">${t('含 AI 生成内容')}</span>` : ''}
           ${[...tags.filter(tag=>tag.recommend), ...tags.filter(tag=>!tag.recommend)].slice(0,1).map((tag) => link(`/topic/${encodeURIComponent(tag.slug_name || tagName(tag))}`, esc(tagName(tag)), tag.recommend ? 'badge taxonomy-category-badge' : 'badge')).join('')}
           ${hasAcceptedAnswer ? badge(I('check', 'sm') + t("已采纳"), 'green') : ''}
         </div>
