@@ -3,19 +3,20 @@ const test = require('node:test'), assert = require('node:assert/strict');
 const fs = require('node:fs'), vm = require('node:vm');
 const source = fs.readFileSync(require('node:path').join(__dirname, '../src/app.js'), 'utf8');
 const mount = source.slice(source.indexOf('  async function mountCommunityTasks()'), source.indexOf('  function pulseFeedTable('));
+const receiptSource = source.slice(source.indexOf('  function checkinReceiptText('),source.indexOf('  async function mountProfileCheckin()'));
 const progress = (extra={}) => ({likes:0, comments:0, received:0, earned:0, delivered:0, checked_in:false, checkin_delivered:extra.checked_in === true && extra.delivered > 0, ...extra});
 const flush = () => new Promise(resolve => setImmediate(resolve));
 function harness({bound=true}={}) {
-  const status={}, checkin={}, refresh={}, timers=new Map(); let id=0, reads=0, posts=0, updates=0;
+  const status={}, receipt={}, checkin={}, refresh={}, timers=new Map(); let id=0, reads=0, posts=0, updates=0;
   let task=progress(), summary={checkin_amount:10}, fail=false, update=true, postFail=false, pending;
-  const root={dataset:{}, isConnected:true, querySelector:s=>s==='[data-task-progress]'?status:s==='[data-task-checkin]'?checkin:refresh};
-  const context=vm.createContext({document:{querySelector:()=>root}, currentUser:{id:'one'}, navigationSequence:1, identitySequence:1, pulseCoreState:{unbound:!bound}, t:s=>s,
+  const root={dataset:{}, isConnected:true, querySelector:s=>s==='[data-task-progress]'?status:s==='[data-task-receipt]'?receipt:s==='[data-task-checkin]'?checkin:refresh};
+  const context=vm.createContext({document:{querySelector:()=>root}, currentUser:{id:'one'}, navigationSequence:1, identitySequence:1, pulseCoreState:{unbound:!bound}, t:(s,v)=>s.replace(/\{(\w+)\}/g,(_,k)=>v?.[k]??'{'+k+'}'),
     pulse:{request:async()=>{reads++; if(pending)return pending; if(fail)throw Error('offline'); return task;}},
     answer:{request:async(path,opts)=>{if(opts){posts++;if(postFail)throw Error('lost');return {};} return summary;}},
     refreshPulse:async()=>{updates++;return update;},
     setTimeout:fn=>{timers.set(++id,fn);return id;}, clearTimeout:id=>timers.delete(id)});
-  vm.runInContext(mount,context);
-  return {root,status,checkin,refresh,context,timers, mount:()=>context.mountCommunityTasks(), tick:async()=>{const [id,fn]=timers.entries().next().value;timers.delete(id);fn();await flush();},
+  vm.runInContext(receiptSource+mount,context);
+  return {root,status,receipt,checkin,refresh,context,timers, mount:()=>context.mountCommunityTasks(), tick:async()=>{const [id,fn]=timers.entries().next().value;timers.delete(id);fn();await flush();},
     setTask:v=>task=v, setFail:v=>fail=v, setUpdate:v=>update=v, setPostFail:v=>postFail=v, setPending:v=>pending=v, setSummary:v=>summary=v,
     counts:()=>({reads,posts,updates})};
 }
@@ -124,7 +125,7 @@ test('ticket acquisition panel explains current check-in rules without old engag
  for(const bound of [true,false]){
   const html=context.communityTasksMarkup(bound);
   assert.match(html,/周一、周五签到各送 3 张抽奖券，每周共 6 张/);
-  assert.match(html,/其他日期不赠送签到券/);assert.match(html,/2.5 闪/);assert.match(html,/北京时间/);
+  assert.match(html,/其他日期不赠送签到券/);assert.doesNotMatch(html,/理论期望|2\.5 闪/);assert.match(html,/北京时间/);
   assert.doesNotMatch(html,/收到.*评论|给别人点赞|互动达标|有效互动|每天最多|每日签到 · \+1/);
  }
 });
@@ -141,4 +142,15 @@ test('background engagement delivery cannot turn a completed check-in into a che
 test('a legacy one-ticket target never advertises the retired daily +1 check-in rule',async()=>{
  const h=harness();h.setTask(progress({checkin_ticket_target:1}));await h.mount();
  assert.equal(h.checkin.textContent,'每日签到');assert.match(h.status.textContent,/周一、周五签到各赠 3 张券/);
+});
+
+test('Pulse shows actual daily EXP receipt separately from unrelated ticket progress',async()=>{
+ const h=harness();h.setSummary({checkin_amount:0,checkin_receipt:{day:'2026-11-18',experience:15,flash_amount:'0.00',flash_status:'not_issued'}});h.setTask(progress({checked_in:true,received:140,earned:3,delivered:3,checkin_delivered:true}));await h.mount();
+ assert.match(h.receipt.textContent,/15 EXP/);assert.match(h.receipt.textContent,/0.00 闪（未发放）/);assert.equal(h.receipt.hidden,false);
+});
+test('unbound receipt stays available without making any Pulse calls',async()=>{
+ const h=harness({bound:false});h.setSummary({checkin_amount:0,checkin_receipt:{day:'2026-11-18',experience:0,flash_amount:'0.00',flash_status:'not_issued'}});await h.mount();assert.match(h.receipt.textContent,/0 EXP/);assert.equal(h.counts().reads,0);
+});
+test('legacy summaries do not turn missing details into a zero payout claim',async()=>{
+ const h=harness();h.setSummary({checkin_amount:0});h.setTask(progress({checked_in:true,earned:1,delivered:1}));await h.mount();assert.match(h.receipt.textContent,/明细暂不可用/);assert.doesNotMatch(h.receipt.textContent,/0.00/);
 });

@@ -1425,3 +1425,7 @@ Answer仍为账号、帖子与可见性事实源；UserCenter插件在论坛库�
 签到经验仍由 Answer 每日一次记录；社区采集按原事件的上海日期生成三条 `checkin_weekly` 回执，仅周一、周五有效。政策实际发布日及之前的旧 `checkin` 单券回执保留恢复；之后日期拒绝旧类别新增。互动来源和管理员赠券不变。任务投影新增 `checkin_ticket_target`，`checkin_delivered` 仅在该签到的全部回执交付后为真，部分到账仍刷新可用券。
 
 部署命令 `apply-checkin-reward-policy` 沿用规则守卫、当前规则 CAS、不可变快照创建及审计发布 `rules-checkin-20261117-v1`，每券额度期望为 2.5 闪（包含经验奖项概率分母）；读取 API 角色运行时配置的 quota_per_unit，以整数生成额度奖项。保留当前规则额度资格天数、贡献兼容元数据及预算模式/额度，不修改历史奖励、旧规则与已发券期限。没有启用规则时不创建隐式活动，新站从管理员新预设创建。固定政策 key 存在后升级不再覆盖后续管理员配置；发布失败阻止新 API 启动。
+
+## 签到实际到账投影（2026-11-18）
+
+Answer经验summary和checkin回执增加可选checkin_receipt（day、experience、flash_amount、flash_status）。仅当前上海自然日已签到时提供，experience在同一用户事务内按本人checkin事件关联的EXP账本净额汇总，不使用当前规则金额、余额差或其他类型奖励。Summary固定一次Now用于日期判断，避免请求内跨零点混用日期。当前直接签到闪发放不存在，投影固定为0.00/not_issued；这不是闪账本分录，不开启每日随机闪，也不复制/混入Pulse抽奖结果。浏览器只读展示回执，缺失或非法值不替代为零；本人身份和写入边界沿用Answer认证及原签到接口。

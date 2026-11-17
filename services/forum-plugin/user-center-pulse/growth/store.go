@@ -54,8 +54,19 @@ type Notice struct {
 	Level     int    `json:"level"`
 	CreatedAt int64  `json:"created_at"`
 }
+
+// CheckinReceipt is a read-only projection of today's actual check-in ledger.
+// Check-ins do not currently issue quota; draw prizes are separate rewards.
+type CheckinReceipt struct {
+	Day         string `json:"day"`
+	Experience  int64  `json:"experience"`
+	FlashAmount string `json:"flash_amount"`
+	FlashStatus string `json:"flash_status"`
+}
+
 type Summary struct {
-	PulseSyncPending bool `json:"pulse_sync_pending"`
+	CheckinReceipt   *CheckinReceipt `json:"checkin_receipt,omitempty"`
+	PulseSyncPending bool            `json:"pulse_sync_pending"`
 	Account
 	Level         Level    `json:"level"`
 	Levels        []Level  `json:"levels"`
@@ -236,6 +247,7 @@ func (s *Store) Checkin(ctx context.Context, user string) error {
 	})
 }
 func (s *Store) Summary(ctx context.Context, user string) (Summary, error) {
+	now := s.Now()
 	out := Summary{Notices: []Notice{}}
 	err := s.transaction(ctx, user, func(tx *sql.Tx, a *Account) error {
 		cfg, err := settings(ctx, tx)
@@ -255,15 +267,22 @@ func (s *Store) Summary(ctx context.Context, user string) (Summary, error) {
 		out.DailyCap = cfg.Rules.DailyCap
 		out.Rules = cfg.Rules
 		out.RuleVersion = cfg.Version
-		if a.LastCheckin != Day(s.Now()) && a.LastCheckin != Day(s.Now().AddDate(0, 0, -1)) {
+		if a.LastCheckin != Day(now) && a.LastCheckin != Day(now.AddDate(0, 0, -1)) {
 			out.Streak = 0
 		}
-		out.CheckinAmount, _ = CheckinReward(cfg.Rules, a.LastCheckin, a.Streak, s.Now())
+		out.CheckinAmount, _ = CheckinReward(cfg.Rules, a.LastCheckin, a.Streak, now)
 		if !AppearanceAllowed(out.Appearance, out.Level.Number) {
 			out.Appearance = "default"
 		}
-		if err = tx.QueryRowContext(ctx, `SELECT COALESCE(SUM(l.delta),0) FROM metar_exp_ledger l JOIN metar_exp_event e ON e.id=l.event_id WHERE e.user_id=? AND e.earned_day=? AND e.kind NOT IN ('pulse','featured','adjustment') AND l.delta>0 AND l.kind='award'`, user, Day(s.Now())).Scan(&out.Today); err != nil {
+		if err = tx.QueryRowContext(ctx, `SELECT COALESCE(SUM(l.delta),0) FROM metar_exp_ledger l JOIN metar_exp_event e ON e.id=l.event_id WHERE e.user_id=? AND e.earned_day=? AND e.kind NOT IN ('pulse','featured','adjustment') AND l.delta>0 AND l.kind='award'`, user, Day(now)).Scan(&out.Today); err != nil {
 			return err
+		}
+		if a.LastCheckin == Day(now) {
+			receipt := &CheckinReceipt{Day: a.LastCheckin, FlashAmount: "0.00", FlashStatus: "not_issued"}
+			if err = tx.QueryRowContext(ctx, `SELECT COALESCE(SUM(l.delta),0) FROM metar_exp_ledger l JOIN metar_exp_event e ON e.id=l.event_id WHERE e.user_id=? AND e.earned_day=? AND e.kind='checkin'`, user, receipt.Day).Scan(&receipt.Experience); err != nil {
+				return err
+			}
+			out.CheckinReceipt = receipt
 		}
 		rows, err := tx.QueryContext(ctx, `SELECT id,level,created_at FROM metar_exp_notice WHERE user_id=? AND read_at=0 ORDER BY id DESC LIMIT 8`, user)
 		if err != nil {

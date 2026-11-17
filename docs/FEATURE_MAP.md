@@ -182,3 +182,5 @@ new-api 接收端与实际到账、生产普通账号流程、邮件与跨实例
 签到奖池政策升级：`checkin_reward_policy.go` 与 `meta-pulse-tool apply-checkin-reward-policy` 使用原规则发布事务，一次性切换至每券期望2.5闪；`deploy/update.sh` 在迁移后执行，后续升级保留管理员新规则。推荐预设同步；旧券期限与历史中奖结果不变。
 
 金色评选勋章目录：`/me/badges` 与 `/awards?view=honors` 共用 `award-honors.js` 的 `badges()`，固定展示编辑者/学者图形、条件、未获得或已获得次数；服务故障仅显示状态不可用，不伪造授奖。
+
+签到到账明细（2026-11-18）：`growth/store.go` 的 `Summary.checkin_receipt` 读取当天本人签到账本净经验，当前直接闪为0.00/not_issued；`app.js` 的个人空间与Pulse签到入口展示实际明细，缺字段不猜金额。获取券区域移除期望值说明，签到赠券和抽奖规则保持。

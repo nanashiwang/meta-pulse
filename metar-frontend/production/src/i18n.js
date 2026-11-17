@@ -2,6 +2,11 @@
 'use strict';
 (() => {
   const EN = Object.freeze({
+    "未发放": "Not issued",
+    "待处理": "Pending",
+    "今日签到到账：{experience} EXP · {flash} 闪（{state}）": "Today’s check-in: {experience} EXP · {flash} ⚡️ ({state})",
+    "今日已签到，到账明细暂不可用。": "Checked in today. Reward details are temporarily unavailable.",
+    "到账明细暂不可用，请稍后刷新签到进度。": "Reward details are temporarily unavailable. Refresh check-in progress later.",
     "签到赠券仍在同步，稍后点击“刷新签到进度”继续查询，无需刷新浏览器。": "Check-in tickets are still syncing. Select Refresh check-in progress later to continue without reloading the page.",
     "签到状态暂未确认，请稍后刷新签到进度或重试签到。": "Check-in is unconfirmed. Refresh check-in progress or retry check-in later.",
     "签到进度暂不可用，请稍后刷新。已确认的券不会重复发放。": "Check-in progress is temporarily unavailable. Refresh later; confirmed tickets will not be issued twice.",

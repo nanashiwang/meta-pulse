@@ -833,6 +833,14 @@
     return `<div class="content-grid"><div class="stack"><section class="card prod-user-card"><div class="between wrap">${avatar(profile, 'large')}<div class="flex wrap profile-header-actions">${isActiveUser(currentUser) ? `<div class="profile-checkin" data-profile-checkin><button type="button" class="btn primary" disabled>${t("正在读取签到状态…")}</button><small class="muted" role="status" aria-live="polite"></small></div>` : ''}${external(profileHref(username), t("公开主页"), 'btn')}</div></div><h1 class="mt16">${esc(displayName(profile))}</h1><p class="muted mt8">@${esc(profile.username || username)}${profile.location ? ` · ${esc(profile.location)}` : ''}</p><p class="mt16">${esc(profile.bio || t("这位成员暂未填写个人简介。"))}</p><div class="profile-numbers"><div><strong>${number(questions?.count)}</strong><span>${t("发布问题")}</span></div><div><strong>${number(profile.answer_count)}</strong><span>${t("参与回答")}</span></div><div><strong>${number(profile.rank)}</strong><span>${t("社区声望")}</span></div></div>${currentUser.mail_status === 2 ? `<div class="prod-status error mt16">${I('shield')}<div><strong>${t("邮箱尚未激活")}</strong><p>${t("请先验证邮箱，或在登录页面重新发送激活邮件。")}</p></div></div>` : ''}</section><div data-profile-growth>${experience}</div><section class="card prod-feed"><div class="section-heading"><h2>${t("最近发布")}</h2><span class="muted">${t("发布记录")}</span></div>${list.length ? list.map((item) => questionRow({ ...item, user_info: profile })).join('') : empty(t("还没有发布问题"), t("从一个具体、可复现的问题开始。"), external(config.answerAskPath, t("发起问题"), 'btn primary'), 'chat')}</section></div><aside class="stack"><section class="card card-pad"><h3>${t("账号快捷入口")}</h3><ul class="mini-list"><li>${link('/me/bookmarks', `<span>${t("我的收藏")}</span>`)}</li><li>${external('/users/notifications/inbox', `<span>${t("通知中心")}</span>`)}</li><li>${link('/settings/binding', `<span>${t("元衡账号绑定")}</span><small>${t("可选")}</small>`)}</li><li>${link('/pulse', `<span>${t("Pulse 权益")}</span><small>${t("绑定后")}</small>`)}</li><li>${external('/users/logout', `<span>${t("退出登录")}</span>`)}</li></ul></section></aside></div>${footer()}`;
   }
 
+  function checkinReceiptText(summary) {
+    const r = summary?.checkin_receipt;
+    if (!r || !/^\d{4}-\d{2}-\d{2}$/.test(r.day) || !Number.isSafeInteger(r.experience) || r.experience < 0 || !/^(0|[1-9]\d{0,11})\.\d{2}$/.test(r.flash_amount)) return '';
+    const labels = {not_issued:t('未发放'), settled:t('已到账'), pending:t('发放中'), blocked:t('待处理'), reversed:t('已撤销')};
+    if (!Object.hasOwn(labels,r.flash_status) || (r.flash_status === 'not_issued' && r.flash_amount !== '0.00')) return '';
+    return t('今日签到到账：{experience} EXP · {flash} 闪（{state}）', {experience:String(r.experience),flash:r.flash_amount,state:labels[r.flash_status]});
+  }
+
   async function mountProfileCheckin() {
     const root = document.querySelector('[data-profile-checkin]');
     if (!root || root.dataset.mounted) return;
@@ -840,7 +848,7 @@
     const button = root.querySelector('button'), status = root.querySelector('[role="status"]');
     const user = currentUser?.id, sequence = navigationSequence, identity = identitySequence;
     const current = () => root.isConnected && user === currentUser?.id && identity === identitySequence && sequence === navigationSequence;
-    let busy = false, known = false, confirmed = false;
+    let busy = false, known = false, confirmed = false, receiptText = '';
     const show = () => {
       button.disabled = busy || confirmed;
       button.textContent = t(busy ? '签到中…' : confirmed ? '今日已签到' : known ? '每日签到' : '重试签到');
@@ -851,6 +859,8 @@
       if (!current()) return;
       known = true;
       confirmed = summary.checkin_amount === 0;
+      receiptText = checkinReceiptText(summary);
+      if (confirmed) status.textContent = receiptText || t('今日已签到，到账明细暂不可用。');
     };
     const updateGrowth = async () => {
       try {
@@ -868,18 +878,19 @@
         await read();
         if (!current()) return;
         if (!confirmed) {
-          await answer.request('/metar/experience/checkin', {method:'POST', headers:{'Content-Type':'application/json','X-Metar-Request':'1'}, body:'{}'});
+          const summary = await answer.request('/metar/experience/checkin', {method:'POST', headers:{'Content-Type':'application/json','X-Metar-Request':'1'}, body:'{}'});
+          if (current()) receiptText = checkinReceiptText(summary);
           if (!current()) return;
           confirmed = true;
         }
-        status.textContent = t('签到成功，经验已更新。');
+        status.textContent = receiptText || t('今日已签到，到账明细暂不可用。');
         await updateGrowth();
       } catch (_) {
         // A lost response may already have committed the daily check-in.
         known = false;
         try { await read(); } catch (_) { /* Keep the retry entry available. */ }
         if (!current()) return;
-        status.textContent = t(confirmed ? '今日已签到，经验已更新。' : '签到未确认，请点击重试签到。');
+        status.textContent = confirmed ? receiptText || t('今日已签到，到账明细暂不可用。') : t('签到未确认，请点击重试签到。');
         if (confirmed) await updateGrowth();
       } finally {
         busy = false;
@@ -1046,11 +1057,11 @@
 
   function communityTasksMarkup(bound = true) {
     return `<section class="card card-pad mt24" data-community-tasks><div class="between wrap"><h2>${t('获取抽奖券')}</h2><button class="btn" data-task-checkin>${t('每日签到')}</button></div>
-      <ul class="mini-list"><li>${t('周一、周五签到各送 3 张抽奖券，每周共 6 张。')}</li><li>${t('每天签到仍领取原有固定经验；其他日期不赠送签到券。')}</li><li>${t('额度资格有效的抽奖券，每张闪奖励的理论期望为 2.5 闪，实际金额随机。')}</li></ul>
+      <ul class="mini-list"><li>${t('周一、周五签到各送 3 张抽奖券，每周共 6 张。')}</li><li>${t('每天签到仍领取原有固定经验；其他日期不赠送签到券。')}</li></ul>
       ${bound ? '' : `<p class="prod-page-note">${t('未绑定账号签到可领经验；绑定元衡 API 后，周一、周五签到各得 3 张抽奖券，绑定前不补发。')}</p>`}
       <p class="muted mt12">${t('按北京时间计算签到日期，每天仅可签到一次；领取抽奖券需先绑定元衡 API 账号。')}</p>
       <p class="muted">${t('签到赠券会自动到账，通常需等待片刻；到账后自动更新可用券数。')}</p>
-      <p role="status" data-task-progress>${t('正在读取签到进度…')}</p><div class="actions"><button class="btn" data-task-refresh>${t('刷新签到进度')}</button><button class="btn" data-action="pulse-refresh">${t('刷新权益')}</button>${link('/latest',t('参与讨论'),'btn')}</div></section>`;
+      <p role="status" data-task-progress>${t('正在读取签到进度…')}</p><p class="muted" role="status" data-task-receipt aria-live="polite" hidden></p><div class="actions"><button class="btn" data-task-refresh>${t('刷新签到进度')}</button><button class="btn" data-action="pulse-refresh">${t('刷新权益')}</button>${link('/latest',t('参与讨论'),'btn')}</div></section>`;
   }
   async function mountCommunityTasks() {
     const root = document.querySelector('[data-community-tasks]');
@@ -1059,6 +1070,13 @@
     const bound = !pulseCoreState?.unbound;
     const user = currentUser?.id, sequence = navigationSequence, identity = identitySequence;
     const current = () => root.isConnected && user === currentUser?.id && identity === identitySequence && sequence === navigationSequence;
+    const receipt = root.querySelector('[data-task-receipt]');
+    const showReceipt = summary => {
+      if (!receipt || !current()) return;
+      const text = checkinReceiptText(summary);
+      receipt.textContent = text || (confirmed ? t('到账明细暂不可用，请稍后刷新签到进度。') : '');
+      receipt.hidden = !receipt.textContent;
+    };
     const status = root.querySelector('[data-task-progress]'), checkin = root.querySelector('[data-task-checkin]'), refresh = root.querySelector('[data-task-refresh]');
     let busy = false, signing = false, confirmed = false, awaitingCheckin = false;
     let syncing = false, checkinPending = false, attempts = 0, timer, lastDelivered = null;
@@ -1081,6 +1099,7 @@
           if (!current()) return;
           if (!Number.isSafeInteger(summary.checkin_amount) || summary.checkin_amount < 0) throw new Error('invalid check-in status');
           confirmed ||= summary.checkin_amount === 0;
+          showReceipt(summary);
           syncing = awaitingCheckin && !confirmed;
           checkinPending = syncing;
           if (confirmed) awaitingCheckin = false;
@@ -1088,7 +1107,13 @@
           status.textContent = t(confirmed ? '今日已签到' : '未绑定账号签到可领经验；绑定元衡 API 后，周一、周五签到各得 3 张抽奖券，绑定前不补发。');
           return;
         }
-        const progress = await pulse.request('tasks');
+        const [taskResult, summaryResult] = await Promise.allSettled([pulse.request('tasks'), answer.request('/metar/experience/summary')]);
+        if (!current()) return;
+        const summary = summaryResult.status === 'fulfilled' ? summaryResult.value : null;
+        if (summary?.checkin_amount === 0) confirmed = true;
+        showReceipt(summary);
+        if (taskResult.status === 'rejected') throw taskResult.reason;
+        const progress = taskResult.value;
         if (!current()) return;
         if (!['likes','comments','received','earned','delivered'].every(k=>Number.isSafeInteger(progress[k]) && progress[k]>=0) || progress.earned>8 || progress.delivered>progress.earned || typeof progress.checked_in !== 'boolean') throw new Error('invalid task progress');
         const target = progress.checkin_ticket_target ?? 1;
@@ -1096,6 +1121,7 @@
         const ineligible = progress.checkin_ineligible_reason || '';
         if (!['', 'before_binding', 'before_start', 'not_scheduled'].includes(ineligible) || (ineligible && !progress.checked_in)) throw new Error('invalid check-in eligibility');
         confirmed ||= progress.checked_in;
+        showReceipt(summary);
         if (ineligible) awaitingCheckin = false;
         checkin.disabled = signing || confirmed;
         checkin.textContent = t(confirmed ? '今日已签到' : target === 3 ? '每日签到 · +3 券' : target === 1 ? '每日签到' : '每日签到 · 领经验');
@@ -1129,7 +1155,8 @@
       if(checkin.disabled || busy || signing || !current())return;
       signing=true; checkin.disabled=true;
       try {
-        await answer.request('/metar/experience/checkin',{method:'POST',headers:{'Content-Type':'application/json','X-Metar-Request':'1'},body:'{}'});
+        const summary = await answer.request('/metar/experience/checkin',{method:'POST',headers:{'Content-Type':'application/json','X-Metar-Request':'1'},body:'{}'});
+        if (current()) showReceipt(summary);
         if (!current()) return;
         confirmed=true;
         checkin.textContent=t('今日已签到');

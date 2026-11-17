@@ -273,3 +273,52 @@ func TestMySQLConcurrentDailyCap(t *testing.T) {
 	must(t, s.AwardPulse(ctx, "2", "outside-daily-limit", 150, false))
 	balance(t, s, "2", 206)
 }
+
+func TestMySQLCheckinReceiptUsesActualLedgerAcrossRuleChangesAndOtherAwards(t *testing.T) {
+	s, now := fixture(t)
+	ctx := context.Background()
+	before, err := s.Summary(ctx, "2")
+	must(t, err)
+	if before.CheckinReceipt != nil {
+		t.Fatal("receipt before check-in", before.CheckinReceipt)
+	}
+	concurrent(t, func() error { return s.Checkin(ctx, "2") })
+	must(t, s.AwardPulse(ctx, "2", "receipt-unrelated-pulse", 600, false))
+	rules := DefaultRules()
+	rules.Checkin = 9
+	rules.StreakCheckin = 9
+	must(t, s.UpdateRules(ctx, "1", "receipt-rules", "调整后仍读原签到到账", 1, rules))
+	must(t, s.Checkin(ctx, "2"))
+	after, err := s.Summary(ctx, "2")
+	must(t, err)
+	if after.CheckinReceipt == nil || after.CheckinReceipt.Experience != 2 || after.CheckinReceipt.Day != Day(*now) || after.CheckinReceipt.FlashAmount != "0.00" || after.CheckinReceipt.FlashStatus != "not_issued" || after.Balance != 602 || after.CheckinAmount != 0 {
+		t.Fatalf("actual receipt %+v summary %+v", after.CheckinReceipt, after)
+	}
+	*now = now.AddDate(0, 0, 1)
+	next, err := s.Summary(ctx, "2")
+	must(t, err)
+	if next.CheckinReceipt != nil || next.CheckinAmount != 9 {
+		t.Fatalf("cross-day receipt %+v", next)
+	}
+}
+
+func TestMySQLCappedCheckinReceiptDoesNotClaimConfiguredEXP(t *testing.T) {
+	s, now := fixture(t)
+	ctx := context.Background()
+	rules := DefaultRules()
+	rules.Question = Rule{60, 1, 60}
+	must(t, s.UpdateRules(ctx, "1", "receipt-cap-rules", "设置当天经验上限场景", 1, rules))
+	must(t, s.transaction(ctx, "2", func(tx *sql.Tx, a *Account) error {
+		event, err := register(ctx, tx, Event{Source: "receipt-cap-question", UserID: "2", Kind: "question", OccurredAt: now.Unix(), EligibleAt: now.Unix(), Day: Day(*now), Amount: 60, DailyCap: 60, DailyCount: 1, DailyAmount: 60, RuleVersion: 2, Reason: "fixture question"})
+		if err != nil {
+			return err
+		}
+		return settle(ctx, tx, a, event, *now)
+	}))
+	must(t, s.Checkin(ctx, "2"))
+	v, err := s.Summary(ctx, "2")
+	must(t, err)
+	if v.CheckinReceipt == nil || v.CheckinReceipt.Experience != 0 || v.CheckinAmount != 0 || v.Balance != 60 {
+		t.Fatalf("capped receipt %+v summary %+v", v.CheckinReceipt, v)
+	}
+}

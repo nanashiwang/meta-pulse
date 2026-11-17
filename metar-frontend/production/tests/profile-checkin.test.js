@@ -3,15 +3,17 @@ const test = require('node:test'), assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../src/app.js'), 'utf8');
 const mount = source.slice(source.indexOf('  async function mountProfileCheckin()'), source.indexOf('  async function bookmarksPage()'));
+const receiptSource = source.slice(source.indexOf('  function checkinReceiptText('),source.indexOf('  async function mountProfileCheckin()'));
 function harness() {
   const button = {}, status = {}, card = {}; let amount = 10, failRead = false, failPost = false, commit = true, pending;
+  let receipt={day:'2026-11-18',experience:10,flash_amount:'0.00',flash_status:'not_issued'};
   const calls = [];
   const root = {dataset:{}, isConnected:true, querySelector:s=>s==='button'?button:status};
-  const context = vm.createContext({document:{querySelector:s=>s==='[data-profile-checkin]'?root:card}, currentUser:{id:'one'}, navigationSequence:1, identitySequence:1, t:s=>s,
+  const context = vm.createContext({document:{querySelector:s=>s==='[data-profile-checkin]'?root:card}, currentUser:{id:'one'}, navigationSequence:1, identitySequence:1, t:(s,v)=>s.replace(/\{(\w+)\}/g,(_,k)=>v?.[k]??'{'+k+'}'),
     growthView:async()=>({compact:async()=>'<section>updated EXP</section>'}),
-    answer:{request:async(url,options)=>{calls.push({url,options}); if(options) {if(commit)amount=0;if(pending)return pending;if(failPost)throw Error('lost response');return {};} if(failRead)throw Error('offline');return {checkin_amount:amount};}}});
-  vm.runInContext(mount,context);
-  return {button,status,card,root,context,calls,mount:()=>context.mountProfileCheckin(), amount:v=>amount=v, failRead:v=>failRead=v, failPost:v=>failPost=v, commit:v=>commit=v,pending:v=>pending=v};
+    answer:{request:async(url,options)=>{calls.push({url,options}); if(options) {if(commit)amount=0;if(pending)return pending;if(failPost)throw Error('lost response');return {checkin_amount:amount,checkin_receipt:amount===0?receipt:null};} if(failRead)throw Error('offline');return {checkin_amount:amount,checkin_receipt:amount===0?receipt:null};}}});
+  vm.runInContext(receiptSource+mount,context);
+  return {button,status,card,root,context,calls,mount:()=>context.mountProfileCheckin(), receipt:v=>receipt=v, amount:v=>amount=v, failRead:v=>failRead=v, failPost:v=>failPost=v, commit:v=>commit=v,pending:v=>pending=v};
 }
 test('profile shows daily state and posts no identity or amount; success updates EXP',async()=>{
  const h=harness();await h.mount();assert.equal(h.button.textContent,'每日签到');assert.equal(h.button.disabled,false);
@@ -36,5 +38,18 @@ test('failed uncommitted check-in remains retryable',async()=>{
 test('in-flight clicks cannot duplicate posts; old responses cannot change a new identity or page',async()=>{
  for(const change of [h=>h.context.identitySequence++,h=>h.context.navigationSequence++,h=>h.root.isConnected=false]) {
   const h=harness();await h.mount();let resolve;h.pending(new Promise(r=>resolve=r));const work=h.button.onclick();await new Promise(r=>setImmediate(r));await h.button.onclick();assert.equal(h.calls.filter(c=>c.options).length,1);change(h);resolve({});await work;assert.equal(h.card.innerHTML,undefined);assert.equal(h.status.textContent,'');
+ }
+});
+
+test('profile renders credited EXP and exact flash text from the check-in receipt',async()=>{
+ const h=harness();await h.mount();await h.button.onclick();assert.match(h.status.textContent,/10 EXP/);assert.match(h.status.textContent,/0.00 闪（未发放）/);
+});
+test('signed-in revisit and lost response recover the original actual receipt',async()=>{
+ const h=harness();h.amount(0);h.receipt({day:'2026-11-18',experience:15,flash_amount:'0.00',flash_status:'not_issued'});await h.mount();assert.match(h.status.textContent,/15 EXP/);assert.equal(h.calls.filter(c=>c.options).length,0);
+ const lost=harness();await lost.mount();lost.failPost(true);await lost.button.onclick();assert.match(lost.status.textContent,/10 EXP/);assert.equal(lost.calls.filter(c=>c.options).length,1);
+});
+test('missing or malformed receipts never invent zero or substitute future claim amounts',async()=>{
+ for(const receipt of [null,{day:'2026-11-18',experience:-1,flash_amount:'0.00',flash_status:'not_issued'},{day:'2026-11-18',experience:10,flash_amount:'1e3',flash_status:'settled'},{day:'2026-11-18',experience:10,flash_amount:'2.50',flash_status:'not_issued'}]){
+  const h=harness();h.amount(0);h.receipt(receipt);await h.mount();assert.match(h.status.textContent,/明细暂不可用/);assert.doesNotMatch(h.status.textContent,/0.00|2.50/);
  }
 });
