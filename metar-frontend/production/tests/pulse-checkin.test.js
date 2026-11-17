@@ -116,3 +116,29 @@ test('Monday and Friday three-ticket check-in waits for all three while exposing
  h.setTask(progress({checked_in:true,checkin_ticket_target:3,earned:3,delivered:1,checkin_delivered:false}));await h.checkin.onclick();assert.equal(h.timers.size,1);assert.equal(h.counts().updates,1);
  h.setTask(progress({checked_in:true,checkin_ticket_target:3,earned:3,delivered:3,checkin_delivered:true}));await h.tick();assert.equal(h.timers.size,0);assert.equal(h.counts().updates,2);
 });
+
+
+test('ticket acquisition panel explains current check-in rules without old engagement tasks',()=>{
+ const markup=source.slice(source.indexOf('  function communityTasksMarkup('),source.indexOf('  async function mountCommunityTasks()'));
+ const context=vm.createContext({t:s=>s,link:()=>''});vm.runInContext(markup,context);
+ for(const bound of [true,false]){
+  const html=context.communityTasksMarkup(bound);
+  assert.match(html,/周一、周五签到各送 3 张抽奖券，每周共 6 张/);
+  assert.match(html,/其他日期不赠送签到券/);assert.match(html,/2.5 闪/);assert.match(html,/北京时间/);
+  assert.doesNotMatch(html,/收到.*评论|给别人点赞|互动达标|有效互动|每天最多|每日签到 · \+1/);
+ }
+});
+test('completed check-in displays no engagement counters or combined 3/6 ticket cap',async()=>{
+ const h=harness();h.setTask(progress({received:140,checked_in:true,earned:3,delivered:3,checkin_delivered:true}));await h.mount();
+ assert.equal(h.status.textContent,'今日已签到，签到赠券已到账。');
+ assert.doesNotMatch(h.status.textContent,/140|点赞|评论|3\/6|3\/8/);
+});
+test('background engagement delivery cannot turn a completed check-in into a check-in timeout',async()=>{
+ const h=harness();h.setTask(progress({checked_in:true,checkin_ticket_target:3,earned:5,delivered:3,checkin_delivered:true}));await h.mount();
+ for(let i=0;i<12;i++)await h.tick();
+ assert.equal(h.status.textContent,'今日已签到，签到赠券已到账。');assert.equal(h.timers.size,0);
+});
+test('a legacy one-ticket target never advertises the retired daily +1 check-in rule',async()=>{
+ const h=harness();h.setTask(progress({checkin_ticket_target:1}));await h.mount();
+ assert.equal(h.checkin.textContent,'每日签到');assert.match(h.status.textContent,/周一、周五签到各赠 3 张券/);
+});

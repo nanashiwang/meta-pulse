@@ -1045,12 +1045,12 @@
   }
 
   function communityTasksMarkup(bound = true) {
-    return `<section class="card card-pad mt24" data-community-tasks><div class="between wrap"><h2>${t('获取抽奖券')}</h2><button class="btn" data-task-checkin>${t('每日签到 · 领经验')}</button></div>
-      <ul class="mini-list"><li>${t('帖子每收到 10 次评论 +1 券，每天最多 2 券。')}</li><li>${t('给别人点赞每 40 次或评论每 20 次 +1 券，分别累计，合计每天最多 3 券。')}</li><li>${t('周一、周五签到各送 3 张券，每周共 6 张；其他日期签到仅领取经验。')}</li></ul>
+    return `<section class="card card-pad mt24" data-community-tasks><div class="between wrap"><h2>${t('获取抽奖券')}</h2><button class="btn" data-task-checkin>${t('每日签到')}</button></div>
+      <ul class="mini-list"><li>${t('周一、周五签到各送 3 张抽奖券，每周共 6 张。')}</li><li>${t('每天签到仍领取原有固定经验；其他日期不赠送签到券。')}</li><li>${t('额度资格有效的抽奖券，每张闪奖励的理论期望为 2.5 闪，实际金额随机。')}</li></ul>
       ${bound ? '' : `<p class="prod-page-note">${t('未绑定账号签到可领经验；绑定元衡 API 后，周一、周五签到各得 3 张抽奖券，绑定前不补发。')}</p>`}
-      <p class="muted mt12">${t('按北京时间每日重置，仅统计绑定后及功能上线后的有效互动。评论包含回答和评论；自评自赞不计，撤赞重赞不重复计数。')}</p>
-      <p class="muted">${t('互动达标后自动发券，通常需等待片刻。Meta API 消费不再获得抽奖券。')}</p>
-      <p role="status" data-task-progress>${t('正在读取今日进度…')}</p><div class="actions"><button class="btn" data-task-refresh>${t('刷新任务进度')}</button><button class="btn" data-action="pulse-refresh">${t('刷新权益')}</button>${link('/latest',t('参与讨论'),'btn')}</div></section>`;
+      <p class="muted mt12">${t('按北京时间计算签到日期，每天仅可签到一次；领取抽奖券需先绑定元衡 API 账号。')}</p>
+      <p class="muted">${t('签到赠券会自动到账，通常需等待片刻；到账后自动更新可用券数。')}</p>
+      <p role="status" data-task-progress>${t('正在读取签到进度…')}</p><div class="actions"><button class="btn" data-task-refresh>${t('刷新签到进度')}</button><button class="btn" data-action="pulse-refresh">${t('刷新权益')}</button>${link('/latest',t('参与讨论'),'btn')}</div></section>`;
   }
   async function mountCommunityTasks() {
     const root = document.querySelector('[data-community-tasks]');
@@ -1061,12 +1061,12 @@
     const current = () => root.isConnected && user === currentUser?.id && identity === identitySequence && sequence === navigationSequence;
     const status = root.querySelector('[data-task-progress]'), checkin = root.querySelector('[data-task-checkin]'), refresh = root.querySelector('[data-task-refresh]');
     let busy = false, signing = false, confirmed = false, awaitingCheckin = false;
-    let syncing = false, attempts = 0, timer, lastDelivered = null;
+    let syncing = false, checkinPending = false, attempts = 0, timer, lastDelivered = null;
     const schedule = () => {
       clearTimeout(timer);
       if (!current() || !syncing) return;
       if (attempts >= 12) {
-        status.textContent = t(bound ? '赠券仍在同步，稍后点击“刷新任务进度”即可继续查询，无需刷新浏览器。' : '签到状态暂未确认，请稍后刷新任务进度或重试签到。');
+        if (checkinPending) status.textContent = t(bound ? '签到赠券仍在同步，稍后点击“刷新签到进度”继续查询，无需刷新浏览器。' : '签到状态暂未确认，请稍后刷新签到进度或重试签到。');
         return;
       }
       timer = setTimeout(() => { attempts++; void load(); }, 5000);
@@ -1082,6 +1082,7 @@
           if (!Number.isSafeInteger(summary.checkin_amount) || summary.checkin_amount < 0) throw new Error('invalid check-in status');
           confirmed ||= summary.checkin_amount === 0;
           syncing = awaitingCheckin && !confirmed;
+          checkinPending = syncing;
           if (confirmed) awaitingCheckin = false;
           checkin.textContent = t(confirmed ? '今日已签到' : '每日签到 · 领经验');
           status.textContent = t(confirmed ? '今日已签到' : '未绑定账号签到可领经验；绑定元衡 API 后，周一、周五签到各得 3 张抽奖券，绑定前不补发。');
@@ -1097,12 +1098,16 @@
         confirmed ||= progress.checked_in;
         if (ineligible) awaitingCheckin = false;
         checkin.disabled = signing || confirmed;
-        checkin.textContent = t(confirmed ? '今日已签到' : target === 3 ? '每日签到 · +3 券' : target === 1 ? '每日签到 · +1 券' : '每日签到 · 领经验');
+        checkin.textContent = t(confirmed ? '今日已签到' : target === 3 ? '每日签到 · +3 券' : target === 1 ? '每日签到' : '每日签到 · 领经验');
         if (lastDelivered === null) lastDelivered = progress.delivered;
         const deliveryChanged = lastDelivered !== progress.delivered;
         const wasSyncing = syncing;
-        syncing = (!ineligible && target > 0 && (awaitingCheckin || progress.checked_in) && progress.checkin_delivered !== true) || progress.delivered < progress.earned;
-        status.textContent = ineligible ? t(ineligible === 'not_scheduled' ? '今日已签到；今天仅领取经验，周一、周五签到各赠 3 张券。' : ineligible === 'before_binding' ? '今日已签到；签到发生在账号绑定前，今天不补发签到券。请在后续周一或周五签到领券。' : '今日已签到；签到发生在赠券功能启用前，今天不补发签到券。请在后续周一或周五签到领券。') : syncing ? t('签到与赠券正在同步，到账后将自动更新抽奖券。') : t('今日点赞 {likes} 次 · 评论 {comments} 次 · 收到评论 {received} 次；已获得 {earned}/{limit} 券，已入账 {delivered} 券。',{...progress,limit:5+target});
+        checkinPending = !ineligible && target > 0 && (awaitingCheckin || progress.checked_in) && progress.checkin_delivered !== true;
+        syncing = checkinPending || progress.delivered < progress.earned;
+        status.textContent = ineligible ? t(ineligible === 'not_scheduled' ? '今日已签到；今天仅领取经验，周一、周五签到各赠 3 张券。' : ineligible === 'before_binding' ? '今日已签到；签到发生在账号绑定前，今天不补发签到券。请在后续周一或周五签到领券。' : '今日已签到；签到发生在赠券功能启用前，今天不补发签到券。请在后续周一或周五签到领券。')
+          : checkinPending ? t('签到赠券正在同步，到账后将自动更新可用券数。')
+          : confirmed ? t(progress.checkin_delivered === true ? '今日已签到，签到赠券已到账。' : target === 0 ? '今日已签到，今天仅领取经验。' : '今日已签到；赠券安排为周一、周五各 3 张。')
+          : t(target === 0 ? '今日尚未签到，今天签到仅领取经验。' : target === 3 ? '今日尚未签到，签到可领取经验和 3 张抽奖券。' : '今日尚未签到；周一、周五签到各赠 3 张券。');
         // Refresh the authoritative selection as well as the count: a newly
         // delivered ticket may enable single or five draws. Never invent +1.
         if (deliveryChanged || (!ineligible && target > 0 && (awaitingCheckin || progress.checked_in) && progress.checkin_delivered === undefined && attempts % 3 === 2) || (!syncing && (awaitingCheckin || wasSyncing || refreshBenefits))) {
@@ -1113,7 +1118,7 @@
           if (!syncing) awaitingCheckin = false;
         }
       } catch (error) {
-        if (current()) status.textContent=t('任务进度暂不可用，请稍后刷新。已确认的券不会重复发放。');
+        if (current()) status.textContent=t('签到进度暂不可用，请稍后刷新。已确认的券不会重复发放。');
       } finally {
         busy=false;
         if(current()) { refresh.disabled=false; checkin.disabled=signing || confirmed; schedule(); }

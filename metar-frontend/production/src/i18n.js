@@ -2,6 +2,23 @@
 'use strict';
 (() => {
   const EN = Object.freeze({
+    "签到赠券仍在同步，稍后点击“刷新签到进度”继续查询，无需刷新浏览器。": "Check-in tickets are still syncing. Select Refresh check-in progress later to continue without reloading the page.",
+    "签到状态暂未确认，请稍后刷新签到进度或重试签到。": "Check-in is unconfirmed. Refresh check-in progress or retry check-in later.",
+    "签到进度暂不可用，请稍后刷新。已确认的券不会重复发放。": "Check-in progress is temporarily unavailable. Refresh later; confirmed tickets will not be issued twice.",
+    "周一、周五签到各送 3 张抽奖券，每周共 6 张。": "Check in on Monday and Friday to earn 3 tickets each day, 6 per week.",
+    "每天签到仍领取原有固定经验；其他日期不赠送签到券。": "Daily check-ins still award the usual fixed experience. Other days do not award check-in tickets.",
+    "额度资格有效的抽奖券，每张闪奖励的理论期望为 2.5 闪，实际金额随机。": "Each ticket with valid credit eligibility has an expected credit reward of 2.5 ⚡️. The actual amount is random.",
+    "按北京时间计算签到日期，每天仅可签到一次；领取抽奖券需先绑定元衡 API 账号。": "Check-in dates use Beijing time, once per day. Link a Metar API account before earning tickets.",
+    "签到赠券会自动到账，通常需等待片刻；到账后自动更新可用券数。": "Check-in tickets are delivered automatically, usually after a short wait. Your available ticket count updates when they arrive.",
+    "正在读取签到进度…": "Loading check-in progress…",
+    "刷新签到进度": "Refresh check-in progress",
+    "签到赠券正在同步，到账后将自动更新可用券数。": "Check-in tickets are syncing. Your available ticket count will update when they arrive.",
+    "今日已签到，签到赠券已到账。": "Checked in today. Check-in tickets have been delivered.",
+    "今日已签到，今天仅领取经验。": "Checked in today for experience only.",
+    "今日已签到；赠券安排为周一、周五各 3 张。": "Checked in today. Check-in tickets are awarded on Monday and Friday, 3 each day.",
+    "今日尚未签到，今天签到仅领取经验。": "Not checked in today. Today’s check-in awards experience only.",
+    "今日尚未签到，签到可领取经验和 3 张抽奖券。": "Not checked in today. Check in to earn experience and 3 tickets.",
+    "今日尚未签到；周一、周五签到各赠 3 张券。": "Not checked in today. Monday and Friday check-ins each award 3 tickets.",
 "抽奖券、额度奖励和抽奖记录都归属你的元衡 API 账号。完成绑定后，可通过周一、周五签到和有效社区互动获得抽奖券，额度奖励直接到账 API 账号。社区账号仍可独立使用。": "Tickets, credit prizes and draw history belong to your Metar API account. After linking, earn tickets by checking in on Mondays and Fridays or through eligible community interactions. Credit prizes are delivered to the API account. Your community account remains independent.",
     "编辑者：获得周度或月度优秀帖子奖。": "Editor: win a weekly or monthly Outstanding Post award.",
     "学者：获得周度或月度优秀回应奖。": "Scholar: win a weekly or monthly Outstanding Response award.",
