@@ -16,12 +16,39 @@ func TestMySQLCheckinFlashConcurrentReplayCreatesOneGrantAndOutbox(t *testing.T)
 		t.Fatal(err)
 	}
 	s := NewCommunityTicketService(unit)
-	s.QuotaPerUnit = 500000
+	s.QuotaPerUnit = 500100
 	s.CheckinFlashEnabled = true
 	s.now = func() time.Time { return time.Date(2095, 11, 18, 8, 0, 0, 0, time.UTC) }
 	user := uint64(time.Now().UnixNano()%1000000000 + 5000000000)
 	task := CheckinFlash{Day: "2095-11-18", Cents: 30, EventID: user}
 	ctx := context.Background()
+	policyKey := fmt.Sprintf("%s%d", checkinFlashPrefix, s.QuotaPerUnit)
+	t.Cleanup(func() {
+		// Only this fixture's grant and dedicated internal snapshot are removed.
+		for _, statement := range []string{
+			"DELETE o FROM pulse_settlement_outbox o JOIN pulse_reward_grant g ON g.id=o.reward_grant_id WHERE g.user_id=? AND g.trigger_type='checkin'",
+			"DELETE FROM pulse_reward_grant WHERE user_id=? AND trigger_type='checkin'",
+		} {
+			if _, e := db.Exec(statement, user); e != nil {
+				t.Errorf("clean check-in fixture: %v", e)
+			}
+		}
+		for _, table := range []string{"pulse_reward_definition", "pulse_reward_budget"} {
+			if _, e := db.Exec("DELETE FROM "+table+" WHERE period_id=(SELECT id FROM pulse_period WHERE period_key=?)", policyKey); e != nil {
+				t.Errorf("clean snapshot: %v", e)
+			}
+		}
+		if _, e := db.Exec("DELETE FROM pulse_period WHERE period_key=?", policyKey); e != nil {
+			t.Errorf("clean period: %v", e)
+		}
+		key := fmt.Sprintf("daily-checkin-v1:%d:%s", user, task.Day)
+		if _, e := db.Exec("DELETE FROM pulse_idempotency WHERE scope='checkin_flash' AND idempotency_key=?", key); e != nil {
+			t.Errorf("clean receipt: %v", e)
+		}
+		if _, e := db.Exec("DELETE FROM pulse_audit_log WHERE action='checkin_flash' AND request_id=?", key); e != nil {
+			t.Errorf("clean audit: %v", e)
+		}
+	})
 	var wg sync.WaitGroup
 	errs := make(chan error, 100)
 	for i := 0; i < 100; i++ {
@@ -37,7 +64,7 @@ func TestMySQLCheckinFlashConcurrentReplayCreatesOneGrantAndOutbox(t *testing.T)
 	}
 	var count int
 	var amount int64
-	if err = db.QueryRow("SELECT COUNT(*),COALESCE(SUM(amount),0) FROM pulse_reward_grant WHERE user_id=? AND trigger_type='checkin'", user).Scan(&count, &amount); err != nil || count != 1 || amount != 150000 {
+	if err = db.QueryRow("SELECT COUNT(*),COALESCE(SUM(amount),0) FROM pulse_reward_grant WHERE user_id=? AND trigger_type='checkin'", user).Scan(&count, &amount); err != nil || count != 1 || amount != 150030 {
 		t.Fatal(count, amount, err)
 	}
 	if err = db.QueryRow("SELECT COUNT(*) FROM pulse_settlement_outbox o JOIN pulse_reward_grant g ON g.id=o.reward_grant_id WHERE g.user_id=? AND g.trigger_type='checkin'", user).Scan(&count); err != nil || count != 1 {
@@ -59,7 +86,7 @@ func TestMySQLCheckinFlashConcurrentReplayCreatesOneGrantAndOutbox(t *testing.T)
 	if _, err = s.GrantCheckinFlash(ctx, user, task); err == nil {
 		t.Fatal("different cents accepted")
 	}
-	if err = db.QueryRow("SELECT COUNT(*) FROM pulse_reward_definition WHERE period_id=(SELECT id FROM pulse_period WHERE period_key=?)", fmt.Sprintf("%s%d", checkinFlashPrefix, 500000)).Scan(&count); err != nil || count != 150 {
+	if err = db.QueryRow("SELECT COUNT(*) FROM pulse_reward_definition WHERE period_id=(SELECT id FROM pulse_period WHERE period_key=?)", policyKey).Scan(&count); err != nil || count != 150 {
 		t.Fatal(count, err)
 	}
 }

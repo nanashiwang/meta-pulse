@@ -25,8 +25,9 @@ func TestMySQLAdminPeriodConcurrentReplayAndOverlap(t *testing.T) {
 	request.Key = fmt.Sprintf("web-test-%d", time.Now().UnixNano())
 	request.StartsAt = time.Now().AddDate(80, 0, 0).UTC().Truncate(time.Second)
 	// This test uses an isolated database; reruns remain adjacent.
+	// Internal check-in snapshots never occupy an ordinary campaign window.
 	var last *time.Time
-	if err := db.QueryRowContext(ctx, "SELECT MAX(ends_at) FROM pulse_period").Scan(&last); err != nil {
+	if err := db.QueryRowContext(ctx, "SELECT MAX(ends_at) FROM pulse_period WHERE period_key NOT LIKE ?", checkinFlashPrefix+"%").Scan(&last); err != nil {
 		t.Fatal(err)
 	}
 	if last != nil && !last.Before(request.StartsAt) {

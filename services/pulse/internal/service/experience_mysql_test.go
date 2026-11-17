@@ -21,8 +21,9 @@ func TestMySQLExperienceDeliveryRecoveryAndReversal(t *testing.T) {
 		t.Fatal(err)
 	}
 	start := time.Now().AddDate(100, 0, 0).UTC().Truncate(time.Second)
+	// Internal check-in snapshots never occupy an ordinary campaign window.
 	var last *time.Time
-	if err = db.QueryRow("SELECT MAX(ends_at) FROM pulse_period").Scan(&last); err != nil {
+	if err = db.QueryRow("SELECT MAX(ends_at) FROM pulse_period WHERE period_key NOT LIKE ?", checkinFlashPrefix+"%").Scan(&last); err != nil {
 		t.Fatal(err)
 	}
 	if last != nil && !last.Before(start) {
