@@ -444,6 +444,7 @@
     }
     void mountPulseFeed();
     void mountCommunityTasks();
+    void mountProfileCheckin();
     schedulePulseStatus();
     app.setAttribute('aria-busy', 'false');
     window.MetarSEO?.update();
@@ -819,7 +820,66 @@
     const username = currentUser.username;
     const [profile, questions, experience] = await Promise.all([answer.getProfile(username), answer.listPersonalQuestions(username), isActiveUser(currentUser) ? growthView().then(view => view.compact()).catch(() => '') : Promise.resolve('')]);
     const list = Array.isArray(questions?.list) ? questions.list : [];
-    return `<div class="content-grid"><div class="stack"><section class="card prod-user-card"><div class="between wrap">${avatar(profile, 'large')}<div class="flex wrap">${external(profileHref(username), t("公开主页"), 'btn')}</div></div><h1 class="mt16">${esc(displayName(profile))}</h1><p class="muted mt8">@${esc(profile.username || username)}${profile.location ? ` · ${esc(profile.location)}` : ''}</p><p class="mt16">${esc(profile.bio || t("这位成员暂未填写个人简介。"))}</p><div class="profile-numbers"><div><strong>${number(questions?.count)}</strong><span>${t("发布问题")}</span></div><div><strong>${number(profile.answer_count)}</strong><span>${t("参与回答")}</span></div><div><strong>${number(profile.rank)}</strong><span>${t("社区声望")}</span></div></div>${currentUser.mail_status === 2 ? `<div class="prod-status error mt16">${I('shield')}<div><strong>${t("邮箱尚未激活")}</strong><p>${t("请先验证邮箱，或在登录页面重新发送激活邮件。")}</p></div></div>` : ''}</section>${experience}<section class="card prod-feed"><div class="section-heading"><h2>${t("最近发布")}</h2><span class="muted">${t("发布记录")}</span></div>${list.length ? list.map((item) => questionRow({ ...item, user_info: profile })).join('') : empty(t("还没有发布问题"), t("从一个具体、可复现的问题开始。"), external(config.answerAskPath, t("发起问题"), 'btn primary'), 'chat')}</section></div><aside class="stack"><section class="card card-pad"><h3>${t("账号快捷入口")}</h3><ul class="mini-list"><li>${link('/me/bookmarks', `<span>${t("我的收藏")}</span>`)}</li><li>${external('/users/notifications/inbox', `<span>${t("通知中心")}</span>`)}</li><li>${link('/settings/binding', `<span>${t("元衡账号绑定")}</span><small>${t("可选")}</small>`)}</li><li>${link('/pulse', `<span>${t("Pulse 权益")}</span><small>${t("绑定后")}</small>`)}</li><li>${external('/users/logout', `<span>${t("退出登录")}</span>`)}</li></ul></section></aside></div>${footer()}`;
+    return `<div class="content-grid"><div class="stack"><section class="card prod-user-card"><div class="between wrap">${avatar(profile, 'large')}<div class="flex wrap profile-header-actions">${isActiveUser(currentUser) ? `<div class="profile-checkin" data-profile-checkin><button type="button" class="btn primary" disabled>${t("正在读取签到状态…")}</button><small class="muted" role="status" aria-live="polite"></small></div>` : ''}${external(profileHref(username), t("公开主页"), 'btn')}</div></div><h1 class="mt16">${esc(displayName(profile))}</h1><p class="muted mt8">@${esc(profile.username || username)}${profile.location ? ` · ${esc(profile.location)}` : ''}</p><p class="mt16">${esc(profile.bio || t("这位成员暂未填写个人简介。"))}</p><div class="profile-numbers"><div><strong>${number(questions?.count)}</strong><span>${t("发布问题")}</span></div><div><strong>${number(profile.answer_count)}</strong><span>${t("参与回答")}</span></div><div><strong>${number(profile.rank)}</strong><span>${t("社区声望")}</span></div></div>${currentUser.mail_status === 2 ? `<div class="prod-status error mt16">${I('shield')}<div><strong>${t("邮箱尚未激活")}</strong><p>${t("请先验证邮箱，或在登录页面重新发送激活邮件。")}</p></div></div>` : ''}</section><div data-profile-growth>${experience}</div><section class="card prod-feed"><div class="section-heading"><h2>${t("最近发布")}</h2><span class="muted">${t("发布记录")}</span></div>${list.length ? list.map((item) => questionRow({ ...item, user_info: profile })).join('') : empty(t("还没有发布问题"), t("从一个具体、可复现的问题开始。"), external(config.answerAskPath, t("发起问题"), 'btn primary'), 'chat')}</section></div><aside class="stack"><section class="card card-pad"><h3>${t("账号快捷入口")}</h3><ul class="mini-list"><li>${link('/me/bookmarks', `<span>${t("我的收藏")}</span>`)}</li><li>${external('/users/notifications/inbox', `<span>${t("通知中心")}</span>`)}</li><li>${link('/settings/binding', `<span>${t("元衡账号绑定")}</span><small>${t("可选")}</small>`)}</li><li>${link('/pulse', `<span>${t("Pulse 权益")}</span><small>${t("绑定后")}</small>`)}</li><li>${external('/users/logout', `<span>${t("退出登录")}</span>`)}</li></ul></section></aside></div>${footer()}`;
+  }
+
+  async function mountProfileCheckin() {
+    const root = document.querySelector('[data-profile-checkin]');
+    if (!root || root.dataset.mounted) return;
+    root.dataset.mounted = '1';
+    const button = root.querySelector('button'), status = root.querySelector('[role="status"]');
+    const user = currentUser?.id, sequence = navigationSequence, identity = identitySequence;
+    const current = () => root.isConnected && user === currentUser?.id && identity === identitySequence && sequence === navigationSequence;
+    let busy = false, known = false, confirmed = false;
+    const show = () => {
+      button.disabled = busy || confirmed;
+      button.textContent = t(busy ? '签到中…' : confirmed ? '今日已签到' : known ? '每日签到' : '重试签到');
+    };
+    const read = async () => {
+      const summary = await answer.request('/metar/experience/summary');
+      if (!Number.isSafeInteger(summary.checkin_amount) || summary.checkin_amount < 0) throw new Error('invalid check-in status');
+      if (!current()) return;
+      known = true;
+      confirmed = summary.checkin_amount === 0;
+    };
+    const updateGrowth = async () => {
+      try {
+        const html = await (await growthView()).compact();
+        if (current()) {
+          const card = document.querySelector('[data-profile-growth]');
+          if (card) card.innerHTML = html;
+        }
+      } catch (_) { /* Keep the existing card if experience is unavailable. */ }
+    };
+    button.onclick = async () => {
+      if (busy || confirmed || !current()) return;
+      busy = true; show(); status.textContent = '';
+      try {
+        await read();
+        if (!current()) return;
+        if (!confirmed) {
+          await answer.request('/metar/experience/checkin', {method:'POST', headers:{'Content-Type':'application/json','X-Metar-Request':'1'}, body:'{}'});
+          if (!current()) return;
+          confirmed = true;
+        }
+        status.textContent = t('签到成功，经验已更新。');
+        await updateGrowth();
+      } catch (_) {
+        // A lost response may already have committed the daily check-in.
+        known = false;
+        try { await read(); } catch (_) { /* Keep the retry entry available. */ }
+        if (!current()) return;
+        status.textContent = t(confirmed ? '今日已签到，经验已更新。' : '签到未确认，请点击重试签到。');
+        if (confirmed) await updateGrowth();
+      } finally {
+        busy = false;
+        if (current()) show();
+      }
+    };
+    busy = true;
+    try { await read(); }
+    catch (_) { if (current()) status.textContent = t('签到状态暂不可用，请点击重试签到。'); }
+    finally { busy = false; if (current()) show(); }
   }
 
   async function bookmarksPage() {

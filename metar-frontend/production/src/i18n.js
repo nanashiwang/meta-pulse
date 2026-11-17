@@ -2,6 +2,14 @@
 'use strict';
 (() => {
   const EN = Object.freeze({
+    "签到中…": "Checking in…",
+    "每日签到": "Daily check-in",
+    "正在读取签到状态…": "Loading check-in status…",
+    "重试签到": "Retry check-in",
+    "签到成功，经验已更新。": "Check-in complete. Experience updated.",
+    "今日已签到，经验已更新。": "Already checked in today. Experience updated.",
+    "签到未确认，请点击重试签到。": "Check-in is unconfirmed. Select Retry check-in.",
+    "签到状态暂不可用，请点击重试签到。": "Check-in status is unavailable. Select Retry check-in.",
  "评选金色勋章":"Gold award medals",
  "暂无评选勋章":"No award medals yet",
  "评选勋章暂时无法加载":"Award medals are temporarily unavailable",

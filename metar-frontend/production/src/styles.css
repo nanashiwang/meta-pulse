@@ -742,3 +742,11 @@ html.community-wide:not(.preview-tools) .page{padding-bottom:calc(var(--communit
 .searchbox .search-submit .ico{width:16px;height:16px;color:var(--muted)}
 
 .award-medal{display:inline-block;margin:8px;padding:10px 14px;color:#76540c;background:#fff1bb;border:1px solid #e4bc55;border-radius:8px}
+
+/* Personal-space check-in sits beside the public-profile action. */
+.profile-header-actions { align-items: flex-start; justify-content: flex-end; }
+.profile-checkin { display: flex; flex-direction: column; gap: 6px; max-width: 240px; }
+.profile-checkin [role="status"]:empty { display: none; }
+.profile-checkin [role="status"] { font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.profile-checkin .btn { align-self: flex-end; white-space: nowrap; }
+@media (max-width: 480px) { .profile-checkin { max-width: 150px; } }
