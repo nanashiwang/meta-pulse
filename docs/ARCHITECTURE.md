@@ -1310,6 +1310,8 @@ Answer 验证受保护的一对一绑定后，先提交 EXP 账本，再 ACK。A
 
 ## 社区外链图片导入边界
 
+公共上传 `/answer/api/v1/file` 的网关请求体上限为 9 MiB（仅此精确路径），覆盖 Answer 默认 4 MiB 图片/8 MiB 附件和 multipart 开销；认证头、Cookie allowlist 与身份头剥离规则与原生 API 一致。文件大小、格式与 Storage 事实仍由 Answer 校验。其他写接口不放宽。
+
 Answer 官方 editor 插件在帖子/回答的编辑上下文中识别图片，经过认证的同源 POST `/answer/api/v1/metar/images/fetch` 下载光栅字节，再调用原生 `/answer/api/v1/file` 保存；只有上传成功才修改当前编辑器正文。插件不保存帖子、不直接写附件或文件记录；Answer 仍拥有发布、内容、文件、权限、Storage 和孤儿清理事实。原生本地账号即可使用，不需要 new-api 绑定。
 
 下载接口使用 Answer 服务端会话主体并重新查询 `user.status/mail_status`；浏览器不能指定身份。拒绝 URL 查询参数、非同源写入、非 HTTPS/非标准端口、带凭据 URL、内网及保留地址。每次 DNS 查询验证所有结果，连接固定到已验证 IP；重定向重新执行 URL 和 DNS 校验，禁止环境代理与凭据/Referer 转发。有限大小、像素、时间、单账号与进程并发/速率保护控制资源；进程内限流不声称是多实例全局配额。下载 API no-store，不作为公开 GET 代理。

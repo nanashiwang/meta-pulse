@@ -188,3 +188,5 @@ new-api 接收端与实际到账、生产普通账号流程、邮件与跨实例
 签到到账明细（2026-11-18）：`growth/store.go` 的 `Summary.checkin_receipt` 读取当天本人签到账本净经验，签到闪从独立服务器待发记录和Pulse结算状态投影，未绑定/绑定前为not_issued；`app.js` 的个人空间在签到和公开主页按钮下靠右展示 `3exp · 0.00⚡️` 形式的实际回执，结算状态保留在提示中；Pulse签到入口保留详细明细，金额缺失时不猜数。获取券区域移除期望值说明，签到赠券和抽奖规则保持。
 
 每日随机签到闪：Forum communitytickets/flash.go生成并提交固定分闪记录；checkin_flash.go复核保护绑定后签名交付，后台与页面复用同一记录。Pulse service/checkin_flash.go按用户/日幂等创建独立快照、checkin奖励、预算和原SettlementOutbox；只读状态返回原金额及pending/settled/blocked/reversed。客户端只发空签到对象，展示服务器回执；0.01～1.50等概率，不扣券，覆盖2026-11-18起缺记录签到。
+
+图片粘贴与上传（2026-11-18）：原生发帖、回答、编辑、图片工具栏及外链导入共用 `/answer/api/v1/file`；[网关](../deploy/nginx/meta-pulse.conf)只对此精确路径设置 9 MiB 请求上限，容纳默认 4 MiB 图片与 8 MiB 附件及 multipart。Answer 保留会话、格式、大小与存储校验。真实网关回归见 [test-seo.py](../deploy/nginx/test-seo.py)，生产需更新网关后生效。
