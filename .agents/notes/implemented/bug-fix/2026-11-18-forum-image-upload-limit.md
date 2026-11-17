@@ -21,7 +21,7 @@ Answer 原生粘贴、拖放、图片工具栏与外链导入都使用 `/answer/
 
 ## Verification
 
-真实 Nginx 回归先在 2 MiB 请求复现 413；修复后小文件、2 MiB、8 MiB 加 multipart 余量通过，10 MiB 与普通接口 2 MiB 拒绝。会话头保留、无关 Cookie 和伪造身份头剥离通过。`make test-community`、`make build-blog build-community`、`deploy/nginx/test-config.sh`、`python3 deploy/nginx/test-seo.py` 通过。旧静态产物读取超时经重新构建消除，未跳过完整网关检查。
+真实 Nginx 回归先在 2 MiB 请求复现 413；修复后小文件、2 MiB、8 MiB 加 multipart 余量通过，10 MiB 与普通接口 2 MiB 拒绝。会话头保留、无关 Cookie 和伪造身份头剥离通过。`make test-community`、`make build-blog build-community`、`deploy/nginx/test-config.sh`、`python3 deploy/nginx/test-seo.py` 通过。部署与网关两处静态代理入口计数同步为 14；新增入口继续剥离 Pulse 签名和外部身份。旧静态产物读取超时经重新构建消除，未跳过完整网关检查。
 
 ## Consequences
 
