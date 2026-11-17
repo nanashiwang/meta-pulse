@@ -32,13 +32,23 @@ func CheckinRewardPrizes(unit int64) ([]PeriodRewardSpec, error) {
 // A permanent rule key makes future upgrades preserve later administrator rules.
 // Create still owns CAS, immutable economics, idempotency, locks and audit.
 func (s *PeriodCreateService) ApplyCheckinRewardPolicy(ctx context.Context, unit int64) (PeriodCreateResult, error) {
+	return s.applyCheckinRewardPolicy(ctx, unit, CheckinRewardPolicyKey, "周一周五签到各赠3券，发布每券期望2.5闪的奖池")
+}
+
+// ApplyDrawBonusPolicy leaves both voucher grant records and the original
+// check-in policy key untouched; the latter is also the ticket rollout cutoff.
+func (s *PeriodCreateService) ApplyDrawBonusPolicy(ctx context.Context, unit int64) (PeriodCreateResult, error) {
+	return s.applyCheckinRewardPolicy(ctx, unit, DrawBonusPolicyKey, "有效券必得闪，10%附加经验，到期券保持仅经验")
+}
+
+func (s *PeriodCreateService) applyCheckinRewardPolicy(ctx context.Context, unit int64, key, reason string) (PeriodCreateResult, error) {
 	var cmd PeriodCreateCommand
 	var existing PeriodCreateResult
 	err := s.unit.Do(ctx, func(r ports.Repositories) error {
 		if err := lockRewardRule(ctx, r.Idempotency); err != nil {
 			return err
 		}
-		p, err := r.PeriodAdmin.FindByKeyForUpdate(ctx, CheckinRewardPolicyKey)
+		p, err := r.PeriodAdmin.FindByKeyForUpdate(ctx, key)
 		if err == nil {
 			if p.Status == period.StatusDraft {
 				return errors.New("check-in policy key belongs to an unpublished draft")
@@ -59,15 +69,32 @@ func (s *PeriodCreateService) ApplyCheckinRewardPolicy(ctx context.Context, unit
 		if !p.Continuous {
 			return errors.New("check-in policy requires current continuous rules")
 		}
-		prizes, err := CheckinRewardPrizes(unit)
-		if err != nil {
-			return err
+		var prizes []PeriodRewardSpec
+		if usesDrawBonus(key) {
+			// Change how the existing weights are used, not the operator's tiers.
+			defs, err := r.Reward.ListDefinitions(ctx, p.ID)
+			if err != nil {
+				return err
+			}
+			if err := validateRewardDefinitions(defs, p.ConfigVersion); err != nil {
+				return err
+			}
+			for _, d := range defs {
+				if d.Enabled {
+					prizes = append(prizes, PeriodRewardSpec{Key: d.RewardKey, RewardType: d.RewardType, Amount: d.Amount, Weight: d.Weight})
+				}
+			}
+		} else {
+			prizes, err = CheckinRewardPrizes(unit)
+			if err != nil {
+				return err
+			}
 		}
 		rules, err := r.Economics.ListRules(ctx, p.ID)
 		if err != nil {
 			return err
 		}
-		cmd = PeriodCreateCommand{Continuous: true, QuotaValidityDays: p.QuotaValidityDays, ExpectedPeriodID: p.ID, RequestID: CheckinRewardPolicyKey, ActorType: "deployment", ActorID: "checkin-reward-policy", Key: CheckinRewardPolicyKey, ConfigVersion: CheckinRewardPolicyKey, RandomVersion: CheckinRewardPolicyKey, Timezone: p.Timezone, Activate: true, TicketThresholdMilli: p.TicketThresholdMilli, Rewards: prizes, Reason: "周一周五签到各赠3券，发布每券期望2.5闪的奖池"}
+		cmd = PeriodCreateCommand{Continuous: true, QuotaValidityDays: p.QuotaValidityDays, ExpectedPeriodID: p.ID, RequestID: key, ActorType: "deployment", ActorID: "checkin-reward-policy", Key: key, ConfigVersion: key, RandomVersion: key, Timezone: p.Timezone, Activate: true, TicketThresholdMilli: p.TicketThresholdMilli, Rewards: prizes, Reason: reason}
 		for _, rule := range rules {
 			cmd.Rules = append(cmd.Rules, PeriodRuleSpec{Key: rule.Key, Priority: rule.Priority, ModelPattern: rule.ModelPattern, ChannelID: rule.ChannelID, Eligible: rule.Eligible, MultiplierBps: int32(rule.MultiplierBps)})
 		}
@@ -96,7 +123,7 @@ func (s *PeriodCreateService) ApplyCheckinRewardPolicy(ctx context.Context, unit
 		var winner period.Period
 		queryErr := s.unit.Do(ctx, func(r ports.Repositories) error {
 			var e error
-			winner, e = r.PeriodAdmin.FindByKeyForUpdate(ctx, CheckinRewardPolicyKey)
+			winner, e = r.PeriodAdmin.FindByKeyForUpdate(ctx, key)
 			return e
 		})
 		if queryErr == nil && winner.Status != period.StatusDraft {

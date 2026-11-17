@@ -33,7 +33,7 @@ func validAdminPeriodBody(fields map[string]json.RawMessage) bool {
 	}
 	for name, raw := range fields {
 		switch name {
-		case "quota_budget_unlimited", "experience_budget_unlimited":
+		case "quota_budget_unlimited", "experience_budget_unlimited", "draw_bonus_experience":
 			var value bool
 			if !continuous || json.Unmarshal(raw, &value) != nil {
 				return false
@@ -106,8 +106,9 @@ type adminPeriodResult struct {
 	TicketThresholdMilli int64     `json:"ticket_threshold_milli"`
 }
 type adminPeriod struct {
-	QueriedAt time.Time `json:"queried_at"`
-	Budgets   []struct {
+	DrawBonusExperience bool      `json:"draw_bonus_experience,omitempty"`
+	QueriedAt           time.Time `json:"queried_at"`
+	Budgets             []struct {
 		ID        string `json:"id"`
 		Kind      string `json:"kind"`
 		Unlimited bool   `json:"unlimited"`

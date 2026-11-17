@@ -992,12 +992,19 @@
     return pulseAssets;
   }
 
+  function pulseBonusDisplay(result) {
+    if (result.reward_type !== 'newapi_quota' || !Number.isSafeInteger(result.bonus_experience) || result.bonus_experience < 1 || result.bonus_experience > 1000000) return '';
+    const states = {pending:'发放中',shadow:'待处理',reversal_pending:'待撤销',reversed:'已撤销'};
+    const status = states[result.bonus_experience_status];
+    return '+ ' + number(result.bonus_experience) + ' EXP' + (status ? ' · ' + t(status) : '');
+  }
+
   function pulseResultDisplay(result, quotaPerUnit) {
     const exp = result.reward_type === 'community_exp';
     const formatted = formatPulseQuota(result.amount, quotaPerUnit, locale());
     return { type: result.reward_type, amount: exp ? number(result.amount) : formatted.replace(/ (⚡️|quota)$/, ''),
       unit: exp ? 'EXP' : Number.isSafeInteger(quotaPerUnit) && quotaPerUnit > 0 ? '⚡️' : 'quota',
-      tier: pulseRewardTier(result, quotaPerUnit) };
+      tier: pulseRewardTier(result, quotaPerUnit), bonus: pulseBonusDisplay(result) };
   }
 
   function pulseSessionDisplay(last) {
@@ -1007,14 +1014,14 @@
 
   function pulseHistoryRows(rewards, perUnit) {
     const amount = r => r.reward_type === 'community_exp' ? number(r.amount)+' EXP' : formatPulseQuota(r.amount, perUnit, locale());
-    return rewards.map(r => `<tr><td>${esc(amount(r))}</td><td data-pulse-reward-status="${esc(r.grant_id)}">${esc(t(pulseRewardStates[r.status] || '等待核对'))}</td><td>${esc(r.created_at ? new Date(r.created_at).toLocaleString(locale()) : '—')}</td><td><code>${esc(r.grant_id)}</code></td></tr>`).join('') || `<tr><td colspan="4">${t('暂无奖励记录')}</td></tr>`;
+    return rewards.map(r => `<tr><td>${esc(amount(r))}${pulseBonusDisplay(r) ? ` <small>${esc(pulseBonusDisplay(r))}</small>` : ''}</td><td data-pulse-reward-status="${esc(r.grant_id)}">${esc(t(pulseRewardStates[r.status] || '等待核对'))}</td><td>${esc(r.created_at ? new Date(r.created_at).toLocaleString(locale()) : '—')}</td><td><code>${esc(r.grant_id)}</code></td></tr>`).join('') || `<tr><td colspan="4">${t('暂无奖励记录')}</td></tr>`;
   }
 
   function pulseRecentRows(rewards, perUnit) {
     if (!rewards.length) return `<tr><td colspan="3" class="prod-pulse-recent-empty"><strong>${t('尚无抽奖记录')}</strong><span>${t('开启脉冲后，你的奖励会显示在这里。')}</span></td></tr>`;
     return rewards.slice(0, 5).map(reward => {
       const display = pulseResultDisplay(reward, perUnit);
-      return `<tr><td><time datetime="${esc(reward.created_at)}" title="${esc(new Date(reward.created_at).toLocaleString(locale()))}">${esc(new Date(reward.created_at).toLocaleString(locale(), {month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'}))}</time></td><td><span class="prod-pulse-recent-reward" data-tier="${esc(display.tier)}"><span aria-hidden="true">${display.type === 'community_exp' ? '☆' : '♢'}</span><strong>${esc(display.amount)} <small>${esc(display.unit)}</small></strong></span></td><td><span data-pulse-reward-status="${esc(reward.grant_id)}">${esc(t(pulseRewardStates[reward.status] || '等待核对'))}</span></td></tr>`;
+      return `<tr><td><time datetime="${esc(reward.created_at)}" title="${esc(new Date(reward.created_at).toLocaleString(locale()))}">${esc(new Date(reward.created_at).toLocaleString(locale(), {month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'}))}</time></td><td><span class="prod-pulse-recent-reward" data-tier="${esc(display.tier)}"><span aria-hidden="true">${display.type === 'community_exp' ? '☆' : '♢'}</span><strong>${esc(display.amount)} <small>${esc(display.unit)}</small></strong>${display.bonus ? ` <small>${esc(display.bonus)}</small>` : ''}</span></td><td><span data-pulse-reward-status="${esc(reward.grant_id)}">${esc(t(pulseRewardStates[reward.status] || '等待核对'))}</span></td></tr>`;
     }).join('');
   }
 
@@ -1059,7 +1066,7 @@
       };
     }
     const benefits = `<dl class="prod-pulse-benefits" data-pulse-benefits-content><div><dt>${t('额度奖励资格')}</dt><dd>${esc(rules.period?.continuous ? (rules.experience_only ? t('仅经验') : rules.quota_expires_at ? new Date(rules.quota_expires_at).toLocaleString(locale()) : t('从获得券时计算')) : rules.period?.ends_at ? new Date(rules.period.ends_at).toLocaleString(locale()) : '—')}</dd></div></dl>
-      ${rules.period?.continuous ? `<div class="prod-page-note" data-pulse-benefits-note><p>${t('已有券保留原额度有效期；新设置的有效天数只适用于以后获得的券。')}</p><p>${esc(rules.experience_only ? t('下一张券已超过额度有效期，仅抽取经验。') : t('系统优先使用额度资格有效的券。'))}</p></div>` : ''}`;
+      ${rules.period?.continuous ? `<div class="prod-page-note" data-pulse-benefits-note><p>${t('已有券保留原额度有效期；新设置的有效天数只适用于以后获得的券。')}</p><p>${esc(rules.experience_only ? t('下一张券已超过额度有效期，仅抽取经验。') : t('系统优先使用额度资格有效的券。'))}</p>${rules.bonus_experience_percent === 10 ? `<p>${t('有效券必得闪，另有 10% 概率加送经验。')}</p>` : ''}</div>` : ''}`;
     const dialogHeader = (id, title) => `<div class="prod-pulse-dialog-header"><h2 id="${id}-title">${t(title)}</h2><form method="dialog"><button type="submit" class="prod-pulse-dialog-close" aria-label="${t('关闭窗口')}" autofocus>×</button></form></div>`;
     return `${coreReady ? window.MetarPulseCore.markup({ t }) : `<section class="card card-pad"><div class="prod-pulse-tools"><button type="button" class="prod-pulse-link" data-action="pulse-benefits" aria-haspopup="dialog" aria-controls="pulse-benefits">${t('我的权益')}</button><button type="button" class="prod-pulse-link" data-action="pulse-history" aria-haspopup="dialog" aria-controls="pulse-history">${t('奖励记录')}</button></div><h1>${esc(t('可用脉冲券：{count}', { count: number(available) }))}</h1><details class="prod-pulse-fallback-help"><summary aria-label="${t('抽取规则')}">?</summary><div><p>${t('每次消耗 1 张券。额度用于 API 调用，经验用于社区升级，均不可转赠。')}</p><p>${t('五连抽可合并不同时间获得的券；每次使用最新规则，中断时保留已获得的奖励。')}</p><p>${t('白光为经验奖励；额度奖励依次为蓝光（小于 0.5 ⚡️）、紫光（0.5 起）、金光（2 起）、红光（10 起）。光效不影响中奖概率。')}</p></div></details>
       ${!rules.enabled ? `<p role="status">${esc(t(unavailable[rules.unavailable_reason] || '活动暂不可用'))}</p>` : ''}

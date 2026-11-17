@@ -40,6 +40,20 @@ func (s *ExperienceService) Pending(ctx context.Context, user uint64) ([]Experie
 			return err
 		}
 		for _, g := range rows {
+			if g.BonusExperience > 0 {
+				if g.UserID != user || g.RewardType != "newapi_quota" || g.BonusExperience > 1000000 {
+					return ports.ErrConflict
+				}
+				state := g.BonusExperienceStatus
+				if state == "reversal_pending" {
+					state = "reversed"
+				}
+				if state != "pending" && state != "reversed" {
+					return ports.ErrConflict
+				}
+				out = append(out, ExperienceDelivery{g.GrantID, g.BonusExperience, state})
+				continue
+			}
 			if g.UserID != user || g.RewardType != ExperienceRewardType || g.Amount < 1 || g.Amount > 1000000 || (g.Status != "pending" && g.Status != "reversed") {
 				return ports.ErrConflict
 			}
@@ -65,7 +79,13 @@ func (s *ExperienceService) Acknowledge(ctx context.Context, user uint64, id, st
 		if err != nil {
 			return err
 		}
-		if g.UserID != user || g.RewardType != ExperienceRewardType || g.BudgetType != ExperienceRewardType {
+		if g.UserID != user {
+			return ports.ErrConflict
+		}
+		if g.BonusExperience > 0 {
+			return acknowledgeDrawBonus(ctx, r, *g, state)
+		}
+		if g.RewardType != ExperienceRewardType || g.BudgetType != ExperienceRewardType {
 			return ports.ErrConflict
 		}
 		deliveryStatus, err := r.Experience.ExperienceDeliveryStatusForUpdate(ctx, g.ID)
@@ -131,10 +151,13 @@ func (s *ExperienceService) Reverse(ctx context.Context, actor, key, id, reason 
 		if err != nil {
 			return err
 		}
-		if g.RewardType != ExperienceRewardType || g.BudgetType != ExperienceRewardType {
+		if g.BonusExperience > 0 {
+			if err = reverseDrawBonus(ctx, r, *g); err != nil {
+				return err
+			}
+		} else if g.RewardType != ExperienceRewardType || g.BudgetType != ExperienceRewardType {
 			return ports.ErrConflict
-		}
-		if g.Status != "reversed" {
+		} else if g.Status != "reversed" {
 			if g.Status != "pending" && g.Status != "settled" {
 				return ports.ErrConflict
 			}
@@ -184,4 +207,74 @@ func (s *ExperienceService) Reverse(ctx context.Context, actor, key, id, reason 
 		idem.ResourceID = id
 		return r.Idempotency.Save(ctx, idem)
 	})
+}
+
+func acknowledgeDrawBonus(ctx context.Context, r ports.Repositories, g ports.RewardGrant, state string) error {
+	if g.RewardType != "newapi_quota" || g.BonusExperience <= 0 || g.BonusExperience > 1000000 {
+		return ports.ErrConflict
+	}
+	if state == "reversed" {
+		if g.BonusExperienceStatus == "reversed" {
+			return nil
+		}
+		return r.Experience.TransitionDrawBonus(ctx, g.ID, "reversal_pending", "reversed")
+	}
+	switch g.BonusExperienceStatus {
+	case "settled":
+		return nil
+	case "pending":
+	default:
+		return ports.ErrConflict
+	}
+	b, err := r.Reward.GetBudgetForUpdate(ctx, g.PeriodID, ExperienceRewardType)
+	if err != nil {
+		return err
+	}
+	if b.Version == math.MaxUint64 || b.ReservedAmount < g.BonusExperience || b.SettledAmount > math.MaxInt64-g.BonusExperience {
+		return ErrBudgetExceeded
+	}
+	b.ReservedAmount -= g.BonusExperience
+	b.SettledAmount += g.BonusExperience
+	b.Version++
+	if err := r.Reward.SaveBudget(ctx, b); err != nil {
+		return err
+	}
+	return r.Experience.TransitionDrawBonus(ctx, g.ID, "pending", "settled")
+}
+
+func reverseDrawBonus(ctx context.Context, r ports.Repositories, g ports.RewardGrant) error {
+	if g.RewardType != "newapi_quota" || g.BonusExperience <= 0 || g.BonusExperience > 1000000 {
+		return ports.ErrConflict
+	}
+	switch g.BonusExperienceStatus {
+	case "reversal_pending", "reversed":
+		return nil
+	case "pending", "shadow", "settled":
+	default:
+		return ports.ErrConflict
+	}
+	b, err := r.Reward.GetBudgetForUpdate(ctx, g.PeriodID, ExperienceRewardType)
+	if err != nil {
+		return err
+	}
+	if b.Version == math.MaxUint64 || b.ReleasedAmount > math.MaxInt64-g.BonusExperience {
+		return ErrBudgetExceeded
+	}
+	if g.BonusExperienceStatus == "settled" {
+		if b.SettledAmount < g.BonusExperience {
+			return ErrBudgetExceeded
+		}
+		b.SettledAmount -= g.BonusExperience
+	} else {
+		if b.ReservedAmount < g.BonusExperience {
+			return ErrBudgetExceeded
+		}
+		b.ReservedAmount -= g.BonusExperience
+	}
+	b.ReleasedAmount += g.BonusExperience
+	b.Version++
+	if err := r.Reward.SaveBudget(ctx, b); err != nil {
+		return err
+	}
+	return r.Experience.TransitionDrawBonus(ctx, g.ID, g.BonusExperienceStatus, "reversal_pending")
 }

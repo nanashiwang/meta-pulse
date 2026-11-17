@@ -20,6 +20,7 @@ var webPeriodKey = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
 // The web form always creates a complete, frozen paid-funding period. It
 // cannot edit active economics or switch on settlement.
 type PeriodAdminRequest struct {
+	DrawBonusExperience       bool   `json:"draw_bonus_experience,omitempty"`
 	QuotaBudgetUnlimited      bool   `json:"quota_budget_unlimited"`
 	ExperienceBudgetUnlimited bool   `json:"experience_budget_unlimited"`
 	Continuous                bool   `json:"continuous"`
@@ -45,11 +46,26 @@ func (s *PeriodCreateService) CreateFromAdmin(ctx context.Context, request Perio
 		utf8.RuneCountInString(strings.TrimSpace(request.Reason)) < 3 || utf8.RuneCountInString(request.Reason) > 500 {
 		return PeriodCreateResult{}, ErrInvalidPeriod
 	}
+	version := request.Key
+	if usesDrawBonus(version) {
+		return PeriodCreateResult{}, ErrInvalidPeriod
+	}
+	if request.DrawBonusExperience {
+		quota, exp := false, false
+		for _, spec := range request.Rewards {
+			quota = quota || rewardType(spec.RewardType) == "newapi_quota"
+			exp = exp || rewardType(spec.RewardType) == ExperienceRewardType
+		}
+		if !request.Continuous || !quota || !exp {
+			return PeriodCreateResult{}, ErrInvalidPeriod
+		}
+		version = drawBonusVersionPrefix + sha256Hex([]byte(request.Key))[:48]
+	}
 	return s.Create(ctx, PeriodCreateCommand{
 		QuotaBudgetUnlimited: request.QuotaBudgetUnlimited, ExperienceBudgetUnlimited: request.ExperienceBudgetUnlimited, Continuous: request.Continuous, QuotaValidityDays: request.QuotaValidityDays, ExpectedPeriodID: request.ExpectedPeriodID,
 		RequestID: key, ActorType: "community_admin", ActorID: actor,
 		Key: request.Key, StartsAt: request.StartsAt.UTC(), Timezone: "Asia/Shanghai",
-		ConfigVersion: request.Key, RandomVersion: request.Key,
+		ConfigVersion: version, RandomVersion: version,
 		Rules:                []PeriodRuleSpec{{Key: "default", Eligible: true, MultiplierBps: request.MultiplierBps}},
 		TicketThresholdMilli: request.TicketThresholdMilli, RewardBudget: request.RewardBudget, ExperienceBudget: request.ExperienceBudget,
 		Rewards: request.Rewards, Activate: true, Reason: request.Reason,
@@ -66,8 +82,9 @@ type AdminBudgetView struct {
 	Available string `json:"available"`
 }
 type AdminPeriodView struct {
-	Budgets   []AdminBudgetView `json:"budgets"`
-	QueriedAt time.Time         `json:"queried_at"`
+	DrawBonusExperience bool              `json:"draw_bonus_experience,omitempty"`
+	Budgets             []AdminBudgetView `json:"budgets"`
+	QueriedAt           time.Time         `json:"queried_at"`
 
 	QuotaBudgetUnlimited      bool               `json:"quota_budget_unlimited"`
 	ExperienceBudgetUnlimited bool               `json:"experience_budget_unlimited"`
@@ -113,7 +130,7 @@ func (s *PeriodCreateService) ListForAdmin(ctx context.Context) ([]AdminPeriodVi
 			if err != nil {
 				return err
 			}
-			view := AdminPeriodView{QueriedAt: s.now(), Budgets: []AdminBudgetView{}, Continuous: activity.Continuous, QuotaValidityDays: activity.QuotaValidityDays, ID: row.ID, Key: row.Key, Status: row.Status, StartsAt: row.StartsAt, EndsAt: row.EndsAt, TicketThresholdMilli: activity.TicketThresholdMilli, Rules: make([]AdminPeriodRule, 0)}
+			view := AdminPeriodView{DrawBonusExperience: usesDrawBonus(activity.ConfigVersion), QueriedAt: s.now(), Budgets: []AdminBudgetView{}, Continuous: activity.Continuous, QuotaValidityDays: activity.QuotaValidityDays, ID: row.ID, Key: row.Key, Status: row.Status, StartsAt: row.StartsAt, EndsAt: row.EndsAt, TicketThresholdMilli: activity.TicketThresholdMilli, Rules: make([]AdminPeriodRule, 0)}
 			for _, rule := range rules {
 				view.Rules = append(view.Rules, AdminPeriodRule{Key: rule.RuleKey, MultiplierBps: rule.MultiplierBps})
 			}

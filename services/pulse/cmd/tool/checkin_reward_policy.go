@@ -44,6 +44,13 @@ func runCheckinRewardPolicy() error {
 	if err != nil {
 		return err
 	}
+	bonus, err := creator.ApplyDrawBonusPolicy(ctx, cfg.QuotaPerUnit)
+	if err != nil {
+		return err
+	}
+	if bonus.PeriodID != 0 {
+		result = bonus
+	}
 	data, err := json.Marshal(result)
 	if err != nil {
 		return err

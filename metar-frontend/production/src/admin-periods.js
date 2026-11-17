@@ -161,8 +161,8 @@
           <label>${t("额度奖励有效天数")}<input name="quota_validity_days" type="number" min="1" max="3650" step="1" value="${this.current?.quota_validity_days || 30}" required><span class="prod-field-help">${t("从每张券获得时起计算，默认 30 天；到期后仅抽取经验。")}</span></label>
         </div>
         <h3 class="mt24">${t("统一抽奖规则")}</h3><p class="prod-field-help">${t("每次独立抽取，中奖不减少奖项权重，纯按概率发放，不设额度与经验奖池预算。至少设置一个经验奖项。保存不会开启抽奖。")}</p>
-        <p class="prod-field-help">${t("实际支出随券量与概率波动，请通过奖项数量和权重控制平均成本。")}</p><div data-period-prizes>${initialRewards.map(rewardRow).join('')}</div><button class="btn mt16" type="button" data-action="admin-period-add">${t("添加奖项")}</button><button class="btn mt16" type="button" data-action="admin-period-preset">${t("载入 2.5 ⚡️ 期望方案")}</button><p class="prod-field-help">${t("推荐方案：额度中奖率 90%，奖励 1/2/5/10/50/100 ⚡️，每券期望 2.5 ⚡️ 与 0.57 EXP；到期券平均 5.7 EXP。额度奖项按当前换算比例生成。")}</p>
-        <p class="prod-field-help mt16">${t("奖项概率 = 该奖项权重 ÷ 所有奖项权重之和。到期券仅在经验奖项之间按权重抽取。")}</p>
+        <p class="prod-field-help">${t("实际支出随券量与概率波动，请通过奖项数量和权重控制平均成本。")}</p><div data-period-prizes>${initialRewards.map(rewardRow).join('')}</div><button class="btn mt16" type="button" data-action="admin-period-add">${t("添加奖项")}</button><button class="btn mt16" type="button" data-action="admin-period-preset">${t("载入必得闪推荐方案")}</button><p class="prod-field-help">${t("推荐方案：有效券必得 1/2/5/10/50/100 ⚡️，另有 10% 概率获得经验；到期券仅抽经验。")}</p>
+        <p class="prod-field-help mt16">${t("同类奖项按各自权重抽取；有效券的经验奖项是额外奖励，到期券只抽经验。")}</p>
         <button class="btn mt16" type="button" data-action="admin-period-expectation">${t("预览概率与期望")}</button><div class="prod-field-help mt8" data-period-expectation role="status"></div><label class="prod-admin-field mt24">${t("修改原因")}<textarea name="reason" required minlength="3" maxlength="500" rows="2"></textarea></label>
         <label class="prod-check mt16"><input name="confirm" type="checkbox" required> ${t("我已确认新奖项和概率适用于所有未用券；已有券原有效期保持不变。")}</label>
         <button type="submit" class="btn primary mt24">${t("保存统一规则")}</button></fieldset>
@@ -209,7 +209,7 @@
       return {
         key,
         experience_budget_unlimited: true,
-        ...(rewards.some(r => !r.reward_type) ? {quota_budget_unlimited: true} : {}),
+        ...(rewards.some(r => !r.reward_type) ? {quota_budget_unlimited: true, draw_bonus_experience: true} : {}),
         continuous: true,
         quota_validity_days,
         expected_period_id: this.current?.id || 0,
@@ -283,7 +283,7 @@
         const node = form.querySelector("[data-period-expectation]");
         try {
           const rows = [...form.querySelectorAll(".prod-period-prize")].map(row => ({amount: integer(row.querySelector('[name="prize_amount"]').value), weight: integer(row.querySelector('[name="prize_weight"]').value), reward_type: row.querySelector('[name="prize_type"]').value}));
-          node.innerHTML = rewardPreview(rows, this.quotaPerUnit);
+          node.innerHTML = rewardPreview(rows, this.quotaPerUnit, rows.some(row => row.reward_type === 'newapi_quota'));
         } catch (_) { node.textContent = t("请先填写所有奖项的有效数量和权重。"); }
         return;
       }
@@ -294,8 +294,8 @@
           return;
         }
         form.querySelector('[data-period-prizes]').innerHTML = rewards.map(rewardRow).join('');
-        form.querySelector('[name="reason"]').value = t("采用 2.5 ⚡️ 期望方案：额度中奖率 90%，每券期望 2.5 ⚡️，最高 100 ⚡️。");
-        form.querySelector("[data-period-expectation]").innerHTML = `<p>${t("已载入奖项；有效期设置保持原值。核对后保存才会生效。")}</p>${rewardPreview(rewards, this.quotaPerUnit)}`;
+        form.querySelector('[name="reason"]').value = t("采用有效券必得闪、10% 加送经验的推荐方案。");
+        form.querySelector("[data-period-expectation]").innerHTML = `<p>${t("已载入奖项；有效期设置保持原值。核对后保存才会生效。")}</p>${rewardPreview(rewards, this.quotaPerUnit, true)}`;
         return;
       }
       if (action === "admin-period-retry") return this.submit(form, true);
@@ -327,14 +327,16 @@
     const scaled = numerator * 10000n / denominator;
     return `${numerator}/${denominator} ≈ ${scaled / 10000n}.${String(scaled % 10000n).padStart(4, '0')}`;
   }
-  function rewardPreview(rows, quotaPerUnit) {
+  function rewardPreview(rows, quotaPerUnit, bonusMode = false) {
     const s = pulseRewardStats(rows);
     const validUnit = Number.isSafeInteger(quotaPerUnit) && quotaPerUnit > 0;
-    const quota = formatPulseRatio(s.quotaAmount, s.total * (validUnit ? BigInt(quotaPerUnit) : 1n)) + (validUnit ? ' ⚡️' : ' quota');
+    const eligibleQuota = bonusMode ? s.quotaWeight : s.total;
+    const eligibleEXP = bonusMode ? s.expWeight * 10n : s.total;
+    const quota = formatPulseRatio(s.quotaAmount, eligibleQuota * (validUnit ? BigInt(quotaPerUnit) : 1n)) + (validUnit ? ' ⚡️' : ' quota');
     const amount = r => r.reward_type === 'community_exp' ? r.amount + ' EXP' : formatPulseQuota(r.amount, quotaPerUnit, window.MetarI18n.locale());
-    return `<p class="mt16">${esc(t('额度中奖率：{quota} · 经验中奖率：{exp}', {quota:formatPulseProbability(s.quotaWeight,s.total),exp:formatPulseProbability(s.expWeight,s.total)}))}</p>
-      <div class="prod-pulse-table"><table><thead><tr><th>${t('奖励')}</th><th>${t('有效券概率')}</th><th>${t('到期券概率')}</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(amount(r))}</td><td>${esc(formatPulseProbability(r.weight,s.total))}</td><td>${r.reward_type === 'community_exp' ? esc(formatPulseProbability(r.weight,s.expWeight)) : '—'}</td></tr>`).join('')}</tbody></table></div>
-      <p>${esc(t('有效券每抽期望：{quota}，{exp} EXP。到期券每抽期望：{expired} EXP。', {quota,exp:formatPulseRatio(s.expAmount,s.total),expired:formatPulseRatio(s.expAmount,s.expWeight)}))}</p>
+    return `<p class="mt16">${esc(t('额度中奖率：{quota} · 经验中奖率：{exp}', {quota:formatPulseProbability(s.quotaWeight,eligibleQuota),exp:formatPulseProbability(s.expWeight,eligibleEXP)}))}</p>
+      <div class="prod-pulse-table"><table><thead><tr><th>${t('奖励')}</th><th>${t('有效券概率')}</th><th>${t('到期券概率')}</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(amount(r))}</td><td>${esc(formatPulseProbability(r.weight,r.reward_type === 'community_exp' ? eligibleEXP : eligibleQuota))}</td><td>${r.reward_type === 'community_exp' ? esc(formatPulseProbability(r.weight,s.expWeight)) : '—'}</td></tr>`).join('')}</tbody></table></div>
+      <p>${esc(t('有效券每抽期望：{quota}，{exp} EXP。到期券每抽期望：{expired} EXP。', {quota,exp:formatPulseRatio(s.expAmount,eligibleEXP),expired:formatPulseRatio(s.expAmount,s.expWeight)}))}</p>
       <p>${t('期望是大量抽奖的平均值，不是保底，也不保证每周总支出；总成本取决于券量与概率。')}</p>`;
   }
   window.MetarPeriodAdmin = Object.freeze({ View, fixed, format, quotaExpectation, recommendedRewards, rewardPreview });

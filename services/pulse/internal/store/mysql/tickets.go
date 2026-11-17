@@ -168,9 +168,10 @@ func (r *ticketRepository) Statistics(ctx context.Context, ids []uint64) (map[ui
 		Experience int64
 	}
 	err = r.db.WithContext(ctx).Raw(`SELECT user_id,
- SUM(CASE WHEN reward_type='newapi_quota' THEN amount ELSE 0 END) AS quota,
- SUM(CASE WHEN reward_type='community_exp' THEN amount ELSE 0 END) AS experience
- FROM pulse_reward_grant WHERE user_id IN ? AND trigger_type='pulse' AND status='settled' AND reversed_at IS NULL GROUP BY user_id`, ids).Scan(&rewards).Error
+ SUM(CASE WHEN reward_type='newapi_quota' AND status='settled' AND reversed_at IS NULL THEN amount ELSE 0 END) AS quota,
+ SUM(CASE WHEN reward_type='community_exp' AND status='settled' AND reversed_at IS NULL THEN amount ELSE 0 END +
+     CASE WHEN bonus_experience_status='settled' THEN bonus_experience ELSE 0 END) AS experience
+ FROM pulse_reward_grant WHERE user_id IN ? AND trigger_type='pulse' AND ((status='settled' AND reversed_at IS NULL) OR bonus_experience_status='settled') GROUP BY user_id`, ids).Scan(&rewards).Error
 	if err != nil {
 		return nil, err
 	}

@@ -39,15 +39,16 @@ type DrawChoice struct {
 	QuotaExpiresAt time.Time `json:"quota_expires_at"`
 }
 type RewardRules struct {
-	SelectionVersion      int                `json:"selection_version"`
-	QueriedAt             time.Time          `json:"queried_at"`
-	TicketCount           int64              `json:"ticket_count"`
-	Selection             string             `json:"selection,omitempty"`
-	Draws                 []DrawChoice       `json:"draws"`
-	CanDrawFive           bool               `json:"can_draw_five"`
-	Budgets               []RuleBudgetStatus `json:"budgets"`
-	ExperienceRewards     []PublicReward     `json:"experience_rewards"`
-	ExperienceTotalWeight uint64             `json:"experience_total_weight"`
+	SelectionVersion       int                `json:"selection_version"`
+	QueriedAt              time.Time          `json:"queried_at"`
+	TicketCount            int64              `json:"ticket_count"`
+	Selection              string             `json:"selection,omitempty"`
+	Draws                  []DrawChoice       `json:"draws"`
+	CanDrawFive            bool               `json:"can_draw_five"`
+	Budgets                []RuleBudgetStatus `json:"budgets"`
+	ExperienceRewards      []PublicReward     `json:"experience_rewards"`
+	ExperienceTotalWeight  uint64             `json:"experience_total_weight"`
+	BonusExperiencePercent int                `json:"bonus_experience_percent,omitempty"`
 
 	QuotaValidityDays int        `json:"quota_validity_days"`
 	QuotaExpiresAt    *time.Time `json:"quota_expires_at,omitempty"`
@@ -242,6 +243,9 @@ func (s *RewardRulesService) ruleView(ctx context.Context, repos ports.Repositor
 	if result.ExperienceOnly {
 		defs = experienceOnly(defs)
 	}
+	if usesDrawBonus(p.ConfigVersion) && !result.ExperienceOnly {
+		result.BonusExperiencePercent = drawBonusPercentage
+	}
 	for _, d := range defs {
 		if !d.Enabled {
 			continue
@@ -249,17 +253,25 @@ func (s *RewardRulesService) ruleView(ctx context.Context, repos ports.Repositor
 		if (d.RewardType != "newapi_quota" && d.RewardType != ExperienceRewardType) || d.Weight > (1<<53)-1 || d.Amount > (1<<53)-1 || math.MaxUint64-result.TotalWeight < d.Weight {
 			return result, budgets, errors.New("unsupported public reward")
 		}
+		if result.BonusExperiencePercent > 0 && d.RewardType == ExperienceRewardType {
+			result.ExperienceTotalWeight += d.Weight
+			if result.ExperienceTotalWeight > (1<<53)-1 {
+				return result, budgets, errors.New("experience probability weight overflow")
+			}
+			result.ExperienceRewards = append(result.ExperienceRewards, PublicReward{Name: d.RewardKey, RewardType: d.RewardType, Amount: d.Amount, Weight: d.Weight})
+			continue
+		}
 		result.TotalWeight += d.Weight
 		if result.TotalWeight > (1<<53)-1 {
 			return result, budgets, errors.New("public probability weight overflow")
 		}
 		result.Rewards = append(result.Rewards, PublicReward{Name: d.RewardKey, RewardType: d.RewardType, Amount: d.Amount, Weight: d.Weight})
 	}
-	poolAvailable := len(result.Rewards) > 0
+	poolAvailable := len(result.Rewards) > 0 && (result.BonusExperiencePercent == 0 || result.ExperienceTotalWeight > 0)
 	for _, kind := range []string{ActionBudgetType, ExperienceRewardType} {
 		var largest int64
-		for _, d := range result.Rewards {
-			if rewardBudget(d.RewardType) == kind && d.Amount > largest {
+		for _, d := range defs {
+			if d.Enabled && rewardBudget(d.RewardType) == kind && d.Amount > largest {
 				largest = d.Amount
 			}
 		}

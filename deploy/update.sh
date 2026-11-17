@@ -325,7 +325,7 @@ compose stop -t 15 pulse-api
 log "执行数据库迁移（只前进，不执行 down）"
 compose run --rm --no-deps --entrypoint meta-pulse-tool pulse-api migrate-up
 
-log "发布签到活动奖池（每券期望 2.5 闪，仅首次升级执行）"
+log "发布签到及抽奖升级规则（保留已发券的有效期）"
 compose run --rm --no-deps --entrypoint meta-pulse-tool pulse-api apply-checkin-reward-policy
 
 services_to_start=(pulse-api)

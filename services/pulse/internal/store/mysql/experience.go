@@ -12,7 +12,7 @@ func (r *rewardRepository) ListPendingExperience(ctx context.Context, user uint6
 		return nil, ports.ErrConflict
 	}
 	var rows []rewardGrantModel
-	err := r.db.WithContext(ctx).Table("pulse_reward_grant g").Select("g.*").Joins("JOIN pulse_settlement_outbox o ON o.reward_grant_id=g.id").Where("g.user_id=? AND g.reward_type='community_exp' AND g.status IN ('pending','reversed') AND o.status='community_pending'", user).Order("o.id ASC").Limit(limit).Scan(&rows).Error
+	err := r.db.WithContext(ctx).Table("pulse_reward_grant g").Select("g.*").Joins("LEFT JOIN pulse_settlement_outbox o ON o.reward_grant_id=g.id").Where("g.user_id=? AND ((g.reward_type='community_exp' AND g.status IN ('pending','reversed') AND o.status='community_pending') OR (g.bonus_experience > 0 AND g.bonus_experience_status IN ('pending','reversal_pending')))", user).Order("g.id ASC").Limit(limit).Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
@@ -46,4 +46,21 @@ func (r *rewardRepository) ExperienceDeliveryStatusForUpdate(ctx context.Context
 	var row settlementOutboxModel
 	err := r.db.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).Where("reward_grant_id = ?", grant).Take(&row).Error
 	return row.Status, err
+}
+
+// The draw's bonus has its own delivery state but no second grant or outbox row.
+func (r *rewardRepository) TransitionDrawBonus(ctx context.Context, grant uint64, from, to string) error {
+	valid := (from == "pending" && to == "settled") || (from == "reversal_pending" && to == "reversed") ||
+		((from == "pending" || from == "settled" || from == "shadow") && to == "reversal_pending")
+	if grant == 0 || !valid {
+		return ports.ErrConflict
+	}
+	result := r.db.WithContext(ctx).Model(&rewardGrantModel{}).Where("id=? AND bonus_experience > 0 AND bonus_experience_status=?", grant, from).Update("bonus_experience_status", to)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return ports.ErrConflict
+	}
+	return nil
 }

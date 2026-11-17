@@ -140,3 +140,10 @@ test('approved preset payload preserves integer amounts and weights when submitt
  assert.deepEqual(JSON.parse(JSON.stringify(payload.rewards)),JSON.parse(JSON.stringify(rows)));
  assert.equal(payload.multiplier_bps,10000);assert.equal(payload.quota_validity_days,30);
 });
+
+test('new prize preview reports guaranteed flash and independent bonus experience',()=>{
+ const {context}=harness();
+ const {recommendedRewards,rewardPreview}=context.MetarPeriodAdmin;
+ const html=rewardPreview(recommendedRewards(100),100,true);
+ for(const value of ['100%','50%','33.3333%','11.1111%','10%','5%','3%','2%','2.7777','0.57 EXP','5.7 EXP']) assert.ok(html.includes(value),value);
+});

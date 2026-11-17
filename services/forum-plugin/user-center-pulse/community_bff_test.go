@@ -346,3 +346,23 @@ func TestCommunityBFFForwardsSelectionAndDefiniteRefusals(t *testing.T) {
 		})
 	}
 }
+
+func TestCommunityDrawBonusProjectionKeepsOnlyPublicOutcome(t *testing.T) {
+	raw := []byte(`{"grant_id":"pg_bonus","period_id":1,"action_id":"abc","reward_type":"newapi_quota","amount":100,"status":"pending","bonus_experience":4,"bonus_experience_status":"pending","random_value":"internal"}`)
+	got, err := communityProjection("actions", "42", raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	action := got.(communityReward)
+	if action.BonusExperience != 4 || action.BonusExperienceStatus != "pending" || action.Amount != 100 {
+		t.Fatalf("action %+v", action)
+	}
+	mapped, err := json.Marshal(action)
+	if err != nil || strings.Contains(string(mapped), "internal") {
+		t.Fatalf("unsafe response %s %v", mapped, err)
+	}
+	got, err = communityProjection("rules", "42", []byte(`{"bonus_experience_percent":10,"total_weight":900}`))
+	if err != nil || got.(communityRules).BonusExperiencePercent != 10 {
+		t.Fatalf("rules %+v %v", got, err)
+	}
+}

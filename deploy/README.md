@@ -352,3 +352,5 @@ export PATH="$HOME/.local/bin:$PATH"
 ### 每日签到闪交付（2026-11-18）
 
 完整升级Forum、Pulse API/Worker和静态资源。Forum首次初始化自动建metar_checkin_flash（随机分闪、原签到事件、唯一日期、API绑定、Grant和交付状态）；随Answer库备份。发布后自动扫描2026-11-18起已绑定的真实签到缺失记录，保存随机金额后提交Pulse。先升级API再启动Forum可避免首次404，但404不会丢队列或重抽金额。Pulse沿用ActionsEnabled且非shadow才接受新的签到闪；已创建奖励由原Worker结算。需要quota_per_unit能被100整除，拒绝舍入；当前500000符合。429受限保留blocked，按原Grant审核及reward-retry处理，勿删除队列或换编号。部署验收需分别核对已保存cents、Pulse Grant、Outbox completed和接收端到账；页面显示pending不代表到账。
+
+抽奖必得闪升级复用上述发布命令：先保留旧签到政策标识，再发布 `draw-bonus-v1-20261118` 快照（仅一次）。新快照继承此前有效奖项、预算与默认券期限；已领券的实际截止时间不变。必须先执行 `00022`，并配套更新论坛和前端，以展示额外 EXP 回执。

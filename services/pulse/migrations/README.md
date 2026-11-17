@@ -105,3 +105,5 @@ Down 保留配置、密文和幂等回执，重新 Up 不会覆盖现有值。�
 `00018_seed_rule_guard.sql` 幂等补齐 `period_create_lock/global` 永久守卫，不覆盖旧身份、payload 或业务回执。新版规则发布、抽奖和社区赠券对该行直接 FOR UPDATE，避免热键重复插入的死锁；需先迁移再启动新版 API/Worker。Down 保留该行，旧代码可安全复用，不能将其当作可清理的过期回执删除。
 
 `00019_unlimited_experience_budget.sql` 放宽 `chk_pulse_budget_cap`，允许持续规则的 `community_exp` 预算显式 `unlimited=true`、`hard_cap=0`，网页新规则纯按概率发放 EXP。仍记录预留与结算并受 int64 边界保护；不改写历史有限预算。存在不限经验预算时 Down 拒绝，避免静默加上限。需先迁移再启动新版 API。
+
+`00022_draw_bonus_experience.sql` 为同一个抽奖 Grant 追加附加 EXP 金额与独立交付状态，已有历史保持零值。此迁移禁止向下删除到账记录；应先发布兼容代码或向前修复，而非执行 down。

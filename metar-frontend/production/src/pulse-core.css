@@ -134,3 +134,5 @@
   .pulse-core .pc-footer { padding:2px 16px; }
   .pulse-core .pc-help summary { width:32px; height:32px; }
 }
+
+.pc-bonus{font-size:12px;font-weight:600;margin-top:4px;overflow-wrap:anywhere}

@@ -53,16 +53,18 @@ type ActionCommand struct {
 }
 
 type ActionResult struct {
-	GrantID           string `json:"grant_id"`
-	PeriodID          uint64 `json:"period_id"`
-	UserID            uint64 `json:"user_id"`
-	ActionID          string `json:"action_id"`
-	RewardType        string `json:"reward_type"`
-	Amount            int64  `json:"amount"`
-	RandomValue       string `json:"random_value"`
-	ConfigVersion     string `json:"config_version"`
-	Status            string `json:"status"`
-	TransferableQuota bool   `json:"transferable_quota"`
+	GrantID               string `json:"grant_id"`
+	PeriodID              uint64 `json:"period_id"`
+	UserID                uint64 `json:"user_id"`
+	ActionID              string `json:"action_id"`
+	RewardType            string `json:"reward_type"`
+	Amount                int64  `json:"amount"`
+	RandomValue           string `json:"random_value"`
+	ConfigVersion         string `json:"config_version"`
+	Status                string `json:"status"`
+	TransferableQuota     bool   `json:"transferable_quota"`
+	BonusExperience       int64  `json:"bonus_experience,omitempty"`
+	BonusExperienceStatus string `json:"bonus_experience_status,omitempty"`
 }
 
 type ActionService struct {
@@ -253,14 +255,12 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 		if err := validateRewardDefinitions(definitions, activity.ConfigVersion); err != nil {
 			return err
 		}
-		if lot != nil && !now.Before(lot.QuotaExpiresAt) {
-			definitions = experienceOnly(definitions)
-		}
+		expired := lot != nil && !now.Before(lot.QuotaExpiresAt)
 		randomBytes, err := reward.Derive(s.secret, activity.ID, command.UserID, command.ActionID, activity.ConfigVersion)
 		if err != nil {
 			return err
 		}
-		definition, err := reward.SelectWeighted(definitions, randomBytes)
+		definition, bonusExperience, err := selectDrawPrizes(definitions, randomBytes, usesDrawBonus(activity.ConfigVersion), expired)
 		if err != nil {
 			return err
 		}
@@ -270,6 +270,10 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 		}
 		if ticketAccount.Balance < 1 {
 			return refuse(ErrInsufficientTickets)
+		}
+
+		if expired {
+			definitions = experienceOnly(definitions)
 		}
 
 		// Lock units in a fixed order and stop the whole pool if either budget
@@ -301,6 +305,19 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 
 		if err := reserveBudget(&budget, definition.Amount); err != nil {
 			return refuse(err)
+		}
+
+		var bonusBudget ports.RewardBudget
+		bonusStatus := ""
+		if bonusExperience > 0 {
+			bonusBudget = budgets[ExperienceRewardType]
+			if err := reserveBudget(&bonusBudget, bonusExperience); err != nil {
+				return refuse(err)
+			}
+			bonusStatus = "pending"
+			if s.cfg.ShadowMode {
+				bonusStatus = "shadow"
+			}
 		}
 
 		// User/account/budget locks may have waited across a deadline. Recheck
@@ -351,7 +368,7 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 			TriggerType: command.TriggerType, RewardDefinitionID: definition.ID, RewardType: definition.RewardType,
 			Amount: definition.Amount, TransferableQuota: false, BudgetType: rewardBudget(definition.RewardType), RandomValue: reward.RandomHex(randomBytes),
 			ConfigVersion: activity.ConfigVersion, Status: RewardStatusPending, SourceRef: grantID,
-			Reason: "pulse action", CreatedAt: decisionAt,
+			Reason: "pulse action", CreatedAt: decisionAt, BonusExperience: bonusExperience, BonusExperienceStatus: bonusStatus,
 		}
 		persistedGrant, err := repos.Reward.CreateGrant(ctx, grant)
 		if err != nil {
@@ -380,6 +397,11 @@ func (s *ActionService) Execute(ctx context.Context, command ActionCommand) (Act
 		}
 		if err := repos.Reward.SaveBudget(ctx, budget); err != nil {
 			return err
+		}
+		if bonusExperience > 0 {
+			if err := repos.Reward.SaveBudget(ctx, bonusBudget); err != nil {
+				return err
+			}
 		}
 		result = actionResultFromGrant(persistedGrant)
 		return saveResult()
@@ -468,7 +490,7 @@ func saveActionIdempotency(ctx context.Context, repo ports.IdempotencyRepository
 }
 
 func actionResultFromGrant(grant ports.RewardGrant) ActionResult {
-	return ActionResult{GrantID: grant.GrantID, PeriodID: grant.PeriodID, UserID: grant.UserID, ActionID: grant.ActionID, RewardType: grant.RewardType, Amount: grant.Amount, RandomValue: grant.RandomValue, ConfigVersion: grant.ConfigVersion, Status: grant.Status, TransferableQuota: false}
+	return ActionResult{GrantID: grant.GrantID, PeriodID: grant.PeriodID, UserID: grant.UserID, ActionID: grant.ActionID, RewardType: grant.RewardType, Amount: grant.Amount, RandomValue: grant.RandomValue, ConfigVersion: grant.ConfigVersion, Status: grant.Status, TransferableQuota: false, BonusExperience: grant.BonusExperience, BonusExperienceStatus: grant.BonusExperienceStatus}
 }
 
 // Expired tickets use the experience sub-pool of the current reward rule.

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/nanashiwang/meta-pulse/internal/domain/economics"
 	"github.com/nanashiwang/meta-pulse/internal/domain/period"
+	"github.com/nanashiwang/meta-pulse/internal/domain/reward"
 	"github.com/nanashiwang/meta-pulse/internal/ports"
 	"math/big"
 	"testing"
@@ -138,5 +139,33 @@ func TestCheckinPolicyRefusesUnpublishedPolicyKey(t *testing.T) {
 	u.admin.periods = append(u.admin.periods, period.Period{ID: 2, Key: CheckinRewardPolicyKey, Status: period.StatusDraft})
 	if _, err := svc.ApplyCheckinRewardPolicy(context.Background(), 500000); err == nil {
 		t.Fatal("draft treated as applied")
+	}
+}
+
+func TestDrawBonusPolicyCarriesActiveTiersAndDoesNotRepublishLaterRules(t *testing.T) {
+	u, svc, now := policyFixture(t, true)
+	u.admin.periods[0].ConfigVersion = "custom-live"
+	u.admin.periods[0].QuotaValidityDays = 73
+	u.budgets.definitions = []reward.Definition{
+		{ID: 1, RewardKey: "quota-seven", RewardType: "newapi_quota", Amount: 700, Weight: 13, Enabled: true, ConfigVersion: "custom-live"},
+		{ID: 2, RewardKey: "exp-four", RewardType: ExperienceRewardType, Amount: 4, Weight: 6, Enabled: true, ConfigVersion: "custom-live"},
+	}
+	result, err := svc.ApplyDrawBonusPolicy(context.Background(), 100)
+	if err != nil || result.Key != DrawBonusPolicyKey {
+		t.Fatalf("publish %+v %v", result, err)
+	}
+	if len(u.admin.periods) != 2 || u.admin.periods[1].QuotaValidityDays != 73 || len(u.reward.definitions) != 2 {
+		t.Fatal("renewed ticket policy or missing configuration")
+	}
+	if d := u.reward.definitions[0]; d.Amount != 700 || d.Weight != 13 {
+		t.Fatalf("quota tier reset: %+v", d)
+	}
+	if d := u.reward.definitions[1]; d.Amount != 4 || d.Weight != 6 {
+		t.Fatalf("experience tier reset: %+v", d)
+	}
+	u.admin.periods = append(u.admin.periods, period.Period{ID: 99, Key: "later-manual", Continuous: true, Status: period.StatusActive, StartsAt: now, EndsAt: now.Add(time.Hour)})
+	replay, err := svc.ApplyDrawBonusPolicy(context.Background(), 100)
+	if err != nil || replay.PeriodID != result.PeriodID || len(u.admin.periods) != 3 {
+		t.Fatalf("upgrade replaced later rule: %+v %v", replay, err)
 	}
 }

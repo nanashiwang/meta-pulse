@@ -148,3 +148,10 @@ test('five cards keep their own tier, share the strongest burst and escape displ
   assert.doesNotMatch(html,/pc-card-foot|data-pending|pending/);
   assert.equal(cards({rewards:rewards.map(r=>({...r,status:'settled',pending:false})),total:5}),html,'delivery changes do not change the prize card');
 });
+
+test('bonus experience appears only on the original prize card', () => {
+  const html=cards({rewards:[{type:'newapi_quota',amount:5,unit:'⚡️',bonus:'+ 4 EXP'},{type:'community_exp',amount:20,unit:'EXP'}],total:2});
+  assert.equal((html.match(/class="pc-card"/g)||[]).length,2);
+  assert.equal((html.match(/class="pc-bonus"/g)||[]).length,1);
+  assert.match(html,/pc-bonus[^>]*>\+ 4 EXP</);
+});

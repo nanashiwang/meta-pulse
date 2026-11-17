@@ -25,7 +25,7 @@
   }
   function cards(result) {
     return result.rewards.map(reward => `<div class="pc-card" data-tier="${tier(reward.tier)}"><span class="pc-card-bloom" aria-hidden="true"></span><div class="pc-reward-inner"><div class="pc-card-content">
-      <div class="pc-emblem">${icon(reward.type)}</div><div class="pc-value"><span class="pc-amount">${esc(reward.amount)}</span><span class="pc-unit">${esc(reward.unit)}</span></div>
+      <div class="pc-emblem">${icon(reward.type)}</div><div class="pc-value"><span class="pc-amount">${esc(reward.amount)}</span><span class="pc-unit">${esc(reward.unit)}</span></div>${reward.bonus ? `<div class="pc-bonus">${esc(reward.bonus)}</div>` : ''}
       </div></div><span class="pc-card-light" aria-hidden="true"><span class="pc-light-sigil">${icon(reward.type)}</span></span><span class="pc-card-frame" aria-hidden="true"></span></div>`).join('');
   }
 

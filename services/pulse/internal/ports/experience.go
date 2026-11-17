@@ -11,4 +11,5 @@ type ExperienceDelivery interface {
 	ListPendingExperience(context.Context, uint64, int) ([]RewardGrant, error)
 	ExperienceDeliveryStatusForUpdate(context.Context, uint64) (string, error)
 	TransitionExperienceDelivery(context.Context, uint64, string, string, time.Time) error
+	TransitionDrawBonus(context.Context, uint64, string, string) error
 }

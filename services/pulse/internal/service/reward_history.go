@@ -18,13 +18,15 @@ const (
 // RewardHistoryItem is a user-safe projection. Internal budget, source_ref,
 // random value, and audit fields never cross the product read endpoint.
 type RewardHistoryItem struct {
-	GrantID    string    `json:"grant_id"`
-	PeriodID   uint64    `json:"period_id"`
-	ActionID   string    `json:"action_id"`
-	RewardType string    `json:"reward_type"`
-	Amount     int64     `json:"amount"`
-	Status     string    `json:"status"`
-	CreatedAt  time.Time `json:"created_at"`
+	GrantID               string    `json:"grant_id"`
+	PeriodID              uint64    `json:"period_id"`
+	ActionID              string    `json:"action_id"`
+	RewardType            string    `json:"reward_type"`
+	Amount                int64     `json:"amount"`
+	Status                string    `json:"status"`
+	CreatedAt             time.Time `json:"created_at"`
+	BonusExperience       int64     `json:"bonus_experience,omitempty"`
+	BonusExperienceStatus string    `json:"bonus_experience_status,omitempty"`
 }
 
 type RewardHistoryService struct {
@@ -64,7 +66,7 @@ func (s *RewardHistoryService) List(ctx context.Context, userID uint64, limit in
 		if strings.TrimSpace(grant.GrantID) == "" || grant.UserID != userID {
 			return nil, errors.New("reward history contains invalid grant")
 		}
-		result = append(result, RewardHistoryItem{GrantID: grant.GrantID, PeriodID: grant.PeriodID, ActionID: grant.ActionID, RewardType: grant.RewardType, Amount: grant.Amount, Status: rewardHistoryStatus(grant), CreatedAt: grant.CreatedAt})
+		result = append(result, RewardHistoryItem{GrantID: grant.GrantID, PeriodID: grant.PeriodID, ActionID: grant.ActionID, RewardType: grant.RewardType, Amount: grant.Amount, Status: rewardHistoryStatus(grant), CreatedAt: grant.CreatedAt, BonusExperience: grant.BonusExperience, BonusExperienceStatus: grant.BonusExperienceStatus})
 	}
 	return result, nil
 }
@@ -90,7 +92,7 @@ func (s *RewardHistoryService) FindAction(ctx context.Context, userID uint64, ac
 			if g.UserID != userID || g.ActionID != actionID {
 				return ports.ErrConflict
 			}
-			result = append(result, RewardHistoryItem{GrantID: g.GrantID, PeriodID: g.PeriodID, ActionID: g.ActionID, RewardType: g.RewardType, Amount: g.Amount, Status: rewardHistoryStatus(g), CreatedAt: g.CreatedAt})
+			result = append(result, RewardHistoryItem{GrantID: g.GrantID, PeriodID: g.PeriodID, ActionID: g.ActionID, RewardType: g.RewardType, Amount: g.Amount, Status: rewardHistoryStatus(g), CreatedAt: g.CreatedAt, BonusExperience: g.BonusExperience, BonusExperienceStatus: g.BonusExperienceStatus})
 		}
 		return nil
 	})

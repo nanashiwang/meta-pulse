@@ -329,18 +329,25 @@ func normalizePeriodCreateCommand(command PeriodCreateCommand) (PeriodCreateComm
 	if !command.Continuous && (command.QuotaValidityDays != 0 || command.ExpectedPeriodID != 0) {
 		return command, errors.New("continuous fields require continuous rules")
 	}
+	if usesDrawBonus(command.ConfigVersion) && !command.Continuous {
+		return command, errors.New("draw bonus requires continuous rules")
+	}
 	if command.Continuous {
 		if !command.StartsAt.IsZero() || command.QuotaValidityDays < 1 || command.QuotaValidityDays > 3650 || command.RequestID == "" || !command.Activate {
 			return command, errors.New("invalid continuous rule")
 		}
-		hasExperience := false
+		hasExperience, hasQuota := false, false
 		for _, r := range command.Rewards {
+			hasQuota = hasQuota || rewardType(r.RewardType) == "newapi_quota"
 			if r.RewardType == ExperienceRewardType {
 				hasExperience = true
 			}
 		}
 		if !hasExperience {
 			return command, errors.New("continuous tickets require experience prizes")
+		}
+		if usesDrawBonus(command.ConfigVersion) && !hasQuota {
+			return command, errors.New("draw bonus requires a quota prize")
 		}
 	}
 	if len(command.Rules) == 0 {

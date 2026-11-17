@@ -42,12 +42,14 @@ type communitySummary struct {
 }
 
 type communityReward struct {
-	GrantID    string `json:"grant_id"`
-	PeriodID   uint64 `json:"period_id"`
-	ActionID   string `json:"action_id"`
-	RewardType string `json:"reward_type"`
-	Amount     int64  `json:"amount"`
-	Status     string `json:"status"`
+	GrantID               string `json:"grant_id"`
+	PeriodID              uint64 `json:"period_id"`
+	ActionID              string `json:"action_id"`
+	RewardType            string `json:"reward_type"`
+	Amount                int64  `json:"amount"`
+	BonusExperience       int64  `json:"bonus_experience,omitempty"`
+	BonusExperienceStatus string `json:"bonus_experience_status,omitempty"`
+	Status                string `json:"status"`
 }
 
 type communityRewardHistoryItem struct {
@@ -78,8 +80,9 @@ type communityRules struct {
 		Available bool   `json:"available"`
 		Unlimited bool   `json:"unlimited"`
 	} `json:"budgets"`
-	ExperienceRewards     []communityPrize `json:"experience_rewards"`
-	ExperienceTotalWeight uint64           `json:"experience_total_weight"`
+	ExperienceRewards      []communityPrize `json:"experience_rewards"`
+	ExperienceTotalWeight  uint64           `json:"experience_total_weight"`
+	BonusExperiencePercent int              `json:"bonus_experience_percent,omitempty"`
 
 	QuotaValidityDays int        `json:"quota_validity_days"`
 	QuotaExpiresAt    *time.Time `json:"quota_expires_at,omitempty"`

@@ -53,24 +53,26 @@ type rewardBudgetModel struct {
 func (rewardBudgetModel) TableName() string { return "pulse_reward_budget" }
 
 type rewardGrantModel struct {
-	ID                 uint64     `gorm:"column:id;primaryKey"`
-	GrantID            string     `gorm:"column:grant_id"`
-	PeriodID           uint64     `gorm:"column:period_id"`
-	UserID             uint64     `gorm:"column:user_id"`
-	ActionID           string     `gorm:"column:action_id"`
-	TriggerType        string     `gorm:"column:trigger_type"`
-	RewardDefinitionID uint64     `gorm:"column:reward_definition_id"`
-	RewardType         string     `gorm:"column:reward_type"`
-	Amount             int64      `gorm:"column:amount"`
-	RandomValue        string     `gorm:"column:random_value"`
-	ConfigVersion      string     `gorm:"column:config_version"`
-	Status             string     `gorm:"column:status"`
-	SourceRef          string     `gorm:"column:source_ref"`
-	Reason             string     `gorm:"column:reason"`
-	BudgetType         string     `gorm:"column:budget_type"`
-	SettledAt          *time.Time `gorm:"column:settled_at"`
-	ReversedAt         *time.Time `gorm:"column:reversed_at"`
-	CreatedAt          time.Time  `gorm:"column:created_at"`
+	ID                    uint64     `gorm:"column:id;primaryKey"`
+	GrantID               string     `gorm:"column:grant_id"`
+	PeriodID              uint64     `gorm:"column:period_id"`
+	UserID                uint64     `gorm:"column:user_id"`
+	ActionID              string     `gorm:"column:action_id"`
+	TriggerType           string     `gorm:"column:trigger_type"`
+	RewardDefinitionID    uint64     `gorm:"column:reward_definition_id"`
+	RewardType            string     `gorm:"column:reward_type"`
+	Amount                int64      `gorm:"column:amount"`
+	BonusExperience       int64      `gorm:"column:bonus_experience"`
+	BonusExperienceStatus string     `gorm:"column:bonus_experience_status"`
+	RandomValue           string     `gorm:"column:random_value"`
+	ConfigVersion         string     `gorm:"column:config_version"`
+	Status                string     `gorm:"column:status"`
+	SourceRef             string     `gorm:"column:source_ref"`
+	Reason                string     `gorm:"column:reason"`
+	BudgetType            string     `gorm:"column:budget_type"`
+	SettledAt             *time.Time `gorm:"column:settled_at"`
+	ReversedAt            *time.Time `gorm:"column:reversed_at"`
+	CreatedAt             time.Time  `gorm:"column:created_at"`
 }
 
 func (rewardGrantModel) TableName() string { return "pulse_reward_grant" }
@@ -324,7 +326,7 @@ func (r *rewardRepository) CreateGrant(ctx context.Context, grant ports.RewardGr
 	if err := validateRewardGrantCreate(grant); err != nil {
 		return ports.RewardGrant{}, err
 	}
-	model := rewardGrantModel{ID: grant.ID, GrantID: grant.GrantID, PeriodID: grant.PeriodID, UserID: grant.UserID, ActionID: grant.ActionID, TriggerType: grant.TriggerType, RewardDefinitionID: grant.RewardDefinitionID, RewardType: grant.RewardType, Amount: grant.Amount, RandomValue: grant.RandomValue, ConfigVersion: grant.ConfigVersion, Status: grant.Status, SourceRef: grant.SourceRef, Reason: grant.Reason, BudgetType: grant.BudgetType, SettledAt: grant.SettledAt, ReversedAt: grant.ReversedAt, CreatedAt: grant.CreatedAt}
+	model := rewardGrantModel{ID: grant.ID, GrantID: grant.GrantID, PeriodID: grant.PeriodID, UserID: grant.UserID, ActionID: grant.ActionID, TriggerType: grant.TriggerType, RewardDefinitionID: grant.RewardDefinitionID, RewardType: grant.RewardType, Amount: grant.Amount, BonusExperience: grant.BonusExperience, BonusExperienceStatus: grant.BonusExperienceStatus, RandomValue: grant.RandomValue, ConfigVersion: grant.ConfigVersion, Status: grant.Status, SourceRef: grant.SourceRef, Reason: grant.Reason, BudgetType: grant.BudgetType, SettledAt: grant.SettledAt, ReversedAt: grant.ReversedAt, CreatedAt: grant.CreatedAt}
 	if err := r.db.WithContext(ctx).Create(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
 			return ports.RewardGrant{}, ports.ErrConflict
@@ -434,7 +436,7 @@ func rewardBudgetFromModel(model rewardBudgetModel) ports.RewardBudget {
 }
 
 func rewardGrantFromModel(model rewardGrantModel) ports.RewardGrant {
-	return ports.RewardGrant{ID: model.ID, GrantID: model.GrantID, PeriodID: model.PeriodID, UserID: model.UserID, ActionID: model.ActionID, TriggerType: model.TriggerType, RewardDefinitionID: model.RewardDefinitionID, RewardType: model.RewardType, Amount: model.Amount, RandomValue: model.RandomValue, ConfigVersion: model.ConfigVersion, Status: model.Status, SourceRef: model.SourceRef, Reason: model.Reason, BudgetType: model.BudgetType, SettledAt: model.SettledAt, ReversedAt: model.ReversedAt, CreatedAt: model.CreatedAt}
+	return ports.RewardGrant{ID: model.ID, GrantID: model.GrantID, PeriodID: model.PeriodID, UserID: model.UserID, ActionID: model.ActionID, TriggerType: model.TriggerType, RewardDefinitionID: model.RewardDefinitionID, RewardType: model.RewardType, Amount: model.Amount, BonusExperience: model.BonusExperience, BonusExperienceStatus: model.BonusExperienceStatus, RandomValue: model.RandomValue, ConfigVersion: model.ConfigVersion, Status: model.Status, SourceRef: model.SourceRef, Reason: model.Reason, BudgetType: model.BudgetType, SettledAt: model.SettledAt, ReversedAt: model.ReversedAt, CreatedAt: model.CreatedAt}
 }
 
 func idempotencyFromModel(model idempotencyModel) ports.IdempotencyRecord {
@@ -614,6 +616,12 @@ func validateRewardGrantCreate(grant ports.RewardGrant) error {
 		!validMySQLText(grant.RewardType, 64) || !validMySQLText(grant.ConfigVersion, 64) || !validMySQLText(grant.SourceRef, 191) ||
 		!validMySQLText(grant.Reason, 255) || !validMySQLText(grant.BudgetType, 64) || len(grant.RandomValue) != sha256.Size*2 {
 		return fmt.Errorf("%w: invalid reward grant create state", ports.ErrConflict)
+	}
+	if grant.BonusExperience < 0 || grant.BonusExperience > 1000000 ||
+		(grant.BonusExperience == 0 && grant.BonusExperienceStatus != "") ||
+		(grant.BonusExperience > 0 && (grant.TriggerType != "pulse" || grant.RewardType != "newapi_quota" ||
+			(grant.BonusExperienceStatus != "pending" && grant.BonusExperienceStatus != "shadow"))) {
+		return fmt.Errorf("%w: invalid draw bonus", ports.ErrConflict)
 	}
 	if _, err := hex.DecodeString(grant.RandomValue); err != nil {
 		return fmt.Errorf("%w: invalid reward grant random value", ports.ErrConflict)
