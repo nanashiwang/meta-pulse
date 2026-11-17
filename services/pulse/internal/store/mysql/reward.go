@@ -623,6 +623,10 @@ func validateRewardGrantCreate(grant ports.RewardGrant) error {
 		if grant.RewardDefinitionID == 0 || (grant.RewardType == "community_exp" && grant.BudgetType != "community_exp") || (grant.RewardType != "community_exp" && grant.BudgetType != "loyalty") {
 			return fmt.Errorf("%w: invalid pulse reward grant binding", ports.ErrConflict)
 		}
+	case "checkin":
+		if grant.RewardDefinitionID == 0 || grant.RewardType != "newapi_quota" || grant.BudgetType != "loyalty" {
+			return fmt.Errorf("%w: invalid check-in reward grant binding", ports.ErrConflict)
+		}
 	case "period_reward":
 		if grant.RewardDefinitionID == 0 || grant.BudgetType != "period_reward" {
 			return fmt.Errorf("%w: invalid period reward grant binding", ports.ErrConflict)

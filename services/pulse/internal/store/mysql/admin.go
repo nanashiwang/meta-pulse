@@ -687,6 +687,8 @@ func (r *periodAdminRepository) FindByKeyForUpdate(ctx context.Context, key stri
 	return model.toDomain(), nil
 }
 
+// Internal check-in snapshots are never activated as draw campaigns and do not
+// occupy campaign time windows. Their prefix is reserved by the creation service.
 // ListOverlapping uses the same half-open interval as period.Contains, so two
 // periods touching at a single instant are not reported as overlapping.
 func (r *periodAdminRepository) ListOverlapping(ctx context.Context, startsAt, endsAt time.Time) ([]period.Period, error) {
@@ -694,7 +696,7 @@ func (r *periodAdminRepository) ListOverlapping(ctx context.Context, startsAt, e
 		return nil, errors.New("period must end after it starts")
 	}
 	var models []periodModel
-	if err := r.db.WithContext(ctx).Where("starts_at < ? AND ends_at > ?", endsAt, startsAt).Order("starts_at ASC, id ASC").Find(&models).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("starts_at < ? AND ends_at > ? AND period_key NOT LIKE ?", endsAt, startsAt, "checkin-flash-v1-%").Order("starts_at ASC, id ASC").Find(&models).Error; err != nil {
 		return nil, fmt.Errorf("list overlapping periods: %w", err)
 	}
 	result := make([]period.Period, len(models))

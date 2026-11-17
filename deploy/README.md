@@ -348,3 +348,7 @@ export PATH="$HOME/.local/bin:$PATH"
 ### 2026-11-17 签到奖池升级
 
 完整更新在迁移成功后、API 启动前运行 `meta-pulse-tool apply-checkin-reward-policy`。该命令须在 pulse-api 容器内运行，读取 API 角色运行时配置和 quota_per_unit，发布唯一政策快照（额度期望2.5闪）。无启用规则时返回空结果并保留管理员初始化流程；已有政策 key 时直接恢复回执，不重置后续人工规则。失败时更新脚本停止；处理后重新运行同一升级即可。配套升级 Forum 和社区静态资源后验证周一/周五三券、其他日仅经验及三券部分到账恢复。
+
+### 每日签到闪交付（2026-11-18）
+
+完整升级Forum、Pulse API/Worker和静态资源。Forum首次初始化自动建metar_checkin_flash（随机分闪、原签到事件、唯一日期、API绑定、Grant和交付状态）；随Answer库备份。发布后自动扫描2026-11-18起已绑定的真实签到缺失记录，保存随机金额后提交Pulse。先升级API再启动Forum可避免首次404，但404不会丢队列或重抽金额。Pulse沿用ActionsEnabled且非shadow才接受新的签到闪；已创建奖励由原Worker结算。需要quota_per_unit能被100整除，拒绝舍入；当前500000符合。429受限保留blocked，按原Grant审核及reward-retry处理，勿删除队列或换编号。部署验收需分别核对已保存cents、Pulse Grant、Outbox completed和接收端到账；页面显示pending不代表到账。

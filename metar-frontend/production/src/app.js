@@ -835,10 +835,11 @@
 
   function checkinReceiptText(summary) {
     const r = summary?.checkin_receipt;
+    if (r && r.flash_status === 'preparing' && Number.isSafeInteger(r.experience) && r.experience >= 0) return t('今日签到：{experience} EXP 已到账，闪奖励金额正在由服务器生成。',{experience:String(r.experience)});
     if (!r || !/^\d{4}-\d{2}-\d{2}$/.test(r.day) || !Number.isSafeInteger(r.experience) || r.experience < 0 || !/^(0|[1-9]\d{0,11})\.\d{2}$/.test(r.flash_amount)) return '';
-    const labels = {not_issued:t('未发放'), settled:t('已到账'), pending:t('发放中'), blocked:t('待处理'), reversed:t('已撤销')};
+    const labels = {not_issued:t('未发放'), settled:t('已到账'), pending:t('发放中'), blocked:t('待处理'), reversed:t('已撤销'), unavailable:t('到账状态暂不可用')};
     if (!Object.hasOwn(labels,r.flash_status) || (r.flash_status === 'not_issued' && r.flash_amount !== '0.00')) return '';
-    return t('今日签到到账：{experience} EXP · {flash} 闪（{state}）', {experience:String(r.experience),flash:r.flash_amount,state:labels[r.flash_status]});
+    return t('今日签到奖励：{experience} EXP 已到账 · {flash} 闪（{state}）', {experience:String(r.experience),flash:r.flash_amount,state:labels[r.flash_status]});
   }
 
   async function mountProfileCheckin() {
@@ -848,7 +849,17 @@
     const button = root.querySelector('button'), status = root.querySelector('[role="status"]');
     const user = currentUser?.id, sequence = navigationSequence, identity = identitySequence;
     const current = () => root.isConnected && user === currentUser?.id && identity === identitySequence && sequence === navigationSequence;
-    let busy = false, known = false, confirmed = false, receiptText = '';
+    let busy = false, known = false, confirmed = false, receiptText = '', flashPending = false, attempts = 0, timer;
+    const schedule = () => {
+      clearTimeout(timer);
+      if (!current() || !flashPending || attempts >= 12) return;
+      timer = setTimeout(async () => {
+        if (!current() || busy) return;
+        attempts++;
+        try { await read(); } catch (_) { /* Keep confirmed receipt; next read retries. */ }
+        if (current()) { show(); schedule(); }
+      }, 5000);
+    };
     const show = () => {
       button.disabled = busy || confirmed;
       button.textContent = t(busy ? '签到中…' : confirmed ? '今日已签到' : known ? '每日签到' : '重试签到');
@@ -860,6 +871,7 @@
       known = true;
       confirmed = summary.checkin_amount === 0;
       receiptText = checkinReceiptText(summary);
+      flashPending = ['preparing','pending','unavailable'].includes(summary?.checkin_receipt?.flash_status);
       if (confirmed) status.textContent = receiptText || t('今日已签到，到账明细暂不可用。');
     };
     const updateGrowth = async () => {
@@ -879,7 +891,7 @@
         if (!current()) return;
         if (!confirmed) {
           const summary = await answer.request('/metar/experience/checkin', {method:'POST', headers:{'Content-Type':'application/json','X-Metar-Request':'1'}, body:'{}'});
-          if (current()) receiptText = checkinReceiptText(summary);
+          if (current()) { receiptText = checkinReceiptText(summary); flashPending = ['preparing','pending','unavailable'].includes(summary?.checkin_receipt?.flash_status); }
           if (!current()) return;
           confirmed = true;
         }
@@ -894,13 +906,13 @@
         if (confirmed) await updateGrowth();
       } finally {
         busy = false;
-        if (current()) show();
+        if (current()) { show(); schedule(); }
       }
     };
     busy = true;
     try { await read(); }
     catch (_) { if (current()) status.textContent = t('签到状态暂不可用，请点击重试签到。'); }
-    finally { busy = false; if (current()) show(); }
+    finally { busy = false; if (current()) { show(); schedule(); } }
   }
 
   async function bookmarksPage() {
@@ -1057,7 +1069,7 @@
 
   function communityTasksMarkup(bound = true) {
     return `<section class="card card-pad mt24" data-community-tasks><div class="between wrap"><h2>${t('获取抽奖券')}</h2><button class="btn" data-task-checkin>${t('每日签到')}</button></div>
-      <ul class="mini-list"><li>${t('周一、周五签到各送 3 张抽奖券，每周共 6 张。')}</li><li>${t('每天签到仍领取原有固定经验；其他日期不赠送签到券。')}</li></ul>
+      <ul class="mini-list"><li>${t('周一、周五签到各送 3 张抽奖券，每周共 6 张。')}</li><li>${t('每天签到领取原有经验；已绑定账号另领 0.01～1.50 闪随机奖励，具体金额由服务器生成。')}</li><li>${t('其他日期不赠送签到券，签到闪奖励与抽奖分别发放。')}</li></ul>
       ${bound ? '' : `<p class="prod-page-note">${t('未绑定账号签到可领经验；绑定元衡 API 后，周一、周五签到各得 3 张抽奖券，绑定前不补发。')}</p>`}
       <p class="muted mt12">${t('按北京时间计算签到日期，每天仅可签到一次；领取抽奖券需先绑定元衡 API 账号。')}</p>
       <p class="muted">${t('签到赠券会自动到账，通常需等待片刻；到账后自动更新可用券数。')}</p>
@@ -1074,12 +1086,13 @@
     const showReceipt = summary => {
       if (!receipt || !current()) return;
       const text = checkinReceiptText(summary);
+      flashPending = ['preparing','pending','unavailable'].includes(summary?.checkin_receipt?.flash_status);
       receipt.textContent = text || (confirmed ? t('到账明细暂不可用，请稍后刷新签到进度。') : '');
       receipt.hidden = !receipt.textContent;
     };
     const status = root.querySelector('[data-task-progress]'), checkin = root.querySelector('[data-task-checkin]'), refresh = root.querySelector('[data-task-refresh]');
     let busy = false, signing = false, confirmed = false, awaitingCheckin = false;
-    let syncing = false, checkinPending = false, attempts = 0, timer, lastDelivered = null;
+    let syncing = false, checkinPending = false, flashPending = false, attempts = 0, timer, lastDelivered = null;
     const schedule = () => {
       clearTimeout(timer);
       if (!current() || !syncing) return;
@@ -1100,7 +1113,7 @@
           if (!Number.isSafeInteger(summary.checkin_amount) || summary.checkin_amount < 0) throw new Error('invalid check-in status');
           confirmed ||= summary.checkin_amount === 0;
           showReceipt(summary);
-          syncing = awaitingCheckin && !confirmed;
+          syncing = (awaitingCheckin && !confirmed) || flashPending;
           checkinPending = syncing;
           if (confirmed) awaitingCheckin = false;
           checkin.textContent = t(confirmed ? '今日已签到' : '每日签到 · 领经验');
@@ -1110,7 +1123,7 @@
         const [taskResult, summaryResult] = await Promise.allSettled([pulse.request('tasks'), answer.request('/metar/experience/summary')]);
         if (!current()) return;
         const summary = summaryResult.status === 'fulfilled' ? summaryResult.value : null;
-        if (summary?.checkin_amount === 0) confirmed = true;
+        if (summary?.checkin_amount === 0) { confirmed = true; checkin.textContent=t('今日已签到'); }
         showReceipt(summary);
         if (taskResult.status === 'rejected') throw taskResult.reason;
         const progress = taskResult.value;
@@ -1129,11 +1142,11 @@
         const deliveryChanged = lastDelivered !== progress.delivered;
         const wasSyncing = syncing;
         checkinPending = !ineligible && target > 0 && (awaitingCheckin || progress.checked_in) && progress.checkin_delivered !== true;
-        syncing = checkinPending || progress.delivered < progress.earned;
-        status.textContent = ineligible ? t(ineligible === 'not_scheduled' ? '今日已签到；今天仅领取经验，周一、周五签到各赠 3 张券。' : ineligible === 'before_binding' ? '今日已签到；签到发生在账号绑定前，今天不补发签到券。请在后续周一或周五签到领券。' : '今日已签到；签到发生在赠券功能启用前，今天不补发签到券。请在后续周一或周五签到领券。')
+        syncing = checkinPending || flashPending || progress.delivered < progress.earned;
+        status.textContent = ineligible ? t(ineligible === 'not_scheduled' ? '今日已签到；经验与随机闪明细见下方，周一、周五签到各赠 3 张券。' : ineligible === 'before_binding' ? '今日已签到；签到发生在账号绑定前，今天不补发签到券。请在后续周一或周五签到领券。' : '今日已签到；签到发生在赠券功能启用前，今天不补发签到券。请在后续周一或周五签到领券。')
           : checkinPending ? t('签到赠券正在同步，到账后将自动更新可用券数。')
-          : confirmed ? t(progress.checkin_delivered === true ? '今日已签到，签到赠券已到账。' : target === 0 ? '今日已签到，今天仅领取经验。' : '今日已签到；赠券安排为周一、周五各 3 张。')
-          : t(target === 0 ? '今日尚未签到，今天签到仅领取经验。' : target === 3 ? '今日尚未签到，签到可领取经验和 3 张抽奖券。' : '今日尚未签到；周一、周五签到各赠 3 张券。');
+          : confirmed ? t(progress.checkin_delivered === true ? '今日已签到，签到赠券已到账。' : target === 0 ? '今日已签到，经验与随机闪明细见下方。' : '今日已签到；赠券安排为周一、周五各 3 张。')
+          : t(target === 0 ? '今日尚未签到，签到可领取经验和随机闪。' : target === 3 ? '今日尚未签到，签到可领取经验、随机闪和 3 张抽奖券。' : '今日尚未签到；周一、周五签到各赠 3 张券。');
         // Refresh the authoritative selection as well as the count: a newly
         // delivered ticket may enable single or five draws. Never invent +1.
         if (deliveryChanged || (!ineligible && target > 0 && (awaitingCheckin || progress.checked_in) && progress.checkin_delivered === undefined && attempts % 3 === 2) || (!syncing && (awaitingCheckin || wasSyncing || refreshBenefits))) {

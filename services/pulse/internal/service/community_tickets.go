@@ -27,9 +27,10 @@ type CommunityTicketResult struct {
 	EntryID uint64 `json:"entry_id"`
 }
 type CommunityTicketService struct {
-	unit         ports.UnitOfWork
-	QuotaPerUnit int64
-	now          func() time.Time
+	unit                ports.UnitOfWork
+	QuotaPerUnit        int64
+	CheckinFlashEnabled bool
+	now                 func() time.Time
 }
 
 func NewCommunityTicketService(unit ports.UnitOfWork) *CommunityTicketService {

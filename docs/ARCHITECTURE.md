@@ -1428,4 +1428,14 @@ Answer仍为账号、帖子与可见性事实源；UserCenter插件在论坛库�
 
 ## 签到实际到账投影（2026-11-18）
 
-Answer经验summary和checkin回执增加可选checkin_receipt（day、experience、flash_amount、flash_status）。仅当前上海自然日已签到时提供，experience在同一用户事务内按本人checkin事件关联的EXP账本净额汇总，不使用当前规则金额、余额差或其他类型奖励。Summary固定一次Now用于日期判断，避免请求内跨零点混用日期。当前直接签到闪发放不存在，投影固定为0.00/not_issued；这不是闪账本分录，不开启每日随机闪，也不复制/混入Pulse抽奖结果。浏览器只读展示回执，缺失或非法值不替代为零；本人身份和写入边界沿用Answer认证及原签到接口。
+Answer经验summary和checkin回执增加可选checkin_receipt（day、experience、flash_amount、flash_status）。仅当前上海自然日已签到时提供，experience在同一用户事务内按本人checkin事件关联的EXP账本净额汇总，不使用当前规则金额、余额差或其他类型奖励。Summary固定一次Now用于日期判断，避免请求内跨零点混用日期。2026-11-18起签到闪由独立持久队列和Pulse奖励单发放，投影从该记录及只读状态回执取得固定金额与状态；未绑定/绑定前签到仍为0.00/not_issued，不混入抽奖结果。浏览器只读展示回执，缺失或非法值不替代为零；本人身份和写入边界沿用Answer认证及原签到接口。
+
+## 服务器随机签到闪（2026-11-18）
+
+Forum从真实EXP签到事件验证正常社区账号及签到前一对一绑定，在Answer数据库metar_checkin_flash中保存整数分闪（1–150）、事件ID、上海日期、API账号、Grant及交付状态。crypto/rand.Int使用无偏均匀采样；按社区用户/日期主键与event_id唯一键去重，在提交事务后才可发送。每日签到固定经验及周一/周五三券沿用原规则。后台每15秒扫描，恢复2026-11-18起尚未建闪记录的合格签到，不依赖用户在线；跨日仍保留原日期和金额，绑定前不补发。
+
+专用community-bff签名POST /v1/internal/me/checkin-flash只接受day/cents/event_id，身份来自签名；浏览器签到仍仅提交空对象，不可提交金额。Pulse按API用户+日期固定幂等，首次payload固定日/金额/来源，变化冲突。币值换算只接受quota_per_unit为100正整数倍且不溢出，重放不重新换算。
+
+签到使用checkin-flash-v1-<unit>独立内部draft规则快照：创建时一次写150档定义和不限量loyalty预算；永不激活，不影响普通抽奖当前规则，不在管理员抽奖规则列表显示。创建与发奖使用原规则守卫；之后只读固定定义。Grant的trigger_type=checkin、随机凭据为已持久化来源金额摘要、不消费Ticket，Grant+预算预留+SettlementOutbox+审计在同一Pulse事务提交。数据库层仅允许checkin绑定newapi_quota、loyalty预算及有效定义。Worker原Benefit流程、接收端限额、查询恢复和reward-retry沿用，不直接写new-api余额。
+
+专用GET /me/checkin-flash/:id按签名用户验证归属并只读查询Grant与Outbox；pending/dead或conflict投影为blocked，settled才显示闪已到账。Forum保存原金额，后台pending/blocked记录继续查询原Grant，不换单；回执金额与本地不一致拒绝保存，迟到pending不能覆盖settled。个人空间和Pulse最多自动查询12次，页面退出或切换身份忽略旧响应；金额未生成显示准备中，不冒充0闪到账。新表随Forum数据库备份，完整升级Pulse与Forum后生效。预算沿用当前不限总量经营规则，月度24000闪是规划预算，不在本次引入全站硬上限；接收端限额继续拦截超额并保留待审核奖励。

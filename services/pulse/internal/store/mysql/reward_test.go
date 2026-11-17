@@ -299,3 +299,17 @@ func TestSettlementManualDeadClaimRejectsInvalidFence(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckinRewardGrantRequiresQuotaDefinitionAndLoyaltyBudget(t *testing.T) {
+	valid := ports.RewardGrant{GrantID: "pg_checkin", PeriodID: 2, UserID: 3, ActionID: "daily-checkin-v1:3:2026-11-18", TriggerType: "checkin", RewardDefinitionID: 4, RewardType: "newapi_quota", Amount: 150000, RandomValue: strings.Repeat("a", 64), ConfigVersion: "checkin-v1", Status: "pending", SourceRef: "pg_checkin", Reason: "daily check-in", BudgetType: "loyalty", CreatedAt: time.Now()}
+	if err := validateRewardGrantCreate(valid); err != nil {
+		t.Fatal(err)
+	}
+	for _, change := range []func(*ports.RewardGrant){func(g *ports.RewardGrant) { g.RewardDefinitionID = 0 }, func(g *ports.RewardGrant) { g.RewardType = "community_exp" }, func(g *ports.RewardGrant) { g.BudgetType = "period_reward" }} {
+		v := valid
+		change(&v)
+		if err := validateRewardGrantCreate(v); err == nil {
+			t.Fatal("bad check-in grant accepted")
+		}
+	}
+}

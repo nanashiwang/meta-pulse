@@ -102,6 +102,9 @@ func (s *PeriodCreateService) ListForAdmin(ctx context.Context) ([]AdminPeriodVi
 			return err
 		}
 		for _, row := range periods {
+			if strings.HasPrefix(row.Key, checkinFlashPrefix) {
+				continue
+			}
 			activity, err := repos.PeriodAdmin.FindByIDForUpdate(ctx, row.ID)
 			if err != nil {
 				return err

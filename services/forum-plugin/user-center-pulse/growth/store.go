@@ -56,12 +56,14 @@ type Notice struct {
 }
 
 // CheckinReceipt is a read-only projection of today's actual check-in ledger.
-// Check-ins do not currently issue quota; draw prizes are separate rewards.
+// The Forum route enriches flash fields from the durable server-generated
+// reward receipt; unbound and pre-binding check-ins retain not_issued.
 type CheckinReceipt struct {
-	Day         string `json:"day"`
-	Experience  int64  `json:"experience"`
-	FlashAmount string `json:"flash_amount"`
-	FlashStatus string `json:"flash_status"`
+	Day          string `json:"day"`
+	Experience   int64  `json:"experience"`
+	FlashAmount  string `json:"flash_amount"`
+	FlashStatus  string `json:"flash_status"`
+	FlashGrantID string `json:"flash_grant_id,omitempty"`
 }
 
 type Summary struct {

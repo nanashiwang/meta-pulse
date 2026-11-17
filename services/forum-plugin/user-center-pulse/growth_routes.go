@@ -143,6 +143,9 @@ func (uc *UserCenter) experienceHandler(operation string, session func(*gin.Cont
 			var summary growth.Summary
 			summary, err = store.Summary(ctx, user)
 			summary.PulseSyncPending = pending
+			if err == nil {
+				uc.enrichCheckinFlash(ctx, user, &summary, false)
+			}
 			result = summary
 		case "history":
 			var before uint64
@@ -166,7 +169,12 @@ func (uc *UserCenter) experienceHandler(operation string, session func(*gin.Cont
 			if operation == "checkin" {
 				err = store.Checkin(ctx, user)
 				if err == nil {
-					result, err = store.Summary(ctx, user)
+					var summary growth.Summary
+					summary, err = store.Summary(ctx, user)
+					if err == nil {
+						uc.enrichCheckinFlash(ctx, user, &summary, true)
+					}
+					result = summary
 				}
 			} else {
 				err = store.ReadNotices(ctx, user)

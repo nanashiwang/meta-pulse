@@ -16,6 +16,9 @@ type CommunityTicketGranter interface {
 }
 
 func CommunityTicketRoute(r *gin.RouterGroup, s CommunityTicketGranter, auth gin.HandlerFunc) {
+	if flash, ok := s.(checkinFlashService); ok {
+		CheckinFlashRoutes(r, flash, auth)
+	}
 	r.POST("/me/community-tickets", auth, func(c *gin.Context) {
 		c.Header("Cache-Control", "no-store")
 		p, ok := PrincipalWithRole(c, "community-bff")

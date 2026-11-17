@@ -110,7 +110,7 @@ test('an eligible EXP check-in not yet collected starts polling on page entry',a
 
 test('non-ticket weekdays still check in for EXP without waiting for a ticket',async()=>{
  const h=harness();h.setTask(progress({checkin_ticket_target:0}));await h.mount();assert.equal(h.checkin.textContent,'每日签到 · 领经验');
- h.setTask(progress({checked_in:true,checkin_ticket_target:0,checkin_ineligible_reason:'not_scheduled'}));await h.checkin.onclick();assert.equal(h.checkin.textContent,'今日已签到');assert.equal(h.timers.size,0);assert.match(h.status.textContent,/今天仅领取经验/);
+ h.setTask(progress({checked_in:true,checkin_ticket_target:0,checkin_ineligible_reason:'not_scheduled'}));await h.checkin.onclick();assert.equal(h.checkin.textContent,'今日已签到');assert.equal(h.timers.size,0);assert.match(h.status.textContent,/经验与随机闪明细/);
 });
 test('Monday and Friday three-ticket check-in waits for all three while exposing partial delivery',async()=>{
  const h=harness();h.setTask(progress({checkin_ticket_target:3}));await h.mount();assert.equal(h.checkin.textContent,'每日签到 · +3 券');
@@ -153,4 +153,10 @@ test('unbound receipt stays available without making any Pulse calls',async()=>{
 });
 test('legacy summaries do not turn missing details into a zero payout claim',async()=>{
  const h=harness();h.setSummary({checkin_amount:0});h.setTask(progress({checked_in:true,earned:1,delivered:1}));await h.mount();assert.match(h.receipt.textContent,/明细暂不可用/);assert.doesNotMatch(h.receipt.textContent,/0.00/);
+});
+
+test('non-ticket day still polls the saved random flash until actually settled',async()=>{
+ const h=harness();h.setTask(progress({checked_in:true,checkin_ticket_target:0,checkin_ineligible_reason:'not_scheduled'}));
+ h.setSummary({checkin_amount:0,checkin_receipt:{day:'2026-11-18',experience:2,flash_amount:'1.50',flash_status:'pending'}});await h.mount();assert.match(h.receipt.textContent,/1.50 闪（发放中）/);assert.equal(h.timers.size,1);
+ h.setSummary({checkin_amount:0,checkin_receipt:{day:'2026-11-18',experience:2,flash_amount:'1.50',flash_status:'settled'}});await h.tick();assert.match(h.receipt.textContent,/1.50 闪（已到账）/);assert.equal(h.timers.size,0);assert.equal(h.counts().posts,0);
 });

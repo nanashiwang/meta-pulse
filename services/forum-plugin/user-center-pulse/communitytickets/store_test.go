@@ -46,7 +46,7 @@ func fixture(t *testing.T) (*Store, *time.Time) {
 		t.Fatal(e)
 	}
 	t.Cleanup(func() { db.Close() })
-	for _, table := range []string{"metar_ticket_config", "metar_ticket_cursor", "metar_ticket_source", "metar_ticket_day", "metar_ticket_outbox", "metar_exp_event", "user_external_login", "comment", "answer", "question", "activity", "config", "user"} {
+	for _, table := range []string{"metar_checkin_flash", "metar_ticket_config", "metar_ticket_cursor", "metar_ticket_source", "metar_ticket_day", "metar_ticket_outbox", "metar_exp_event", "user_external_login", "comment", "answer", "question", "activity", "config", "user"} {
 		must(t, db, "DROP TABLE IF EXISTS `"+table+"`")
 	}
 	for _, q := range []string{

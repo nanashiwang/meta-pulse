@@ -305,6 +305,9 @@ func normalizePeriodCreateCommand(command PeriodCreateCommand) (PeriodCreateComm
 	if command.Reason == "" {
 		return command, errors.New("period create reason is required")
 	}
+	if strings.HasPrefix(command.Key, checkinFlashPrefix) {
+		return command, errors.New("reserved internal check-in rule key")
+	}
 	if command.Key == "" {
 		return command, errors.New("period key is required")
 	}

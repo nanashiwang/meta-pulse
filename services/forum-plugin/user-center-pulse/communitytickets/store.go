@@ -22,6 +22,7 @@ var zone = time.FixedZone("Asia/Shanghai", 8*3600)
 func Day(t time.Time) string { return t.In(zone).Format("2006-01-02") }
 
 var schema = []string{
+	flashSchema,
 	`CREATE TABLE IF NOT EXISTS metar_ticket_config(id INT PRIMARY KEY,started_at BIGINT NOT NULL) ENGINE=InnoDB`,
 	`CREATE TABLE IF NOT EXISTS metar_ticket_cursor(stream VARCHAR(16) PRIMARY KEY,last_id BIGINT UNSIGNED NOT NULL DEFAULT 0) ENGINE=InnoDB`,
 	`CREATE TABLE IF NOT EXISTS metar_ticket_source(id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,source_key VARCHAR(191) CHARACTER SET ascii COLLATE ascii_bin NOT NULL UNIQUE,user_id BIGINT UNSIGNED NOT NULL,earned_day CHAR(10) NOT NULL,kind VARCHAR(16) NOT NULL,stream VARCHAR(16) NOT NULL,source_id BIGINT UNSIGNED NOT NULL,INDEX owner_day(user_id,earned_day)) ENGINE=InnoDB`,

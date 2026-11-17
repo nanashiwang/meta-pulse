@@ -7,13 +7,14 @@ const receiptSource = source.slice(source.indexOf('  function checkinReceiptText
 function harness() {
   const button = {}, status = {}, card = {}; let amount = 10, failRead = false, failPost = false, commit = true, pending;
   let receipt={day:'2026-11-18',experience:10,flash_amount:'0.00',flash_status:'not_issued'};
-  const calls = [];
+  const calls = [], timers=new Map();let timerID=0;
   const root = {dataset:{}, isConnected:true, querySelector:s=>s==='button'?button:status};
   const context = vm.createContext({document:{querySelector:s=>s==='[data-profile-checkin]'?root:card}, currentUser:{id:'one'}, navigationSequence:1, identitySequence:1, t:(s,v)=>s.replace(/\{(\w+)\}/g,(_,k)=>v?.[k]??'{'+k+'}'),
+    setTimeout:fn=>{timers.set(++timerID,fn);return timerID;},clearTimeout:id=>timers.delete(id),
     growthView:async()=>({compact:async()=>'<section>updated EXP</section>'}),
     answer:{request:async(url,options)=>{calls.push({url,options}); if(options) {if(commit)amount=0;if(pending)return pending;if(failPost)throw Error('lost response');return {checkin_amount:amount,checkin_receipt:amount===0?receipt:null};} if(failRead)throw Error('offline');return {checkin_amount:amount,checkin_receipt:amount===0?receipt:null};}}});
   vm.runInContext(receiptSource+mount,context);
-  return {button,status,card,root,context,calls,mount:()=>context.mountProfileCheckin(), receipt:v=>receipt=v, amount:v=>amount=v, failRead:v=>failRead=v, failPost:v=>failPost=v, commit:v=>commit=v,pending:v=>pending=v};
+  return {button,status,card,root,context,calls,timers,tick:async()=>{const [id,fn]=timers.entries().next().value;timers.delete(id);await fn();},mount:()=>context.mountProfileCheckin(), receipt:v=>receipt=v, amount:v=>amount=v, failRead:v=>failRead=v, failPost:v=>failPost=v, commit:v=>commit=v,pending:v=>pending=v};
 }
 test('profile shows daily state and posts no identity or amount; success updates EXP',async()=>{
  const h=harness();await h.mount();assert.equal(h.button.textContent,'每日签到');assert.equal(h.button.disabled,false);
@@ -52,4 +53,13 @@ test('missing or malformed receipts never invent zero or substitute future claim
  for(const receipt of [null,{day:'2026-11-18',experience:-1,flash_amount:'0.00',flash_status:'not_issued'},{day:'2026-11-18',experience:10,flash_amount:'1e3',flash_status:'settled'},{day:'2026-11-18',experience:10,flash_amount:'2.50',flash_status:'not_issued'}]){
   const h=harness();h.amount(0);h.receipt(receipt);await h.mount();assert.match(h.status.textContent,/明细暂不可用/);assert.doesNotMatch(h.status.textContent,/0.00|2.50/);
  }
+});
+
+test('server-created cents are shown as pending then settled, without another POST or reroll',async()=>{
+ const h=harness();h.receipt({day:'2026-11-18',experience:2,flash_amount:'0.30',flash_status:'pending'});await h.mount();await h.button.onclick();assert.match(h.status.textContent,/0.30 闪（发放中）/);assert.equal(h.timers.size,1);
+ h.receipt({day:'2026-11-18',experience:2,flash_amount:'0.30',flash_status:'settled'});await h.tick();assert.match(h.status.textContent,/0.30 闪（已到账）/);assert.equal(h.calls.filter(c=>c.options).length,1);assert.equal(h.timers.size,0);
+});
+test('pending revisit queries status without a new check-in; blocked is not credited',async()=>{
+ const h=harness();h.amount(0);h.receipt({day:'2026-11-18',experience:2,flash_amount:'0.01',flash_status:'pending'});await h.mount();assert.equal(h.timers.size,1);
+ h.receipt({day:'2026-11-18',experience:2,flash_amount:'0.01',flash_status:'blocked'});await h.tick();assert.match(h.status.textContent,/0.01 闪（待处理）/);assert.equal(h.calls.filter(c=>c.options).length,0);assert.equal(h.timers.size,0);
 });

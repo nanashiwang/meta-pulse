@@ -57,6 +57,9 @@ func (uc *UserCenter) communityTicketBatch(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	flashCtx, flashCancel := context.WithTimeout(ctx, 4*time.Second)
+	flashErr := uc.checkinFlashBatch(flashCtx, s)
+	flashCancel()
 	uc.runtimeMu.RLock()
 	defer uc.runtimeMu.RUnlock()
 	reader, ok := uc.Guard.(communityIdentityReader)
@@ -96,5 +99,8 @@ func (uc *UserCenter) communityTicketBatch(ctx context.Context) error {
 			return e
 		}
 	}
-	return collectErr
+	if collectErr != nil {
+		return collectErr
+	}
+	return flashErr
 }
