@@ -55,3 +55,5 @@ test('my submissions keeps the period, separates both awards and escapes answer 
  const html=await view.page('/awards',{id:'3'},new URLSearchParams('view=submissions&type=week&key=2026-11-16&kind=post'));
  assert.match(html,/优秀帖子奖.*本期暂无提交.*优秀回答奖/s);assert.ok(html.includes('/questions/11/22'));assert.ok(html.includes('&lt;回答&gt;'));assert.ok(html.includes('撤销推荐'));assert.ok(html.includes('伯乐奖'));
 });
+test('award header has two distinct stacked controls for admins',async()=>{const h=setup(),v=new h.api.View({request:async()=>data},{});const html=await v.page('/awards',{id:'3',role_id:2},new URLSearchParams('key=2026-11-16'));assert.match(html,/<nav class="award-header-actions"><a class="btn primary"[^>]+>我的提交<\/a><a class="btn"[^>]+>管理审核<\/a><\/nav>/);});
+test('missing submissions API retains both sections and does not claim empty history',async()=>{const h=setup(),v=new h.api.View({request:async()=>{throw Error('invalid_response')}},{});const html=await v.page('/awards',{id:'3'},new URLSearchParams('key=2026-11-16&view=submissions'));for(const expected of ['重新加载','优秀帖子奖','优秀回答奖','伯乐奖'])assert.ok(html.includes(expected));assert.ok(!html.includes('本期暂无提交'));});

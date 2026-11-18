@@ -89,7 +89,9 @@
       }
       this.mine = !this.admin && query.get('view') === 'submissions';
       if (this.mine) {
-        this.data = await this.loadSubmissions();
+        this.data = null;
+        try { this.data = await this.loadSubmissions(); }
+        catch (error) { if (error?.status === 401) throw error; }
         return this.submissionHTML();
       }
       this.data = await this.client().request("/metar/awards?" + this.query());
@@ -98,17 +100,19 @@
     scout() {
       return '<strong>' + t('伯乐奖：','Talent Scout award: ') + '</strong>' + t("推荐的帖子获得周奖后，前 10 位有效推荐者平分 20 闪，每人至少 3 闪，并各获一次「伯乐」勋章。闪由管理员手动发放，同帖月奖不重复发。", "When a recommended post wins a weekly award, the first 10 recommenders share 20 credits (minimum 3 each) and each earn a Talent Scout medal. Credits are paid manually; the monthly award does not pay again.");
     }
-    loadSubmissions() {
-      return this.api.request('/metar/awards/submissions?' + new URLSearchParams({type:this.period.type,key:this.period.key}));
+    async loadSubmissions() {
+      const rows = await this.api.request('/metar/awards/submissions?' + new URLSearchParams({type:this.period.type,key:this.period.key}));
+      if (!Array.isArray(rows)) throw Error("invalid_response");
+      return rows;
     }
     submissionHTML() {
       const groups = ['post','response'].map(kind => {
-        const rows = this.data.filter(row => row.kind === kind);
+        const rows = this.data?.filter(row => row.kind === kind);
         return '<section class="card card-pad mt16"><h2>' + (kind==='post'?t('优秀帖子奖','Excellent posts'):t('优秀回答奖','Excellent answers')) + '</h2>' +
-          (rows.length ? rows.map(row => '<div class="between wrap mt8"><a href="/questions/' + esc(row.question_id) + (kind==='post'?'':'/'+esc(row.subject_id)) + '">' + esc(row.title) + (row.excerpt?' · '+esc(row.excerpt):'') + '</a>' +
+          (!rows ? '<p class="muted">'+t('记录未能加载','Records unavailable')+'</p>' : rows.length ? rows.map(row => '<div class="between wrap mt8"><a href="/questions/' + esc(row.question_id) + (kind==='post'?'':'/'+esc(row.subject_id)) + '">' + esc(row.title) + (row.excerpt?' · '+esc(row.excerpt):'') + '</a>' +
             (row.can_withdraw ? '<button class="btn" data-award="withdraw" data-week="'+esc(row.week)+'" data-kind="'+kind+'" data-id="'+esc(row.subject_id)+'">'+t('撤销推荐','Withdraw')+'</button>' : '<small>'+t('已截止','Closed')+'</small>')+'</div>').join('') : '<p class="muted">'+t('本期暂无提交','No submissions this period')+'</p>') + '</section>';
       });
-      return '<section class="card card-pad"><a data-router href="'+esc(this.link())+'">← '+t('返回评选','Back to awards')+'</a><h1>'+t('我的提交','My submissions')+'</h1><p>'+esc(this.period.key)+'</p><p>'+this.scout()+'</p><p>'+t('优秀回答来自你在自己帖子里采纳的回答。撤销推荐不影响采纳状态。','Answers you accepted on your posts qualify. Withdrawal does not undo acceptance.')+'</p></section><p data-award-error role="status"></p>'+groups.join('');
+      return '<section class="card card-pad"><a data-router href="'+esc(this.link())+'">← '+t('返回评选','Back to awards')+'</a><h1>'+t('我的提交','My submissions')+'</h1><p>'+esc(this.period.key)+'</p><p>'+this.scout()+'</p><p>'+t('优秀回答来自你在自己帖子里采纳的回答。撤销推荐不影响采纳状态。','Answers you accepted on your posts qualify. Withdrawal does not undo acceptance.')+'</p></section><p data-award-error role="status"></p>'+(this.data === null ? '<p role="alert">'+t('暂时无法读取本期提交，请稍后重试。','Could not load submissions. Please try again.')+' <a class="btn" href="'+esc(this.link(1,{view:'submissions'}))+'">'+t('重新加载','Retry')+'</a></p>' : '')+groups.join('');
     }
     client() {
       return this.admin ? this.adminAPI : this.api;
@@ -153,11 +157,11 @@
       return (
         `<section class="card card-pad"><div class="between wrap"><h1>` +
         t("优秀内容评选", "Community content awards") +
-        `</h1><div style="display:grid;gap:.5rem;text-align:right">` +
+        `</h1><nav class="award-header-actions">` +
         (this.admin ? '<a data-router href="/awards?'+esc(this.query())+'">'+t('查看获奖名单','Published awards')+'</a>' :
-          '<a data-router href="'+esc(this.link(1,{view:'submissions'}))+'">'+t('我的提交','My submissions')+'</a>' +
-          (this.user?.role_id === 2 ? '<a data-router href="/admin/awards?'+esc(this.query())+'">'+t('管理审核','Review awards')+'</a>' : '')) +
-        '</div></div><p class="muted">' +
+          '<a class="btn primary" data-router href="'+esc(this.link(1,{view:'submissions'}))+'">'+t('我的提交','My submissions')+'</a>' +
+          (this.user?.role_id === 2 ? '<a class="btn" data-router href="/admin/awards?'+esc(this.query())+'">'+t('管理审核','Review awards')+'</a>' : '')) +
+        '</nav></div><p class="muted">' +
         t(
           "周奖每类最多10人，月奖每类最多5人，不分排名、不强制补位。",
           "Up to 10 weekly and 5 monthly winners per category. No ranking or forced allocation.",

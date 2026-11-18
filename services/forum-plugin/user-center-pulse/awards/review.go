@@ -91,7 +91,7 @@ func contentEligible(ctx context.Context, tx *sql.Tx, c *Candidate, kind string)
 	} else {
 		var answerOwner, qid, acceptedID, answerBody string
 		var answerStatus, accepted int
-		err = tx.QueryRowContext(ctx, "SELECT user_id,question_id,status,accepted,COALESCE(original_text,'') FROM answer WHERE id=?", c.AnswerID).Scan(&answerOwner, &qid, &answerStatus, &accepted, &answerBody)
+		err = tx.QueryRowContext(ctx, "SELECT user_id,question_id,status,adopted,COALESCE(original_text,'') FROM answer WHERE id=?", c.AnswerID).Scan(&answerOwner, &qid, &answerStatus, &accepted, &answerBody)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}

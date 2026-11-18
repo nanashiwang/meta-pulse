@@ -41,7 +41,7 @@ func fixture(t *testing.T) (*Store, *time.Time) {
 		"INSERT INTO user VALUES(1,1,1,'owner','作者'),(2,1,1,'reader','读者'),(3,1,1,'admin','管理员'),(4,2,1,'banned','封禁'),(5,1,2,'inactive','未激活'),(6,1,1,'responder','回答者')",
 		"CREATE TABLE user_role_rel(user_id BIGINT,role_id INT) ENGINE=InnoDB", "INSERT INTO user_role_rel VALUES(1,1),(2,1),(3,2),(4,2),(5,2),(6,1)",
 		"CREATE TABLE question(id BIGINT PRIMARY KEY,user_id BIGINT,title VARCHAR(200),original_text TEXT,status INT,`show` INT,created_at DATETIME,accepted_answer_id BIGINT NOT NULL DEFAULT 0) ENGINE=InnoDB",
-		"CREATE TABLE answer(id BIGINT PRIMARY KEY,user_id BIGINT,question_id BIGINT,status INT,accepted INT,original_text TEXT) ENGINE=InnoDB",
+		"CREATE TABLE answer(id BIGINT PRIMARY KEY,user_id BIGINT,question_id BIGINT,status INT,adopted INT,original_text TEXT) ENGINE=InnoDB",
 		"CREATE TABLE config(id INT PRIMARY KEY,`key` VARCHAR(100)) ENGINE=InnoDB", "INSERT INTO config VALUES(1,'answer.accepted')",
 		"CREATE TABLE activity(id BIGINT AUTO_INCREMENT PRIMARY KEY,object_id BIGINT,user_id BIGINT,trigger_user_id BIGINT,activity_type INT,cancelled INT DEFAULT 0,created_at DATETIME) ENGINE=InnoDB",
 	} {
@@ -155,7 +155,7 @@ func TestWeeklyPublicationNeverPaysAndFreezesMySQL(t *testing.T) {
 func TestAcceptedResponseUsesFirstAuthorAcceptanceMySQL(t *testing.T) {
 	s, now := fixture(t)
 	ctx := context.Background()
-	s.DB.Exec("INSERT INTO answer(id,user_id,question_id,status,accepted) VALUES(200,6,100,1,2),(201,1,101,1,2)")
+	s.DB.Exec("INSERT INTO answer(id,user_id,question_id,status,adopted) VALUES(200,6,100,1,2),(201,1,101,1,2)")
 	s.DB.Exec("UPDATE question SET accepted_answer_id=200 WHERE id=100")
 	if _, err := s.DB.Exec("INSERT INTO activity(object_id,user_id,trigger_user_id,activity_type,created_at) VALUES(200,6,1,1,?),(201,1,1,1,?)", now.UTC(), now.UTC()); err != nil {
 		t.Fatal(err)
@@ -166,12 +166,12 @@ func TestAcceptedResponseUsesFirstAuthorAcceptanceMySQL(t *testing.T) {
 	if err != nil || len(list.Items) != 1 || !list.Items[0].Eligible {
 		t.Fatal(list, err)
 	}
-	s.DB.Exec("UPDATE answer SET accepted=1 WHERE id=200")
+	s.DB.Exec("UPDATE answer SET adopted=1 WHERE id=200")
 	list, err = s.List(ctx, "3", p, 1, true)
 	if err != nil || list.Items[0].Eligible {
 		t.Fatal("cancelled acceptance eligible", err)
 	}
-	s.DB.Exec("UPDATE answer SET accepted=2 WHERE id=200")
+	s.DB.Exec("UPDATE answer SET adopted=2 WHERE id=200")
 	*now = date(t, "2026-11-18 12:00:00")
 	execute(t, s, "3", "sync-next-week01", Command{Op: "sync", Period: Period{"week", "2026-11-16", "response"}}, true)
 	list, err = s.List(ctx, "3", Period{"week", "2026-11-16", "response"}, 1, true)
@@ -397,7 +397,7 @@ func TestWithdrawOwnSubmissionMySQL(t *testing.T) {
 	s, now := fixture(t)
 	ctx := context.Background()
 	p := Weekly(*now, "response")
-	for _, q := range []string{"INSERT INTO answer(id,user_id,question_id,status,accepted) VALUES(200,6,100,1,2)", "UPDATE question SET accepted_answer_id=200 WHERE id=100"} {
+	for _, q := range []string{"INSERT INTO answer(id,user_id,question_id,status,adopted) VALUES(200,6,100,1,2)", "UPDATE question SET accepted_answer_id=200 WHERE id=100"} {
 		if _, err := s.DB.Exec(q); err != nil {
 			t.Fatal(err)
 		}
@@ -416,7 +416,7 @@ func TestWithdrawOwnSubmissionMySQL(t *testing.T) {
 	execute(t, s, "1", "own-withdraw-00001", cmd, false)
 	execute(t, s, "3", "sync-withdrawn-0001", Command{Op: "sync", Period: p}, true)
 	var accepted, count int
-	if err = s.DB.QueryRow("SELECT accepted FROM answer WHERE id=200").Scan(&accepted); err != nil || accepted != 2 {
+	if err = s.DB.QueryRow("SELECT adopted FROM answer WHERE id=200").Scan(&accepted); err != nil || accepted != 2 {
 		t.Fatal(accepted, err)
 	}
 	if err = s.DB.QueryRow("SELECT COUNT(*) FROM metar_award_candidate WHERE subject_id=200").Scan(&count); err != nil || count != 0 {
