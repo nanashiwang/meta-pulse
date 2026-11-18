@@ -1,6 +1,7 @@
 (function(root){
  'use strict';
  const endpoint='/metar/ads', key='metar.homeAds.closed.v1';
+ const writeAd=(client,path,method,body)=>client.request(path,{method,headers:{'X-Metar-Request':'1'},body});
  const imageURL=id=>'/answer/api/v1/metar/ads/'+encodeURIComponent(id);
  let closed=false, timer;
  async function mountSlot(slot,api){
@@ -28,9 +29,9 @@
  function mountManager(el,api,admin){
    const form=el.querySelector('form'),msg=el.querySelector('[role=status]'),list=el.querySelector('ul');let rev=0;
    async function refresh(){const seq=++rev;const entries=await api.request(endpoint);if(seq!==rev)return;list.replaceChildren();if(!entries.length)list.textContent='暂无广告，首页不占位。';for(const item of entries){
-     const row=document.createElement('li'),img=document.createElement('img'),dest=document.createElement('span'),del=document.createElement('button');img.src=imageURL(item.id);img.alt='广告缩略图';dest.textContent=item.link;del.textContent='下架';del.className='btn small';del.onclick=async()=>{if(!root.confirm('下架这条广告？'))return;del.disabled=true;try{await admin.request(endpoint+'/'+item.id,{method:'DELETE'});msg.textContent='广告已下架。';await refresh();}catch(e){msg.textContent=e.message;del.disabled=false;}};row.append(img,dest,del);list.append(row);
+     const row=document.createElement('li'),img=document.createElement('img'),dest=document.createElement('span'),del=document.createElement('button');img.src=imageURL(item.id);img.alt='广告缩略图';dest.textContent=item.link;del.textContent='下架';del.className='btn small';del.onclick=async()=>{if(!root.confirm('下架这条广告？'))return;del.disabled=true;try{await writeAd(admin,endpoint+'/'+item.id,'DELETE');msg.textContent='广告已下架。';await refresh();}catch(e){msg.textContent=e.message;del.disabled=false;}};row.append(img,dest,del);list.append(row);
    }}
-   form.onsubmit=async e=>{e.preventDefault();const submit=form.querySelector('button');if(submit.disabled)return;submit.disabled=true;try{const url=new URL(form.elements.link.value);if(!['http:','https:'].includes(url.protocol)||url.username||url.password)throw Error('请填写有效的 HTTP 或 HTTPS 链接。');const body=new FormData();body.append('link',url.href);body.append('image',await picture(form.elements.image.files[0]),'banner.jpg');await admin.request(endpoint,{method:'POST',body});form.reset();msg.textContent='广告已发布。';await refresh();}catch(e){msg.textContent=e.message;}finally{submit.disabled=false;}};
+   form.onsubmit=async e=>{e.preventDefault();const submit=form.querySelector('button');if(submit.disabled)return;submit.disabled=true;try{const url=new URL(form.elements.link.value);if(!['http:','https:'].includes(url.protocol)||url.username||url.password)throw Error('请填写有效的 HTTP 或 HTTPS 链接。');const body=new FormData();body.append('link',url.href);body.append('image',await picture(form.elements.image.files[0]),'banner.jpg');await writeAd(admin,endpoint,'POST',body);form.reset();msg.textContent='广告已发布。';await refresh();}catch(e){msg.textContent=e.message;}finally{submit.disabled=false;}};
    refresh().catch(e=>{msg.textContent=e.message;});
  }
  root.MetarAds={managerHTML,mountSlot,mountManager};
