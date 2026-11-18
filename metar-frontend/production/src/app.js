@@ -427,8 +427,9 @@
     syncNavigation();
     enhanceTaxonomy();
     void mountDiscussionRail();
-    const slot = document.querySelector('#view [data-home-ad]');
-    if (slot) loadFeatureScript('home-ads','MetarAds').then(() => window.MetarAds.mountSlot(slot,answer)).catch(() => {});
+    const topAd = document.querySelector('#view [data-home-ad="top"]');
+    const sideAd = document.querySelector('#view [data-home-ad="side"]');
+    if (topAd || sideAd) loadFeatureScript('home-ads','MetarAds').then(() => window.MetarAds.mountSlots([topAd,sideAd],answer)).catch(() => {});
     const manager = document.querySelector('#view [data-ad-manager]');
     if (manager) window.MetarAds.mountManager(manager,answer,new AnswerAdapter({answerApiBase:'/answer/admin/api'}));
     void mountCommunityAnnouncement();
@@ -738,14 +739,14 @@
     return `<section class="community-discussions">
       ${pageTitle(title)}
       <div data-tag-shortcuts><p class="muted">${t('正在加载…')}</p></div>
-      ${!tag && page === 1 ? '<div data-community-announcement hidden></div>' : ''}
+      ${!tag && page === 1 ? '<div data-community-announcement hidden></div><div data-home-ad="top" hidden></div>' : ''}
       <div class="community-layout">
         ${link('/awards', `<span class="community-award-icon">${I('trophy')}</span><span class="community-award-copy"><small>${t('社区活动')}</small><strong>${t('优秀内容评选')}</strong></span>${I('arrow', 'sm')}`, 'community-award')}
         <div class="community-feed">
           <div class="discussion-toolbar"><nav class="discussion-tabs" aria-label="${t('话题筛选')}">${tabs}</nav>${external(askPath, I('plus', 'sm') + t('新建话题'), 'btn primary')}</div>
           ${list.length ? discussionList(list) : empty(order === 'unanswered' ? t("暂时没有待回答问题") : t("当前筛选没有内容"), t("可以调整筛选，或发起一个新问题。"), external(askPath, t("发起提问"), 'btn primary'), 'chat')}${pager}
         </div>
-        <aside class="community-rail" data-discussion-rail aria-label="${t('社区侧栏')}">${!tag && page === 1 ? '<div data-home-ad hidden></div>' : ''}<details data-rail-disclosure open><summary class="rail-mobile-summary">${t('社区推荐')}</summary><div class="rail-disclosure-content">
+        <aside class="community-rail" data-discussion-rail aria-label="${t('社区侧栏')}">${!tag && page === 1 ? '<div data-home-ad="side" hidden></div>' : ''}<details data-rail-disclosure open><summary class="rail-mobile-summary">${t('社区推荐')}</summary><div class="rail-disclosure-content">
           <section class="rail-card"><div class="rail-head"><h2>${t('等你来回答')}</h2></div><div data-rail-content="unanswered" aria-live="polite"><p class="rail-content-state">${t('正在加载…')}</p></div></section>
           <details class="rail-card rail-curated"><summary>${t('精选阅读')}</summary><div data-rail-content="featured" aria-live="polite"><p class="rail-content-state">${t('正在加载…')}</p></div></details>
           <section class="rail-card" data-followed-card${currentUser && tagDirectory?.followed?.size ? '' : ' hidden'}>

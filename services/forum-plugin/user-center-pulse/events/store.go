@@ -91,7 +91,24 @@ func (s *Store) Ensure(ctx context.Context) error {
 			return e
 		}
 	}
-	return nil
+	// Existing installations already have images. Add both fields together under the schema lock.
+	var columns int
+	if e = c.QueryRowContext(ctx, "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='metar_home_ad' AND column_name='revision'").Scan(&columns); e != nil {
+		return e
+	}
+	if columns == 0 {
+		_, e = c.ExecContext(ctx, "ALTER TABLE metar_home_ad ADD COLUMN note VARCHAR(300) CHARACTER SET utf8mb4 NOT NULL DEFAULT '', ADD COLUMN revision BIGINT UNSIGNED NOT NULL DEFAULT 1")
+	}
+	if e != nil {
+		return e
+	}
+	if e = c.QueryRowContext(ctx, "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='metar_home_ad' AND column_name='placement'").Scan(&columns); e != nil {
+		return e
+	}
+	if columns == 0 {
+		_, e = c.ExecContext(ctx, "ALTER TABLE metar_home_ad ADD COLUMN placement VARCHAR(8) NOT NULL DEFAULT 'side'")
+	}
+	return e
 }
 
 type queryer interface {
