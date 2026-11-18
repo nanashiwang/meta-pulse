@@ -6,7 +6,7 @@
   const out = x => 1 - Math.pow(1 - clamp(x), 3);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[char]));
   const icon = type => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${type === 'community_exp' ? '<path d="m12 2 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1Z"/>' : '<path d="m12 2 8 7-8 13L4 9 8 2Zm0 0L8 9l4 13 4-13-4-7ZM4 9h16"/>'}</svg>`;
-  const tiers = ['white', 'blue', 'purple', 'gold', 'red'];
+  const tiers = ['white', 'green', 'blue', 'gold', 'red', 'rainbow'];
   const tier = value => tiers.includes(value) ? value : 'white';
   const strongest = rewards => tiers[Math.max(0, ...rewards.map(reward => tiers.indexOf(tier(reward.tier))))];
   // All five cards finish inside the existing timeline, including a partial batch.
@@ -59,7 +59,7 @@
   function markup({ t }) {
     return `<section class="pulse-core" data-pulse-core data-stage="idle" aria-label="${esc(t('脉冲核心'))}">
       <div class="pc-header"><span class="pc-brand">METAR / PULSE</span><button type="button" class="pc-wallet" data-action="pulse-benefits" aria-haspopup="dialog" aria-controls="pulse-benefits" title="${esc(t('我的权益'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 7h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4V7Z"/><path d="m6 7 1-4 13 3M9 10v6m6-6v6"/></svg><span class="pc-tickets"></span><span aria-hidden="true">›</span></button></div>
-      <div class="pc-heading"><div class="pc-title"><h1>${esc(t('开启你的脉冲时刻'))}<span class="pc-title-spark" aria-hidden="true">ϟ</span></h1><details class="pc-help"><summary aria-label="${esc(t('抽取规则'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9 8a3 3 0 0 1 6 0c0 2-3 2-3 4m0 4v.5"/></svg></summary><div class="pc-help-panel" tabindex="0"><p>${esc(t('每次消耗 1 张券。额度用于 API 调用，经验用于社区升级，均不可转赠。'))}</p><p>${esc(t('五连抽可合并不同时间获得的券；每次使用最新规则，中断时保留已获得的奖励。'))}</p><p>${esc(t('白光为经验奖励；额度奖励依次为蓝光（小于 0.5 ⚡️）、紫光（0.5 起）、金光（2 起）、红光（10 起）。光效不影响中奖概率。'))}</p></div></details></div><p class="pc-subtitle">${esc(t('让每一次积累，在这一刻绽放。'))}</p></div>
+      <div class="pc-heading"><div class="pc-title"><h1>${esc(t('开启你的脉冲时刻'))}<span class="pc-title-spark" aria-hidden="true">ϟ</span></h1><details class="pc-help"><summary aria-label="${esc(t('抽取规则'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9 8a3 3 0 0 1 6 0c0 2-3 2-3 4m0 4v.5"/></svg></summary><div class="pc-help-panel" tabindex="0"><p>${esc(t('每次消耗 1 张券。额度用于 API 调用，经验用于社区升级，均不可转赠。'))}</p><p>${esc(t('五连抽可合并不同时间获得的券；每次使用最新规则，中断时保留已获得的奖励。'))}</p><p>${esc(t('闪奖光效：1 闪白光、2 闪绿光、5 闪蓝光、10 闪金光、50 闪红光、100 闪七彩炫光。纯经验奖为白光；光效不影响中奖概率。'))}</p></div></details></div><p class="pc-subtitle">${esc(t('让每一次积累，在这一刻绽放。'))}</p></div>
       <div class="pc-stage"><canvas aria-hidden="true"></canvas><div class="pc-horizon" aria-hidden="true"></div><span class="pc-annotation" aria-hidden="true">PULSE CORE</span>
         <div class="pc-reward" aria-hidden="true"></div>
       </div>

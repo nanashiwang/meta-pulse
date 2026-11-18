@@ -86,7 +86,7 @@ func collect(t *testing.T, s *Store) {
 		t.Fatal(e)
 	}
 }
-func TestMySQLTicketsSourcesCapsReplaysAndMidnight(t *testing.T) {
+func TestMySQLTicketsOnlyCheckinDespiteInteractionsAndReplays(t *testing.T) {
 	s, now := fixture(t)
 	db := s.DB
 	ctx := context.Background()
@@ -100,11 +100,11 @@ func TestMySQLTicketsSourcesCapsReplaysAndMidnight(t *testing.T) {
 	must(t, db, "INSERT INTO metar_exp_event VALUES(1,2,'checkin',?)", now.Unix())
 	collect(t, s)
 	p, e := s.Progress(ctx, "2")
-	if e != nil || p.Earned != 4 || p.Comments != 60 || p.Likes != 120 || !p.CheckedIn {
+	if e != nil || p.Earned != 1 || p.Comments != 60 || p.Likes != 120 || !p.CheckedIn {
 		t.Fatalf("progress %+v %v", p, e)
 	}
 	r, e := s.Progress(ctx, "1")
-	if e != nil || r.Earned != 2 || r.Received != 60 {
+	if e != nil || r.Earned != 0 || r.Received != 60 {
 		t.Fatalf("received %+v %v", r, e)
 	}
 	// Simulate cursor/HTTP response loss. Neither rerunning source ingestion nor
@@ -130,7 +130,7 @@ func TestMySQLTicketsSourcesCapsReplaysAndMidnight(t *testing.T) {
 		}
 	}
 	rows, e := s.Pending(ctx)
-	if e != nil || len(rows) != 6 {
+	if e != nil || len(rows) != 1 {
 		t.Fatalf("pending %d %v", len(rows), e)
 	}
 	for _, r := range rows {
@@ -196,9 +196,11 @@ func TestMySQLTicketsInvalidSourcesAndSeparateThresholds(t *testing.T) {
 	}
 	collect(t, s)
 	p, e = s.Progress(context.Background(), "2")
-	if e != nil || p.Earned != 1 || p.Comments != 20 {
+	if e != nil || p.Earned != 0 || p.Comments != 20 {
 		t.Fatalf("answers %+v %v", p, e)
 	}
+	// A previously enqueued interaction receipt still survives the new policy.
+	must(t, db, "INSERT INTO metar_ticket_outbox(user_id,external_id,earned_day,category,ordinal) VALUES(2,'102',?,'participation',1)", Day(*now))
 	newer := New(db)
 	newer.Now = s.Now
 	if e = newer.Ensure(context.Background()); e != nil {
@@ -206,7 +208,7 @@ func TestMySQLTicketsInvalidSourcesAndSeparateThresholds(t *testing.T) {
 	}
 	collect(t, newer)
 	rows, e := newer.Pending(context.Background())
-	if e != nil || len(rows) != 2 {
+	if e != nil || len(rows) != 1 || rows[0].Category != "participation" {
 		t.Fatalf("restart %+v %v", rows, e)
 	}
 }

@@ -31,7 +31,7 @@ func fixture(t *testing.T) (*Store, *time.Time) {
 	}
 	t.Cleanup(func() { db.Close() })
 	db.SetMaxOpenConns(12)
-	for _, table := range []string{"metar_award_title_preference", "metar_award_manual_payment", "metar_award_audit", "metar_award_command", "metar_award_winner", "metar_award_candidate", "metar_award_nomination", "metar_award_period", "activity", "config", "answer", "question", "user_role_rel", "user"} {
+	for _, table := range []string{"metar_award_recommendation_reward", "metar_award_title_preference", "metar_award_manual_payment", "metar_award_audit", "metar_award_command", "metar_award_winner", "metar_award_candidate", "metar_award_nomination", "metar_award_period", "activity", "config", "answer", "question", "user_role_rel", "user"} {
 		if _, err = db.Exec("DROP TABLE IF EXISTS " + "`" + table + "`"); err != nil {
 			t.Fatal(err)
 		}
@@ -344,5 +344,51 @@ func TestHonorsManualPaymentAndRevocationMySQL(t *testing.T) {
 	var count int
 	if err = s.DB.QueryRow("SELECT COUNT(*) FROM metar_award_manual_payment").Scan(&count); err != nil || count != 1 {
 		t.Fatal("payment history lost", err, count)
+	}
+}
+
+func TestMySQLRecommendationAwardAndPrivacy(t *testing.T) {
+	s, now := fixture(t)
+	ctx := context.Background()
+	for i := 10; i < 20; i++ {
+		if _, err := s.DB.Exec("INSERT INTO user VALUES(?,1,1,?,?)", i, fmt.Sprint(i), fmt.Sprint("推荐者", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 10; i < 20; i++ {
+		execute(t, s, fmt.Sprint(i), fmt.Sprintf("recommend-test-%d", i), Command{Op: "nominate", QuestionID: "100"}, false)
+	}
+	p := Weekly(*now, "post")
+	if _, err := s.Execute(ctx, "2", "recommend-over-limit", Command{Op: "nominate", QuestionID: "100"}, false); !errors.Is(err, ErrRecommendationLimit) {
+		t.Fatalf("cap %v", err)
+	}
+	*now = now.AddDate(0, 0, 9)
+	candidate, err := s.List(ctx, "3", p, 1, true)
+	if err != nil || len(candidate.Items) != 1 || len(candidate.Items[0].Recommendations) != 10 || candidate.Items[0].Recommendations[0].Cents != 300 {
+		t.Fatalf("admin preview %+v %v", candidate, err)
+	}
+	first := execute(t, s, "3", "recommend-review-01", Command{Op: "select", Period: p, SubjectID: "100", Reason: "价值标准均满足", CriterionOne: true, CriterionTwo: true, Version: candidate.Version}, true)
+	publish := Command{Op: "publish", Period: p, Version: first.Version}
+	published := execute(t, s, "3", "recommend-publish-01", publish, true)
+	execute(t, s, "3", "recommend-publish-01", publish, true)
+	pub, err := s.List(ctx, "", p, 1, false)
+	if err != nil || len(pub.Items) != 1 || len(pub.Items[0].Recommendations) != 0 {
+		t.Fatalf("public referral privacy %+v %v", pub, err)
+	}
+	mine, err := s.Honors(ctx, "10", "", 1)
+	if err != nil || len(mine.Badges) != 1 || mine.Badges[0].Kind != "recommendation" || mine.Badges[0].Count != 1 || len(mine.Recommendations) != 1 || mine.Recommendations[0].Cents != 300 {
+		t.Fatalf("honors %+v %v", mine, err)
+	}
+	pay := Command{Op: "rec_paid", Period: p, SubjectID: "100", RecommenderID: "10", Reason: "实际发放凭据", Version: published.Version}
+	paid := execute(t, s, "3", "recommend-payment-1", pay, true)
+	execute(t, s, "3", "recommend-payment-1", pay, true)
+	mine, err = s.Honors(ctx, "10", "", 1)
+	if err != nil || len(mine.Recommendations) != 1 || mine.Recommendations[0].PaidAt == 0 {
+		t.Fatalf("receipt %+v %v", mine, err)
+	}
+	execute(t, s, "3", "recommend-revoke-01", Command{Op: "revoke", Period: p, SubjectID: "100", Version: paid.Version, Reason: "撤销测试"}, true)
+	mine, err = s.Honors(ctx, "10", "", 1)
+	if err != nil || len(mine.Badges) != 0 || len(mine.Recommendations) != 0 {
+		t.Fatalf("revoked honor %+v %v", mine, err)
 	}
 }

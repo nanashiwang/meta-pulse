@@ -169,3 +169,21 @@ func TestDrawBonusPolicyCarriesActiveTiersAndDoesNotRepublishLaterRules(t *testi
 		t.Fatalf("upgrade replaced later rule: %+v %v", replay, err)
 	}
 }
+
+func TestSigninBudgetPrizesExactExpectation(t *testing.T) {
+	rows, err := SigninBudgetPrizes(100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var weight uint64
+	var weighted int64
+	for _, d := range rows {
+		if d.RewardType == "newapi_quota" {
+			weight += d.Weight
+			weighted += int64(d.Weight) * d.Amount
+		}
+	}
+	if weight != 1000 || weighted != 242000 || len(rows) != 9 || rows[6].Amount != 1 || rows[8].Weight != 20 {
+		t.Fatalf("unexpected pool %v", rows)
+	}
+}

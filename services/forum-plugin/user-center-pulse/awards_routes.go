@@ -185,6 +185,8 @@ func (uc *UserCenter) awardHandler(op string, session func(*gin.Context) (string
 				status, code = 404, "not_found"
 			case errors.Is(err, awards.ErrClosed):
 				status, code = 409, "period_closed"
+			case errors.Is(err, awards.ErrRecommendationLimit):
+				status, code = 409, "recommendation_limit"
 			case errors.Is(err, awards.ErrQuota):
 				status, code = 409, "nomination_limit"
 			case errors.Is(err, awards.ErrConflict):

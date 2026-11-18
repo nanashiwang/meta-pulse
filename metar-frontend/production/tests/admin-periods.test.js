@@ -88,22 +88,22 @@ test('quota expectation includes experience weight and avoids unsafe products',(
  assert.match(context.MetarPeriodAdmin.quotaExpectation([{type:'newapi_quota',amount:Number.MAX_SAFE_INTEGER,weight:Number.MAX_SAFE_INTEGER}]),/9007199254740991\.0000$/);
 });
 
-test('2.5-unit pool gives exactly 2.5 ⚡️ expected per eligible ticket across quota conversion rates',()=>{
+test('2.42-unit pool keeps the six tiers and calculates independent EXP',()=>{
  const {context}=harness();
  const {recommendedRewards,rewardPreview}=context.MetarPeriodAdmin;
  for (const unit of [100000,500000,3]) {
   const rows=recommendedRewards(unit);
   assert.equal(rows.length,9);
-  assert.equal(rows.map(r=>r.weight).join(','),'450,300,100,40,9,1,50,30,20');
+  assert.equal(rows.map(r=>r.weight).join(','),'570,300,100,20,9,1,50,30,20');
   assert.equal(rows.slice(0,6).map(r=>r.amount).join(','),[1,2,5,10,50,100].map(n=>unit*n).join(','));
   assert.equal(rows.slice(6).map(r=>r.amount).join(','),'1,4,20');
   const stats=context.MetarAdapters.pulseRewardStats(rows);
-  assert.equal(stats.total,1000n);assert.equal(stats.quotaWeight,900n);
-  assert.equal(stats.quotaAmount*2n,5n*BigInt(unit)*stats.total);
-  assert.equal(stats.expAmount*100n,57n*stats.total);
+  assert.equal(stats.total,1100n);assert.equal(stats.quotaWeight,1000n);
+  assert.equal(stats.quotaAmount*100n,242n*BigInt(unit)*stats.quotaWeight);
+  assert.equal(stats.expAmount*100n,57n*stats.expWeight*10n);
   assert.equal(stats.expAmount*10n,57n*stats.expWeight);
-  const html=rewardPreview(rows,unit);
-  for(const v of ['45%','30%','10%','4%','0.9%','0.1%','5%','3%','2%','50%','30%','20%','90%','2.5 ⚡️','0.57 EXP','5.7 EXP']) assert.ok(html.includes(v),v);
+  const html=rewardPreview(rows,unit,true);
+  for(const v of ['57%','30%','10%','2%','0.9%','0.1%','5%','3%','50%','20%','100%','2.42 ⚡️','0.57 EXP','5.7 EXP']) assert.ok(html.includes(v),v);
  }
  for(const unit of [0,-4,1.5,Math.floor(Number.MAX_SAFE_INTEGER/99)]) assert.equal(recommendedRewards(unit),null);
  // Mutating a returned form must not change the next preset.
@@ -116,7 +116,7 @@ test('loading the pool changes only prizes and reason, preserving validity and p
  for(const [key,value] of Object.entries(original))h.form.querySelector(`[name="${key}"]`).value=value;
  h.view.action('admin-period-preset');
  for(const [key,value] of Object.entries(original))assert.equal(h.form.querySelector(`[name="${key}"]`).value,value);
- assert.match(h.form.querySelector('[data-period-prizes]').innerHTML,/value="450"/);
+ assert.match(h.form.querySelector('[data-period-prizes]').innerHTML,/value="570"/);
  assert.match(h.form.querySelector('[data-period-expectation]').innerHTML,/0.57 EXP/);
  assert.equal(h.view.pending,null);assert.equal(h.storage.size,0);
  const html=h.form.querySelector('[data-period-prizes]').innerHTML;
@@ -145,5 +145,5 @@ test('new prize preview reports guaranteed flash and independent bonus experienc
  const {context}=harness();
  const {recommendedRewards,rewardPreview}=context.MetarPeriodAdmin;
  const html=rewardPreview(recommendedRewards(100),100,true);
- for(const value of ['100%','50%','33.3333%','11.1111%','10%','5%','3%','2%','2.7777','0.57 EXP','5.7 EXP']) assert.ok(html.includes(value),value);
+ for(const value of ['100%','57%','30%','10%','5%','3%','2%','2.42','0.57 EXP','5.7 EXP']) assert.ok(html.includes(value),value);
 });

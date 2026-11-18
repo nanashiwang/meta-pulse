@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/go-sql-driver/mysql"
 )
 
 type Store struct {
@@ -24,11 +26,24 @@ func (s *Store) Ensure(ctx context.Context) error {
 		"CREATE TABLE IF NOT EXISTS metar_award_candidate(period_type VARCHAR(8) NOT NULL,period_key VARCHAR(10) NOT NULL,kind VARCHAR(10) NOT NULL,subject_id BIGINT UNSIGNED NOT NULL,user_id BIGINT UNSIGNED NOT NULL,question_id BIGINT UNSIGNED NOT NULL,answer_id BIGINT UNSIGNED NOT NULL DEFAULT 0,status VARCHAR(16) NOT NULL DEFAULT 'pending',reason TEXT NOT NULL,criterion_one TINYINT NOT NULL DEFAULT 0,criterion_two TINYINT NOT NULL DEFAULT 0,review_hash CHAR(64) NOT NULL DEFAULT '',created_at BIGINT NOT NULL,PRIMARY KEY(period_type,period_key,kind,subject_id),KEY by_user(user_id)) ENGINE=InnoDB",
 		"CREATE TABLE IF NOT EXISTS metar_award_nomination(user_id BIGINT UNSIGNED NOT NULL,question_id BIGINT UNSIGNED NOT NULL,click_day CHAR(10) NOT NULL,click_week CHAR(10) NOT NULL,created_at BIGINT NOT NULL,PRIMARY KEY(user_id,question_id),KEY daily_quota(user_id,click_day),KEY weekly_quota(user_id,click_week)) ENGINE=InnoDB",
 		"CREATE TABLE IF NOT EXISTS metar_award_winner(period_type VARCHAR(8) NOT NULL,period_key VARCHAR(10) NOT NULL,kind VARCHAR(10) NOT NULL,user_id BIGINT UNSIGNED NOT NULL,subject_id BIGINT UNSIGNED NOT NULL,question_id BIGINT UNSIGNED NOT NULL,answer_id BIGINT UNSIGNED NOT NULL DEFAULT 0,month_key CHAR(7) NOT NULL,status VARCHAR(20) NOT NULL DEFAULT 'awarded',reason TEXT NOT NULL,amount INT NOT NULL,reward_status VARCHAR(20) NOT NULL DEFAULT 'deferred',created_at BIGINT NOT NULL,PRIMARY KEY(period_type,period_key,kind,user_id),KEY monthly_source(period_type,month_key,kind,user_id,status)) ENGINE=InnoDB",
+		"CREATE TABLE IF NOT EXISTS metar_award_recommendation_reward(period_key CHAR(10) NOT NULL,question_id BIGINT UNSIGNED NOT NULL,user_id BIGINT UNSIGNED NOT NULL,cents INT NOT NULL,paid_by BIGINT UNSIGNED NULL,paid_at BIGINT NOT NULL DEFAULT 0,payment_note TEXT NULL,PRIMARY KEY(question_id,user_id),KEY by_user(user_id,period_key)) ENGINE=InnoDB",
 		"CREATE TABLE IF NOT EXISTS metar_award_command(actor_id BIGINT UNSIGNED NOT NULL,request_key VARCHAR(80) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,fingerprint CHAR(64) NOT NULL,result_json TEXT NOT NULL,created_at BIGINT NOT NULL,PRIMARY KEY(actor_id,request_key)) ENGINE=InnoDB",
 		"CREATE TABLE IF NOT EXISTS metar_award_audit(id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,actor_id BIGINT UNSIGNED NOT NULL,period_type VARCHAR(8) NOT NULL,period_key VARCHAR(10) NOT NULL,kind VARCHAR(10) NOT NULL,subject_id BIGINT UNSIGNED NOT NULL DEFAULT 0,operation VARCHAR(16) NOT NULL,reason TEXT NOT NULL,created_at BIGINT NOT NULL,KEY by_period(period_type,period_key,kind,id)) ENGINE=InnoDB",
 	} {
 		if _, err := s.DB.ExecContext(ctx, query); err != nil {
 			return err
+		}
+	}
+	var indexExists int
+	if err := s.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='metar_award_nomination' AND index_name='by_question'").Scan(&indexExists); err != nil {
+		return err
+	}
+	if indexExists == 0 {
+		if _, err := s.DB.ExecContext(ctx, "CREATE INDEX by_question ON metar_award_nomination(question_id,created_at,user_id)"); err != nil {
+			var mysqlErr *mysql.MySQLError
+			if !errors.As(err, &mysqlErr) || mysqlErr.Number != 1061 {
+				return err
+			}
 		}
 	}
 	return nil
@@ -135,7 +150,7 @@ func (s *Store) Execute(ctx context.Context, actor, key string, c Command, admin
 		if err == nil && version != c.Version {
 			err = ErrConflict
 		}
-		if err == nil && c.Op != "revoke" && c.Op != "reconfirm" && c.Op != "paid" && status != "open" {
+		if err == nil && c.Op != "revoke" && c.Op != "reconfirm" && c.Op != "paid" && c.Op != "rec_paid" && status != "open" {
 			err = ErrClosed
 		}
 		if err == nil {
@@ -148,6 +163,8 @@ func (s *Store) Execute(ctx context.Context, actor, key string, c Command, admin
 				err = s.publish(ctx, tx, p, now)
 			case "revoke":
 				err = s.revoke(ctx, tx, c, now)
+			case "rec_paid":
+				err = s.markRecommendationPaid(ctx, tx, actor, c, now)
 			case "paid":
 				err = s.markPaid(ctx, tx, actor, c, now)
 			case "reconfirm":
@@ -230,6 +247,11 @@ func (s *Store) nominate(ctx context.Context, tx *sql.Tx, actor, id string, now 
 	}
 	if state != "open" {
 		return p, false, ErrClosed
+	}
+	if n, err := nominationCountLocked(ctx, tx, id); err != nil {
+		return p, false, err
+	} else if n >= RecommendationLimit {
+		return p, false, ErrRecommendationLimit
 	}
 	if _, err = tx.ExecContext(ctx, "INSERT INTO metar_award_nomination VALUES(?,?,?,?,?)", actor, id, day, week, now.Unix()); err != nil {
 		return p, false, err

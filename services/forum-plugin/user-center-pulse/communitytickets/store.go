@@ -307,7 +307,7 @@ func (s *Store) record(ctx context.Context, e source, stream, kind, user string)
 	if err != nil {
 		return err
 	}
-	limits := Entitlements(counts["like"], counts["comment"], counts["received"], counts["checkin"] > 0, day)
+	limits := Entitlements(0, 0, 0, counts["checkin"] > 0, day)
 	// A check-in already issued by the old collector keeps its original receipt.
 	// Later interactions must not reclassify that same check-in into three more.
 	if limits["checkin_weekly"] > 0 {
@@ -319,7 +319,9 @@ func (s *Store) record(ctx context.Context, e source, stream, kind, user string)
 			delete(limits, "checkin_weekly")
 		}
 	}
-	for _, category := range []string{"received", "participation", "checkin", "checkin_weekly"} {
+	// Interaction sources remain readable for historical receipts; only check-in
+	// creates new outbox rows. Previously enqueued rows still drain.
+	for _, category := range []string{"checkin", "checkin_weekly"} {
 		for i := 1; i <= limits[category]; i++ {
 			if _, err = tx.ExecContext(ctx, `INSERT IGNORE INTO metar_ticket_outbox(user_id,external_id,earned_day,category,ordinal) VALUES(?,?,?,?,?)`, user, external, day, category, i); err != nil {
 				return err

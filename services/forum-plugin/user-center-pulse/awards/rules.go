@@ -12,6 +12,7 @@ var ErrInvalid = errors.New("invalid_request")
 var ErrForbidden = errors.New("forbidden")
 var ErrClosed = errors.New("period_closed")
 var ErrQuota = errors.New("nomination_limit")
+var ErrRecommendationLimit = errors.New("recommendation_limit")
 var ErrConflict = errors.New("conflict")
 var ErrNotFound = errors.New("not_found")
 var ErrNotReady = errors.New("review_not_ready")
@@ -90,15 +91,16 @@ func MonthWeeks(p Period) ([]string, error) {
 }
 
 type Command struct {
-	TitleKey     string `json:"title_key"`
-	Op           string `json:"op"`
-	Period       Period `json:"period"`
-	SubjectID    string `json:"subject_id"`
-	QuestionID   string `json:"question_id"`
-	Reason       string `json:"reason"`
-	CriterionOne bool   `json:"criterion_one"`
-	CriterionTwo bool   `json:"criterion_two"`
-	Version      int64  `json:"version"`
+	TitleKey      string `json:"title_key"`
+	Op            string `json:"op"`
+	Period        Period `json:"period"`
+	SubjectID     string `json:"subject_id"`
+	QuestionID    string `json:"question_id"`
+	Reason        string `json:"reason"`
+	RecommenderID string `json:"recommender_id,omitempty"`
+	CriterionOne  bool   `json:"criterion_one"`
+	CriterionTwo  bool   `json:"criterion_two"`
+	Version       int64  `json:"version"`
 }
 
 func (c Command) Validate() error {
@@ -122,6 +124,11 @@ func (c Command) Validate() error {
 	}
 	switch c.Op {
 	case "sync", "publish":
+		return nil
+	case "rec_paid":
+		if c.Period.Type != "week" || c.Period.Kind != "post" || !idRE.MatchString(c.SubjectID) || !idRE.MatchString(c.RecommenderID) || strings.TrimSpace(c.Reason) == "" || len([]rune(c.Reason)) > 2000 {
+			return ErrInvalid
+		}
 		return nil
 	case "select", "reject", "revoke", "reconfirm", "paid":
 		if !idRE.MatchString(c.SubjectID) || strings.TrimSpace(c.Reason) == "" || len([]rune(c.Reason)) > 2000 {

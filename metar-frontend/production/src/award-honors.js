@@ -16,6 +16,7 @@
     if (rows !== null && !Array.isArray(rows)) throw new Error('invalid badge data');
     const types = [
       {kind:'post',name:'编辑者',en:'Editor',icon:'bi-pencil-fill',condition:translate('获得周度或月度优秀帖子奖','Win a weekly or monthly Outstanding Post award')},
+      {kind:'recommendation',name:'伯乐',en:'Talent Scout',icon:'bi-stars',condition:translate('推荐的帖子获得优秀帖子周奖，每篇累计一次','Earn once per recommended post that wins a weekly Outstanding Post award')},
       {kind:'response',name:'学者',en:'Scholar',icon:'bi-check-circle-fill',condition:translate('获得周度或月度优秀回应奖','Win a weekly or monthly Outstanding Response award')},
     ];
     return types.map(type => {
@@ -124,6 +125,10 @@
               '" target="_blank" rel="noopener">查看获奖内容 ↗</a></article>',
           )
           .join("") +
+        (d.recommendations?.length ? '<h2 class="mt24">' + translate('推荐获奖记录','Recommendation rewards') + '</h2>' + d.recommendations.map(r => {
+          const title = r.title ? '<a href="/questions/' + esc(r.question_id) + '">' + esc(r.title) + '</a>' : translate('帖子暂不可见','Post unavailable');
+          return '<article class="card card-pad mt8">' + title + '<p>' + esc(r.period_key) + ' · ' + esc((r.cents / 100).toFixed(2)) + ' ⚡️ · ' + (r.paid_at ? translate('已手动发放','Manually delivered') : translate('待手动发放','Pending manual delivery')) + '</p></article>';
+        }).join('') : '') +
         '<div class="flex mt16">' +
         (this.pageNo > 1
           ? '<a href="/awards?view=honors&page=' +

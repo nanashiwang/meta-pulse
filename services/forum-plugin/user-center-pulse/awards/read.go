@@ -86,6 +86,12 @@ func (s *Store) List(ctx context.Context, user string, p Period, page int, admin
 			if err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM metar_award_nomination WHERE question_id=?", c.QuestionID).Scan(&c.Nominations); err != nil {
 				return out, err
 			}
+			if admin {
+				c.Recommendations, err = listRecommendations(ctx, tx, c.QuestionID, out.Status == "published", false)
+				if err != nil {
+					return out, err
+				}
+			}
 		}
 		if out.Status == "published" {
 			c.Amount = p.Amount()
@@ -110,12 +116,13 @@ func (s *Store) List(ctx context.Context, user string, p Period, page int, admin
 }
 
 type NominationStatus struct {
-	CanNominate     bool   `json:"can_nominate"`
-	Nominated       bool   `json:"nominated"`
-	DailyRemaining  int    `json:"daily_remaining"`
-	WeeklyRemaining int    `json:"weekly_remaining"`
-	Period          Period `json:"period"`
-	ClosesAt        int64  `json:"closes_at"`
+	CanNominate         bool   `json:"can_nominate"`
+	Nominated           bool   `json:"nominated"`
+	RecommendationCount int    `json:"recommendation_count"`
+	DailyRemaining      int    `json:"daily_remaining"`
+	WeeklyRemaining     int    `json:"weekly_remaining"`
+	Period              Period `json:"period"`
+	ClosesAt            int64  `json:"closes_at"`
 }
 
 func (s *Store) Status(ctx context.Context, user, id string) (NominationStatus, error) {
@@ -157,10 +164,13 @@ func (s *Store) Status(ctx context.Context, user, id string) (NominationStatus, 
 	if err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM metar_award_nomination WHERE user_id=? AND question_id=?", user, id).Scan(&nominated); err != nil {
 		return out, err
 	}
+	if err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM metar_award_nomination WHERE question_id=?", id).Scan(&out.RecommendationCount); err != nil {
+		return out, err
+	}
 	out.Nominated = nominated > 0
 	out.DailyRemaining = max(0, 2-daily)
 	out.WeeklyRemaining = max(0, 10-weekly)
-	out.CanNominate = owner != user && !out.Nominated && CanNominate(created, now) && daily < 2 && weekly < 10
+	out.CanNominate = owner != user && !out.Nominated && CanNominate(created, now) && daily < 2 && weekly < 10 && out.RecommendationCount < RecommendationLimit
 	return out, nil
 }
 

@@ -151,7 +151,7 @@
           "周奖50闪、月奖100闪由管理员手动发放；头衔与勋章在公布入选时获得。",
           "Rewards are delivered manually; titles and medals are granted upon publication.",
         ) +
-        `</p><p><a href="/awards?view=honors">我的头衔与勋章</a></p><details><summary>` +
+        `</p><p>` + t("推荐的帖子获得周奖后，前 10 位有效推荐者平分 20 闪，每人至少 3 闪，并各获一次「伯乐」勋章。闪由管理员手动发放，同帖月奖不重复发。", "When a recommended post wins a weekly award, the first 10 recommenders share 20 credits (minimum 3 each) and each earn a Talent Scout medal. Credits are paid manually; the monthly award does not pay again.") + `</p><p><a href="/awards?view=honors">我的头衔与勋章</a></p><details><summary>` +
         t("参与规则", "Participation rules") +
         `</summary><p>` +
         t(
@@ -261,6 +261,7 @@
                       c.nominations +
                       `</p>`
                     : "") +
+                  (this.admin ? this.recommendationList(c) : "") +
                   (c.sources?.length
                     ? "<p>" +
                       t("月度来源：", "Weekly sources: ") +
@@ -417,6 +418,18 @@
           })),
         );
     }
+    recommendationList(c) {
+      if (!c.recommendations?.length) return '';
+      const published = this.data.status === 'published';
+      return '<details class="mt8"><summary>' + esc(t('推荐名单', 'Recommenders')) + ' · ' + esc(c.nominations) + '</summary><ul>' + c.recommendations.map(row => {
+        const hasAward = Number.isInteger(row.cents) && row.cents > 0;
+        const value = hasAward ? ' · ' + (row.cents / 100).toFixed(2) + ' ⚡️' : '';
+        const label = row.paid_at ? t('已手动发放', 'Manually delivered') : c.status === 'revoked' ? t('已撤销', 'Revoked') : t('待手动发放', 'Pending manual delivery');
+        const action = published && hasAward && !row.paid_at && c.status === 'awarded'
+          ? ' <button type="button" class="btn small" data-award="rec_paid" data-recommender="' + esc(row.user_id) + '">' + esc(t('登记发放', 'Record delivery')) + '</button>' : '';
+        return '<li>' + esc(row.name) + ' <small>ID ' + esc(row.user_id) + '</small>' + value + (published && hasAward ? ' · ' + label : '') + action + '</li>';
+      }).join('') + '</ul></details>';
+    }
     feedbackTarget(button) {
       return button?.closest("[data-candidate]")?.querySelector("[data-award-feedback]") || this.root?.querySelector("[data-award-error]");
     }
@@ -497,7 +510,15 @@
         return;
       const item = b.closest("[data-candidate]");
       const cmd = { op, period: this.period, version: this.data.version };
-      if (item) {
+      if (op === 'rec_paid') {
+        if (!item) return;
+        const reason = root.prompt(t('请在实际发放后输入凭据或备注。此操作仅登记，不会转账。', 'After paying, enter a receipt or note. This records delivery and does not transfer credits.'));
+        if (reason === null) return;
+        if (!reason.trim() || Array.from(reason.trim()).length > 2000) throw Error('reason_required');
+        cmd.subject_id = item.dataset.candidate;
+        cmd.recommender_id = b.dataset.recommender;
+        cmd.reason = reason.trim();
+      } else if (item) {
         cmd.subject_id = item.dataset.candidate;
         const reason = item.querySelector("[data-reason]");
         cmd.reason = reason.value.trim();

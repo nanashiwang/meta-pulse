@@ -10,26 +10,27 @@ import (
 )
 
 type Candidate struct {
-	PaidAt       int64    `json:"paid_at,omitempty"`
-	PaidBy       string   `json:"paid_by,omitempty"`
-	PaymentNote  string   `json:"payment_note,omitempty"`
-	ReviewHash   string   `json:"-"`
-	ContentHash  string   `json:"-"`
-	SubjectID    string   `json:"subject_id"`
-	UserID       string   `json:"user_id"`
-	QuestionID   string   `json:"question_id"`
-	AnswerID     string   `json:"answer_id"`
-	Status       string   `json:"status"`
-	Reason       string   `json:"reason"`
-	CriterionOne bool     `json:"criterion_one"`
-	CriterionTwo bool     `json:"criterion_two"`
-	Title        string   `json:"title"`
-	Name         string   `json:"name"`
-	Eligible     bool     `json:"eligible"`
-	Nominations  int      `json:"nominations"`
-	Sources      []Source `json:"sources,omitempty"`
-	Amount       int      `json:"amount,omitempty"`
-	RewardStatus string   `json:"reward_status,omitempty"`
+	PaidAt          int64            `json:"paid_at,omitempty"`
+	PaidBy          string           `json:"paid_by,omitempty"`
+	PaymentNote     string           `json:"payment_note,omitempty"`
+	ReviewHash      string           `json:"-"`
+	ContentHash     string           `json:"-"`
+	SubjectID       string           `json:"subject_id"`
+	UserID          string           `json:"user_id"`
+	QuestionID      string           `json:"question_id"`
+	AnswerID        string           `json:"answer_id"`
+	Status          string           `json:"status"`
+	Reason          string           `json:"reason"`
+	CriterionOne    bool             `json:"criterion_one"`
+	CriterionTwo    bool             `json:"criterion_two"`
+	Title           string           `json:"title"`
+	Name            string           `json:"name"`
+	Eligible        bool             `json:"eligible"`
+	Nominations     int              `json:"nominations"`
+	Recommendations []Recommendation `json:"recommendations,omitempty"`
+	Sources         []Source         `json:"sources,omitempty"`
+	Amount          int              `json:"amount,omitempty"`
+	RewardStatus    string           `json:"reward_status,omitempty"`
 }
 type Source struct {
 	Week       string `json:"week"`
@@ -281,6 +282,9 @@ func (s *Store) publish(ctx context.Context, tx *sql.Tx, p Period, now time.Time
 		}
 		_, err = tx.ExecContext(ctx, "INSERT INTO metar_award_winner(period_type,period_key,kind,user_id,subject_id,question_id,answer_id,month_key,reason,amount,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)", p.Type, p.Key, p.Kind, c.UserID, c.SubjectID, c.QuestionID, c.AnswerID, p.Key[:7], c.Reason, p.Amount(), now.Unix())
 		if err != nil {
+			return err
+		}
+		if err = freezeRecommendationRewards(ctx, tx, p, c); err != nil {
 			return err
 		}
 	}

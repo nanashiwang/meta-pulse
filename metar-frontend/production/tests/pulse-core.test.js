@@ -139,8 +139,8 @@ test('the presentation contains no placeholder prize and translates all its visi
 });
 
 test('five cards keep their own tier, share the strongest burst and escape displayed values', () => {
-  const rewards=['white','red','blue','gold','purple'].map(tier=>({tier,type:'newapi_quota',amount:'<img>',unit:'⚡️',status:'pending',pending:true}));
-  assert.equal(strongest(rewards),'red');
+  const rewards=['white','rainbow','blue','gold','green'].map(tier=>({tier,type:'newapi_quota',amount:'<img>',unit:'⚡️',status:'pending',pending:true}));
+  assert.equal(strongest(rewards),'rainbow');
   const html=cards({rewards,total:5});
   assert.equal((html.match(/class="pc-card"/g)||[]).length,5);
   assert.doesNotMatch(html,/<img>/); assert.match(html,/&lt;img&gt;/);

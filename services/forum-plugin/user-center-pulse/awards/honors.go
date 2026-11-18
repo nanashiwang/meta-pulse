@@ -27,12 +27,13 @@ type HonorRecord struct {
 	GrantedAt  int64  `json:"granted_at"`
 }
 type Honors struct {
-	Titles    []Title       `json:"titles"`
-	Selected  *Title        `json:"selected"`
-	Selection string        `json:"selection"`
-	Badges    []Badge       `json:"badges"`
-	Records   []HonorRecord `json:"records"`
-	More      bool          `json:"more"`
+	Titles          []Title               `json:"titles"`
+	Selected        *Title                `json:"selected"`
+	Selection       string                `json:"selection"`
+	Badges          []Badge               `json:"badges"`
+	Records         []HonorRecord         `json:"records"`
+	More            bool                  `json:"more"`
+	Recommendations []RecommendationHonor `json:"recommendations,omitempty"`
 }
 
 func titleKey(kind, period string) string { return kind + "-" + period }
@@ -153,7 +154,13 @@ func (s *Store) Honors(ctx context.Context, user, username string, page int) (Ho
 	if out.More {
 		out.Records = out.Records[:20]
 	}
-	return out, rows.Err()
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return out, err
+	}
+	err = addRecommendationHonors(ctx, tx, user, page, &out)
+	return out, err
 }
 func (s *Store) chooseTitle(ctx context.Context, tx *sql.Tx, user, key string) error {
 	if !validTitle(key) {

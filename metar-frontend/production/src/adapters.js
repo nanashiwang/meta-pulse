@@ -282,7 +282,7 @@
     if (reward?.reward_type !== 'newapi_quota' || !Number.isSafeInteger(reward.amount) || reward.amount <= 0
       || !Number.isSafeInteger(perUnit) || perUnit <= 0) return 'white';
     const amount = BigInt(reward.amount), unit = BigInt(perUnit);
-    return amount >= unit * 10n ? 'red' : amount >= unit * 2n ? 'gold' : amount * 2n >= unit ? 'purple' : 'blue';
+    return amount >= unit * 100n ? 'rainbow' : amount >= unit * 50n ? 'red' : amount >= unit * 10n ? 'gold' : amount >= unit * 5n ? 'blue' : amount >= unit * 2n ? 'green' : 'white';
   }
 
   function formatPulseQuota(amount, perUnit, language = 'zh_CN') {

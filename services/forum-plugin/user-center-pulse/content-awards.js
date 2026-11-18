@@ -96,7 +96,11 @@ export function installContentAwards(options, host = window) {
       text("查看评选规则与获奖名单", "Rules and award winners"),
     );
     link.href = "/awards";
-    current.append(title, info, link);
+    const guidance = make('p', text(
+      '每帖最多 10 人推荐。帖子获优秀帖子周奖后，推荐者平分 20 闪，每人至少 3 闪，并获得一次「伯乐」勋章；同帖月奖不重复发。',
+      'Up to 10 recommendations per post. If the post wins a weekly award, recommenders split 20 credits with a 3-credit minimum each and earn a Talent Scout medal. Monthly awards do not pay twice.'
+    ));
+    current.append(title, info, guidance, link);
     if (!user?.id) {
       const login = make("a", text("登录后提名", "Sign in to nominate"));
       login.href = "/users/login";
@@ -116,6 +120,7 @@ export function installContentAwards(options, host = window) {
     const showError = (e) => {
       if (!live()) return;
       const messages = {
+        recommendation_limit: ["该帖已有 10 人推荐。", "This post already has 10 recommenders."],
         nomination_limit: [
           "今日或本周提名次数已用完。",
           "Daily or weekly nomination limit reached.",
@@ -141,7 +146,9 @@ export function installContentAwards(options, host = window) {
         );
         if (!live()) return;
         button.disabled = !result.can_nominate;
-        button.textContent = result.nominated
+        button.textContent = !result.nominated && result.recommendation_count >= 10
+          ? text("推荐已满", "Recommendations full")
+          : result.nominated
           ? text("已提名", "Nominated")
           : text("优秀稿件", "Nominate post");
         status.textContent =

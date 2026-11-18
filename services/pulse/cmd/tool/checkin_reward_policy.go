@@ -44,7 +44,7 @@ func runCheckinRewardPolicy() error {
 	if err != nil {
 		return err
 	}
-	bonus, err := creator.ApplyDrawBonusPolicy(ctx, cfg.QuotaPerUnit)
+	bonus, err := creator.ApplySigninBudgetPolicy(ctx, cfg.QuotaPerUnit)
 	if err != nil {
 		return err
 	}

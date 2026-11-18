@@ -35,6 +35,23 @@ func (s *PeriodCreateService) ApplyCheckinRewardPolicy(ctx context.Context, unit
 	return s.applyCheckinRewardPolicy(ctx, unit, CheckinRewardPolicyKey, "周一周五签到各赠3券，发布每券期望2.5闪的奖池")
 }
 
+const SigninBudgetPolicyKey = drawBonusVersionPrefix + "signin-budget-20261118"
+
+func SigninBudgetPrizes(unit int64) ([]PeriodRewardSpec, error) {
+	rows, err := CheckinRewardPrizes(unit)
+	if err != nil {
+		return nil, err
+	}
+	for i, w := range []uint64{570, 300, 100, 20, 9, 1} {
+		rows[i].Weight = w
+	}
+	return rows, nil
+}
+
+func (s *PeriodCreateService) ApplySigninBudgetPolicy(ctx context.Context, unit int64) (PeriodCreateResult, error) {
+	return s.applyCheckinRewardPolicy(ctx, unit, SigninBudgetPolicyKey, "仅签到赠新券；有效券每抽期望2.42闪")
+}
+
 // ApplyDrawBonusPolicy leaves both voucher grant records and the original
 // check-in policy key untouched; the latter is also the ticket rollout cutoff.
 func (s *PeriodCreateService) ApplyDrawBonusPolicy(ctx context.Context, unit int64) (PeriodCreateResult, error) {
@@ -70,7 +87,12 @@ func (s *PeriodCreateService) applyCheckinRewardPolicy(ctx context.Context, unit
 			return errors.New("check-in policy requires current continuous rules")
 		}
 		var prizes []PeriodRewardSpec
-		if usesDrawBonus(key) {
+		if key == SigninBudgetPolicyKey {
+			prizes, err = SigninBudgetPrizes(unit)
+			if err != nil {
+				return err
+			}
+		} else if usesDrawBonus(key) {
 			// Change how the existing weights are used, not the operator's tiers.
 			defs, err := r.Reward.ListDefinitions(ctx, p.ID)
 			if err != nil {

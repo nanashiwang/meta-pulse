@@ -142,13 +142,13 @@ test('corrupt or blocked recovery storage never silently replaces an existing op
   assert.throws(()=>store.begin(5, choice),error=>error.code==='storage_unavailable');
 });
 
-test('five presentation tiers use exact boundaries without changing reward amounts', () => {
+test('six presentation tiers use exact boundaries without changing reward amounts', () => {
   const quota = amount => ({reward_type:'newapi_quota',amount});
   const unit=500000;
   assert.equal(pulseRewardTier({reward_type:'community_exp',amount:100},unit),'white');
-  for(const [amount,tier] of [[1,'blue'],[249999,'blue'],[250000,'purple'],[999999,'purple'],[1000000,'gold'],[4999999,'gold'],[5000000,'red']]) assert.equal(pulseRewardTier(quota(amount),unit),tier);
-  assert.equal(pulseRewardTier(quota(1),3),'blue');assert.equal(pulseRewardTier(quota(2),3),'purple');
-  assert.equal(pulseRewardTier(quota(Number.MAX_SAFE_INTEGER),Number.MAX_SAFE_INTEGER),'purple');
+  for(const [amount,tier] of [[1,'white'],[500000,'white'],[999999,'white'],[1000000,'green'],[2499999,'green'],[2500000,'blue'],[5000000,'gold'],[25000000,'red'],[50000000,'rainbow']]) assert.equal(pulseRewardTier(quota(amount),unit),tier);
+  assert.equal(pulseRewardTier(quota(1),3),'white');assert.equal(pulseRewardTier(quota(2),3),'white');
+  assert.equal(pulseRewardTier(quota(Number.MAX_SAFE_INTEGER),Number.MAX_SAFE_INTEGER),'white');
   assert.equal(pulseRewardTier(quota(10),0),'white');
 });
 

@@ -20,13 +20,13 @@
       code: "invalid_period",
     });
   const storageKey = "metar-continuous-rules-pending-v1";
-  // Weights sum to 1000, so each point is 0.1%. Quota expectation: 2500/1000 = 2.5 ⚡️ per eligible ticket.
+  // Main prize weights sum to 1000. The 10% EXP roll uses a separate pool.
   const recommendedExpRewards = [
     { key: "exp-basic", reward_type: "community_exp", amount: 1, weight: 50 },
     { key: "exp-middle", reward_type: "community_exp", amount: 4, weight: 30 },
     { key: "exp-high", reward_type: "community_exp", amount: 20, weight: 20 },
   ];
-  const recommendedQuotaTiers = [[1, 450], [2, 300], [5, 100], [10, 40], [50, 9], [100, 1]];
+  const recommendedQuotaTiers = [[1, 570], [2, 300], [5, 100], [10, 20], [50, 9], [100, 1]];
   function recommendedRewards(quotaPerUnit) {
     const unit = Number(quotaPerUnit);
     if (!Number.isSafeInteger(unit) || unit <= 0) return null;
