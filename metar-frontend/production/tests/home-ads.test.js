@@ -8,6 +8,7 @@ function fixture(items, broken = []) {
     calls = 0;
   const timers = new Map();
   const node = () => ({
+    style: {},
     isConnected: true,
     hidden: true,
     setAttribute() {},
@@ -34,6 +35,7 @@ function fixture(items, broken = []) {
   };
   vm.runInNewContext(code, {
     window,
+    URL,
     document,
     setTimeout(fn, ms) {
       assert.equal(ms, 15000);
@@ -80,6 +82,8 @@ test("two independent placements rotate, close only one, reload restores it", as
   await h.mount([top, side]);
   assert.equal(h.calls(), 1);
   assert.equal(h.timers.size, 2);
+  assert.equal(top.children[0].children[2].children[0].textContent, "example.org");
+  assert.equal(side.children[0].children.length, 1);
   assert.equal(top.children[0].href, entry(1).link);
   assert.equal(side.children[0].href, entry(2).link);
   h.tick();
@@ -141,9 +145,12 @@ test("published cards preserve originals, save notes privately, replace pictures
     link: "https://example.org/",
     note: "旧备注",
   };
+  let acceptCrop=true, lastCanvas;
   const document = {
     createElement(tag) {
       const n = node();
+      if(tag==="dialog"){n.querySelector("canvas").getContext=()=>({drawImage(){},fillRect(){}});lastCanvas=n.querySelector("canvas");lastCanvas.toBlob=cb=>cb(new Blob(["jpeg"]));n.showModal=()=>queueMicrotask(()=>n.querySelector(acceptCrop?"[data-apply]":"[data-cancel]").onclick());n.close=value=>{n.returnValue=value;n.onclose()}}
+      n.isConnected=true;
       if (tag === "form")
         n.elements = {
           image: { files: [], focus() {} },
@@ -173,6 +180,7 @@ test("published cards preserve originals, save notes privately, replace pictures
     document,
     URL,
     FormData,
+    fetch:async()=>({ok:true,blob:async()=>new Blob(["fixture"])}),
     FileReader: class {
       readAsDataURL() {
         this.result = "data:image/jpeg;base64,YQ==";
@@ -191,20 +199,23 @@ test("published cards preserve originals, save notes privately, replace pictures
   assert.equal(img.src, "data:image/jpeg;base64,abc");
   card.elements.enabled.value = "false";
   card.elements.placement.value = "top";
+  acceptCrop=false;await card.elements.placement.onchange();assert.equal(card.elements.placement.value,"side");
+  acceptCrop=true;
   card.elements.note.value = "新备注";
   card.elements.link.value = "https://new.example/";
   await card.onsubmit({ preventDefault() {} });
   assert.equal(calls[0][1].body.has("image"), false);
-  assert.equal(calls[0][1].body.get("placement"), "top");
+  assert.equal(calls[0][1].body.get("placement"), "side");
   assert.equal(calls[0][1].body.get("enabled"), "false");
   assert.equal(card.next.elements.enabled.value, "false");
-  assert.equal(card.next.elements.placement.value, "top");
+  assert.equal(card.next.elements.placement.value, "side");
   assert.equal(calls[0][1].body.get("note"), "新备注");
   assert.equal(calls[0][1].body.get("revision"), "2");
   assert.match(card.next.querySelector("img").src, /4\?v=3$/);
   const edit = card.next;
   edit.elements.image.files = [{ size: 10 }];
-  await edit.elements.image.onchange();
+  await edit.elements.image.onchange();assert.deepEqual([lastCanvas.width,lastCanvas.height],[800,600]);
+  edit.elements.placement.value="top";await edit.elements.placement.onchange();assert.deepEqual([lastCanvas.width,lastCanvas.height],[1280,320]);
   await edit.onsubmit({ preventDefault() {} });
   assert.ok(calls[1][1].body.has("image"));
   await edit.next.querySelector("[data-secondary]").onclick();

@@ -42,7 +42,22 @@
       image.alt = "访问广告网站";
       image.onload = () => {
         if (closed || !slot.isConnected) return;
-        link.replaceChildren(image);
+        if (slot.dataset.homeAd === "top") {
+          const backdrop = document.createElement("span"),
+            destination = document.createElement("span"),
+            host = document.createElement("strong"),
+            action = document.createElement("span");
+          backdrop.className = "ad-banner-backdrop";
+          backdrop.setAttribute("aria-hidden", "true");
+          backdrop.style.backgroundImage = 'url("' + imageURL(item, base) + '")';
+          destination.className = "ad-banner-destination";
+          host.textContent = new URL(item.link).hostname;
+          action.textContent = "访问网站 ↗";
+          destination.replaceChildren(host, action);
+          link.replaceChildren(backdrop, image, destination);
+        } else {
+          link.replaceChildren(image);
+        }
         link.href = item.link;
         slot.hidden = false;
         if (items.length > 1) {
@@ -81,34 +96,33 @@
   }
   const managerHTML = () =>
     `<section data-ad-manager><header class="ad-manager-heading"><div><h1>广告管理</h1><p class="muted">顶部和侧边可同时展示，各位置的广告按发布顺序每 15 秒轮播</p></div><button type="button" class="btn primary" data-new>＋ 新增广告</button></header><div data-create></div><p role="status"></p><section aria-label="广告列表"><h2>广告列表</h2><div data-cards></div></section></section>`;
-  async function picture(file) {
-    if (!file || file.size > 8 * 1024 * 1024)
-      throw Error("请选择不超过 8 MB 的横版图片。");
-    const img = await createImageBitmap(file);
+  // Preview and JPEG share one canvas: the pixels inside the frame are exactly what is saved.
+  async function selectCrop(source, placement, form, previous) {
+    if (source.size > 8 * 1024 * 1024) throw Error('请选择不超过 8 MB 的图片。');
+    const bitmap=await createImageBitmap(source), dialog=document.createElement('dialog');
     try {
-      if (img.width <= img.height) throw Error("请上传宽度大于高度的图片。");
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.min(img.width, 1280);
-      canvas.height = Math.max(
-        1,
-        Math.round((img.height * canvas.width) / img.width),
-      );
-      const ctx = canvas.getContext("2d");
-      ctx.fillStyle = "white";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      const blob = await new Promise((resolve) =>
-        canvas.toBlob(resolve, "image/jpeg", 0.82),
-      );
-      if (!blob || blob.size > 880 * 1024)
-        throw Error("图片压缩后仍过大，请缩小后重试。");
-      return blob;
-    } finally {
-      img.close();
-    }
+      if(!form.isConnected)return null;
+      const top=placement==='top', w=top?1280:800,h=top?320:600;
+      dialog.className='ad-crop-dialog';dialog.setAttribute('aria-label','选择广告显示范围');
+      dialog.innerHTML='<h2>选择显示范围</h2><p></p><canvas tabindex="0" aria-label="拖动图片或按方向键移动"></canvas><label>缩放 <input type="range" min="1" max="4" step="0.01" value="1"></label><footer><button type="button" data-cancel class="btn">取消</button><button type="button" data-apply class="btn primary">使用选区</button></footer>';
+      const find=s=>dialog.querySelector(s);find('p').textContent=(top?'顶部横幅 · 4:1':'侧边广告 · 4:3')+'　拖动图片并缩放，仅保留框内内容。';
+      const canvas=find('canvas'),range=find('input'),apply=find('[data-apply]');canvas.width=w;canvas.height=h;
+      const ctx=canvas.getContext('2d'),scale=Math.max(w/bitmap.width,h/bitmap.height);
+      let cx=previous?.cx??bitmap.width/2,cy=previous?.cy??bitmap.height/2,sw,sh,drag=null;
+      range.value=String(previous?.zoom??1);
+      function draw(){const zoom=Number(range.value);sw=w/(scale*zoom);sh=h/(scale*zoom);cx=Math.max(sw/2,Math.min(bitmap.width-sw/2,cx));cy=Math.max(sh/2,Math.min(bitmap.height-sh/2,cy));ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);ctx.drawImage(bitmap,cx-sw/2,cy-sh/2,sw,sh,0,0,w,h);}
+      draw();range.oninput=draw;
+      canvas.onpointerdown=e=>{if(!e.isPrimary)return;canvas.setPointerCapture(e.pointerId);drag=[e.clientX,e.clientY]};canvas.onpointermove=e=>{if(!e.isPrimary||!drag)return;const rect=canvas.getBoundingClientRect();cx-=(e.clientX-drag[0])*sw/rect.width;cy-=(e.clientY-drag[1])*sh/rect.height;drag=[e.clientX,e.clientY];draw()};canvas.onlostpointercapture=()=>{drag=null};
+      canvas.onkeydown=e=>{const d={ArrowLeft:[1,0],ArrowRight:[-1,0],ArrowUp:[0,1],ArrowDown:[0,-1]}[e.key];if(d){e.preventDefault();cx+=d[0]*sw*.025;cy+=d[1]*sh*.025;draw()}};
+      form.append(dialog);dialog.showModal();
+      const accepted=await new Promise(resolve=>{dialog.onclose=()=>resolve(dialog.returnValue==='apply');apply.onclick=()=>dialog.close('apply');find('[data-cancel]').onclick=()=>dialog.close('cancel')});
+      if(!accepted)return null;
+      const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',.85));if(!blob||blob.size>880*1024)throw Error('选区压缩后仍然过大，请缩小原图后重试。');
+      return {blob,cx,cy,zoom:Number(range.value)};
+    }finally{dialog.remove();bitmap.close()}
   }
   const fields = `<header class="ad-card-head"><h3></h3><span class="ad-state"></span></header>
- <div class="ad-card-body"><div><div class="ad-preview"><img alt="广告图片预览"><span data-placeholder>请选择横版图片</span></div><button type="button" data-retry class="btn small" hidden>重新加载预览</button><label>广告海报（选择新图可替换）<input name="image" type="file" accept="image/jpeg,image/png,image/webp"></label><small class="muted">JPG、PNG 或 WebP，最大 8 MB</small></div>
+ <div class="ad-card-body"><div><div class="ad-preview"><img alt="广告图片预览"><span data-placeholder>请选择横版图片</span></div><button type="button" data-retry class="btn small" hidden>重新加载预览</button><button type="button" data-adjust class="btn small" hidden>调整显示范围</button><label>广告海报（选择新图可替换）<input name="image" type="file" accept="image/jpeg,image/png,image/webp"></label><small class="muted">JPG、PNG 或 WebP，最大 8 MB</small></div>
  <div class="ad-fields"><label>展示状态<select name="enabled"><option value="true">展示中</option><option value="false">暂停展示（保留海报和设置）</option></select></label><label>展示位置<select name="placement"><option value="side">侧边广告 · 4:3</option><option value="top">顶部横幅 · 4:1</option></select></label><label>跳转网址<input name="link" type="url" placeholder="https://" required></label><label>后台备注<textarea name="note" maxlength="300" rows="2" placeholder="例如：合作方名称、投放周期（选填）"></textarea></label><small class="muted">备注仅管理员可见，不会展示在首页。</small></div></div>
  <footer><span role="status"></span><button type="button" data-secondary class="btn small"></button><button type="submit" class="btn primary"></button></footer>`;
   function mountManager(el, api, admin) {
@@ -142,12 +156,12 @@
       f.placement.value = item?.placement || "side";
       const preview = q(".ad-preview");
       const fit = () => preview.setAttribute("data-format", f.placement.value);
-      f.placement.onchange = fit;
+
       fit();
       f.link.value = item?.link || "";
       f.enabled.value = String(item?.enabled !== false);
       f.note.value = item?.note || "";
-      f.image.required = !item;
+
       let seq = 0,
         blob = null,
         pending = false;
@@ -191,44 +205,21 @@
       }
       original();
       retry.onclick = () => original();
-      f.image.onchange = async () => {
-        const token = ++seq;
-        blob = null;
-        msg.textContent = "";
-        const file = f.image.files[0];
-        if (!file) {
-          pending = false;
-          save.disabled = false;
-          original();
-          return;
-        }
-        pending = true;
-        save.disabled = true;
-        try {
-          const converted = await picture(file);
-          if (seq !== token) return;
-          const reader = new FileReader();
-          const data = await new Promise((resolve, reject) => {
-            reader.onload = () => resolve(reader.result);
-            reader.onerror = reject;
-            reader.readAsDataURL(converted);
-          });
-          if (seq !== token) return;
-          blob = converted;
-          painting(data, false);
-        } catch (e) {
-          if (seq === token) {
-            msg.textContent = e.message || "图片无法读取。";
-            f.image.value = "";
-            original();
-          }
-        } finally {
-          if (f.image.files[0] === file || !f.image.files.length) {
-            pending = false;
-            save.disabled = false;
-          }
-        }
-      };
+      const adjust=q('[data-adjust]');let source=null,selection=null,format=f.placement.value;
+      adjust.hidden=!item;
+      async function choose(file, nextFormat){
+        if(pending)return false;pending=true;save.disabled=secondary.disabled=f.image.disabled=f.placement.disabled=adjust.disabled=true;msg.textContent='';
+        try{
+          const originalFile=file||source||await (async()=>{const r=await fetch(imageURL(item,api.base));if(!r.ok)throw Error('无法读取当前海报，请重新选择图片。');return r.blob()})();
+          const result=await selectCrop(originalFile,nextFormat,form,originalFile===source && nextFormat===format?selection:null);if(!result)return false;
+          const reader=new FileReader();const data=await new Promise((resolve,reject)=>{reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(result.blob)});
+          source=originalFile;selection=result;blob=result.blob;format=nextFormat;painting(data,false);fit();adjust.hidden=false;msg.textContent='选区已确认，保存广告后生效。';return true;
+        }catch(e){msg.textContent=e.message||'图片无法读取，请重新选择。';return false}
+        finally{pending=false;save.disabled=secondary.disabled=f.image.disabled=f.placement.disabled=adjust.disabled=false;}
+      }
+      f.image.onchange=async()=>{const file=f.image.files[0];if(file)await choose(file,f.placement.value);f.image.value='';};
+      adjust.onclick=()=>choose(null,f.placement.value);
+      f.placement.onchange=async()=>{const next=f.placement.value;if(item||source){if(!await choose(null,next))f.placement.value=format;}else format=next;fit()};
       secondary.onclick = async () => {
         if (!item) {
           form.remove();
@@ -255,6 +246,7 @@
       form.onsubmit = async (e) => {
         e.preventDefault();
         if (save.disabled || pending) return;
+        if (f.placement.value!==format || (!item && !blob)) {msg.textContent="请先选择海报并确认显示范围。";return;}
         const chosen = blob;
         save.disabled =
           secondary.disabled =
