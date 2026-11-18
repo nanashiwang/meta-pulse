@@ -427,9 +427,9 @@
     syncNavigation();
     enhanceTaxonomy();
     void mountDiscussionRail();
-    const slot = view?.querySelector('[data-home-ad]');
+    const slot = document.querySelector('#view [data-home-ad]');
     if (slot) loadFeatureScript('home-ads','MetarAds').then(() => window.MetarAds.mountSlot(slot,answer)).catch(() => {});
-    const manager = view?.querySelector('[data-ad-manager]');
+    const manager = document.querySelector('#view [data-ad-manager]');
     if (manager) window.MetarAds.mountManager(manager,answer,new AnswerAdapter({answerApiBase:'/answer/admin/api'}));
     void mountCommunityAnnouncement();
     void mountTagShortcuts();
