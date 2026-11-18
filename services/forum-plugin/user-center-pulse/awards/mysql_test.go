@@ -433,3 +433,21 @@ func TestWithdrawOwnSubmissionMySQL(t *testing.T) {
 		t.Fatal(items, err)
 	}
 }
+
+func TestSubmissionClickWeekAndCancellationMySQL(t *testing.T) {
+	s, now := fixture(t)
+	ctx := context.Background()
+	awardWeek := Weekly(*now, "post")
+	*now = now.AddDate(0, 0, 7)
+	clickWeek := Weekly(*now, "post")
+	execute(t, s, "2", "new-week-nomination1", Command{Op: "nominate", QuestionID: "100"}, false)
+	rows, err := s.Submissions(ctx, "2", clickWeek)
+	if err != nil || len(rows) != 1 || rows[0].Week != awardWeek.Key || !rows[0].CanWithdraw {
+		t.Fatal(rows, err)
+	}
+	execute(t, s, "2", "new-week-cancel-01", Command{Op: "withdraw", Period: awardWeek, SubjectID: "100"}, false)
+	rows, err = s.Submissions(ctx, "2", clickWeek)
+	if err != nil || len(rows) != 0 {
+		t.Fatal(rows, err)
+	}
+}

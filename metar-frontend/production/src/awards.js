@@ -110,9 +110,9 @@
         const rows = this.data?.filter(row => row.kind === kind);
         return '<section class="card card-pad mt16"><h2>' + (kind==='post'?t('优秀帖子奖','Excellent posts'):t('优秀回答奖','Excellent answers')) + '</h2>' +
           (!rows ? '<p class="muted">'+t('记录未能加载','Records unavailable')+'</p>' : rows.length ? rows.map(row => '<div class="between wrap mt8"><a href="/questions/' + esc(row.question_id) + (kind==='post'?'':'/'+esc(row.subject_id)) + '">' + esc(row.title) + (row.excerpt?' · '+esc(row.excerpt):'') + '</a>' +
-            (row.can_withdraw ? '<button class="btn" data-award="withdraw" data-week="'+esc(row.week)+'" data-kind="'+kind+'" data-id="'+esc(row.subject_id)+'">'+t('撤销推荐','Withdraw')+'</button>' : '<small>'+t('已截止','Closed')+'</small>')+'</div>').join('') : '<p class="muted">'+t('本期暂无提交','No submissions this period')+'</p>') + '</section>';
+            (row.can_withdraw ? '<button class="btn" data-award="withdraw" data-week="'+esc(row.week)+'" data-kind="'+kind+'" data-id="'+esc(row.subject_id)+'">'+t('取消提交','Cancel submission')+'</button>' : '<small>'+t('已截止','Closed')+'</small>')+'</div>').join('') : '<p class="muted">'+t('本期暂无提交','No submissions this period')+'</p>') + '</section>';
       });
-      return '<section class="card card-pad"><a data-router href="'+esc(this.link())+'">← '+t('返回评选','Back to awards')+'</a><h1>'+t('我的提交','My submissions')+'</h1><p>'+esc(this.period.key)+'</p><p>'+this.scout()+'</p><p>'+t('优秀回答来自你在自己帖子里采纳的回答。撤销推荐不影响采纳状态。','Answers you accepted on your posts qualify. Withdrawal does not undo acceptance.')+'</p></section><p data-award-error role="status"></p>'+(this.data === null ? '<p role="alert">'+t('暂时无法读取本期提交，请稍后重试。','Could not load submissions. Please try again.')+' <a class="btn" href="'+esc(this.link(1,{view:'submissions'}))+'">'+t('重新加载','Retry')+'</a></p>' : '')+groups.join('');
+      return '<section class="card card-pad"><a data-router href="'+esc(this.link())+'">← '+t('返回评选','Back to awards')+'</a><h1>'+t('我的提交','My submissions')+'</h1><p>'+esc(this.period.key)+' · '+t('帖子按点击提交的时间列出，无需等待审核；审核开始前可取消提交。','Posts are listed by submission date, before review. Cancel before review opens.')+'</p><p>'+this.scout()+'</p><p>'+t('优秀回答来自你在自己帖子里采纳的回答。撤销推荐不影响采纳状态。','Answers you accepted on your posts qualify. Withdrawal does not undo acceptance.')+'</p></section><p data-award-error role="status"></p>'+(this.data === null ? '<p role="alert">'+t('暂时无法读取本期提交，请稍后重试。','Could not load submissions. Please try again.')+' <a class="btn" href="'+esc(this.link(1,{view:'submissions'}))+'">'+t('重新加载','Retry')+'</a></p>' : '')+groups.join('');
     }
     client() {
       return this.admin ? this.adminAPI : this.api;
@@ -159,7 +159,7 @@
         t("优秀内容评选", "Community content awards") +
         `</h1><nav class="award-header-actions">` +
         (this.admin ? '<a data-router href="/awards?'+esc(this.query())+'">'+t('查看获奖名单','Published awards')+'</a>' :
-          '<a class="btn primary" data-router href="'+esc(this.link(1,{view:'submissions'}))+'">'+t('我的提交','My submissions')+'</a>' +
+          '<a class="btn primary" data-router href="'+esc(this.link(1,{type:'week',key:currentWeek(),view:'submissions'}))+'">'+t('我的提交','My submissions')+'</a>' +
           (this.user?.role_id === 2 ? '<a class="btn" data-router href="/admin/awards?'+esc(this.query())+'">'+t('管理审核','Review awards')+'</a>' : '')) +
         '</nav></div><p class="muted">' +
         t(

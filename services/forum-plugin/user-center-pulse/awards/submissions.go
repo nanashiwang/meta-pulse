@@ -41,11 +41,15 @@ func (s *Store) Submissions(ctx context.Context, actor string, p Period) ([]Subm
 func (s *Store) submissions(ctx context.Context, tx *sql.Tx, actor string, start, end time.Time) ([]Submission, error) {
 	out := []Submission{}
 	for _, kind := range []string{"post", "response"} {
-		query := "SELECT q.id,q.id,q.title,'',q.created_at FROM metar_award_nomination n JOIN question q ON q.id=n.question_id WHERE n.user_id=? AND q.status IN (1,2) AND q.`show`=1 AND q.created_at>=? AND q.created_at<? ORDER BY q.created_at DESC,q.id"
+		query := "SELECT q.id,q.id,q.title,'',q.created_at FROM metar_award_nomination n JOIN question q ON q.id=n.question_id WHERE n.user_id=? AND q.status IN (1,2) AND q.`show`=1 AND n.click_week>=? AND n.click_week<? ORDER BY n.created_at DESC,q.id"
 		if kind == "response" {
 			query = "SELECT a.id,q.id,q.title,LEFT(COALESCE(a.original_text,''),100),MIN(e.created_at) AS first_accepted FROM question q JOIN answer a ON a.id=q.accepted_answer_id AND a.question_id=q.id JOIN activity e ON e.object_id=a.id AND e.trigger_user_id=q.user_id AND e.user_id=a.user_id JOIN config cfg ON cfg.id=e.activity_type AND cfg.`key`='answer.accepted' WHERE q.user_id=? AND a.user_id<>q.user_id AND q.status IN (1,2) AND q.`show`=1 AND a.status=1 AND a.adopted=2 AND NOT EXISTS (SELECT 1 FROM metar_award_audit w WHERE w.actor_id=q.user_id AND w.subject_id=a.id AND w.kind='response' AND w.operation='withdraw') GROUP BY a.id,q.id,q.title HAVING first_accepted>=? AND first_accepted<? ORDER BY first_accepted DESC,a.id"
 		}
-		rows, err := tx.QueryContext(ctx, query, actor, start, end)
+		var from, to any = start, end
+		if kind == "post" {
+			from, to = start.Format("2006-01-02"), end.Format("2006-01-02")
+		}
+		rows, err := tx.QueryContext(ctx, query, actor, from, to)
 		if err != nil {
 			return nil, err
 		}
@@ -81,22 +85,37 @@ func (s *Store) withdraw(ctx context.Context, tx *sql.Tx, actor string, c Comman
 	if state != "open" {
 		return ErrClosed
 	}
-	start, _ := p.Start()
-	items, err := s.submissions(ctx, tx, actor, start, start.AddDate(0, 0, 7))
-	if err != nil {
-		return err
-	}
-	for _, v := range items {
-		if v.Kind != p.Kind || v.Subject != c.SubjectID {
-			continue
+	if p.Kind == "post" {
+		// The inbox uses click week, but withdrawal always locks the post's award week.
+		start, _ := p.Start()
+		result, err := tx.ExecContext(ctx, "DELETE n FROM metar_award_nomination n JOIN question q ON q.id=n.question_id WHERE n.user_id=? AND n.question_id=? AND q.created_at>=? AND q.created_at<?", actor, c.SubjectID, start, start.AddDate(0, 0, 7))
+		if err != nil {
+			return err
 		}
-		if p.Kind == "post" {
-			if _, err = tx.ExecContext(ctx, "DELETE FROM metar_award_nomination WHERE user_id=? AND question_id=?", actor, v.Subject); err != nil {
-				return err
+		n, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n != 1 {
+			return ErrNotFound
+		}
+	} else {
+		start, _ := p.Start()
+		items, err := s.submissions(ctx, tx, actor, start, start.AddDate(0, 0, 7))
+		if err != nil {
+			return err
+		}
+		found := false
+		for _, v := range items {
+			if v.Kind == p.Kind && v.Subject == c.SubjectID {
+				found = true
+				break
 			}
 		}
-		_, err = tx.ExecContext(ctx, "DELETE FROM metar_award_candidate WHERE period_type='week' AND period_key=? AND kind=? AND subject_id=? AND (?='response' OR NOT EXISTS(SELECT 1 FROM metar_award_nomination WHERE question_id=?))", p.Key, p.Kind, v.Subject, p.Kind, v.Subject)
-		return err
+		if !found {
+			return ErrNotFound
+		}
 	}
-	return ErrNotFound
+	_, err = tx.ExecContext(ctx, "DELETE FROM metar_award_candidate WHERE period_type='week' AND period_key=? AND kind=? AND subject_id=? AND (?='response' OR NOT EXISTS(SELECT 1 FROM metar_award_nomination WHERE question_id=?))", p.Key, p.Kind, c.SubjectID, p.Kind, c.SubjectID)
+	return err
 }
