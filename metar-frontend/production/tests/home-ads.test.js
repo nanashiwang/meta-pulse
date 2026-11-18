@@ -82,7 +82,7 @@ test("two independent placements rotate, close only one, reload restores it", as
   await h.mount([top, side]);
   assert.equal(h.calls(), 1);
   assert.equal(h.timers.size, 2);
-  assert.equal(top.children[0].children[2].children[0].textContent, "example.org");
+  assert.equal(top.children[0].children.length, 1);
   assert.equal(side.children[0].children.length, 1);
   assert.equal(top.children[0].href, entry(1).link);
   assert.equal(side.children[0].href, entry(2).link);
@@ -215,7 +215,7 @@ test("published cards preserve originals, save notes privately, replace pictures
   const edit = card.next;
   edit.elements.image.files = [{ size: 10 }];
   await edit.elements.image.onchange();assert.deepEqual([lastCanvas.width,lastCanvas.height],[800,600]);
-  edit.elements.placement.value="top";await edit.elements.placement.onchange();assert.deepEqual([lastCanvas.width,lastCanvas.height],[1280,320]);
+  edit.elements.placement.value="top";await edit.elements.placement.onchange();assert.deepEqual([lastCanvas.width,lastCanvas.height],[1600,160]);
   await edit.onsubmit({ preventDefault() {} });
   assert.ok(calls[1][1].body.has("image"));
   await edit.next.querySelector("[data-secondary]").onclick();

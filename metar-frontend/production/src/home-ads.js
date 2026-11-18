@@ -42,22 +42,7 @@
       image.alt = "访问广告网站";
       image.onload = () => {
         if (closed || !slot.isConnected) return;
-        if (slot.dataset.homeAd === "top") {
-          const backdrop = document.createElement("span"),
-            destination = document.createElement("span"),
-            host = document.createElement("strong"),
-            action = document.createElement("span");
-          backdrop.className = "ad-banner-backdrop";
-          backdrop.setAttribute("aria-hidden", "true");
-          backdrop.style.backgroundImage = 'url("' + imageURL(item, base) + '")';
-          destination.className = "ad-banner-destination";
-          host.textContent = new URL(item.link).hostname;
-          action.textContent = "访问网站 ↗";
-          destination.replaceChildren(host, action);
-          link.replaceChildren(backdrop, image, destination);
-        } else {
-          link.replaceChildren(image);
-        }
+        link.replaceChildren(image);
         link.href = item.link;
         slot.hidden = false;
         if (items.length > 1) {
@@ -102,10 +87,10 @@
     const bitmap=await createImageBitmap(source), dialog=document.createElement('dialog');
     try {
       if(!form.isConnected)return null;
-      const top=placement==='top', w=top?1280:800,h=top?320:600;
+      const top=placement==='top', w=top?1600:800,h=top?160:600;
       dialog.className='ad-crop-dialog';dialog.setAttribute('aria-label','选择广告显示范围');
       dialog.innerHTML='<h2>选择显示范围</h2><p></p><canvas tabindex="0" aria-label="拖动图片或按方向键移动"></canvas><label>缩放 <input type="range" min="1" max="4" step="0.01" value="1"></label><footer><button type="button" data-cancel class="btn">取消</button><button type="button" data-apply class="btn primary">使用选区</button></footer>';
-      const find=s=>dialog.querySelector(s);find('p').textContent=(top?'顶部横幅 · 4:1':'侧边广告 · 4:3')+'　拖动图片并缩放，仅保留框内内容。';
+      const find=s=>dialog.querySelector(s);find('p').textContent=(top?'顶部横幅 · 10:1':'侧边广告 · 4:3')+'　拖动图片并缩放，仅保留框内内容。';
       const canvas=find('canvas'),range=find('input'),apply=find('[data-apply]');canvas.width=w;canvas.height=h;
       const ctx=canvas.getContext('2d'),scale=Math.max(w/bitmap.width,h/bitmap.height);
       let cx=previous?.cx??bitmap.width/2,cy=previous?.cy??bitmap.height/2,sw,sh,drag=null;
@@ -123,7 +108,7 @@
   }
   const fields = `<header class="ad-card-head"><h3></h3><span class="ad-state"></span></header>
  <div class="ad-card-body"><div><div class="ad-preview"><img alt="广告图片预览"><span data-placeholder>请选择横版图片</span></div><button type="button" data-retry class="btn small" hidden>重新加载预览</button><button type="button" data-adjust class="btn small" hidden>调整显示范围</button><label>广告海报（选择新图可替换）<input name="image" type="file" accept="image/jpeg,image/png,image/webp"></label><small class="muted">JPG、PNG 或 WebP，最大 8 MB</small></div>
- <div class="ad-fields"><label>展示状态<select name="enabled"><option value="true">展示中</option><option value="false">暂停展示（保留海报和设置）</option></select></label><label>展示位置<select name="placement"><option value="side">侧边广告 · 4:3</option><option value="top">顶部横幅 · 4:1</option></select></label><label>跳转网址<input name="link" type="url" placeholder="https://" required></label><label>后台备注<textarea name="note" maxlength="300" rows="2" placeholder="例如：合作方名称、投放周期（选填）"></textarea></label><small class="muted">备注仅管理员可见，不会展示在首页。</small></div></div>
+ <div class="ad-fields"><label>展示状态<select name="enabled"><option value="true">展示中</option><option value="false">暂停展示（保留海报和设置）</option></select></label><label>展示位置<select name="placement"><option value="side">侧边广告 · 4:3</option><option value="top">顶部横幅 · 10:1</option></select></label><label>跳转网址<input name="link" type="url" placeholder="https://" required></label><label>后台备注<textarea name="note" maxlength="300" rows="2" placeholder="例如：合作方名称、投放周期（选填）"></textarea></label><small class="muted">备注仅管理员可见，不会展示在首页。</small></div></div>
  <footer><span role="status"></span><button type="button" data-secondary class="btn small"></button><button type="submit" class="btn primary"></button></footer>`;
   function mountManager(el, api, admin) {
     const cards = el.querySelector("[data-cards]"),
