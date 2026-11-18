@@ -10,7 +10,7 @@
   const path=url.split('?')[0];
   if(/^\/admin(?:\/|$)/.test(path))return '/admin';
   if(/^\/users\/settings(?:\/|$)/.test(path))return '/personal';
-  if(/^\/users\/notifications\/(?:inbox(?:\/(?:all|posts|invites|votes|comments|likes))?|achievement)\/?$/.test(path))return '/personal';
+  if(/^\/users\/notifications\/(?:inbox(?:\/(?:all|posts|invites|votes|comments|answers|likes))?|achievement)\/?$/.test(path))return '/personal';
   if((/^\/me(?:\/|$)/.test(path) && !(path==='/me/badges' && new URLSearchParams(url.split('?')[1]||'').has('badge'))) || ['/settings/binding','/chat','/pulse'].includes(path))return '/personal';
   if(/^\/settings(?:\/|$)/.test(path))return '/settings';
   return url;

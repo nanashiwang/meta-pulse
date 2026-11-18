@@ -87,8 +87,28 @@
           );
         } catch (_) {}
       }
+      this.mine = !this.admin && query.get('view') === 'submissions';
+      if (this.mine) {
+        this.data = await this.loadSubmissions();
+        return this.submissionHTML();
+      }
       this.data = await this.client().request("/metar/awards?" + this.query());
       return this.html();
+    }
+    scout() {
+      return '<strong>' + t('伯乐奖：','Talent Scout award: ') + '</strong>' + t("推荐的帖子获得周奖后，前 10 位有效推荐者平分 20 闪，每人至少 3 闪，并各获一次「伯乐」勋章。闪由管理员手动发放，同帖月奖不重复发。", "When a recommended post wins a weekly award, the first 10 recommenders share 20 credits (minimum 3 each) and each earn a Talent Scout medal. Credits are paid manually; the monthly award does not pay again.");
+    }
+    loadSubmissions() {
+      return this.api.request('/metar/awards/submissions?' + new URLSearchParams({type:this.period.type,key:this.period.key}));
+    }
+    submissionHTML() {
+      const groups = ['post','response'].map(kind => {
+        const rows = this.data.filter(row => row.kind === kind);
+        return '<section class="card card-pad mt16"><h2>' + (kind==='post'?t('优秀帖子奖','Excellent posts'):t('优秀回答奖','Excellent answers')) + '</h2>' +
+          (rows.length ? rows.map(row => '<div class="between wrap mt8"><a href="/questions/' + esc(row.question_id) + (kind==='post'?'':'/'+esc(row.subject_id)) + '">' + esc(row.title) + (row.excerpt?' · '+esc(row.excerpt):'') + '</a>' +
+            (row.can_withdraw ? '<button class="btn" data-award="withdraw" data-week="'+esc(row.week)+'" data-kind="'+kind+'" data-id="'+esc(row.subject_id)+'">'+t('撤销推荐','Withdraw')+'</button>' : '<small>'+t('已截止','Closed')+'</small>')+'</div>').join('') : '<p class="muted">'+t('本期暂无提交','No submissions this period')+'</p>') + '</section>';
+      });
+      return '<section class="card card-pad"><a data-router href="'+esc(this.link())+'">← '+t('返回评选','Back to awards')+'</a><h1>'+t('我的提交','My submissions')+'</h1><p>'+esc(this.period.key)+'</p><p>'+this.scout()+'</p><p>'+t('优秀回答来自你在自己帖子里采纳的回答。撤销推荐不影响采纳状态。','Answers you accepted on your posts qualify. Withdrawal does not undo acceptance.')+'</p></section><p data-award-error role="status"></p>'+groups.join('');
     }
     client() {
       return this.admin ? this.adminAPI : this.api;
@@ -133,15 +153,11 @@
       return (
         `<section class="card card-pad"><div class="between wrap"><h1>` +
         t("优秀内容评选", "Community content awards") +
-        `</h1><a data-router href="` +
-        (this.admin ? "/awards" : "/admin/awards") +
-        `">` +
-        (this.admin
-          ? t("查看获奖名单", "Published awards")
-          : this.user?.role_id === 2
-            ? t("管理审核", "Review awards")
-            : "") +
-        `</a></div><p class="muted">` +
+        `</h1><div style="display:grid;gap:.5rem;text-align:right">` +
+        (this.admin ? '<a data-router href="/awards?'+esc(this.query())+'">'+t('查看获奖名单','Published awards')+'</a>' :
+          '<a data-router href="'+esc(this.link(1,{view:'submissions'}))+'">'+t('我的提交','My submissions')+'</a>' +
+          (this.user?.role_id === 2 ? '<a data-router href="/admin/awards?'+esc(this.query())+'">'+t('管理审核','Review awards')+'</a>' : '')) +
+        '</div></div><p class="muted">' +
         t(
           "周奖每类最多10人，月奖每类最多5人，不分排名、不强制补位。",
           "Up to 10 weekly and 5 monthly winners per category. No ranking or forced allocation.",
@@ -151,7 +167,7 @@
           "周奖50闪、月奖100闪由管理员手动发放；头衔与勋章在公布入选时获得。",
           "Rewards are delivered manually; titles and medals are granted upon publication.",
         ) +
-        `</p><p>` + t("推荐的帖子获得周奖后，前 10 位有效推荐者平分 20 闪，每人至少 3 闪，并各获一次「伯乐」勋章。闪由管理员手动发放，同帖月奖不重复发。", "When a recommended post wins a weekly award, the first 10 recommenders share 20 credits (minimum 3 each) and each earn a Talent Scout medal. Credits are paid manually; the monthly award does not pay again.") + `</p><p><a href="/awards?view=honors">我的头衔与勋章</a></p><details><summary>` +
+        `</p><p>` + this.scout() + `</p><p><a href="/awards?view=honors">我的头衔与勋章</a></p><details><summary>` +
         t("参与规则", "Participation rules") +
         `</summary><p>` +
         t(
@@ -384,6 +400,20 @@
     }
     mount(node) {
       const form = node.querySelector("[data-award-period]");
+      if (this.mine) {
+        this.root=node;
+        const gen=this.generation;
+        node.querySelectorAll('[data-award="withdraw"]').forEach(b => b.onclick=async()=>{
+          if(this.busy || !root.confirm(t('确认撤销这条推荐？','Withdraw this nomination?')))return;
+          this.busy=true;b.disabled=true;
+          try {
+            b.dataset.requestKey ||= root.crypto.randomUUID();
+            await this.api.request('/metar/awards/command',{method:'POST',headers:{'Content-Type':'application/json','X-Metar-Request':'1','Idempotency-Key':b.dataset.requestKey},body:JSON.stringify({op:'withdraw',period:{type:'week',key:b.dataset.week,kind:b.dataset.kind},subject_id:b.dataset.id})});
+            const fresh=await this.loadSubmissions();
+            if(gen===this.generation && this.root===node){this.data=fresh;node.innerHTML=this.submissionHTML();this.mount(node);node.querySelector('[data-award-error]').textContent=t('推荐已撤销。','Nomination withdrawn.');}
+          }catch(e){if(gen===this.generation && this.root===node)this.error(e,b)}finally{this.busy=false;b.disabled=false}
+        });return;
+      }
       if (!form) return;
       this.root = node;
       const gen = this.generation;

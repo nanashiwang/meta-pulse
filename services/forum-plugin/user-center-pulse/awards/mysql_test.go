@@ -392,3 +392,44 @@ func TestMySQLRecommendationAwardAndPrivacy(t *testing.T) {
 		t.Fatalf("revoked honor %+v %v", mine, err)
 	}
 }
+
+func TestWithdrawOwnSubmissionMySQL(t *testing.T) {
+	s, now := fixture(t)
+	ctx := context.Background()
+	p := Weekly(*now, "response")
+	for _, q := range []string{"INSERT INTO answer(id,user_id,question_id,status,accepted) VALUES(200,6,100,1,2)", "UPDATE question SET accepted_answer_id=200 WHERE id=100"} {
+		if _, err := s.DB.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.DB.Exec("INSERT INTO activity(object_id,user_id,trigger_user_id,activity_type,created_at) VALUES(200,6,1,1,?)", now.UTC()); err != nil {
+		t.Fatal(err)
+	}
+	cmd := Command{Op: "withdraw", Period: p, SubjectID: "200"}
+	if _, err := s.Execute(ctx, "2", "other-withdraw-0001", cmd, false); !errors.Is(err, ErrNotFound) {
+		t.Fatal(err)
+	}
+	items, err := s.Submissions(ctx, "1", p)
+	if err != nil || len(items) != 1 || items[0].Subject != "200" {
+		t.Fatal(items, err)
+	}
+	execute(t, s, "1", "own-withdraw-00001", cmd, false)
+	execute(t, s, "3", "sync-withdrawn-0001", Command{Op: "sync", Period: p}, true)
+	var accepted, count int
+	if err = s.DB.QueryRow("SELECT accepted FROM answer WHERE id=200").Scan(&accepted); err != nil || accepted != 2 {
+		t.Fatal(accepted, err)
+	}
+	if err = s.DB.QueryRow("SELECT COUNT(*) FROM metar_award_candidate WHERE subject_id=200").Scan(&count); err != nil || count != 0 {
+		t.Fatal(count, err)
+	}
+	for _, actor := range []string{"2", "6"} {
+		execute(t, s, actor, "nominate-post-0001", Command{Op: "nominate", QuestionID: "100"}, false)
+	}
+	p.Kind = "post"
+	cmd = Command{Op: "withdraw", Period: p, SubjectID: "100"}
+	execute(t, s, "2", "withdraw-post-0001", cmd, false)
+	items, err = s.Submissions(ctx, "6", p)
+	if err != nil || len(items) != 1 {
+		t.Fatal(items, err)
+	}
+}

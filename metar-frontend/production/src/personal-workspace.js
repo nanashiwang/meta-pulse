@@ -2,7 +2,7 @@
 (function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.MetarPersonalWorkspace=api;})(typeof window==='undefined'?globalThis:window,function(){
  'use strict';
  const tabs=new Set(['profile','notify','account','interface']);
- const noticeFilters=new Set(['all','comments','likes','posts','invites','votes']);
+ const noticeFilters=new Set(['all','comments','answers','likes','posts','invites','votes']);
  const legacyNoticeFilters=new Set(['posts','invites','votes']);
   function nativeTarget(path,query=new URLSearchParams()){
   if(path==='/me/settings')return '/users/settings/'+(tabs.has(query.get('tab'))?query.get('tab'):'profile');
@@ -18,7 +18,7 @@
   try{const u=new URL(value,origin);if(u.origin!==origin)return null;
    const setting=u.pathname.match(/^\/users\/settings\/([a-zA-Z0-9_-]+)\/?$/);
    if(setting&&tabs.has(setting[1]))return '/me/settings?tab='+setting[1];
-   const notice=u.pathname.match(/^\/users\/notifications\/(inbox|achievement)(?:\/(all|posts|invites|votes|comments|likes))?\/?$/);
+   const notice=u.pathname.match(/^\/users\/notifications\/(inbox|achievement)(?:\/(all|posts|invites|votes|comments|answers|likes))?\/?$/);
    if(notice){if(notice[1]==='achievement'&&notice[2])return null;const filter=notice[2]||u.searchParams.get('filter');return '/me/notifications?view='+notice[1]+(notice[1]==='inbox'&&noticeFilters.has(filter)?'&filter='+filter:'');}
    const badge=u.pathname.match(/^\/badges(?:\/([a-zA-Z0-9]+))?\/?$/);
    if(badge){const p=new URLSearchParams();if(badge[1])p.set('badge',badge[1]);for(const key of ['username','page'])if(u.searchParams.get(key))p.set(key,u.searchParams.get(key));return '/me/badges'+(p.size?'?'+p:'');}

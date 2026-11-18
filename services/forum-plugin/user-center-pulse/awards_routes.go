@@ -64,6 +64,7 @@ func (uc *UserCenter) registerAwards(r *gin.RouterGroup, session func(*gin.Conte
 		r.GET("/metar/awards/audit", uc.awardHandler("audit", session, true, site))
 	} else {
 		r.GET("/metar/awards/honors", uc.awardHandler("honors", session, false, site))
+		r.GET("/metar/awards/submissions", uc.awardHandler("submissions", session, false, site))
 		r.GET("/metar/awards/status", uc.awardHandler("status", session, false, site))
 	}
 	r.POST("/metar/awards/command", uc.awardHandler("command", session, admin, site))
@@ -91,7 +92,7 @@ func (uc *UserCenter) awardHandler(op string, session func(*gin.Context) (string
 			return
 		}
 		for k, v := range q {
-			if len(v) != 1 || !(op == "profile" && k == "username" || op == "honors" && k == "page" || op == "status" && k == "question_id" || (op == "list" || op == "audit") && (k == "type" || k == "key" || k == "kind" || k == "page")) {
+			if len(v) != 1 || !(op == "submissions" && (k == "key" || k == "type") || op == "profile" && k == "username" || op == "honors" && k == "page" || op == "status" && k == "question_id" || (op == "list" || op == "audit") && (k == "type" || k == "key" || k == "kind" || k == "page")) {
 				communityError(c, 400, "invalid_request")
 				return
 			}
@@ -110,7 +111,10 @@ func (uc *UserCenter) awardHandler(op string, session func(*gin.Context) (string
 				return
 			}
 		}
-		if op == "list" || op == "audit" {
+		if op == "submissions" {
+			p.Kind = "post"
+		}
+		if op == "list" || op == "audit" || op == "submissions" {
 			if _, err = p.Start(); err != nil {
 				communityError(c, 400, "invalid_request")
 				return
@@ -147,7 +151,7 @@ func (uc *UserCenter) awardHandler(op string, session func(*gin.Context) (string
 				communityError(c, 400, "invalid_request")
 				return
 			}
-			if admin != (cmd.Op != "nominate" && cmd.Op != "title") {
+			if admin != (cmd.Op != "withdraw" && cmd.Op != "nominate" && cmd.Op != "title") {
 				communityError(c, 403, "forbidden")
 				return
 			}
@@ -161,6 +165,8 @@ func (uc *UserCenter) awardHandler(op string, session func(*gin.Context) (string
 		}
 		var result any
 		switch op {
+		case "submissions":
+			result, err = store.Submissions(ctx, user, p)
 		case "profile":
 			result, err = store.Honors(ctx, "", q.Get("username"), 1)
 		case "honors":

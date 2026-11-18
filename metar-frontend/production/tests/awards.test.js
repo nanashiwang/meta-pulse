@@ -49,3 +49,9 @@ test('a confirmed rejection with a failed refresh is not offered for replay',asy
  await view.page('/admin/awards',{id:'3'},new URLSearchParams('key=2026-11-09'));view.mount(ui.viewRoot);
  await ui.button.onclick();assert.match(ui.feedback.textContent,/已保存.*刷新失败/);assert.equal(h.memory.size,0);assert.equal(view.pending,null);
 });
+
+test('my submissions keeps the period, separates both awards and escapes answer text',async()=>{
+ const h=setup();const view=new h.api.View({request:async path=>{assert.equal(path,'/metar/awards/submissions?type=week&key=2026-11-16');return [{kind:'response',subject_id:'22',question_id:'11',title:'标题',excerpt:'<回答>',week:'2026-11-16',can_withdraw:true}]}},{});
+ const html=await view.page('/awards',{id:'3'},new URLSearchParams('view=submissions&type=week&key=2026-11-16&kind=post'));
+ assert.match(html,/优秀帖子奖.*本期暂无提交.*优秀回答奖/s);assert.ok(html.includes('/questions/11/22'));assert.ok(html.includes('&lt;回答&gt;'));assert.ok(html.includes('撤销推荐'));assert.ok(html.includes('伯乐奖'));
+});

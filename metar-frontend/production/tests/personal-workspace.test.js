@@ -46,7 +46,7 @@ test('cancelled native tab switch cannot change the iframe URL or parent route',
 });
 
 test('inbox filters round-trip inside the personal workspace without widening native paths',()=>{
- for(const filter of ['all','comments','likes']){
+ for(const filter of ['all','comments','answers','likes']){
   const native='/users/notifications/inbox?filter='+filter;
   assert.equal(nativeTarget('/me/notifications',new URLSearchParams('view=inbox&filter='+filter)),native);
   assert.equal(workspaceURL(native,origin),'/me/notifications?view=inbox&filter='+filter);

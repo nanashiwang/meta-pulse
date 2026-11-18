@@ -199,7 +199,7 @@ func (s *Store) syncCandidates(ctx context.Context, tx *sql.Tx, p Period, now ti
 		return err
 	}
 	for _, item := range items {
-		if _, err = tx.ExecContext(ctx, "INSERT IGNORE INTO metar_award_candidate(period_type,period_key,kind,subject_id,user_id,question_id,answer_id,reason,created_at) VALUES('week',?,'response',?,?,?,?,'',?)", p.Key, item.a, item.u, item.q, item.a, item.t.Unix()); err != nil {
+		if _, err = tx.ExecContext(ctx, "INSERT IGNORE INTO metar_award_candidate(period_type,period_key,kind,subject_id,user_id,question_id,answer_id,reason,created_at) SELECT 'week',?,'response',?,?,?,?,'',? FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM metar_award_audit WHERE period_type='week' AND period_key=? AND kind='response' AND operation='withdraw' AND subject_id=?)", p.Key, item.a, item.u, item.q, item.a, item.t.Unix(), p.Key, item.a); err != nil {
 			return err
 		}
 	}

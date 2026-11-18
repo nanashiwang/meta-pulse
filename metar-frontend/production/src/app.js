@@ -1351,6 +1351,7 @@
         if(!currentUser)return loginRequired(currentTitle(),t('请先登录社区账号。'));
         if(!isCommunityAdministrator(currentUser))return empty(t('需要管理员权限'),'',link('/awards',t('优秀内容评选'),'btn'),'shield');
       }
+      if(path==='/awards'&&route().query.get('view')==='submissions'&&!currentUser)return loginRequired(currentTitle(),t('请先登录社区账号。'));
       if(path==='/awards'&&route().query.get('view')==='honors'){
  if(!currentUser)return loginRequired(currentTitle(),t('请先登录社区账号。'));
  await loadFeatureScript('award-honors','MetarAwardHonors');awardsView=new window.MetarAwardHonors.View(answer);return await awardsView.page(route().query);

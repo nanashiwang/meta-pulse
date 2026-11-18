@@ -111,7 +111,7 @@ func (s *Store) Execute(ctx context.Context, actor, key string, c Command, admin
 	if !keyRE.MatchString(key) || c.Validate() != nil {
 		return Result{}, ErrInvalid
 	}
-	if admin != (c.Op != "nominate" && c.Op != "title") {
+	if admin != (c.Op != "withdraw" && c.Op != "nominate" && c.Op != "title") {
 		return Result{}, ErrForbidden
 	}
 	tx, err := s.DB.BeginTx(ctx, nil)
@@ -140,6 +140,8 @@ func (s *Store) Execute(ctx context.Context, actor, key string, c Command, admin
 	p := c.Period
 	if c.Op == "nominate" {
 		p, out.Already, err = s.nominate(ctx, tx, actor, c.QuestionID, now)
+	} else if c.Op == "withdraw" {
+		err = s.withdraw(ctx, tx, actor, c, now)
 	} else if c.Op == "title" {
 		err = s.chooseTitle(ctx, tx, actor, c.TitleKey)
 		p = Weekly(now, "post")

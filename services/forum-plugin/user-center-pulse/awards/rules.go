@@ -123,6 +123,11 @@ func (c Command) Validate() error {
 		return ErrInvalid
 	}
 	switch c.Op {
+	case "withdraw":
+		if c.Period.Type != "week" || !idRE.MatchString(c.SubjectID) {
+			return ErrInvalid
+		}
+		return nil
 	case "sync", "publish":
 		return nil
 	case "rec_paid":
