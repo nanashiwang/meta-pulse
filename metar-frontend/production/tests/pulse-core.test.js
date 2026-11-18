@@ -6,7 +6,7 @@ const vm = require('node:vm');
 const path = require('node:path');
 const context = vm.createContext({ window: {} });
 vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/pulse-core.js'), 'utf8'), context);
-const { Timeline, cardFrame, markup, cards, strongest } = context.window.MetarPulseCore;
+const { Timeline, cardFrame, markup, cards, strongest, prizeTint, blendLight } = context.window.MetarPulseCore;
 
 test('without a server result, even a long wait cannot fracture or reveal a reward', () => {
   const clock = new Timeline(100);
@@ -133,8 +133,10 @@ test('the presentation contains no placeholder prize and translates all its visi
   const html = markup({t:language.window.MetarI18n.t});
   assert.doesNotMatch(html, /[\u3400-\u9fff]|\+1\.00/);
   assert.match(html, /aria-hidden="true"/);
+  assert.match(html, /Visual effects do not affect the odds/);
+  assert.doesNotMatch(html, /white|green|blue|gold|rainbow|七彩炫光/);
   assert.match(html, /data-action="pulse-draw" disabled/);
-  assert.match(html, /data-action="pulse-draw-five" disabled/);
+  assert.match(html, /data-action="pulse-draw-batch" disabled/);
   assert.match(html, /role="status" aria-live="polite"/);
 });
 
@@ -154,4 +156,15 @@ test('bonus experience appears only on the original prize card', () => {
   assert.equal((html.match(/class="pc-card"/g)||[]).length,2);
   assert.equal((html.match(/class="pc-bonus"/g)||[]).length,1);
   assert.match(html,/pc-bonus[^>]*>\+ 4 EXP</);
+});
+
+
+test('the jade palette holds through charging and blends only during fracture', () => {
+  for (const p of [0,.29,.44,.46]) assert.equal(prizeTint(p),0);
+  const half = prizeTint(.525);
+  assert.ok(half > .49 && half < .51);
+  assert.equal(prizeTint(.60),1);
+  assert.equal(blendLight('#178a66','#a98bf7',0),'#178a66');
+  assert.match(blendLight('#178a66','#a98bf7',half),/^rgb/);
+  assert.equal(blendLight('#178a66','#a98bf7',1),'#a98bf7');
 });

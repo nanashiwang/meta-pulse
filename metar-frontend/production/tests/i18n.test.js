@@ -133,7 +133,7 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
         let payload;
         if (pathname.endsWith('/summary')) payload = { available_tickets: tickets, current_contribution_milli: 1200500, level: { name: 'Member' } };
         else if (pathname.endsWith('/rules')) {
-          payload = {selection_version:3,selection:'server-choice',draws:Array.from({length:Math.min(5,tickets)},(_,i)=>({selection:'server-choice-'+i,experience_only:false,quota_expires_at:'2026-11-01T00:00:00Z'})),ticket_count:tickets,can_draw_five:tickets>=5,queried_at:'2026-10-09T00:00:00Z',budgets:[],enabled:true,quota_per_unit:500000,total_weight:100,period:{id:1,config_version:'test-rule',key:'test-period',ends_at:'2026-11-01T00:00:00Z'},rewards:[{name:'Daily reward',amount:50000,weight:100}],...pulseRules};
+          payload = {selection_version:3,selection:'server-choice',draws:Array.from({length:Math.min(5,tickets)},(_,i)=>({selection:'server-choice-'+i,experience_only:false,quota_expires_at:'2026-11-01T00:00:00Z'})),ticket_count:tickets,batch_draw_count:Math.min(5,tickets),can_draw_five:tickets>=5,queried_at:'2026-10-09T00:00:00Z',budgets:[],enabled:true,quota_per_unit:500000,total_weight:100,period:{id:1,config_version:'test-rule',key:'test-period',ends_at:'2026-11-01T00:00:00Z'},rewards:[{name:'Daily reward',amount:50000,weight:100}],...pulseRules};
         }
         else if (pathname.endsWith('/rewards')) payload = { rewards: new URL(url, 'https://metarhub.com').searchParams.has('action_id') ? [] : pulseRewards };
         else if (pathname.endsWith('/actions')) {
@@ -366,18 +366,29 @@ test('Pulse 提交结果与原请求恢复提示随切换语言更新，超时�
 });
 
 
-test('five-draw fallback submits five unique actions, refuses insufficient tickets and stops on definite rejection', async () => {
-  const view=await shell({user:pulseUser,binding:'bound',tickets:5});
-  await view.navigate('/pulse');await view.click('pulse-draw-five');
-  const actions=view.requests.filter(r=>r.url.endsWith('/actions'));
-  assert.equal(actions.length,5);
-  assert.equal(new Set(actions.map(r=>r.options.headers.get('Idempotency-Key'))).size,5);
-  assert.equal(view.operations.size,0);assertEnglish(view,'five draws');
-  const insufficient=await shell({user:pulseUser,binding:'bound',tickets:4});
-  await insufficient.navigate('/pulse');await insufficient.click('pulse-draw-five');
-  assert.equal(insufficient.requests.filter(r=>r.url.endsWith('/actions')).length,0);
-  const partial=await shell({user:pulseUser,binding:'bound',tickets:5,rejectAt:3});
-  await partial.navigate('/pulse');await partial.click('pulse-draw-five');
+test('batch fallback draws all remaining tickets below five and caps larger rounds at five', async () => {
+  for (const tickets of [0,1,2,3,4,5,8]) {
+    const view=await shell({user:pulseUser,binding:'bound',tickets});
+    await view.navigate('/pulse');
+    assert.match(view.html(), tickets === 0 ? /data-action="pulse-draw-batch" disabled/ : tickets < 5 ? />Draw all<\/button>/ : />Draw five · 5 tickets<\/button>/);
+    await view.click('pulse-draw-batch');
+    const actions=view.requests.filter(r=>r.url.endsWith('/actions'));
+    assert.equal(actions.length,Math.min(tickets,5));
+    assert.equal(new Set(actions.map(r=>r.options.headers.get('Idempotency-Key'))).size,actions.length);
+    assert.equal(view.operations.size,0);
+  }
+  for (const pulseRules of [{batch_draw_count:0}, {batch_draw_count:2}, {draws:[{selection:'only-one'}]}]) {
+    const view=await shell({user:pulseUser,binding:'bound',tickets:3,pulseRules});
+    await view.navigate('/pulse');
+    assert.match(view.html(),/data-action="pulse-draw-batch" disabled/);
+    await view.click('pulse-draw-batch');
+    assert.equal(view.requests.filter(r=>r.url.endsWith('/actions')).length,0);
+  }
+});
+
+test('a definite rejection stops an all-remaining draw and preserves confirmed rewards', async () => {
+  const partial=await shell({user:pulseUser,binding:'bound',tickets:4,rejectAt:3});
+  await partial.navigate('/pulse');await partial.click('pulse-draw-batch');
   assert.equal(partial.requests.filter(r=>r.url.endsWith('/actions')).length,3);
   assert.equal(partial.operations.size,0);
   assert.match(partial.html(),/Confirmed rewards are kept/);assertEnglish(partial,'partial draw');
@@ -385,10 +396,10 @@ test('five-draw fallback submits five unique actions, refuses insufficient ticke
 
 test('all five pending rewards unlock a new round before any reward settles', async () => {
   const view=await shell({user:pulseUser,binding:'bound',tickets:20,actionResult:'pending'});
-  await view.navigate('/pulse');await view.click('pulse-draw-five');
+  await view.navigate('/pulse');await view.click('pulse-draw-batch');
   assert.equal(view.operations.size,0);
   assert.match(view.html(),/Your draw is complete/);
-  await view.click('pulse-draw-five');
+  await view.click('pulse-draw-batch');
   const calls=view.requests.filter(r=>r.url.endsWith('/actions'));
   assert.equal(calls.length,10);
   assert.equal(new Set(calls.map(r=>JSON.parse(r.options.body).action_id)).size,10);
@@ -513,7 +524,7 @@ test('unified tickets draw across batches without a group selector', async () =>
   const view=await shell({user:pulseUser,binding:'bound',tickets:5});
   await view.navigate('/pulse');
   assert.doesNotMatch(view.html(),/pulse-select-group/);
-  await view.click('pulse-draw-five');
+  await view.click('pulse-draw-batch');
   const calls=view.requests.filter(r=>r.url.endsWith('/actions'));
   assert.equal(calls.length,5);
   assert.deepEqual(calls.map(r=>JSON.parse(r.options.body).selection),Array.from({length:5},(_,i)=>'server-choice-'+i));

@@ -186,7 +186,8 @@
         const valid = item => item && /^[a-f0-9-]{36}$/.test(item.actionId) && item.actionId === item.idempotencyKey
           && ((item.protocolVersion === undefined && item.selection === undefined) || ([2,3].includes(item.protocolVersion) && typeof item.selection === 'string' && item.selection.length > 0 && item.selection.length <= 1024));
         if (value === null) return null;
-        if (valid(value) && (!value.actions || ([1, 5].includes(value.actions.length) && value.actions.every(item => valid(item) && item.protocolVersion === value.protocolVersion && (value.protocolVersion === 3 || item.selection === value.selection))
+        if (valid(value) && (value.actions === undefined || (Array.isArray(value.actions) && value.actions.length >= 1 && value.actions.length <= 5
+          && (value.protocolVersion === 3 || [1, 5].includes(value.actions.length)) && value.actions.every(item => valid(item) && item.protocolVersion === value.protocolVersion && (value.protocolVersion === 3 || item.selection === value.selection))
           && value.actions[0].selection === value.selection && value.actions[0].actionId === value.actionId && new Set(value.actions.map(item => item.actionId)).size === value.actions.length))) return value;
         throw new Error('Invalid saved operation');
       } catch (_) { throw new AdapterError('无法读取原抽奖请求，请恢复站点存储后重试', { code: 'storage_unavailable' }); }
@@ -194,9 +195,9 @@
     begin(count = 1, choice) {
       const previous = this.read();
       if (previous) return previous;
-      if (![1, 5].includes(count)) throw new AdapterError('invalid draw count', { code: 'invalid_request' });
-      const selections = choice?.draws?.slice(0, count);
-      if (choice?.selection_version !== 3 || !Array.isArray(selections) || selections.length !== count || selections.some(draw => typeof draw.selection !== 'string' || !draw.selection || draw.selection.length > 1024)) throw new AdapterError('refresh current reward rules', {code:'selection_required'});
+      if (!Number.isInteger(count) || count < 1 || count > 5) throw new AdapterError('invalid draw count', { code: 'invalid_request' });
+      const selections = Array.isArray(choice?.draws) ? choice.draws.slice(0, count) : [];
+      if (choice?.selection_version !== 3 || selections.length !== count || selections.some(draw => typeof draw?.selection !== 'string' || !draw.selection || draw.selection.length > 1024)) throw new AdapterError('refresh current reward rules', {code:'selection_required'});
       const actions = selections.map(draw => { const id = window.crypto.randomUUID(); return {actionId:id,idempotencyKey:id,protocolVersion:3,selection:draw.selection}; });
       const value = count === 1 ? actions[0] : { ...actions[0], actions };
       try { window.sessionStorage.setItem(this.key, JSON.stringify(value)); }
@@ -216,7 +217,7 @@
       && ['community_exp', 'newapi_quota'].includes(result.reward_type);
   }
 
-  // A five-draw session is five ordinary actions, each with its original key.
+  // A batch of up to five draws uses ordinary actions, each with its original key.
   // Persist identifiers before the first POST; never persist or invent outcomes.
   class PulseDrawSession {
     constructor(client, store, { wait = ms => new Promise(resolve => window.setTimeout(resolve, ms)) } = {}) {

@@ -1051,16 +1051,19 @@
       }
     }
     const unavailable = { selection_required: '请刷新并确认最新抽奖规则', insufficient_tickets:'积累脉冲券后，即可开启下一次回馈', rule_inactive:'当前规则已暂停或结束', budget_exhausted: '当前可用奖励预算已用完', activity_paused: '活动暂未开放', no_active_period: '当前规则尚未准备好', funding_verification_required: '当前权益正在核验', reward_pool_unavailable: '奖池准备中' };
-    const available = Number.isSafeInteger(rules.ticket_count) ? rules.ticket_count : 0;
-    const canDrawFive = rules.can_draw_five === true && rules.draws?.length === 5;
+    const available = Number.isSafeInteger(rules.ticket_count) ? Math.max(0, rules.ticket_count) : 0;
+    const batchCount = Math.min(5, available);
     const rewards = Array.isArray(history.rewards) ? history.rewards : [];
     const canDraw = rules.enabled === true && available > 0 && !pending && !pulseBusy;
+    // Do not silently spend fewer tickets when an eligible batch cannot be confirmed.
+    const approvedCount = rules.batch_draw_count ?? (rules.can_draw_five === true ? 5 : batchCount === 1 ? 1 : 0);
+    const canDrawBatch = canDraw && approvedCount === batchCount && rules.selection_version === 3 && Array.isArray(rules.draws) && rules.draws.length === batchCount;
     const last = pulseLastResult?.userId === currentUser.id ? pulseLastResult : null;
     if (last) last.rewards = last.rewards.map(reward => rewards.find(r => r.grant_id === reward.grant_id && validPulseResult(r, reward.action_id)) || reward);
     if (sequence === navigationSequence) {
       pulseHasPendingRewards = (deferHistory && pulseHasPendingRewards) || rewards.some(pulseRewardPending) || Boolean(last?.rewards.some(pulseRewardPending));
       pulseCoreState = {
-        tickets: number(available), canDraw, canDrawFive: canDraw && canDrawFive, selection: rules, pending: Boolean(pending), busy: pulseBusy, quotaPerUnit: rules.quota_per_unit,
+        tickets: number(available), canDraw, batchCount, canDrawBatch, selection: rules, pending: Boolean(pending), busy: pulseBusy, quotaPerUnit: rules.quota_per_unit,
         result: pulseSessionDisplay(last),
         message: pulseMessage ? t(pulseMessage) : '',
         reason: pending ? t('正在确认本轮抽奖结果') : !rules.enabled ? t(unavailable[rules.unavailable_reason] || '活动暂不可用') : available === 0 ? t('积累脉冲券后，即可开启下一次回馈') : '',
@@ -1069,9 +1072,9 @@
     const benefits = `<dl class="prod-pulse-benefits" data-pulse-benefits-content><div><dt>${t('额度奖励资格')}</dt><dd>${esc(rules.period?.continuous ? (rules.experience_only ? t('仅经验') : rules.quota_expires_at ? new Date(rules.quota_expires_at).toLocaleString(locale()) : t('从获得券时计算')) : rules.period?.ends_at ? new Date(rules.period.ends_at).toLocaleString(locale()) : '—')}</dd></div></dl>
       ${rules.period?.continuous ? `<div class="prod-page-note" data-pulse-benefits-note><p>${t('已有券保留原额度有效期；新设置的有效天数只适用于以后获得的券。')}</p><p>${esc(rules.experience_only ? t('下一张券已超过额度有效期，仅抽取经验。') : t('系统优先使用额度资格有效的券。'))}</p>${rules.bonus_experience_percent === 10 ? `<p>${t('有效券必得闪，另有 10% 概率加送经验。')}</p>` : ''}</div>` : ''}`;
     const dialogHeader = (id, title) => `<div class="prod-pulse-dialog-header"><h2 id="${id}-title">${t(title)}</h2><form method="dialog"><button type="submit" class="prod-pulse-dialog-close" aria-label="${t('关闭窗口')}" autofocus>×</button></form></div>`;
-    return `${coreReady ? window.MetarPulseCore.markup({ t }) : `<section class="card card-pad"><div class="prod-pulse-tools"><button type="button" class="prod-pulse-link" data-action="pulse-benefits" aria-haspopup="dialog" aria-controls="pulse-benefits">${t('我的权益')}</button><button type="button" class="prod-pulse-link" data-action="pulse-history" aria-haspopup="dialog" aria-controls="pulse-history">${t('奖励记录')}</button></div><h1>${esc(t('可用脉冲券：{count}', { count: number(available) }))}</h1><details class="prod-pulse-fallback-help"><summary aria-label="${t('抽取规则')}">?</summary><div><p>${t('每次消耗 1 张券。额度用于 API 调用，经验用于社区升级，均不可转赠。')}</p><p>${t('五连抽可合并不同时间获得的券；每次使用最新规则，中断时保留已获得的奖励。')}</p><p>${t('闪奖光效：1 闪白光、2 闪绿光、5 闪蓝光、10 闪金光、50 闪红光、100 闪七彩炫光。纯经验奖为白光；光效不影响中奖概率。')}</p></div></details>
+    return `${coreReady ? window.MetarPulseCore.markup({ t }) : `<section class="card card-pad"><div class="prod-pulse-tools"><button type="button" class="prod-pulse-link" data-action="pulse-benefits" aria-haspopup="dialog" aria-controls="pulse-benefits">${t('我的权益')}</button><button type="button" class="prod-pulse-link" data-action="pulse-history" aria-haspopup="dialog" aria-controls="pulse-history">${t('奖励记录')}</button></div><h1>${esc(t('可用脉冲券：{count}', { count: number(available) }))}</h1><details class="prod-pulse-fallback-help"><summary aria-label="${t('抽取规则')}">?</summary><div><p>${t('每次消耗 1 张券。额度用于 API 调用，经验用于社区升级，均不可转赠。')}</p><p>${t('连抽可以合并不同时间获得的券，每轮最多抽 5 张；不足 5 张可全部抽。每抽使用最新规则，中断时保留已获得的奖励。')}</p><p>${t('光效仅作展示，不影响中奖概率。')}</p></div></details>
       ${!rules.enabled ? `<p role="status">${esc(t(unavailable[rules.unavailable_reason] || '活动暂不可用'))}</p>` : ''}
-      <div class="actions"><button type="button" class="btn primary" data-action="pulse-draw" ${canDraw ? '' : 'disabled'}>${t(pulseBusy ? '正在处理…' : '开启一次脉冲 · 1 券')}</button><button type="button" class="btn primary" data-action="pulse-draw-five" ${canDraw && canDrawFive ? '' : 'disabled'}>${t('五连抽 · 5 券')}</button><button type="button" class="btn" data-action="retry">${t('刷新权益')}</button></div></section>`}
+      <div class="actions"><button type="button" class="btn primary" data-action="pulse-draw" ${canDraw ? '' : 'disabled'}>${t(pulseBusy ? '正在处理…' : '开启一次脉冲 · 1 券')}</button><button type="button" class="btn primary" data-action="pulse-draw-batch" ${canDrawBatch ? '' : 'disabled'}${batchCount > 0 && batchCount < 5 ? ` aria-label="${esc(t('全部抽（消耗 {count} 张）', {count:batchCount}))}"` : ''}>${t(batchCount < 5 ? '全部抽' : '五连抽 · 5 券')}</button><button type="button" class="btn" data-action="retry">${t('刷新权益')}</button></div></section>`}
       <div data-pulse-details>
       ${coreReady && !rules.enabled ? `<p class="prod-page-note" role="status">${esc(t(unavailable[rules.unavailable_reason] || '活动暂不可用'))}</p>` : ''}
       ${pulseMessage && (!coreReady || pulseMessage !== '本次抽奖已完成。') ? `<div class="prod-status mt24" role="status"><p data-pulse-message>${esc(t(pulseMessage))}</p></div>` : ''}
@@ -1094,10 +1097,10 @@
     if (sequence !== navigationSequence || currentUser?.id !== userId) return '';
     const reason = t('绑定元衡 API 账号后即可获得抽奖券并抽奖');
     pulseHasPendingRewards = false;
-    pulseCoreState = { unbound: true, tickets: number(0), canDraw: false, canDrawFive: false, selection: null, pending: false, busy: false, quotaPerUnit: undefined, result: null, message: '', reason };
+    pulseCoreState = { unbound: true, tickets: number(0), canDraw: false, batchCount: 0, canDrawBatch: false, selection: null, pending: false, busy: false, quotaPerUnit: undefined, result: null, message: '', reason };
     const dialogHeader = (id, title) => `<div class="prod-pulse-dialog-header"><h2 id="${id}-title">${t(title)}</h2><form method="dialog"><button type="submit" class="prod-pulse-dialog-close" aria-label="${t('关闭窗口')}" autofocus>×</button></form></div>`;
     const bind = link('/settings/binding', t('去绑定元衡 API 账号 ') + I('arrow', 'sm'), 'btn primary');
-    return `${coreReady ? window.MetarPulseCore.markup({ t }) : `<section class="card card-pad"><h1>${esc(t('可用脉冲券：{count}', { count: number(0) }))}</h1><div class="actions"><button type="button" class="btn primary" disabled>${t('开启一次脉冲 · 1 券')}</button><button type="button" class="btn primary" disabled>${t('五连抽 · 5 券')}</button></div></section>`}
+    return `${coreReady ? window.MetarPulseCore.markup({ t }) : `<section class="card card-pad"><h1>${esc(t('可用脉冲券：{count}', { count: number(0) }))}</h1><div class="actions"><button type="button" class="btn primary" disabled>${t('开启一次脉冲 · 1 券')}</button><button type="button" class="btn primary" disabled>${t('全部抽')}</button></div></section>`}
       <div data-pulse-details><section class="card card-pad mt24 prod-pulse-bind" data-pulse-bind role="status"><div class="between wrap"><h2>${I('link')} ${t('尚未绑定元衡 API 账号')}</h2>${badge(t('未绑定'))}</div><p class="muted mt8">${t('抽奖券、额度奖励和抽奖记录都归属你的元衡 API 账号。完成绑定后，可通过周一、周五签到获得抽奖券，额度奖励直接到账 API 账号。社区账号仍可独立使用。')}</p><div class="actions mt16">${bind}${link('/latest', t('继续浏览社区'), 'btn')}</div></section></div>
       ${communityTasksMarkup(false)}
       <dialog id="pulse-benefits" class="prod-pulse-dialog prod-pulse-benefits-dialog" aria-labelledby="pulse-benefits-title">${dialogHeader('pulse-benefits', '我的权益')}<div data-pulse-benefits-body><p>${t('尚未绑定元衡 API 账号，暂无抽奖券和权益。')}</p><div class="actions mt16">${bind}</div></div></dialog>${footer()}`;
@@ -1411,8 +1414,9 @@
     return notFoundPage();
   }
 
-  async function submitPulse(resume = false, count = 1) {
-    if (!resume && (count === 5 ? !pulseCoreState?.canDrawFive : !pulseCoreState?.canDraw)) return;
+  async function submitPulse(resume = false, batch = false) {
+    const count = batch ? pulseCoreState?.batchCount : 1;
+    if (!resume && (batch ? !pulseCoreState?.canDrawBatch : !pulseCoreState?.canDraw)) return;
     if (pulseBusy || pulseRefreshing || !currentUser || !isActiveUser(currentUser)) return;
     pulseBusy = true;
     clearTimeout(pulseStatusTimer);
@@ -1423,7 +1427,7 @@
     const quotaPerUnit = pulseCoreState?.quotaPerUnit;
     const userId = currentUser.id, identity = identitySequence, sequence = navigationSequence;
     const sameUser = () => currentUser?.id === userId && identitySequence === identity;
-    document.querySelectorAll('[data-action="pulse-draw"], [data-action="pulse-draw-five"], [data-action="pulse-resume"]').forEach((button) => { button.disabled = true; });
+    document.querySelectorAll('[data-action="pulse-draw"], [data-action="pulse-draw-batch"], [data-action="pulse-resume"]').forEach((button) => { button.disabled = true; });
     const store = new PulseOperation(userId);
     try {
       const operation = resume ? store.read() : store.begin(count, pulseCoreState?.selection);
@@ -1471,7 +1475,7 @@
     pulseRefreshing = true;
     clearTimeout(pulseStatusTimer);
     pulseStatusEpoch++;
-    presentation.button.disabled = presentation.fiveButton.disabled = presentation.refresh.disabled = true;
+    presentation.button.disabled = presentation.batchButton.disabled = presentation.refresh.disabled = true;
     try {
       const html = await pulsePage({deferHistory:true});
       if (sequence !== navigationSequence || presentation !== pulseView) return;
@@ -1491,7 +1495,7 @@
       return true;
     } catch (_) {
       if (presentation === pulseView) {
-        pulseCoreState = {...pulseCoreState, canDraw:false, canDrawFive:false};
+        pulseCoreState = {...pulseCoreState, canDraw:false, canDrawBatch:false};
         presentation.status.textContent = t('权益数据刷新失败，已显示的结果会保留，请刷新权益。');
         presentation.refresh.disabled = false;
         // Re-read authoritative eligibility before allowing another ticket spend.
@@ -1820,7 +1824,7 @@
     if (action === 'theme') setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
     if (action === 'retry') { answer.clearContentCache(); navigate({preservePublicView:true}); }
     if (action === 'pulse-draw') submitPulse();
-    if (action === 'pulse-draw-five') submitPulse(false, 5);
+    if (action === 'pulse-draw-batch') submitPulse(false, true);
     if (action === 'pulse-resume') submitPulse(true);
     if (action === 'pulse-refresh') refreshPulse();
     if (action === 'pulse-benefits' || action === 'pulse-history' || action === 'pulse-winners') {

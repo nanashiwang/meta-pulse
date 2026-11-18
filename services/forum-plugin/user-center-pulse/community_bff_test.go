@@ -366,3 +366,23 @@ func TestCommunityDrawBonusProjectionKeepsOnlyPublicOutcome(t *testing.T) {
 		t.Fatalf("rules %+v %v", got, err)
 	}
 }
+
+func TestCommunityBatchDrawCountProjection(t *testing.T) {
+	for _, tc := range []struct {
+		upstream string
+		want     string
+	}{
+		{`{"can_draw_five":true}`, ""},
+		{`{"batch_draw_count":0}`, `"batch_draw_count":0`},
+		{`{"batch_draw_count":3}`, `"batch_draw_count":3`},
+	} {
+		got, err := communityProjection("rules", "42", []byte(tc.upstream))
+		if err != nil {
+			t.Fatal(err)
+		}
+		mapped, err := json.Marshal(got)
+		if err != nil || (tc.want == "" && strings.Contains(string(mapped), "batch_draw_count")) || (tc.want != "" && !strings.Contains(string(mapped), tc.want)) {
+			t.Fatalf("input %s: want %q, got %s (%v)", tc.upstream, tc.want, mapped, err)
+		}
+	}
+}

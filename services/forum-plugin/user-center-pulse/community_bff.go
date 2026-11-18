@@ -73,8 +73,9 @@ type communityRules struct {
 		ExperienceOnly bool      `json:"experience_only"`
 		QuotaExpiresAt time.Time `json:"quota_expires_at"`
 	} `json:"draws"`
-	CanDrawFive bool `json:"can_draw_five"`
-	Budgets     []struct {
+	CanDrawFive    bool `json:"can_draw_five"`
+	BatchDrawCount *int `json:"batch_draw_count,omitempty"`
+	Budgets        []struct {
 		ID        string `json:"id"`
 		Kind      string `json:"kind"`
 		Available bool   `json:"available"`

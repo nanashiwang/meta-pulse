@@ -28,6 +28,32 @@ test('five draws persist five distinct identifiers before spending, isolate user
 
 const immediate = {wait:async()=>{}};
 
+test('a short batch restores its exact signed choices and skips draws already confirmed', async () => {
+  for (const count of [2,3,4]) {
+    storage();
+    const store = new PulseOperation('a');
+    const operation = store.begin(count, choice);
+    const restored = new PulseOperation('a');
+    assert.deepEqual(restored.read(), operation);
+    assert.equal(operation.actions.length, count);
+    assert.equal(new Set(operation.actions.map(a => a.actionId)).size, count);
+    assert.deepEqual(operation.actions.map(a=>a.selection), choice.draws.slice(0,count).map(d=>d.selection));
+    const first = reward(operation.actions[0]), posts = [];
+    const session = new PulseDrawSession({
+      async act(action) { posts.push(action); return reward(action); },
+      async rewards(id) { return {rewards:id===first.action_id?[first]:[]}; },
+    }, restored, immediate);
+    const known = await session.recover(restored.read());
+    assert.deepEqual(known,[first]);
+    assert.deepEqual(posts,[]);
+    assert.equal((await session.run(restored.read(),{known})).length,count);
+    assert.deepEqual(posts,operation.actions.slice(1));
+    assert.equal(restored.read(),null);
+    for (const invalid of [0,6,2.5]) assert.throws(()=>restored.begin(invalid,choice),e=>e.code==='invalid_request');
+    assert.throws(()=>restored.begin(count,{...choice,draws:choice.draws.slice(0,count-1)}),e=>e.code==='selection_required');
+  }
+});
+
 test('a lost third response automatically recovers its pending Grant and finishes all five without awaiting settlement', async () => {
   storage();
   const store = new PulseOperation('a'), operation = store.begin(5, choice), issued = new Map(), calls = [], queries = [];

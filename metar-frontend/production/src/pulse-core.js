@@ -9,6 +9,17 @@
   const tiers = ['white', 'green', 'blue', 'gold', 'red', 'rainbow'];
   const tier = value => tiers.includes(value) ? value : 'white';
   const strongest = rewards => tiers[Math.max(0, ...rewards.map(reward => tiers.indexOf(tier(reward.tier))))];
+  // A confirmed outcome does not change the idle/charging crystal. The jade
+  // light refracts into the prize palette only as the crystal fractures.
+  const prizeTint = progress => smooth((progress - .46) / .13);
+  function blendLight(from, to, tint) {
+    if (tint <= 0 || from === to) return from;
+    if (tint >= 1) return to;
+    const parts = [from, to].map(color => /^#[0-9a-f]{6}$/i.test(color) ? [1,3,5].map(i => parseInt(color.slice(i,i+2),16)) : null);
+    if (parts.some(part => !part)) return tint < .5 ? from : to;
+    const mixed = parts[0].map((value,i) => Math.round(value + (parts[1][i] - value) * tint));
+    return 'rgb(' + mixed.join(',') + ')';
+  }
   // All five cards finish inside the existing timeline, including a partial batch.
   function cardFrame(progress, index = 0) {
     const p = progress - Math.min(4, index) * .027;
@@ -59,11 +70,11 @@
   function markup({ t }) {
     return `<section class="pulse-core" data-pulse-core data-stage="idle" aria-label="${esc(t('脉冲核心'))}">
       <div class="pc-header"><span class="pc-brand">METAR / PULSE</span><button type="button" class="pc-wallet" data-action="pulse-benefits" aria-haspopup="dialog" aria-controls="pulse-benefits" title="${esc(t('我的权益'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 7h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4V7Z"/><path d="m6 7 1-4 13 3M9 10v6m6-6v6"/></svg><span class="pc-tickets"></span><span aria-hidden="true">›</span></button></div>
-      <div class="pc-heading"><div class="pc-title"><h1>${esc(t('开启你的脉冲时刻'))}<span class="pc-title-spark" aria-hidden="true">ϟ</span></h1><details class="pc-help"><summary aria-label="${esc(t('抽取规则'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9 8a3 3 0 0 1 6 0c0 2-3 2-3 4m0 4v.5"/></svg></summary><div class="pc-help-panel" tabindex="0"><p>${esc(t('每次消耗 1 张券。额度用于 API 调用，经验用于社区升级，均不可转赠。'))}</p><p>${esc(t('五连抽可合并不同时间获得的券；每次使用最新规则，中断时保留已获得的奖励。'))}</p><p>${esc(t('闪奖光效：1 闪白光、2 闪绿光、5 闪蓝光、10 闪金光、50 闪红光、100 闪七彩炫光。纯经验奖为白光；光效不影响中奖概率。'))}</p></div></details></div><p class="pc-subtitle">${esc(t('让每一次积累，在这一刻绽放。'))}</p></div>
+      <div class="pc-heading"><div class="pc-title"><h1>${esc(t('开启你的脉冲时刻'))}<span class="pc-title-spark" aria-hidden="true">ϟ</span></h1><details class="pc-help"><summary aria-label="${esc(t('抽取规则'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9 8a3 3 0 0 1 6 0c0 2-3 2-3 4m0 4v.5"/></svg></summary><div class="pc-help-panel" tabindex="0"><p>${esc(t('每次消耗 1 张券。额度用于 API 调用，经验用于社区升级，均不可转赠。'))}</p><p>${esc(t('连抽可以合并不同时间获得的券，每轮最多抽 5 张；不足 5 张可全部抽。每抽使用最新规则，中断时保留已获得的奖励。'))}</p><p>${esc(t('光效仅作展示，不影响中奖概率。'))}</p></div></details></div><p class="pc-subtitle">${esc(t('让每一次积累，在这一刻绽放。'))}</p></div>
       <div class="pc-stage"><canvas aria-hidden="true"></canvas><div class="pc-horizon" aria-hidden="true"></div><span class="pc-annotation" aria-hidden="true">PULSE CORE</span>
         <div class="pc-reward" aria-hidden="true"></div>
       </div>
-      <div class="pc-bottom"><p class="pc-state" role="status" aria-live="polite" aria-atomic="true"></p><div class="pc-controls"><div class="pc-actions"><button type="button" class="pc-primary" data-action="pulse-draw" disabled>${esc(t('抽一次（消耗 1 张）'))}</button><button type="button" class="pc-primary pc-five" data-action="pulse-draw-five" disabled>${esc(t('五连抽（消耗 5 张）'))}</button></div></div></div>
+      <div class="pc-bottom"><p class="pc-state" role="status" aria-live="polite" aria-atomic="true"></p><div class="pc-controls"><div class="pc-actions"><button type="button" class="pc-primary" data-action="pulse-draw" disabled>${esc(t('抽一次（消耗 1 张）'))}</button><button type="button" class="pc-primary pc-batch" data-action="pulse-draw-batch" disabled>${esc(t('全部抽'))}</button></div></div></div>
       <div class="pc-footer"><label class="pc-skip" title="${esc(t('保留闪光与翻牌'))}"><input type="checkbox" data-core-skip>${esc(t('跳过蓄能'))}</label><button type="button" class="pc-refresh" data-action="pulse-refresh">${esc(t('刷新权益'))}</button></div>
     </section>`;
   }
@@ -74,7 +85,8 @@
     try { ctx = canvas.getContext('2d'); } catch (_) { /* Keep the result card usable without Canvas. */ }
     const stage = root.querySelector('.pc-stage'), reward = root.querySelector('.pc-reward');
     const annotation = root.querySelector('.pc-annotation');
-    let w = 0, h = 0, colors = {}, progress = 0, waitingTime = null, cardLayout = [];
+    let w = 0, h = 0, colors = {}, jade = {}, prize = {}, progress = 0, waitingTime = null, cardLayout = [];
+    const spectrumOf = style => style.getPropertyValue('--pc-spectrum').trim().split(/\s+/).filter(Boolean);
     const frac = x => x - Math.floor(x);
     const stars = Array.from({length:76}, (_, i) => ({a:frac(Math.sin(i*91.13+4)*874.73)*Math.PI*2,r:.25+frac(Math.sin(i*6.7+2)*476.1)*.75,size:.6+frac(Math.sin(i*71.1)*162.9)*1.6,delay:frac(Math.sin(i*4.92)*381.1)}));
     function size() {
@@ -83,13 +95,18 @@
       canvas.width = Math.round(w*dpr); canvas.height = Math.round(h*dpr);
       if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const css = getComputedStyle(root);
-      for (const key of ['energy','secondary','core','gold','bg']) colors[key] = css.getPropertyValue('--pc-'+key).trim();
+      for (const key of ['energy','secondary','core','gold','bg']) {
+        prize[key] = css.getPropertyValue('--pc-'+key).trim();
+        jade[key] = css.getPropertyValue('--pc-jade-'+key).trim() || prize[key];
+      }
+      prize.spectrum = spectrumOf(css);
       // Measure once on result/resize/theme changes, never inside the animation loop.
       cardLayout = Array.from(reward.querySelectorAll('.pc-card'), card => {
         const style = getComputedStyle(card);
         return {card, x:reward.offsetLeft+card.offsetLeft+card.offsetWidth/2,
           y:reward.offsetTop+card.offsetTop+card.offsetHeight/2, width:card.offsetWidth, height:card.offsetHeight,
-          power:tiers.indexOf(tier(card.dataset.tier)), flare:style.getPropertyValue('--pc-flare').trim()};
+          power:tiers.indexOf(tier(card.dataset.tier)), flare:style.getPropertyValue('--pc-flare').trim(),
+          spectrum:card.dataset.tier === 'rainbow' ? spectrumOf(style) : []};
       });
       if (ctx) draw(progress, waitingTime);
     }
@@ -101,33 +118,34 @@
     ctx.save();ctx.globalAlpha=alpha;const g=ctx.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,color);g.addColorStop(1,'transparent');ctx.fillStyle=g;ctx.fillRect(x-r,y-r,2*r,2*r);ctx.restore();
   }
   function cardRadiance(layout, frame, p) {
-    const {x,y,width,height,power,flare} = layout;
-    const glow = frame.bloom * (.20 + power * .17);
+    const {x,y,width,height,power,flare,spectrum} = layout;
+    const glow = frame.bloom * (.58 + power * .10);
     if (glow <= 0) return;
-    aura(x,y,width*(1.4+power*.18),glow,flare);
-    aura(x,y,height*.74,glow*.6,'#fff3c7');
-    if (power >= 2) {
-      // Broad, feathered shafts radiate from the card, rather than a central wheel.
-      ctx.save();ctx.translate(x,y);ctx.rotate(-.35+frame.lift*.10);
-      for(let i=0;i<10;i++) {
-        ctx.rotate(Math.PI*2/10);
-        const length=width*(1.5+(i%3)*.38),spread=length*(.10+(i%2)*.12);
-        const ray=ctx.createLinearGradient(0,0,length,0);
-        ray.addColorStop(0,'#fff8df');ray.addColorStop(.18,flare);ray.addColorStop(1,'transparent');
-        ctx.fillStyle=ray;ctx.globalAlpha=glow*(i%2?.16:.40);
-        ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(length,-spread);ctx.quadraticCurveTo(length*1.08,0,length,spread);ctx.closePath();ctx.fill();
-      }
-      ctx.restore();
+    const rayColor = i => spectrum.length ? spectrum[i % spectrum.length] : flare;
+    aura(x,y,Math.max(width,height)*(.94+power*.14),glow*.72,flare);
+    aura(x,y,height*.71,glow*.46,'#fffaff');
+    // All prizes use the existing feathered rays and outward motion.
+    // The top tier refracts those same rays instead of switching to a wheel.
+    ctx.save();ctx.translate(x,y);ctx.rotate(-.35+frame.lift*.10);
+    const rays = power >= 2 ? 10 : 8;
+    for(let i=0;i<rays;i++) {
+      ctx.rotate(Math.PI*2/rays);
+      const length=width*(1.31+(i%3)*.34+power*.06),spread=length*(.09+(i%2)*.10);
+      const ray=ctx.createLinearGradient(0,0,length,0);
+      ray.addColorStop(0,'#fffcf7');ray.addColorStop(.23,rayColor(i));ray.addColorStop(1,'transparent');
+      ctx.fillStyle=ray;ctx.globalAlpha=glow*(i%2?.15:.43);
+      ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(length,-spread);ctx.quadraticCurveTo(length*1.08,0,length,spread);ctx.closePath();ctx.fill();
     }
-    if (power >= 3) {
-      ctx.save();ctx.globalAlpha=glow*.65;
+    ctx.restore();
+    if (power >= 2) {
+      ctx.save();ctx.globalAlpha=glow*.76;
       const streak=ctx.createLinearGradient(x-width*2,y,x+width*2,y);
-      streak.addColorStop(0,'transparent');streak.addColorStop(.44,flare);streak.addColorStop(.5,'#fffbea');streak.addColorStop(.56,flare);streak.addColorStop(1,'transparent');
-      ctx.fillStyle=streak;ctx.fillRect(x-width*2,y-height*.12,width*4,1.5);
+      streak.addColorStop(0,'transparent');streak.addColorStop(.36,rayColor(1));streak.addColorStop(.5,'#fffbea');streak.addColorStop(.64,rayColor(4));streak.addColorStop(1,'transparent');
+      ctx.fillStyle=streak;ctx.fillRect(x-width*2,y-height*.12,width*4,2);
       ctx.restore();
-      stars.slice(0,power===4?22:14).forEach((star,i)=>{
+      stars.slice(0,power>=4?25:14).forEach((star,i)=>{
         const travel=clamp((p-.53)/.47),px=x+Math.cos(star.a)*width*(.48+travel*star.r),py=y+Math.sin(star.a)*height*.52-travel*height*.3;
-        dot(px,py,star.size*(i%3===0?1.4:.65),glow*(.3+star.r*.6),i%3===0?'#fffbea':flare);
+        dot(px,py,star.size*(i%3===0?1.4:.65),glow*(.3+star.r*.6),i%3===0?'#fffbea':rayColor(i));
       });
     }
   }
@@ -151,6 +169,9 @@
   }
   function draw(p, waiting = null) {
     if(!w||!h) return;
+    const tint = prizeTint(p);
+    for (const key of ['energy','secondary','core','gold','bg']) colors[key] = blendLight(jade[key], prize[key], tint);
+    colors.spectrum = tint > 0 ? prize.spectrum.map(shade => blendLight(jade.energy, shade, tint)) : [];
     ctx.clearRect(0,0,w,h);
     const breath=waiting === null ? 0 : Math.sin(waiting/650);
     const orbit=waiting === null ? 0 : waiting/1400;
@@ -175,7 +196,7 @@
         const f=out((p-.47-star.delay*.04)/.4),distance=(base*.5+bound*star.r)*f;
         const x=cx+Math.cos(star.a)*distance,y=cy+Math.sin(star.a)*distance*.78+Math.max(0,p-.72)*60;
         const opacity=(1-smooth((p-.66)/.34))*.9;
-        ctx.save();ctx.globalAlpha=opacity;ctx.strokeStyle=i%3===0?colors.secondary:colors.energy;ctx.lineWidth=star.size*.7;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x-Math.cos(star.a)*(4+(1-f)*24),y-Math.sin(star.a)*(4+(1-f)*24));ctx.stroke();ctx.restore();
+        ctx.save();ctx.globalAlpha=opacity;ctx.strokeStyle=colors.spectrum.length ? colors.spectrum[i % colors.spectrum.length] : (i%3===0?colors.secondary:colors.energy);ctx.lineWidth=star.size*.7;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x-Math.cos(star.a)*(4+(1-f)*24),y-Math.sin(star.a)*(4+(1-f)*24));ctx.stroke();ctx.restore();
       }
     });
     crystal(cx,cy,base,p);
@@ -186,7 +207,7 @@
       ctx.save();ctx.globalAlpha=(1-release)*.6;const g=ctx.createLinearGradient(cx-bound,cy,cx+bound,cy);g.addColorStop(0,'transparent');g.addColorStop(.5,colors.core);g.addColorStop(1,'transparent');ctx.fillStyle=g;ctx.fillRect(cx-bound,cy-1,bound*2,2);ctx.restore();
     }
     const power = Math.max(0, tiers.indexOf(tier(root.dataset.tier)));
-    stage.style.setProperty('--pc-dim', String(smooth((p-.20)/.27)*(1-smooth((p-.81)/.19))*(.30+power*.13)));
+    stage.style.setProperty('--pc-dim', String(smooth((p-.20)/.27)*(1-smooth((p-.81)/.19))*(.54+tint*power*.09)));
     reward.style.opacity=p>.49?'1':'0';reward.style.visibility=p>.49?'visible':'hidden';
     cardLayout.forEach((layout, i) => {
       const {card,power} = layout, frame=cardFrame(p,i);
@@ -225,7 +246,7 @@
     constructor(root, { t }) {
       this.root = root; this.t = t; this.dead = false; this.frame = 0;
       this.button = root.querySelector('.pc-primary');
-      this.fiveButton = root.querySelector('.pc-five');
+      this.batchButton = root.querySelector('.pc-batch');
       this.skipInput = root.querySelector('[data-core-skip]');
       this.status = root.querySelector('.pc-state');
       this.reward = root.querySelector('.pc-reward');
@@ -263,8 +284,10 @@
       this.button.dataset.action = options.pending ? 'pulse-resume' : 'pulse-draw';
       this.button.disabled = options.busy || (!options.pending && !options.canDraw);
       this.button.textContent = this.t(options.busy ? '正在处理…' : options.pending ? '继续完成本轮抽奖' : '抽一次（消耗 1 张）');
-      this.fiveButton.disabled = options.busy || options.pending || !options.canDrawFive;
-      this.fiveButton.title = !options.canDrawFive && !options.pending && !options.busy ? this.t('五连抽需要至少 5 张可用脉冲券') : '';
+      this.batchButton.disabled = options.busy || options.pending || !options.canDrawBatch;
+      this.batchButton.textContent = this.t(options.batchCount < 5 ? '全部抽' : '五连抽（消耗 5 张）');
+      if (options.batchCount > 0 && options.batchCount < 5) this.batchButton.setAttribute('aria-label', this.t('全部抽（消耗 {count} 张）', {count:options.batchCount}));
+      else this.batchButton.removeAttribute('aria-label');
       this.refresh.disabled = options.busy;
       if (!this.timeline) {
         if (options.result) this.showResult(options.result);
@@ -281,7 +304,7 @@
       this.root.dataset.tier = ''; this.root.dataset.count = String(total);
       this.reward.innerHTML = ''; this.resultHTML = '';
       this.scene.size();
-      this.button.disabled = this.fiveButton.disabled = this.refresh.disabled = true;
+      this.button.disabled = this.batchButton.disabled = this.refresh.disabled = true;
       this.button.textContent = this.t('正在开启');
       this.reward.setAttribute('aria-hidden', 'true');
       this.tick();
@@ -298,7 +321,7 @@
       return done;
     }
     fillResult(result) {
-      this.root.dataset.count = String(result.total);
+      this.root.dataset.count = String(result.rewards.length);
       this.root.dataset.tier = strongest(result.rewards);
       const html = cards(result);
       if (html !== this.resultHTML) { this.reward.innerHTML = html; this.resultHTML = html; }
@@ -321,7 +344,7 @@
         return;
       }
       const messages = {gather:'微光汇聚，点亮你的积累', charge:'脉冲共振，即将绽放', waiting:'正在确认本次结果，请稍候…', reveal:'这一刻，惊喜正在成形'};
-      const message = state.phase === 'waiting' && this.total > 1 ? this.t('正在确认五连抽：{count} / 5', {count:this.confirmed}) : this.t(messages[state.phase]);
+      const message = state.phase === 'waiting' && this.total > 1 ? this.t('正在确认连抽：{count} / {total}', {count:this.confirmed,total:this.total}) : this.t(messages[state.phase]);
       if (this.status.textContent !== message) this.status.textContent = message;
       if (state.animate) this.frame = requestAnimationFrame(() => this.tick());
     }
@@ -345,5 +368,5 @@
       this.motion.removeEventListener('change', this.onMotion);
     }
   }
-  window.MetarPulseCore = Object.freeze({ Timeline, cardFrame, markup, cards, strongest, View });
+  window.MetarPulseCore = Object.freeze({ Timeline, cardFrame, markup, cards, strongest, prizeTint, blendLight, View });
 })();

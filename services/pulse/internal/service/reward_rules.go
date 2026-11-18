@@ -45,6 +45,7 @@ type RewardRules struct {
 	Selection              string             `json:"selection,omitempty"`
 	Draws                  []DrawChoice       `json:"draws"`
 	CanDrawFive            bool               `json:"can_draw_five"`
+	BatchDrawCount         int                `json:"batch_draw_count"`
 	Budgets                []RuleBudgetStatus `json:"budgets"`
 	ExperienceRewards      []PublicReward     `json:"experience_rewards"`
 	ExperienceTotalWeight  uint64             `json:"experience_total_weight"`
@@ -184,7 +185,7 @@ func (s *RewardRulesService) get(ctx context.Context, userID uint64) (RewardRule
 		}
 		if len(draws) > 0 {
 			// The first choice controls single-draw odds; the EXP table also describes
-			// any expired choices later in the five-draw plan.
+			// any expired choices later in the batch.
 			viewLot := &ports.TicketLot{QuotaExpiresAt: draws[0].QuotaExpiresAt}
 			result, result.Budgets, err = s.ruleView(ctx, repos, current, viewLot, now)
 			if err != nil {
@@ -202,19 +203,22 @@ func (s *RewardRulesService) get(ctx context.Context, userID uint64) (RewardRule
 		result.ExperienceTotalWeight = expView.TotalWeight
 		result.TicketCount = total
 		result.Draws = draws
-		result.CanDrawFive = result.Enabled && len(draws) == 5
-		for _, draw := range draws {
-			if draw.ExperienceOnly && !expView.Enabled {
-				result.CanDrawFive = false
+		if result.Enabled && len(s.SelectionSecret) > 0 {
+			result.BatchDrawCount = len(draws)
+			for _, draw := range draws {
+				if draw.ExperienceOnly && !expView.Enabled {
+					result.BatchDrawCount = 0
+					break
+				}
 			}
 		}
+		result.CanDrawFive = result.BatchDrawCount == 5
 		if len(draws) == 0 {
 			result.Enabled = false
 			result.UnavailableReason = "insufficient_tickets"
 		}
 		if len(s.SelectionSecret) == 0 {
 			result.Enabled = false
-			result.CanDrawFive = false
 			result.UnavailableReason = "selection_required"
 		}
 		return nil

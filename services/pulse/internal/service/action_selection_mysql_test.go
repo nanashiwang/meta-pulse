@@ -59,7 +59,7 @@ func TestMySQLCurrentRuleAcrossTicketSourcesAndReplay(t *testing.T) {
 	rules.now = func() time.Time { return now }
 
 	view, e := rules.GetForUser(ctx, user)
-	if e != nil || !view.Enabled || !view.CanDrawFive || len(view.Draws) != 5 || view.TicketCount != 7 || view.Period.ID != fresh.PeriodID || view.TotalWeight != 4 {
+	if e != nil || !view.Enabled || !view.CanDrawFive || view.BatchDrawCount != 5 || len(view.Draws) != 5 || view.TicketCount != 7 || view.Period.ID != fresh.PeriodID || view.TotalWeight != 4 {
 		t.Fatalf("unified view: %+v %v", view, e)
 	}
 	action, _ := NewActionService(unit, ActionConfig{RandomSecret: secret, RequireVerifiedFunding: true, Now: func() time.Time { return now }})
@@ -126,7 +126,7 @@ func TestMySQLCurrentRuleAcrossTicketSourcesAndReplay(t *testing.T) {
 	}
 	// New 60-day settings cannot revive tickets originally issued for 30 days.
 	expired, e := rules.GetForUser(ctx, user)
-	if e != nil || !expired.ExperienceOnly || expired.TicketCount != 2 || len(expired.Rewards) != 1 || expired.Rewards[0].Amount != 30 || !expired.QuotaExpiresAt.Equal(base.Add(30*24*time.Hour)) {
+	if e != nil || !expired.ExperienceOnly || expired.CanDrawFive || expired.BatchDrawCount != 2 || len(expired.Draws) != 2 || expired.TicketCount != 2 || len(expired.Rewards) != 1 || expired.Rewards[0].Amount != 30 || !expired.QuotaExpiresAt.Equal(base.Add(30*24*time.Hour)) {
 		t.Fatalf("original validity: %+v %v", expired, e)
 	}
 	changed := firstCmd
