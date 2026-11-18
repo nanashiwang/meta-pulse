@@ -363,6 +363,8 @@ func (uc *UserCenter) RegisterUnAuthRouter(r *gin.RouterGroup) {
 	uc.registerPolls(r, nil, plugin.SiteURL)
 	uc.registerMarketplacePublic(r)
 	uc.registerOperations(r, nil, false)
+	r.GET("/metar/ads", uc.homeAds("list", plugin.SiteURL))
+	r.GET("/metar/ads/:id", uc.homeAds("image", plugin.SiteURL))
 	r.GET("/metar/events", uc.eventHandler("list", nil, false, plugin.SiteURL))
 }
 func (uc *UserCenter) RegisterAuthUserRouter(r *gin.RouterGroup) {
@@ -381,6 +383,8 @@ func (uc *UserCenter) RegisterAuthUserRouter(r *gin.RouterGroup) {
 func (uc *UserCenter) RegisterAuthAdminRouter(r *gin.RouterGroup) {
 	uc.registerTaxonomyOrder(r, true)
 	uc.registerAccountSwitch(r, answerAdminSessionUserID, plugin.SiteURL)
+	r.POST("/metar/ads", uc.homeAds("create", plugin.SiteURL))
+	r.DELETE("/metar/ads/:id", uc.homeAds("delete", plugin.SiteURL))
 	uc.registerPublishing(r, answerAdminSessionUserID, plugin.SiteURL)
 	uc.registerAdminTicketGrant(r, answerAdminSessionUserID, plugin.SiteURL)
 	uc.registerAdminUserBindings(r, answerAdminSessionUserID, plugin.SiteURL)

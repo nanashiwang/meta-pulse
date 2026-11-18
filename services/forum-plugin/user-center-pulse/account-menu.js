@@ -15,6 +15,7 @@ export function accountLinks(user, english = false, canReview = false) {
     management.push(item('/admin/pulse', 'Pulse 配置', 'Pulse settings', 'sliders'));
     management.push(item('/admin/growth', '成长管理', 'Growth settings', 'stars'));
     management.push(item('/admin/chat', '聊天举报', 'Chat reports', 'chat-dots'));
+    management.push(item('/admin/ads', '广告管理', 'Advertisements', 'image'));
     management.push(item('/admin/publishing', '内容运营', 'Content operations', 'pencil-square'));
     management.push(item('/admin/operations', '社区经营', 'Community operations', 'graph-up'));
     management.push(item('/admin/events', '活动管理', 'Manage events', 'calendar-event'));

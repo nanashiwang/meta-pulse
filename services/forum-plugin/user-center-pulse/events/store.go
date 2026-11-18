@@ -81,6 +81,7 @@ func (s *Store) Ensure(ctx context.Context) error {
 		c.ExecContext(ctx, `SELECT RELEASE_LOCK('metar_events_v1')`)
 	}()
 	for _, q := range []string{
+		`CREATE TABLE IF NOT EXISTS metar_home_ad(id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, target VARCHAR(2048) NOT NULL, picture MEDIUMBLOB NOT NULL) ENGINE=InnoDB`,
 		`CREATE TABLE IF NOT EXISTS metar_event(id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,title VARCHAR(100) NOT NULL,body TEXT NOT NULL,location VARCHAR(300) NOT NULL,starts_at BIGINT NOT NULL,ends_at BIGINT NOT NULL,deadline BIGINT NOT NULL,capacity INT NOT NULL,registered_count INT NOT NULL DEFAULT 0,status VARCHAR(16) NOT NULL,version INT NOT NULL DEFAULT 1,created_by BIGINT UNSIGNED NOT NULL,updated_by BIGINT UNSIGNED NOT NULL,INDEX upcoming(starts_at,id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 		`CREATE TABLE IF NOT EXISTS metar_event_member(event_id BIGINT UNSIGNED NOT NULL,user_id BIGINT UNSIGNED NOT NULL,joined BOOLEAN NOT NULL,joined_at BIGINT NOT NULL,PRIMARY KEY(event_id,user_id)) ENGINE=InnoDB`,
 		`CREATE TABLE IF NOT EXISTS metar_event_actor(user_id BIGINT UNSIGNED PRIMARY KEY,minute_bucket BIGINT NOT NULL DEFAULT 0,command_count INT NOT NULL DEFAULT 0) ENGINE=InnoDB`,

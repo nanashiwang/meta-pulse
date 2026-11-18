@@ -248,7 +248,7 @@
     if (path.startsWith('/model/')) return t('模型详情');
     if (path.startsWith('/question/')) return t("问题详情");
     if (path.startsWith('/topic/')) return t("话题");
-    return ({ '/awards': t('优秀内容评选'), '/admin/awards': t('评选审核'), '/me/drafts': t('我的草稿'), '/events': t('近期活动'), '/admin/publishing': '内容运营', '/admin/operations': t('社区经营'), '/admin/events': t('活动管理'), '/chat': t('聊天'), '/admin/chat': t('聊天举报'), '/latest': t("最新话题"), '/topics': t("类别与标签"), '/admin/taxonomy': t('类别管理'), '/knowledge': t("知识库"), '/search': t("搜索"), '/models': t('模型评分榜'), '/models/leaderboard': t('模型评分榜'), '/admin/models': t('模型榜管理'), '/tools': t('工具'), '/tools/network': t('Claude 访问环境检测'), '/marketplace': t('Vibe Coding 集市'), '/marketplace/mine': t('我的集市发布'), '/marketplace/publish': t('发布到集市'), '/admin/marketplace': t('集市审核'), '/me/settings': t('账号设置'), '/me/badges': t('勋章'), '/me': t("个人空间"), '/me/bookmarks': t("我的收藏"), '/me/growth': t('社区成长'), '/me/notifications': t("通知中心"), '/settings/binding': t("账号绑定"), '/pulse': t("Pulse 权益"), '/admin/pulse': t("Pulse 配置"), '/publish': t("发布内容"), '/login': t("登录"), '/register': t("注册"), '/forgot': t("找回密码"), '/status': t("服务状态"), '/support': t("帮助中心"), '/guidelines': t("社区规范"), '/tos': t("服务条款"), '/privacy': t("隐私政策") })[path] || t("METAR 社区");
+    return ({ '/awards': t('优秀内容评选'), '/admin/awards': t('评选审核'), '/me/drafts': t('我的草稿'), '/events': t('近期活动'), '/admin/ads': '广告管理', '/admin/publishing': '内容运营', '/admin/operations': t('社区经营'), '/admin/events': t('活动管理'), '/chat': t('聊天'), '/admin/chat': t('聊天举报'), '/latest': t("最新话题"), '/topics': t("类别与标签"), '/admin/taxonomy': t('类别管理'), '/knowledge': t("知识库"), '/search': t("搜索"), '/models': t('模型评分榜'), '/models/leaderboard': t('模型评分榜'), '/admin/models': t('模型榜管理'), '/tools': t('工具'), '/tools/network': t('Claude 访问环境检测'), '/marketplace': t('Vibe Coding 集市'), '/marketplace/mine': t('我的集市发布'), '/marketplace/publish': t('发布到集市'), '/admin/marketplace': t('集市审核'), '/me/settings': t('账号设置'), '/me/badges': t('勋章'), '/me': t("个人空间"), '/me/bookmarks': t("我的收藏"), '/me/growth': t('社区成长'), '/me/notifications': t("通知中心"), '/settings/binding': t("账号绑定"), '/pulse': t("Pulse 权益"), '/admin/pulse': t("Pulse 配置"), '/publish': t("发布内容"), '/login': t("登录"), '/register': t("注册"), '/forgot': t("找回密码"), '/status': t("服务状态"), '/support': t("帮助中心"), '/guidelines': t("社区规范"), '/tos': t("服务条款"), '/privacy': t("隐私政策") })[path] || t("METAR 社区");
   }
 
   function languageControl() {
@@ -257,7 +257,7 @@
 
   function accountManagement(item) {
     if (currentUserState !== 'ready' || !isCommunityAdministrator(currentUser)) return '';
-    return `<div class="account-menu-group"><div class="account-menu-label">${t('管理')}</div>${item('/admin/pulse', t('Pulse 配置'), 'settings')}${item('/admin/growth', t('成长管理'), 'target')}${item('/admin/taxonomy', t('类别管理'), 'flag')}${item('/admin/marketplace', t('集市审核'), 'code')}${item('/admin/models', t('模型榜管理'), 'target')}${item('/admin/chat', t('聊天举报'), 'chat')}${item('/admin/events', t('活动管理'), 'calendar')}${item('/admin/awards', t('评选审核'), 'trophy')}${item('/admin/operations', t('社区经营'), 'target')}${item('/admin/publishing', '内容运营', 'edit')}${external('/admin/dashboard', I('shield') + `<span>${t('社区管理')}</span>`, 'account-menu-link')}${external('/admin/pulse_user_center', I('link') + `<span>${t('社区连接配置')}</span>`, 'account-menu-link')}</div>`;
+    return `<div class="account-menu-group"><div class="account-menu-label">${t('管理')}</div>${item('/admin/pulse', t('Pulse 配置'), 'settings')}${item('/admin/growth', t('成长管理'), 'target')}${item('/admin/taxonomy', t('类别管理'), 'flag')}${item('/admin/marketplace', t('集市审核'), 'code')}${item('/admin/models', t('模型榜管理'), 'target')}${item('/admin/chat', t('聊天举报'), 'chat')}${item('/admin/events', t('活动管理'), 'calendar')}${item('/admin/awards', t('评选审核'), 'trophy')}${item('/admin/operations', t('社区经营'), 'target')}${item('/admin/ads', '广告管理', 'edit')}${item('/admin/publishing', '内容运营', 'edit')}${external('/admin/dashboard', I('shield') + `<span>${t('社区管理')}</span>`, 'account-menu-link')}${external('/admin/pulse_user_center', I('link') + `<span>${t('社区连接配置')}</span>`, 'account-menu-link')}</div>`;
   }
 
   const isPersonalPath = path => /^\/me(?:\/|$)/.test(path) || ['/settings/binding','/chat','/pulse'].includes(path);
@@ -427,6 +427,10 @@
     syncNavigation();
     enhanceTaxonomy();
     void mountDiscussionRail();
+    const slot = view?.querySelector('[data-home-ad]');
+    if (slot) loadFeatureScript('home-ads','MetarAds').then(() => window.MetarAds.mountSlot(slot,answer)).catch(() => {});
+    const manager = view?.querySelector('[data-ad-manager]');
+    if (manager) window.MetarAds.mountManager(manager,answer,new AnswerAdapter({answerApiBase:'/answer/admin/api'}));
     void mountCommunityAnnouncement();
     void mountTagShortcuts();
     void mountSearchSuggestions();
@@ -741,7 +745,7 @@
           <div class="discussion-toolbar"><nav class="discussion-tabs" aria-label="${t('话题筛选')}">${tabs}</nav>${external(askPath, I('plus', 'sm') + t('新建话题'), 'btn primary')}</div>
           ${list.length ? discussionList(list) : empty(order === 'unanswered' ? t("暂时没有待回答问题") : t("当前筛选没有内容"), t("可以调整筛选，或发起一个新问题。"), external(askPath, t("发起提问"), 'btn primary'), 'chat')}${pager}
         </div>
-        <aside class="community-rail" data-discussion-rail aria-label="${t('社区侧栏')}"><details data-rail-disclosure open><summary class="rail-mobile-summary">${t('社区推荐')}</summary><div class="rail-disclosure-content">
+        <aside class="community-rail" data-discussion-rail aria-label="${t('社区侧栏')}">${!tag && page === 1 ? '<div data-home-ad hidden></div>' : ''}<details data-rail-disclosure open><summary class="rail-mobile-summary">${t('社区推荐')}</summary><div class="rail-disclosure-content">
           <section class="rail-card"><div class="rail-head"><h2>${t('等你来回答')}</h2></div><div data-rail-content="unanswered" aria-live="polite"><p class="rail-content-state">${t('正在加载…')}</p></div></section>
           <details class="rail-card rail-curated"><summary>${t('精选阅读')}</summary><div data-rail-content="featured" aria-live="polite"><p class="rail-content-state">${t('正在加载…')}</p></div></details>
           <section class="rail-card" data-followed-card${currentUser && tagDirectory?.followed?.size ? '' : ' hidden'}>
@@ -1282,6 +1286,13 @@
   async function resolveView() {
     const { path } = route();
     if (/^\/(?:me|settings|admin|pulse|chat)(?:\/|$)/.test(path)) await identityReady;
+    if (path === '/admin/ads') {
+      if (currentUserState === 'unavailable') return identityUnavailable('广告管理');
+      if (!currentUser) return loginRequired('广告管理', t('请先登录社区账号。'));
+      if (!isCommunityAdministrator(currentUser)) return empty(t('需要管理员权限'),'','','shield');
+      await loadFeatureScript('home-ads','MetarAds');
+      return window.MetarAds.managerHTML();
+    }
     if (path === '/admin/publishing') {
       if (currentUserState === 'unavailable') return identityUnavailable('内容运营');
       if (!currentUser) return loginRequired('内容运营', t('请先登录社区账号。'));
