@@ -45,7 +45,7 @@
         const timer = setTimeout(() => finish(true), 5000);
         script.onload = () => finish(!window[globalName]);
         script.onerror = () => finish(true);
-        script.src = `/metar-assets/${name}.js`;
+        script.src = `/metar-assets/${name}.js` + (name === "home-ads" ? "?v=__HOME_ADS_VERSION__" : "");
         document.head.appendChild(script);
       }).catch(error => { featureScripts.delete(name); throw error; });
       featureScripts.set(name, promise);

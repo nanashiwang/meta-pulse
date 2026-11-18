@@ -108,6 +108,15 @@ func (s *Store) Ensure(ctx context.Context) error {
 	if columns == 0 {
 		_, e = c.ExecContext(ctx, "ALTER TABLE metar_home_ad ADD COLUMN placement VARCHAR(8) NOT NULL DEFAULT 'side'")
 	}
+	if e != nil {
+		return e
+	}
+	if e = c.QueryRowContext(ctx, "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='metar_home_ad' AND column_name='enabled'").Scan(&columns); e != nil {
+		return e
+	}
+	if columns == 0 {
+		_, e = c.ExecContext(ctx, "ALTER TABLE metar_home_ad ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT TRUE")
+	}
 	return e
 }
 

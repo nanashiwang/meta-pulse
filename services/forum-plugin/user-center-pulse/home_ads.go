@@ -58,9 +58,9 @@ func (uc *UserCenter) homeAds(op string, site func() string) gin.HandlerFunc {
 		}
 		switch op {
 		case "list", "manage":
-			query := "SELECT id,target,placement,revision FROM metar_home_ad ORDER BY id"
+			query := "SELECT id,target,placement,revision FROM metar_home_ad WHERE enabled=TRUE ORDER BY id"
 			if op == "manage" {
-				query = "SELECT id,target,placement,revision,note FROM metar_home_ad ORDER BY id"
+				query = "SELECT id,target,placement,revision,note,enabled FROM metar_home_ad ORDER BY id"
 			}
 			rows, e := s.DB.QueryContext(ctx, query)
 			if e == nil {
@@ -68,9 +68,10 @@ func (uc *UserCenter) homeAds(op string, site func() string) gin.HandlerFunc {
 				items := []gin.H{}
 				for rows.Next() {
 					var id, link, placement, revision, note string
+					var enabled bool
 					fields := []any{&id, &link, &placement, &revision}
 					if op == "manage" {
-						fields = append(fields, &note)
+						fields = append(fields, &note, &enabled)
 					}
 					if e = rows.Scan(fields...); e != nil {
 						break
@@ -78,6 +79,7 @@ func (uc *UserCenter) homeAds(op string, site func() string) gin.HandlerFunc {
 					item := gin.H{"id": id, "link": link, "placement": placement, "revision": revision}
 					if op == "manage" {
 						item["note"] = note
+						item["enabled"] = enabled
 					}
 					items = append(items, item)
 				}
@@ -122,6 +124,18 @@ func (uc *UserCenter) homeAds(op string, site func() string) gin.HandlerFunc {
 				communityError(c, 400, "invalid_placement")
 				return
 			}
+			var enabled any // A legacy client omitting this field must not resume a paused ad.
+			if value, ok := c.GetPostForm("enabled"); ok {
+				switch value {
+				case "true":
+					enabled = true
+				case "false":
+					enabled = false
+				default:
+					communityError(c, 400, "invalid_enabled")
+					return
+				}
+			}
 			note := strings.TrimSpace(c.PostForm("note"))
 			if !utf8.ValidString(note) || utf8.RuneCountInString(note) > 300 {
 				communityError(c, 400, "invalid_note")
@@ -147,7 +161,7 @@ func (uc *UserCenter) homeAds(op string, site func() string) gin.HandlerFunc {
 			}
 			if op == "create" {
 				var res sql.Result
-				res, err = s.DB.ExecContext(ctx, "INSERT INTO metar_home_ad(target,picture,note,placement) VALUES (?,?,?,?)", target, pic, note, placement)
+				res, err = s.DB.ExecContext(ctx, "INSERT INTO metar_home_ad(target,picture,note,placement,enabled) VALUES (?,?,?,?,COALESCE(?,TRUE))", target, pic, note, placement, enabled)
 				if err == nil {
 					var newID int64
 					newID, err = res.LastInsertId()
@@ -163,7 +177,7 @@ func (uc *UserCenter) homeAds(op string, site func() string) gin.HandlerFunc {
 					return
 				}
 				var res sql.Result
-				res, err = s.DB.ExecContext(ctx, "UPDATE metar_home_ad SET target=?,note=?,placement=?,picture=COALESCE(?,picture),revision=revision+1 WHERE id=? AND revision=?", target, note, placement, pic, id, rev)
+				res, err = s.DB.ExecContext(ctx, "UPDATE metar_home_ad SET target=?,note=?,placement=?,enabled=COALESCE(?,enabled),picture=COALESCE(?,picture),revision=revision+1 WHERE id=? AND revision=?", target, note, placement, enabled, pic, id, rev)
 				if err == nil {
 					var n int64
 					n, err = res.RowsAffected()

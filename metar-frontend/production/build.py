@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import shutil
 from pathlib import Path
@@ -145,7 +146,8 @@ def build(output: Path, config_path: Path) -> None:
     shutil.copyfile(ROOT / "src/personal-workspace.css", assets / "personal-workspace.css")
     (assets / "tag-shortcuts.js").write_text(sources["tag-shortcuts"], encoding="utf-8")
     (assets / "search-suggestions.js").write_text(sources["search-suggestions"], encoding="utf-8")
-    (assets / "app.js").write_text(sources["app"], encoding="utf-8")
+    ads_version = hashlib.sha256(sources["home-ads"].encode()).hexdigest()[:16]
+    (assets / "app.js").write_text(sources["app"].replace("__HOME_ADS_VERSION__", ads_version), encoding="utf-8")
     (assets / "pulse-feed.js").write_text(sources["pulse-feed"], encoding="utf-8")
     (assets / "pulse-core.js").write_text(sources["pulse-core"], encoding="utf-8")
     shutil.copyfile(ROOT / "src/pulse-core.css", assets / "pulse-core.css")
@@ -156,7 +158,12 @@ def build(output: Path, config_path: Path) -> None:
     (assets / "account-switch.js").write_text(sources["account-switch"], encoding="utf-8")
     (assets / "analytics-client.js").write_text(sources["analytics-client"], encoding="utf-8")
     (assets / "analytics.js").write_text(sources["analytics"], encoding="utf-8")
-    build_seo(output, sources["index"], config["siteName"])
+    # Stable paths alone can keep an old editor alive across a release.
+    index = sources['index']
+    for name in ('app.js', 'app.css'):
+        digest = hashlib.sha256((assets / name).read_bytes()).hexdigest()[:16]
+        index = index.replace('/metar-assets/' + name + '"', '/metar-assets/' + name + '?v=' + digest + '"')
+    build_seo(output, index, config["siteName"])
     runtime = "window.__METAR_RUNTIME_CONFIG__ = Object.freeze(" + json.dumps(config, ensure_ascii=False, separators=(",", ":")) + ");\n"
     (output / "runtime-config.js").write_text(runtime, encoding="utf-8")
     (output / "BUILD_INFO.json").write_text(json.dumps({"kind": "production", "mockData": False, "config": config_path.name}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

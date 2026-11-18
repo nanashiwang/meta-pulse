@@ -80,7 +80,7 @@
     show();
   }
   const managerHTML = () =>
-    `<section data-ad-manager><header class="ad-manager-heading"><div><h1>广告管理</h1><p class="muted">顶部和侧边可同时展示，各位置的广告按发布顺序每 15 秒轮播</p></div><button type="button" class="btn primary" data-new>＋ 新增广告</button></header><div data-create></div><p role="status"></p><section aria-label="已发布广告"><h2>已发布广告</h2><div data-cards></div></section></section>`;
+    `<section data-ad-manager><header class="ad-manager-heading"><div><h1>广告管理</h1><p class="muted">顶部和侧边可同时展示，各位置的广告按发布顺序每 15 秒轮播</p></div><button type="button" class="btn primary" data-new>＋ 新增广告</button></header><div data-create></div><p role="status"></p><section aria-label="广告列表"><h2>广告列表</h2><div data-cards></div></section></section>`;
   async function picture(file) {
     if (!file || file.size > 8 * 1024 * 1024)
       throw Error("请选择不超过 8 MB 的横版图片。");
@@ -108,8 +108,8 @@
     }
   }
   const fields = `<header class="ad-card-head"><h3></h3><span class="ad-state"></span></header>
- <div class="ad-card-body"><div><div class="ad-preview"><img alt="广告图片预览"><span data-placeholder>请选择横版图片</span></div><button type="button" data-retry class="btn small" hidden>重新加载预览</button><label>横版图片<input name="image" type="file" accept="image/jpeg,image/png,image/webp"></label><small class="muted">JPG、PNG 或 WebP，最大 8 MB</small></div>
- <div class="ad-fields"><label>展示位置<select name="placement"><option value="side">侧边广告 · 4:3</option><option value="top">顶部横幅 · 4:1</option></select></label><label>跳转网址<input name="link" type="url" placeholder="https://" required></label><label>后台备注<textarea name="note" maxlength="300" rows="2" placeholder="例如：合作方名称、投放周期（选填）"></textarea></label><small class="muted">备注仅管理员可见，不会展示在首页。</small></div></div>
+ <div class="ad-card-body"><div><div class="ad-preview"><img alt="广告图片预览"><span data-placeholder>请选择横版图片</span></div><button type="button" data-retry class="btn small" hidden>重新加载预览</button><label>广告海报（选择新图可替换）<input name="image" type="file" accept="image/jpeg,image/png,image/webp"></label><small class="muted">JPG、PNG 或 WebP，最大 8 MB</small></div>
+ <div class="ad-fields"><label>展示状态<select name="enabled"><option value="true">展示中</option><option value="false">暂停展示（保留海报和设置）</option></select></label><label>展示位置<select name="placement"><option value="side">侧边广告 · 4:3</option><option value="top">顶部横幅 · 4:1</option></select></label><label>跳转网址<input name="link" type="url" placeholder="https://" required></label><label>后台备注<textarea name="note" maxlength="300" rows="2" placeholder="例如：合作方名称、投放周期（选填）"></textarea></label><small class="muted">备注仅管理员可见，不会展示在首页。</small></div></div>
  <footer><span role="status"></span><button type="button" data-secondary class="btn small"></button><button type="submit" class="btn primary"></button></footer>`;
   function mountManager(el, api, admin) {
     const cards = el.querySelector("[data-cards]"),
@@ -117,7 +117,7 @@
       add = el.querySelector("[data-new]"),
       status = el.querySelector("[role=status]");
     function emptyState() {
-      status.textContent = cards.childElementCount ? "" : "暂无已发布广告。";
+      status.textContent = cards.childElementCount ? "" : "暂无广告。";
     }
     function editor(item) {
       const form = document.createElement("form");
@@ -132,15 +132,20 @@
         save = q("[type=submit]"),
         secondary = q("[data-secondary]");
       q("h3").textContent = item ? "广告 #" + item.id : "新增广告";
-      q(".ad-state").textContent = item ? "已发布" : "草稿";
+      q(".ad-state").textContent = item
+        ? item.enabled === false
+          ? "已暂停"
+          : "展示中"
+        : "草稿";
       save.textContent = item ? "保存修改" : "发布广告";
-      secondary.textContent = item ? "下架" : "取消";
+      secondary.textContent = item ? "删除广告" : "取消";
       f.placement.value = item?.placement || "side";
       const preview = q(".ad-preview");
       const fit = () => preview.setAttribute("data-format", f.placement.value);
       f.placement.onchange = fit;
       fit();
       f.link.value = item?.link || "";
+      f.enabled.value = String(item?.enabled !== false);
       f.note.value = item?.note || "";
       f.image.required = !item;
       let seq = 0,
@@ -230,7 +235,12 @@
           add.disabled = false;
           return;
         }
-        if (!root.confirm("下架并移除这条广告？")) return;
+        if (
+          !root.confirm(
+            "永久删除这条广告？如果只是暂时停播，请取消并选择「暂停展示」。",
+          )
+        )
+          return;
         secondary.disabled = save.disabled = true;
         try {
           await writeAd(admin, endpoint + "/" + item.id, "DELETE");
@@ -250,6 +260,7 @@
           secondary.disabled =
           f.image.disabled =
           f.link.disabled =
+          f.enabled.disabled =
           f.placement.disabled =
           f.note.disabled =
             true;
@@ -263,6 +274,7 @@
             throw Error("请填写有效的 HTTP 或 HTTPS 网址。");
           const body = new FormData();
           body.append("link", url.href);
+          body.append("enabled", f.enabled.value);
           body.append("placement", f.placement.value);
           body.append("note", f.note.value.trim());
           if (chosen) body.append("image", chosen, "banner.jpg");
@@ -279,6 +291,7 @@
             revision: saved.revision,
             link: url.href,
             placement: f.placement.value,
+            enabled: f.enabled.value === "true",
             note: f.note.value.trim(),
           };
           const next = editor(updated);
@@ -299,6 +312,7 @@
             secondary.disabled =
             f.image.disabled =
             f.link.disabled =
+            f.enabled.disabled =
             f.placement.disabled =
             f.note.disabled =
               false;

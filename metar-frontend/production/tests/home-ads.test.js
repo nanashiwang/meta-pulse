@@ -150,6 +150,7 @@ test("published cards preserve originals, save notes privately, replace pictures
           note: {},
           link: {},
           placement: {},
+          enabled: {},
         };
       if (tag === "canvas")
         Object.assign(n, {
@@ -188,12 +189,15 @@ test("published cards preserve originals, save notes privately, replace pictures
   assert.match(img.src, /4\?v=2$/);
   await img.onerror();
   assert.equal(img.src, "data:image/jpeg;base64,abc");
+  card.elements.enabled.value = "false";
   card.elements.placement.value = "top";
   card.elements.note.value = "新备注";
   card.elements.link.value = "https://new.example/";
   await card.onsubmit({ preventDefault() {} });
   assert.equal(calls[0][1].body.has("image"), false);
   assert.equal(calls[0][1].body.get("placement"), "top");
+  assert.equal(calls[0][1].body.get("enabled"), "false");
+  assert.equal(card.next.elements.enabled.value, "false");
   assert.equal(card.next.elements.placement.value, "top");
   assert.equal(calls[0][1].body.get("note"), "新备注");
   assert.equal(calls[0][1].body.get("revision"), "2");
