@@ -27,3 +27,5 @@ Status: implemented
 ## Consequences
 
 默认 builder 的未使用缓存属于主机级共享资源，其他项目重编译可能变慢。无法约束单次构建峰值或人工 Docker 命令；20 GiB 是前置阈值而非空间预留。版本检查仍需网络，维护先于 fetch，网络失败也可回收缓存。
+
+2026-11-18：[独立维护与共享缓存验收](2026-11-18-independent-disk-maintenance.md)部分替代仅随更新维护和不新增定时器的决定；保留本篇的常规GC、数据边界与更新门禁。

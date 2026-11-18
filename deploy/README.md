@@ -343,7 +343,20 @@ export PATH="$HOME/.local/bin:$PATH"
 
 仓库、Docker 数据目录以及存在的 `/var/lib/containerd` 所在文件系统必须各有至少 **20 GiB 可用空间**；不足或清理失败则停止更新。备份后、构建前复查，实际更新退出时再次维护，维护失败返回非零并提示。8 GB 是回收目标而非硬配额，正在使用的缓存不能回收；20 GiB 也是前置阈值，不能保证任意单次构建峰值。失败/受保护备份、镜像、日志或上传增长仍需管理员诊断。
 
-生产现有五分钟自动更新检查会顺带执行维护，不新增 cron，不重启 Docker。其他部署需正常调用 `metar update`；首次从旧脚本升级后的下一次调用才取得完整保护。首次安装或直接手动 `docker build` 不经过此入口，需自行检查空间。只读检查：`python3 deploy/build-cache.py --check-only "$PWD"`；手动维护应先取得 `.git/meta-pulse-update.lock`，避免与更新并发。
+常规回收后读取 `buildx du` 含 shared 的总量；超过 **16 GB**，或任一受检文件系统空闲不足 **30 GiB**，再完整回收未使用构建缓存并回读。缓存仍超限或空间不足 20 GiB 返回失败，不把 Docker 命令成功等同于容量受控。触发完整回收后下次构建可能变慢。
+
+独立维护每 15 分钟执行（每小时第 02、17、32、47 分钟），复用更新锁，先按原规则保留最近一份成功备份，再维护缓存；不读取业务配置、不 fetch、不部署或重启服务。锁忙记录跳过，下次重试。备份新失败/未知/固定现场仍保护。安装与核验：
+
+```bash
+sudo bash deploy/install-disk-maintenance-timer.sh
+sudo systemctl start metar-disk-maintenance.service
+systemctl status metar-disk-maintenance.timer metar-disk-maintenance.service
+journalctl -u metar-disk-maintenance.service --since today
+```
+
+定时器开机启用、补跑错过的触发；失败显示在 systemd 状态和 journal，不代表已配置站外通知。卸载使用 `systemctl disable --now metar-disk-maintenance.timer`。一次服务执行最长 30 分钟，超时保留失败状态；不删除运行数据。
+
+现有五分钟自动更新 cron 保留，更新内继续执行同一缓存助手。首次安装或直接手动 `docker build` 不经过更新锁和门禁；在用缓存无法强制回收，单次构建峰值仍须考虑。只读空间检查：`python3 deploy/build-cache.py --check-only "$PWD"`。手动维护：`bash deploy/maintain-disk.sh`。
 
 ### 2026-11-17 签到奖池升级
 

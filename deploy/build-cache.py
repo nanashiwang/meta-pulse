@@ -3,11 +3,15 @@
 import argparse
 import json
 import os
+import re
+from decimal import Decimal
 from pathlib import Path
 import shutil
 import subprocess
 
 MIN_FREE = 20 * 1024**3
+RECOVER_FREE = 30 * 1024**3
+MAX_TOTAL_CACHE = 16 * 1000**3
 
 
 def docker(*args):
@@ -39,9 +43,23 @@ def check_space(paths):
             raise RuntimeError(f'{path} 空闲不足 20 GiB；停止更新，请检查磁盘占用（不自动删除业务数据或备份）')
 
 
+def cache_total():
+    # Include shared records: production bounded GC returned success while
+    # leaving 34.53 GB total (27.82 GB shared) behind.
+    output = docker('buildx', 'du', '--builder', 'default')
+    match = re.search(r'^Total:\s*([0-9]+(?:\.[0-9]+)?)\s*(B|kB|MB|GB|TB)\s*$', output, re.M)
+    if not match:
+        raise RuntimeError('无法读取 buildx du 总量，不能确认缓存维护成功')
+    units = {'B': 1, 'kB': 1000, 'MB': 1000**2, 'GB': 1000**3, 'TB': 1000**4}
+    total = int(Decimal(match[1]) * units[match[2]])
+    print(f'[meta-pulse] 构建缓存总量（含 shared）: {total / 1000**3:.2f} GB', flush=True)
+    return total
+
+
 def maintain(repo, check_only=False):
     paths = local_paths(repo)
     if not check_only:
+        cache_total()
         help_text = docker('buildx', 'prune', '--help')
         args = ['buildx', 'prune', '--builder', 'default', '--all', '--force']
         if '--max-used-space' in help_text and '--min-free-space' in help_text:
@@ -52,6 +70,13 @@ def maintain(repo, check_only=False):
             raise RuntimeError('Docker buildx 不支持缓存容量限制，请升级后重试')
         print('[meta-pulse] 回收未使用构建缓存，保留目标 8 GB', flush=True)
         subprocess.run(['docker', *args], check=True, stdout=subprocess.DEVNULL)
+        total = cache_total()
+        if total > MAX_TOTAL_CACHE or any(shutil.disk_usage(p).free < RECOVER_FREE for p in paths):
+            print('[meta-pulse] 缓存超过 16 GB 或空闲不足 30 GiB；完整回收未使用构建缓存', flush=True)
+            subprocess.run(['docker', 'buildx', 'prune', '--builder', 'default', '--all', '--force'], check=True, stdout=subprocess.DEVNULL)
+            total = cache_total()
+        if total > MAX_TOTAL_CACHE:
+            raise RuntimeError('缓存仍超过 16 GB，可能存在在用缓存；请检查并重试')
     check_space(paths)
 
 
