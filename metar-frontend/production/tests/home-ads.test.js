@@ -8,7 +8,7 @@ function fixture(items, broken = []) {
     calls = 0;
   const timers = new Map();
   const node = () => ({
-    style: {},
+    style: {},setPointerCapture() {},
     isConnected: true,
     hidden: true,
     setAttribute() {},
@@ -234,4 +234,12 @@ test("published cards preserve originals, save notes privately, replace pictures
       ["/metar/ads", "POST", "1"],
     ],
   );
+});
+
+test('manual arrows and swipes wrap, rearm one 15s timer, and a swipe is not an ad click',async()=>{
+ const h=fixture([entry(1,'top'),entry(2,'top'),entry(3,'top')]);const slot=h.slot('top');await h.mount([slot]);const [link,,,prev,next,position]=slot.children;
+ const oldTimer=[...h.timers.keys()][0];prev.onclick();assert.equal(link.href,entry(3).link);assert.ok(!h.timers.has(oldTimer));next.onclick();assert.equal(link.href,entry(1).link);
+ function swipe(dx,dy){link.onpointerdown({isPrimary:true,button:0,pointerId:1,clientX:100,clientY:20});link.onpointerup({pointerId:1,clientX:100+dx,clientY:20+dy});let blocked=false;link.onclick({detail:1,preventDefault(){blocked=true},stopPropagation(){}});return blocked;}
+ assert.equal(swipe(-90,3),true);assert.equal(link.href,entry(2).link);assert.equal(swipe(70,4),true);assert.equal(link.href,entry(1).link);assert.equal(swipe(2,1),false);assert.equal(swipe(12,60),false);assert.equal(position.children[0].className,'active');assert.equal(h.timers.size,1);h.tick();assert.equal(link.href,entry(2).link);
+ const single=fixture([entry(1,'side')]);const s=single.slot('side');await single.mount([s]);assert.ok(s.children.slice(3).every(x=>x.hidden));assert.equal(single.timers.size,0);
 });

@@ -30,54 +30,96 @@
     close.type = "button";
     close.textContent = "×";
     close.setAttribute("aria-label", "关闭广告");
-    let index = 0,
-      timer,
-      closed = false;
+    let index = 0, timer, closed = false, generation = 0, current = null;
+    let gesture = null, suppressClick = false;
     const stop = () => clearTimeout(timer);
-    function show() {
+    function move(step) {
+      if (closed || items.length < 2) return;
+      index = (index + step + items.length) % items.length;
+      show(step);
+    }
+    function arrow(step) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = step < 0 ? 'ad-prev' : 'ad-next';
+      button.textContent = step < 0 ? '‹' : '›';
+      button.setAttribute('aria-label', step < 0 ? '上一条广告' : '下一条广告');
+      button.onclick = () => move(step);
+      return button;
+    }
+    const prev = arrow(-1), next = arrow(1), indicator = document.createElement('span');
+    indicator.className = 'ad-position';
+    function controls() {
+      const n = items.length;
+      prev.hidden = next.hidden = indicator.hidden = n < 2;
+      indicator.setAttribute('aria-label', '广告 ' + (index + 1) + ' / ' + n);
+      if (n > 8) { indicator.textContent = (index + 1) + ' / ' + n; return; }
+      indicator.replaceChildren(...items.map((_, i) => {
+        const dot = document.createElement('i');
+        dot.className = i === index ? 'active' : '';
+        return dot;
+      }));
+    }
+    function schedule() {
+      stop();
+      if (items.length < 2 || closed || !slot.isConnected) return;
+      timer = setTimeout(() => {
+        if (document.hidden || gesture) schedule(); else move(1);
+      }, 15000);
+    }
+    link.ondragstart = e => e.preventDefault();
+    link.onpointerdown = e => {
+      if (!e.isPrimary || e.button !== 0) return;
+      suppressClick = false;
+      if (items.length < 2) return;
+      gesture = {id:e.pointerId, x:e.clientX, y:e.clientY};
+      link.setPointerCapture(e.pointerId);
+      stop();
+    };
+    link.onpointerup = e => {
+      if (!gesture || gesture.id !== e.pointerId) return;
+      const dx = e.clientX - gesture.x, dy = e.clientY - gesture.y;
+      gesture = null;
+      suppressClick = Math.abs(dx) >= 28 && Math.abs(dx) > Math.abs(dy) * 1.25;
+      if (suppressClick) move(dx < 0 ? 1 : -1); else schedule();
+    };
+    link.onpointercancel = link.onlostpointercapture = () => { if (gesture) { gesture = null; schedule(); } };
+    link.onclick = e => { if (suppressClick && e.detail !== 0) { e.preventDefault(); e.stopPropagation(); suppressClick = false; } };
+    slot.onkeydown = e => {
+      if (items.length < 2 || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+      e.preventDefault(); move(e.key === 'ArrowLeft' ? -1 : 1);
+    };
+    function show(direction) {
       stop();
       if (closed || !slot.isConnected || !items.length) return;
-      const item = items[index],
-        image = document.createElement("img");
-      image.alt = "访问广告网站";
+      const turn = ++generation, item = items[index], image = document.createElement('img');
+      image.alt = '访问广告网站'; image.draggable = false;
       image.onload = () => {
-        if (closed || !slot.isConnected) return;
+        if (closed || !slot.isConnected || generation !== turn) return;
+        const old = current;
+        current = image;
         link.replaceChildren(image);
-        link.href = item.link;
-        slot.hidden = false;
-        if (items.length > 1) {
-          const advance = () => {
-            if (closed || !slot.isConnected) return;
-            if (document.hidden) {
-              timer = setTimeout(advance, 15000);
-              return;
-            }
-            index = (index + 1) % items.length;
-            show();
-          };
-          timer = setTimeout(advance, 15000);
+        if (old && root.matchMedia && !root.matchMedia('(prefers-reduced-motion: reduce)').matches && image.animate) {
+          old.className = 'ad-outgoing';old.alt = '';link.append(old);
+          const dx = direction < 0 ? '-100%' : '100%';
+          const options = {duration:260, easing:'ease-out'};
+          image.animate([{transform:'translateX('+dx+')'},{transform:'translateX(0)'}],options);
+          const leave = old.animate([{transform:'translateX(0)'},{transform:'translateX('+(direction < 0 ? '100%' : '-100%')+')'}],options);
+          leave.onfinish = () => old.remove();
         }
+        link.href = item.link;slot.hidden = false;controls();schedule();
       };
       image.onerror = () => {
-        if (closed || !slot.isConnected) return;
-        items.splice(index, 1);
-        if (!items.length) {
-          slot.hidden = true;
-          return;
-        }
-        index %= items.length;
-        show();
+        if (closed || !slot.isConnected || generation !== turn) return;
+        items.splice(index,1);
+        if (!items.length) { slot.hidden=true;return; }
+        index %= items.length;show(direction);
       };
-      image.src = imageURL(item, base);
+      image.src = imageURL(item,base);
     }
-    close.onclick = () => {
-      closed = true;
-      stop();
-      slot.hidden = true;
-      slot.replaceChildren();
-    };
-    slot.replaceChildren(link, badge, close);
-    show();
+    close.onclick = () => { closed=true; stop(); slot.hidden=true;slot.replaceChildren(); };
+    slot.replaceChildren(link,badge,close,prev,next,indicator);
+    show(0);
   }
   const managerHTML = () =>
     `<section data-ad-manager><header class="ad-manager-heading"><div><h1>广告管理</h1><p class="muted">顶部和侧边可同时展示，各位置的广告按发布顺序每 15 秒轮播</p></div><button type="button" class="btn primary" data-new>＋ 新增广告</button></header><div data-create></div><p role="status"></p><section aria-label="广告列表"><h2>广告列表</h2><div data-cards></div></section></section>`;

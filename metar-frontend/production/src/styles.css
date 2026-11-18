@@ -795,3 +795,12 @@ html.community-wide:not(.preview-tools) .page{padding-bottom:calc(var(--communit
 .ad-preview[data-format]{min-height:0}.ad-preview[data-format="top"]{aspect-ratio:10/1}.ad-preview[data-format="side"]{aspect-ratio:4/3}.ad-preview[data-format] img:not([hidden]){height:100%;max-height:none;min-height:0;object-fit:contain}.ad-editor select{font:inherit;width:100%;min-width:0}
 
 .ad-crop-dialog{box-sizing:border-box;width:min(92vw,650px);max-height:92dvh;overflow:auto;padding:20px;border:1px solid var(--border);border-radius:12px;background:var(--surface,#fff);color:var(--text,inherit)}.ad-crop-dialog::backdrop{background:#17121db3}.ad-crop-dialog p{margin:6px 0 14px;color:var(--muted)}.ad-crop-dialog canvas{display:block;max-width:100%;max-height:48dvh;width:auto;height:auto;margin:12px auto;outline:2px solid var(--border);touch-action:none;cursor:grab}.ad-crop-dialog canvas:active{cursor:grabbing}.ad-crop-dialog canvas:focus-visible{outline:2px solid currentColor}.ad-crop-dialog footer{display:flex;justify-content:flex-end;gap:10px}.ad-crop-dialog input[type=range]{width:100%}
+
+/* Carousel controls are scoped to each independently rotating placement. */
+[data-home-ad] a{position:relative;overflow:hidden;touch-action:pan-y pinch-zoom;user-select:none}
+[data-home-ad] img.ad-outgoing{position:absolute;inset:0;pointer-events:none}
+[data-home-ad] .ad-prev,[data-home-ad] .ad-next{top:50%;transform:translateY(-50%);right:auto;left:6px;width:30px;height:30px;padding:0;border-radius:50%;font:22px/1 Arial,sans-serif;background:#282136a8;color:white;z-index:1}
+[data-home-ad] .ad-next{left:auto;right:6px}
+[data-home-ad] .ad-position:not([hidden]){position:absolute;bottom:4px;left:50%;transform:translateX(-50%);display:flex;gap:3px;align-items:center;padding:3px 5px;border-radius:10px;background:#28213680;color:white;font:11px/1 sans-serif;pointer-events:none}
+.ad-position i{width:5px;height:5px;border-radius:8px;background:#fffa}.ad-position i.active{width:13px;background:white}
+@media(max-width:900px){[data-home-ad="top"] .ad-next{right:44px}[data-home-ad="top"] .ad-prev{left:44px}}
