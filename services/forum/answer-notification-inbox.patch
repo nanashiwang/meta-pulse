@@ -179,7 +179,7 @@
  
    const queryParams: {
      type: string;
-@@ -138,14 +145,18 @@
+@@ -138,14 +145,28 @@
            <>
              <Nav className="inbox-nav small">
                {inboxTypeNavs.map((nav) => {
@@ -187,8 +187,18 @@
 -                const navLinkName = t(`inbox_type.${nav}`);
 +                const navLinkHref = `/users/notifications/inbox?filter=${nav}`;
 +                const labels = i18n.language.startsWith('zh')
-+                  ? { all: '全部', comments: '评论', answers: '回答', likes: '点赞' }
-+                  : { all: 'All', comments: 'Comments', answers: 'Answers', likes: 'Likes' };
++                  ? {
++                      all: '全部',
++                      comments: '评论',
++                      answers: '回答',
++                      likes: '点赞',
++                    }
++                  : {
++                      all: 'All',
++                      comments: 'Comments',
++                      answers: 'Answers',
++                      likes: 'Likes',
++                    };
 +                const navLinkName = labels[nav];
                  return (
                    <Nav.Item key={nav}>
@@ -200,7 +210,7 @@
                        }}
                        className={classNames('nav-link', {
                          disabled: nav === subType,
-@@ -184,4 +195,7 @@
+@@ -184,4 +205,7 @@
    );
  };
  
@@ -211,16 +221,17 @@
 +}
 --- a/ui/src/pages/Users/Notifications/components/Inbox/index.tsx
 +++ b/ui/src/pages/Users/Notifications/components/Inbox/index.tsx
-@@ -39,6 +39,8 @@
+@@ -39,6 +39,9 @@
        {data.map((item) => {
          const { comment, question, answer } =
            item?.object_info?.object_map || {};
-+        const preview = item.object_info.object_map?.answer_preview ||
++        const preview =
++          item.object_info.object_map?.answer_preview ||
 +          item.object_info.object_map?.comment_preview;
          let url = '';
          switch (item.object_info.object_type) {
            case 'question':
-@@ -48,7 +50,9 @@
+@@ -48,7 +51,9 @@
              url = `/questions/${question}/${item.object_info.object_id}`;
              break;
            case 'comment':
@@ -231,7 +242,7 @@
              break;
            default:
              url = '';
-@@ -74,8 +78,17 @@
+@@ -74,8 +79,17 @@
                  {item.object_info.title}
                </Link>
              </div>
