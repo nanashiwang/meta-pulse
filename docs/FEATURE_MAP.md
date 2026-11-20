@@ -40,6 +40,8 @@ Before adding a feature, inspect adjacent flows and the current source of truth;
 
 ## Vibe Coding 集市（2026-11-07）
 
+项目展示新增可选 4:3 游玩封面，审核通过且可用才从封面直达；后台可预填 Token 农场，仍走原帖所有权检查和现有审核流程。介绍卡兼容旧数据。
+
 | 入口 | 能力、权限与事实源 | 验证 |
 |---|---|---|
 | 左侧类别、顶部及原生导航 → `/marketplace` | 项目/想法、关键词/用途/GitHub/演示筛选、最新/精选、详情与关联作品；Answer 账号、帖子、评论和收藏，插件保存审核元数据 | [页面与恢复测试](../metar-frontend/production/tests/marketplace.test.js)、[后端](../services/forum-plugin/user-center-pulse/marketplace/)、[请求边界](../services/forum-plugin/user-center-pulse/marketplace_routes_test.go) |

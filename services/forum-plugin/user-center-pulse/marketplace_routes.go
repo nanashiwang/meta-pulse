@@ -137,7 +137,7 @@ func (uc *UserCenter) marketplaceHandler(op string, session func(*gin.Context) (
 			if cmd.Entry.DemoURL != "" {
 				demo, e := url.Parse(cmd.Entry.DemoURL)
 				origin, o := url.Parse(site())
-				if e != nil || o != nil || strings.EqualFold(demo.Hostname(), origin.Hostname()) {
+				if e != nil || o != nil || (strings.EqualFold(demo.Hostname(), origin.Hostname()) && !(cmd.Entry.DisplayMode == "play" && cmd.Entry.DemoURL == marketplace.TokenFarmURL)) {
 					communityError(c, 400, "invalid_request")
 					return
 				}

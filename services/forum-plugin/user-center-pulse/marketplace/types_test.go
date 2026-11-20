@@ -54,3 +54,26 @@ func TestSafeURLRejectsLocalAndCredentialBearingURLs(t *testing.T) {
 		}
 	}
 }
+
+func TestReviewedPlayCard(t *testing.T) {
+	e := validProject()
+	e.DisplayMode = "play"
+	e.DemoURL = TokenFarmURL
+	e.CoverURL = tokenFarmCover
+	if _, err := ValidateEntry(e, true); err != nil {
+		t.Fatal(err)
+	}
+	for _, change := range []func(*Entry){func(v *Entry) { v.CoverURL = "" }, func(v *Entry) { v.DemoURL = "" }, func(v *Entry) { v.EmbedRequested = true }, func(v *Entry) { v.DemoURL = TokenFarmURL + "../admin" }, func(v *Entry) { v.CoverURL = "https://example.com/image.png" }, func(v *Entry) { v.CoverURL = "/uploads/../admin/x.png" }, func(v *Entry) { v.Kind = "idea" }, func(v *Entry) { v.DisplayMode = "intro" }} {
+		bad := e
+		change(&bad)
+		if _, err := ValidateEntry(bad, true); err == nil {
+			t.Fatalf("invalid entry accepted: %+v", bad)
+		}
+	}
+	e.DemoURL = "https://example.org/play"
+	e.CoverURL = "https://metarhub.com/uploads/2026/farm.jpg"
+	got, err := ValidateEntry(e, true)
+	if err != nil || got.CoverURL != "/uploads/2026/farm.jpg" {
+		t.Fatal(got, err)
+	}
+}

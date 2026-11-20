@@ -86,10 +86,13 @@ func TestMySQLReviewLiveSnapshotAndVisibility(t *testing.T) {
 		t.Fatal("published draft bypass", e)
 	}
 	changed := entry
-	changed.DemoURL = "https://changed.example.com/app"
+	changed.DemoURL = TokenFarmURL
+	changed.DisplayMode = "play"
+	changed.CoverURL = tokenFarmCover
+	changed.EmbedRequested = false
 	update := mustCommand(t, s, "2", "update", Command{Op: "submit", ID: item.ID, Version: item.Version, Entry: changed}, false)
 	live, e = s.Get(ctx, item.ID)
-	if e != nil || live.Entry.DemoURL != entry.DemoURL {
+	if e != nil || live.Entry.DemoURL != entry.DemoURL || live.Entry.DisplayMode != "" || live.Entry.CoverURL != "" {
 		t.Fatal("pending address replaced live address", live, e)
 	}
 	if _, e = s.Execute(ctx, "2", "pending-overwrite", Command{Op: "submit", ID: update.ID, Version: update.Version, Entry: entry}, false); !errors.Is(e, ErrConflict) {
@@ -97,13 +100,13 @@ func TestMySQLReviewLiveSnapshotAndVisibility(t *testing.T) {
 	}
 	update = mustCommand(t, s, "1", "request-changes", Command{Op: "review", ID: update.ID, Version: update.Version, Decision: "changes", Reason: "Please clarify costs"}, true)
 	live, e = s.Get(ctx, item.ID)
-	if e != nil || live.Entry.DemoURL != entry.DemoURL {
+	if e != nil || live.Entry.DemoURL != entry.DemoURL || live.Entry.DisplayMode != "" || live.Entry.CoverURL != "" {
 		t.Fatal("rejection removed live entry", e)
 	}
 	update = mustCommand(t, s, "2", "revise", Command{Op: "submit", ID: update.ID, Version: update.Version, Entry: changed}, false)
 	update = publish(t, s, update)
 	live, e = s.Get(ctx, item.ID)
-	if e != nil || live.Entry.DemoURL != changed.DemoURL {
+	if e != nil || live.Entry.DemoURL != changed.DemoURL || live.Entry.DisplayMode != "play" || live.Entry.CoverURL != tokenFarmCover || live.EmbedAllowed {
 		t.Fatal(live, e)
 	}
 	// Replays do not bypass current activation or moderation in public reads.

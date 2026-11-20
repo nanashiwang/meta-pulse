@@ -806,3 +806,5 @@ html.community-wide:not(.preview-tools) .page{padding-bottom:calc(var(--communit
 @media(max-width:900px){[data-home-ad="top"] .ad-next{right:44px}[data-home-ad="top"] .ad-prev{left:44px}}
 
 .award-header-actions{display:grid;gap:8px;align-self:flex-start;margin-inline-start:auto}
+
+.market-game.card{padding:0;overflow:hidden}.market-game-face{position:relative;aspect-ratio:4/3;overflow:hidden;background:var(--surface,#233637)}.market-game-face a,.market-game-face img{display:block;width:100%;height:100%}.market-game-face img{object-fit:cover}.market-game-face span{position:absolute;bottom:.75rem;right:.75rem;padding:.4rem .75rem;border-radius:999px;background:#122a27ed;color:#f5ffdf;font-weight:700}.market-game-face a:focus-visible{outline:3px solid #91ce80;outline-offset:-3px}.market-game-body{padding:1rem}.market-game-body h2{margin:.45rem 0}.market-game-preview{max-width:24rem;width:100%}[data-cover-fields][hidden]{display:none}

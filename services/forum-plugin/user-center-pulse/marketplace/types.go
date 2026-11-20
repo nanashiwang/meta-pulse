@@ -27,6 +27,8 @@ var numericHostTail = regexp.MustCompile(`^(?:[0-9]+|0x[0-9a-f]+)$`)
 
 // Entry contains only discovery/run metadata; post bodies stay in Answer.
 type Entry struct {
+	DisplayMode    string `json:"display_mode,omitempty"`
+	CoverURL       string `json:"cover_url,omitempty"`
 	QuestionID     string `json:"question_id"`
 	Kind           string `json:"kind"`
 	Summary        string `json:"summary"`
@@ -173,6 +175,23 @@ func GitHubURL(raw string) (string, error) {
 	}
 	return "https://github.com/" + parts[0] + "/" + repo, nil
 }
+
+const TokenFarmURL = "https://metarhub.com/games/token-farm/"
+const tokenFarmCover = "https://metarhub.com/games/token-farm/token-farm-4x3.jpg"
+
+var uploadCover = regexp.MustCompile(`^/(uploads|upload|answer/api/v1/file)/[a-zA-Z0-9_/-]+[.](png|jpe?g|webp)$`)
+
+func normalizeCover(raw string) (string, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" || value == tokenFarmCover {
+		return value, nil
+	}
+	value = strings.TrimPrefix(value, "https://metarhub.com")
+	if len(value) > 512 || !uploadCover.MatchString(value) {
+		return "", ErrInvalid
+	}
+	return value, nil
+}
 func ValidateEntry(v Entry, submitting bool) (Entry, error) {
 	v.QuestionID = strings.TrimSpace(v.QuestionID)
 	if !validID(v.QuestionID) || (v.Kind != "project" && v.Kind != "idea") {
@@ -196,7 +215,20 @@ func ValidateEntry(v Entry, submitting bool) (Entry, error) {
 	if err != nil {
 		return Entry{}, err
 	}
-	v.DemoURL, err = SafeURL(v.DemoURL)
+	v.DemoURL = strings.TrimSpace(v.DemoURL)
+	if v.DisplayMode == "intro" {
+		v.DisplayMode = ""
+	}
+	if v.DisplayMode != "" && (v.DisplayMode != "play" || v.Kind != "project" || v.EmbedRequested) {
+		return Entry{}, ErrInvalid
+	}
+	v.CoverURL, err = normalizeCover(v.CoverURL)
+	if err != nil || (v.DisplayMode == "" && v.CoverURL != "") || (v.DisplayMode == "play" && submitting && (v.CoverURL == "" || v.DemoURL == "")) {
+		return Entry{}, ErrInvalid
+	}
+	if !(v.DisplayMode == "play" && v.DemoURL == TokenFarmURL) {
+		v.DemoURL, err = SafeURL(v.DemoURL)
+	}
 	if err != nil {
 		return Entry{}, err
 	}

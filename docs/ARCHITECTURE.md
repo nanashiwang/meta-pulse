@@ -1340,6 +1340,8 @@ Pulse 在同一事务内锁 `period_create_lock`、幂等回执（`admin_ticket_
 
 ## Vibe Coding 集市数据与体验边界（2026-11-07）
 
+项目展示新增可选 4:3 游玩封面，审核通过且可用才从封面直达；后台可预填 Token 农场，仍走原帖所有权检查和现有审核流程。介绍卡兼容旧数据。 play 类型的本站豁免仅针对固定的农场顶层导航，不适用于嵌入。
+
 集市复用 Answer 身份、原生帖子正文、评论/回答、点赞、收藏及内容治理。`marketplace` 插件包仅在 Answer MySQL 中新增 `metar_market_item/actor/request/audit`；不访问 Pulse/new-api 的账本、余额或模型请求。投稿者先用原生编辑器发布介绍，再将本人帖子关联为集市草稿或提交审核；原帖按 Answer 原有可见性发布，集市草稿/待审核元数据仅本人和管理员可读。每个原帖最多一条收录，项目与想法类型及原帖 ID 不可变，想法的实现通过新项目反向关联，不转移作者身份。
 
 Item 的 `entry_json` 保存当前投稿，`live_json` 保存审核通过的运行元数据。状态为 `draft → pending_review → published`，审核可退回 `changes_requested`，作者/管理员可设为 `archived`。已发布作品只能提交更新审核，待审版本不能原地修改；新审核通过前继续按旧 `live_json` 展示 GitHub/Demo、费用和作者关系。下架清空 live 快照。每次公开查询联查 Answer 的帖子归属、status/show 和作者激活/封禁状态；原生正文编辑不改变已审核运行地址。
