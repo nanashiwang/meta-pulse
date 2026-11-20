@@ -65,7 +65,31 @@
     }
     return `<article class="card market-card"><div class="market-card-flags"><span class="badge">${label(uses,e.use_case)}</span>${e.kind === 'idea' ? `<span class="badge">${label(stages,e.idea_stage)}</span>` : ''}${item.featured ? `<span class="badge green">${t('精选','Featured')}</span>` : ''}${privateMode ? `<span class="badge">${label(states,item.status)}</span>` : ''}</div><h2>${privateMode && !item.has_published ? esc(item.title) : link(`/marketplace/item/${item.id}`,esc(item.title),'market-title')}</h2><p class="market-summary">${esc(e.summary)}</p><p class="muted market-stack">${esc(e.tech_stack)}</p><div class="market-card-author">${esc(item.author?.display_name || item.author?.username)}${e.relation === 'recommendation' ? ` · ${t('推荐收录 · 原作者：','Recommended · by ')}${esc(e.original_author)}` : ''}</div>${item.review_note && privateMode ? `<p class="market-review-note">${esc(item.review_note)}</p>` : ''}<div class="market-card-actions">${privateMode ? '' : e.kind === 'project' ? `${e.demo_url ? `<span class="badge${item.demo_status === 'available' ? ' green' : ''}">${item.demo_status !== 'available' ? t('演示暂不可用','Demo unavailable') : item.embed_allowed ? t('可站内体验','Try here') : t('外站演示','External demo')}</span>` : ''}${e.github_url ? '<span class="badge">GitHub</span>' : ''}${e.pricing ? `<span class="badge">${label(prices,e.pricing)}</span>` : ''}` : `<span class="muted">${item.answer_count || 0} ${t('条回答','answers')}</span>`}${privateMode ? link(`/marketplace/publish?id=${item.id}&page=${item._page || 1}`,t('查看 / 维护','View / manage'),'btn small') : link(`/marketplace/item/${item.id}`,t(e.kind === 'idea' ? '参与讨论' : '查看项目',e.kind === 'idea' ? 'Discuss' : 'View project'),'textlink')}</div></article>`;
   }
+  function problem(field,zh,en){throw Object.assign(Error(t(zh,en)),{field});}
+  function postRef(raw,origin){const text=String(raw||'').trim();if(/^[1-9]\d{0,19}$/.test(text))return text;
+    try{const u=new URL(text,origin);const m=u.pathname.match(/^\/questions?\/([A-Za-z0-9]+)(?:\/|$)/);if(u.origin===origin&&!u.username&&!u.password&&m&&m[1]!=='ask')return m[1];}catch(_){}
+    problem('question','请选择本人已发布的介绍帖，或粘贴该帖的网址。游戏入口、集市页和帖子标题都不是介绍帖地址。','Select your published introduction or paste its forum post URL, not the game URL or post title.');}
+  function checkEntry(e,submit){
+    for(const key of Object.keys(e))if(typeof e[key]==='string')e[key]=e[key].trim();
+    if(e.display_mode==='play'&&['https://metarhub.com/games/token-farm',farm.demo_url].includes(e.demo_url))e.demo_url=farm.demo_url;
+    if(e.demo_url && !(e.display_mode==='play'&&e.demo_url===farm.demo_url)){
+      const s=safeURL(e.demo_url);if(!s||/[?#\\]/.test(e.demo_url))problem('demo_url','演示地址须为完整的 HTTPS 游戏首页，不能有登录信息、? 参数或 # 片段。','Use the HTTPS demo homepage without credentials, query or fragment.');
+      const u=new URL(s);if(/(^|\.)(metarhub\.com|metar\.uk)$/.test(u.hostname))problem('demo_url','Token 农场请选择「游玩卡」，演示地址填 https://metarhub.com/games/token-farm/ ，不要填封面或介绍帖链接。','For Token Farm select a play card and use the official game homepage.');
+      if((u.port&&u.port!=='443')||!u.hostname.includes('.')||/(^|\.)(localhost|local|internal|lan|test|invalid|home\.arpa)$/.test(u.hostname)||/[\[\]:]/.test(u.hostname)||/\.\d+$/.test(u.hostname))problem('demo_url','演示地址必须是公开 HTTPS 域名，不接受 IP、内网或自定义端口。','Provide a public HTTPS hostname.');}
+    if(e.github_url&&!safeURL(e.github_url,true))problem('github_url','GitHub 栏请填 https://github.com/作者/仓库；有演示地址可留空。','Enter a GitHub repository URL or leave it blank if you have a demo.');
+    if(e.source_idea_id&&!/^[1-9]\d{0,19}$/.test(e.source_idea_id))problem('source_idea_id','来源想法 ID 只填已有集市想法的数字 ID；没有关联请留空。','Use a numeric marketplace idea ID or leave it blank.');
+    if(!submit)return;
+    if(Array.from(e.summary).length<5)problem('summary','一句话说明至少需要 5 个字。','Add a description of at least five characters.');
+    if(e.relation==='recommendation'&&!e.original_author)problem('original_author','推荐收录他人作品时需要填写原作者。','Name the original author for a recommendation.');
+    if(e.kind==='project'&&!e.demo_url&&(e.display_mode==='play'||!e.github_url))problem('demo_url','请填写项目入口：游玩卡必须提供 HTTPS 演示地址，介绍卡也可以只填 GitHub。','Add the demo URL; introduction cards may use GitHub instead.');
+    if(e.demo_url){if(!e.pricing)problem('pricing','请选择费用，例如「免费」。','Select a pricing option.');if(!e.access_note)problem('access_note','请填写访问与 AI 费用说明，例如是否需要登录、是否额外收费。','Describe login requirements and AI costs.');if(!e.data_note)problem('data_note','请填写输入数据去向，例如保存在哪里、是否发送给第三方。','Describe where user data goes.');}
+  }
+  async function resolvePost(answer,ref,user,submit){let post;try{post=await answer.getQuestion(ref);}catch(err){if(err.status&&![400,404].includes(err.status))throw err;problem('question','未找到可读取的介绍帖，请先打开帖子确认已经发布。','Could not read that introduction post.');}
+    if(!/^[1-9]\d{0,19}$/.test(post?.id||''))problem('question','没有找到该介绍帖的数字 ID，请从「我的帖子」中选择。','Select an introduction from your posts.');
+    if(String(post?.user_info?.id)!==String(user.id))problem('question','这篇介绍帖不是当前论坛账号发布的，请选择自己的帖子。','Select a post authored by the signed-in account.');
+    if(submit&&Number(post.show)!==1)problem('question','这篇介绍帖尚未公开，请先确认帖子已发布并公开可见。','The introduction must be public.');return String(post.id);}
   const errorText = error => {
+    if(error?.field)return error.message;
     if(error?.code === 'storage_unavailable') return t('请允许浏览器站点存储后重试，以便在网络中断时恢复投稿。','Allow site storage before submitting so your request can be recovered after a network failure.');
     if (error?.status === 409 || error?.code === 'conflict') return t('版本已变化或该帖子已收录，请刷新我的发布后再操作。','The version changed or this post is already listed. Refresh your submissions.');
     if (error?.status === 400) return t('请检查必填项、帖子归属以及链接格式。演示需使用公开 HTTPS 地址，不能包含登录凭证、查询参数或片段。','Check required fields, post ownership and links. Use public HTTPS URLs without credentials, queries or fragments.');
@@ -167,7 +191,7 @@
         const buttons=[...container.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);
         const status=form.querySelector('[data-market-status]') || container.querySelector('[data-market-status]');
         try {await action();if(current())reload();}
-        catch(error){if(current()){if(status)status.textContent=errorText(error);else root.alert(errorText(error));}}
+        catch(error){if(current()){if(status)status.textContent=errorText(error);else root.alert(errorText(error));if(error.field){const control=form.elements?.namedItem(error.field);if(control){control.focus();control.setCustomValidity(error.message);control.reportValidity();control.setCustomValidity('');}} }}
         finally {this.busy=false;if(current()){buttons.forEach(b=>b.disabled=false);if(this.pending){let retry=container.querySelector('[data-market-retry]');if(!retry){retry=root.document.createElement('button');retry.type='button';retry.className='btn';retry.dataset.marketRetry='';retry.textContent=t('重试原操作','Retry original operation');(status?.parentElement || container).append(retry);retry.onclick=()=>run(container,()=>this.retry());}container.querySelectorAll('[data-market-editor] button[type="submit"],[data-market-review] button[type="submit"],[data-market-archive]').forEach(b=>b.disabled=true);}}}
       };
       container.querySelector('[data-market-retry]')?.addEventListener('click',()=>run(container,()=>this.retry()));
@@ -199,10 +223,9 @@
           event.preventDefault();if(this.pending||uploading)return;
           const f=new root.FormData(editor),idea=f.get('kind')==='idea';
           if(!idea && f.get('display_mode')==='play' && (event.submitter?.value||'submit')==='submit' && !coverSrc(saved.value)){feedback.textContent=t('请先上传游玩封面。','Please upload a cover first.');picker.focus();return;}
-          let question=String(f.get('question') || '').trim();
-          const match=question.match(/^(?:https:\/\/[^/]+)?\/questions\/(\d+)(?:\/[^?#]*)?(?:[?#].*)?$/);if(match)question=match[1];
+          const question=String(f.get('question')||'');
           const entry={question_id:question,display_mode:!idea&&f.get('display_mode')==='play'?'play':'',cover_url:!idea&&f.get('display_mode')==='play'?String(f.get('cover_url')||'').trim():'',kind:f.get('kind'),summary:f.get('summary'),use_case:f.get('use_case'),relation:f.get('relation'),original_author:f.get('original_author'),github_url:idea?'':f.get('github_url'),demo_url:idea?'':f.get('demo_url'),tech_stack:idea?'':f.get('tech_stack'),license:idea?'':f.get('license'),pricing:idea?'':f.get('pricing'),access_note:idea?'':f.get('access_note'),data_note:idea?'':f.get('data_note'),embed_requested:!idea && f.has('embed_requested'),source_idea_id:idea?'':f.get('source_idea_id'),idea_stage:idea?f.get('idea_stage'):''};
-          run(editor,()=>this.command({op:event.submitter?.value || 'submit',id:this.item?.id || '',version:this.item?.version || 0,entry}));
+          const op=event.submitter?.value||'submit';run(editor,async()=>{const ref=postRef(question,root.location.origin);checkEntry(entry,op==='submit');entry.question_id=await resolvePost(this.answer,ref,this.user,op==='submit');if(!current())return;return this.command({op,id:this.item?.id||'',version:this.item?.version||0,entry});});
         });
         editor.querySelector('[data-market-archive]')?.addEventListener('click',()=>{if(root.confirm(t('确认从集市下架？原社区帖子仍保留。','Archive this listing? The original post will remain.')))run(editor,()=>this.command({op:'archive',id:this.item.id,version:this.item.version}));});
       }
@@ -228,7 +251,7 @@
       container.querySelector('[data-market-stop]')?.addEventListener('click',()=>{container.querySelector('[data-market-frame]').replaceChildren();container.querySelector('[data-market-player]').hidden=true;});
     }
   }
-  const exports={...api,View,safeURL,card,uploadedCover};
+  const exports={...api,View,safeURL,card,uploadedCover,postRef,checkEntry,resolvePost};
   if(typeof module==='object' && module.exports)module.exports=exports;
   else root.MetarMarketplace=Object.freeze(exports);
 })(typeof window==='undefined'?globalThis:window);
