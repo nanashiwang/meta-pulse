@@ -114,6 +114,9 @@ func (uc *UserCenter) registerCommunityRoutes(r *gin.RouterGroup, session func(*
 }
 
 func (uc *UserCenter) communityHandler(operation string, session func(*gin.Context) (string, error), siteURL func() string) gin.HandlerFunc {
+	return uc.communityHandlerWithPin(operation, session, siteURL, farmSignerPin)
+}
+func (uc *UserCenter) communityHandlerWithPin(operation string, session func(*gin.Context) (string, error), siteURL func() string, trustedFarmPin string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("Cache-Control", "no-store")
 		c.Header("Referrer-Policy", "no-referrer")
@@ -186,7 +189,7 @@ func (uc *UserCenter) communityHandler(operation string, session func(*gin.Conte
 			communityIdentityError(c, err)
 			return
 		}
-		if operation == "farm-exchanges" && !paidFarmOrder(c.Request.Header, forumID, externalID, idempotencyKey) {
+		if operation == "farm-exchanges" && !verifyFarmReceipt(c.Request.Header, forumID, externalID, idempotencyKey, trustedFarmPin) {
 			communityError(c, 403, "farm_receipt_required")
 			return
 		}

@@ -198,7 +198,6 @@ services:
     environment:
       # The plugin uses Answer's own database account to install and verify
       # one-to-one immutable binding constraints. The DSN never reaches Pulse.
-      TOKEN_FARM_EXCHANGE_KEY: ${TOKEN_FARM_EXCHANGE_KEY:-}
       FORUM_BINDING_GUARD_DSN: ${FORUM_BINDING_GUARD_DSN:-forum:${FORUM_DB_PASSWORD:-}@tcp(forum-mysql:3306)/meta_pulse_forum?charset=utf8mb4&parseTime=True&loc=Local}
       FORUM_DB_MODE: ${FORUM_DB_MODE:-local}
       # /admin/models BFF → intel-api. Empty secret leaves the admin unavailable.

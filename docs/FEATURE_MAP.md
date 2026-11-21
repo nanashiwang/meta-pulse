@@ -209,4 +209,4 @@ AI 内容自报：`services/forum/answer-ai-content-disclosure.patch` 为原生�
 
 ## Token 农场兑券
 
-正式农场集市：登录且已绑定的玩家可用 10,000 农场币兑换 1 张论坛券。收据由两端独立配置后启用，状态不明显示待确认，不重复付款。 见[兑换与恢复说明](../.agents/notes/implemented/feature/2026-11-21-token-farm-exchange.md)。
+正式农场集市：登录且已绑定的玩家可用 10,000 农场币兑换 1 张论坛券。仅在指定机房试兑并确认到账后开放，状态不明显示待确认，不重复付款。 见[兑换与恢复说明](../.agents/notes/implemented/feature/2026-11-21-token-farm-exchange.md)。
