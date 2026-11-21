@@ -218,10 +218,10 @@ func (s *Store) Gift(ctx context.Context, user, requested string, spend GiftUsag
 }
 
 type GiftReport struct {
-	ID, Name, Actor     string
-	Start, End          int64
-	People              int64
-	Flash, Exp, Tickets int64
+	ID, Name, Actor       string
+	Start, End, ServerNow int64
+	People                int64
+	Flash, Exp, Tickets   int64
 }
 type GiftPerson struct {
 	User, Name string
@@ -264,6 +264,7 @@ func (s *Store) GiftReport(ctx context.Context, actor, id string, page int) (any
 	out := []GiftReport{}
 	for rs.Next() {
 		var v GiftReport
+		v.ServerNow = s.Now().Unix()
 		if e = rs.Scan(&v.ID, &v.Name, &v.Actor, &v.Start, &v.End, &v.People, &v.Flash, &v.Exp, &v.Tickets); e != nil {
 			return nil, e
 		}

@@ -24,6 +24,7 @@
       this.generation = 0;
     }
     dispose() {
+      this.disposeGifts?.(); this.disposeGifts=null;
       this.generation++;
       this.root = null;
     }
@@ -96,7 +97,7 @@
                 return `<article class="card card-pad"><div class="between wrap"><h2>${esc(v.title)}</h2><span class="badge">${closed ? t("已取消", "Cancelled") : now >= v.ends_at ? t("已结束", "Ended") : now >= v.starts_at ? t("进行中", "In progress") : t("即将开始", "Upcoming")}</span></div><p class="member-preview">${esc(v.body)}</p><dl class="info-pairs"><dt>${t("活动时间", "Schedule")}</dt><dd>${stamp(v.starts_at)} — ${stamp(v.ends_at)}</dd><dt>${t("报名截止", "Deadline")}</dt><dd>${stamp(v.deadline)}</dd><dt>${t("参与方式", "Location")}</dt><dd>${text(v.location, t("详见活动说明", "See description"))}</dd><dt>${t("报名人数", "Registrations")}</dt><dd>${v.registered_count} / ${v.capacity}</dd></dl><div class="flex wrap mt16">${admin ? `<button class="btn" data-member="edit" data-id="${v.id}" ${closed || now >= v.starts_at ? "disabled" : ""}>${t("编辑", "Edit")}</button><button class="btn" data-member="roster" data-id="${v.id}">${t("报名名单", "Registration list")}</button><button class="btn ghost" data-member="cancel" data-id="${v.id}" ${closed ? "disabled" : ""}>${t("取消活动", "Cancel event")}</button>` : this.user ? `<button class="btn ${v.joined ? "" : "primary"}" data-member="${v.joined ? "leave" : "join"}" data-id="${v.id}" ${!v.joined && (closed || deadline || v.registered_count >= v.capacity) ? "disabled" : ""}>${v.joined ? t("已报名 · 取消报名", "Registered · Withdraw") : closed ? t("活动已取消", "Event cancelled") : deadline ? t("报名已截止", "Registration closed") : v.registered_count >= v.capacity ? t("名额已满", "Full") : t("报名参加", "Register")}</button>` : `<a class="btn" href="/users/login">${t("登录后报名", "Sign in to register")}</a>`}</div></article>`;
               })
               .join("")
-          : `<section class="card card-pad">${t(this.past ? "暂无往期活动。" : "暂时没有已发布的活动。", this.past ? "No past events." : "No published events yet.")}</section>`
+          : `<section class="card card-pad">${admin ? t(this.past ? "暂无往期报名活动。" : "暂无近期报名活动。", "No registration events in this view.") : t(this.past ? "暂无往期活动。" : "暂时没有已发布的活动。", this.past ? "No past events." : "No published events yet.")}</section>`
       }</div><nav class="flex mt16">${this.pageNo > 1 ? `<a class="btn" data-router href="${this.path}?page=${this.pageNo - 1}${this.past ? "&past=1" : ""}">${t("上一页", "Previous")}</a>` : ""}${this.more ? `<a class="btn" data-router href="${this.path}?page=${this.pageNo + 1}${this.past ? "&past=1" : ""}">${t("下一页", "Next")}</a>` : ""}</nav><dialog data-event-roster><h2>${t("报名名单", "Registration list")}</h2><div data-roster-list></div><div class="flex"><button class="btn" data-member="roster-prev">${t("上一页", "Previous")}</button><button class="btn" data-member="roster-next">${t("下一页", "Next")}</button><button class="btn" data-member="close">${t("关闭", "Close")}</button></div></dialog>`;
     }
     mount(node) {
@@ -176,7 +177,8 @@
       this.mountFormOnly(node);
     }
     mountFormOnly(node) {
-      if(this.path==="/admin/events")root.MetarLimitedGift?.adminMount(node.querySelector("[data-gifts]"),this.admin,cmd=>this.command(cmd,true));
+      this.disposeGifts?.();
+      if(this.path==="/admin/events")this.disposeGifts=root.MetarLimitedGift?.adminMount(node.querySelector("[data-gifts]"),this.admin,cmd=>this.command(cmd,true));
       node
         .querySelector("[data-event-form]")
         ?.addEventListener("submit", (e) => {
@@ -225,7 +227,7 @@
         this.needsRefresh = true;
         root.sessionStorage.removeItem(this.pendingKey);
         this.pending = null;
-        if (gen === this.generation) {await this.refresh();if(command.op==='gift_start'&&this.root){const box=this.root.querySelector('[data-gifts]');if(box){box.open=true;box.querySelector('[role=status]').textContent=t('本轮赠礼已开启。','Gift round started.');box.querySelector('[data-list]')?.click();}}}
+        if (gen === this.generation) await this.refresh();
       } catch (e) {
         if (committed) throw Error("refresh_required");
         if (e?.status >= 400 && e?.status < 500) {

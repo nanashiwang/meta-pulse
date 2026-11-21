@@ -14,7 +14,7 @@ func TestGiftThreshold(t *testing.T) {
 		if ExceedsGiftThreshold(&v, v) || ExceedsGiftThreshold(nil, v) {
 			t.Fatal("equal or missing passed")
 		}
-		if !ExceedsGiftThreshold(&v, v - 1) {
+		if !ExceedsGiftThreshold(&v, v-1) {
 			t.Fatal("one above failed")
 		}
 	}
