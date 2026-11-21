@@ -5,7 +5,7 @@
   const smooth = x => { x = clamp(x); return x * x * (3 - 2 * x); };
   const out = x => 1 - Math.pow(1 - clamp(x), 3);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[char]));
-  const icon = type => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${type === 'community_exp' ? '<path d="m12 2 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1Z"/>' : '<path d="m12 2 8 7-8 13L4 9 8 2Zm0 0L8 9l4 13 4-13-4-7ZM4 9h16"/>'}</svg>`;
+  const icon = type => type === 'gift_flash' ? '<span aria-hidden="true">⚡️</span>' : type === 'gift_ticket' ? '<span aria-hidden="true">🎟️</span>' : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${type === 'community_exp' ? '<path d="m12 2 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1Z"/>' : '<path d="m12 2 8 7-8 13L4 9 8 2Zm0 0L8 9l4 13 4-13-4-7ZM4 9h16"/>'}</svg>`;
   const tiers = ['white', 'green', 'blue', 'gold', 'red', 'rainbow'];
   const tier = value => tiers.includes(value) ? value : 'white';
   const strongest = rewards => tiers[Math.max(0, ...rewards.map(reward => tiers.indexOf(tier(reward.tier))))];
@@ -199,7 +199,7 @@
         ctx.save();ctx.globalAlpha=opacity;ctx.strokeStyle=colors.spectrum.length ? colors.spectrum[i % colors.spectrum.length] : (i%3===0?colors.secondary:colors.energy);ctx.lineWidth=star.size*.7;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x-Math.cos(star.a)*(4+(1-f)*24),y-Math.sin(star.a)*(4+(1-f)*24));ctx.stroke();ctx.restore();
       }
     });
-    crystal(cx,cy,base,p);
+    if (root.classList.contains('limited-gift-hero')) {ctx.save();ctx.globalAlpha=1-smooth((p-.46)/.18);ctx.font=Math.round(base*1.6)+'px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('🎁',cx,cy);ctx.restore();} else crystal(cx,cy,base,p);
     if(release>0&&release<1) {
       const radius=base*.6+out(release)*bound*1.4;
       ellipse(cx,cy,radius,radius*.74,0,(1-release)*.7,colors.energy,1.6);

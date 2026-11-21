@@ -15,7 +15,7 @@ import (
 	transporthttp "github.com/nanashiwang/meta-pulse/internal/transport/http"
 )
 
-func buildAPIRouter(cfg config.Config, logger *slog.Logger, readiness app.ReadinessChecker, unit ports.UnitOfWork, nonces security.NonceStore, settings transporthttp.RuntimeSettings, metrics *observability.Metrics) (http.Handler, error) {
+func buildAPIRouter(cfg config.Config, logger *slog.Logger, readiness app.ReadinessChecker, unit ports.UnitOfWork, nonces security.NonceStore, settings transporthttp.RuntimeSettings, metrics *observability.Metrics, gifts service.GiftProjection) (http.Handler, error) {
 	profile, err := service.NewProfileService(unit, nil)
 	if err != nil {
 		return nil, err
@@ -77,6 +77,7 @@ func buildAPIRouter(cfg config.Config, logger *slog.Logger, readiness app.Readin
 	rules.QuotaPerUnit = cfg.QuotaPerUnit
 	rules.SelectionSecret = []byte(cfg.RewardRandomSecret)
 	tickets := service.NewCommunityTicketService(unit)
+	tickets.GiftProjection = gifts
 	tickets.QuotaPerUnit = cfg.QuotaPerUnit
 	tickets.CheckinFlashEnabled = cfg.ActionsEnabled && !cfg.RewardShadowMode
 	return app.NewRouterWithRoutes(logger, readiness, app.APIRoutes{

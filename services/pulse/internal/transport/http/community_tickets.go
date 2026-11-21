@@ -20,6 +20,9 @@ type FarmTicketExchanger interface {
 }
 
 func CommunityTicketRoute(r *gin.RouterGroup, s CommunityTicketGranter, auth gin.HandlerFunc) {
+	if tickets, ok := s.(*service.CommunityTicketService); ok && tickets.GiftProjection != nil {
+		giftReadRoutes(r, tickets.GiftProjection, auth)
+	}
 	if farm, ok := s.(FarmTicketExchanger); ok {
 		r.POST("/me/farm-ticket-exchanges", auth, func(c *gin.Context) {
 			c.Header("Cache-Control", "no-store")

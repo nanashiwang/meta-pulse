@@ -140,6 +140,8 @@ services:
       PULSE_SERVICE_HMAC_SECRET: ${PULSE_SERVICE_HMAC_SECRET:-}
       PULSE_SERVICE_HMAC_SECRET_PREVIOUS: ${PULSE_SERVICE_HMAC_SECRET_PREVIOUS:-}
       PULSE_REWARD_RANDOM_SECRET: ${PULSE_REWARD_RANDOM_SECRET:-replace-me}
+      PULSE_ACTIONS_ENABLED: ${PULSE_ACTIONS_ENABLED:-false}
+      PULSE_QUOTA_PER_UNIT: ${PULSE_QUOTA_PER_UNIT:-0}
       PULSE_REWARD_SHADOW_MODE: ${PULSE_REWARD_SHADOW_MODE:-true}
       PULSE_SETTLEMENT_BATCH_SIZE: ${PULSE_SETTLEMENT_BATCH_SIZE:-100}
       PULSE_PERIOD_CLOSE_BATCH_SIZE: ${PULSE_PERIOD_CLOSE_BATCH_SIZE:-20}
@@ -148,6 +150,7 @@ services:
       PULSE_CONTENT_MAX_DAILY_AMOUNT: ${PULSE_CONTENT_MAX_DAILY_AMOUNT:-1000}
       PULSE_TICKET_THRESHOLD_MILLI: ${PULSE_TICKET_THRESHOLD_MILLI:-1000}
     volumes:
+      - forum_gift_receipts:/var/lib/metar-gift-receipts:ro
       - pulse_worker_runtime_keys:/app/runtime-keys
       - ${META_PULSE_CA_DIR:-./deploy/certs}:/etc/meta-pulse-ca:ro
     healthcheck:
@@ -208,6 +211,7 @@ services:
     expose:
       - "80"
     volumes:
+      - forum_gift_receipts:/var/lib/metar-gift-receipts
       - forum_data:/data
       - ${META_PULSE_CA_DIR:-./deploy/certs}:/etc/meta-pulse-ca:ro
     depends_on:
@@ -305,6 +309,7 @@ services:
 
 volumes:
   pulse_api_runtime_keys:
+  forum_gift_receipts:
   pulse_worker_runtime_keys:
   pulse_mysql_data:
   forum_mysql_data:

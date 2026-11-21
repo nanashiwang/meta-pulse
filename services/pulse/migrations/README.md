@@ -107,3 +107,5 @@ Down 保留配置、密文和幂等回执，重新 Up 不会覆盖现有值。�
 `00019_unlimited_experience_budget.sql` 放宽 `chk_pulse_budget_cap`，允许持续规则的 `community_exp` 预算显式 `unlimited=true`、`hard_cap=0`，网页新规则纯按概率发放 EXP。仍记录预留与结算并受 int64 边界保护；不改写历史有限预算。存在不限经验预算时 Down 拒绝，避免静默加上限。需先迁移再启动新版 API。
 
 `00022_draw_bonus_experience.sql` 为同一个抽奖 Grant 追加附加 EXP 金额与独立交付状态，已有历史保持零值。此迁移禁止向下删除到账记录；应先发布兼容代码或向前修复，而非执行 down。
+
+`00023_limited_gift.sql` 保存按日的赠礼资格快照和赠礼交付状态。保留领取、发放与对账事实，不通过回退表结构清除历史。

@@ -243,6 +243,7 @@
   }
 
   function currentTitle() {
+    if(isGiftPage())return t('限时赠礼');
     const path = route().path;
     if (path.startsWith('/marketplace/item/')) return t('Vibe Coding 集市');
     if (path.startsWith('/model/')) return t('模型详情');
@@ -262,8 +263,140 @@
 
   const isPersonalPath = path => /^\/me(?:\/|$)/.test(path) || ['/settings/binding','/chat','/pulse'].includes(path);
   let personalNativeView = null, personalSidebarKey = '', personalNativeStep = 0, personalLeaveApproved = false, restoringPersonalHistory = false;
+  const isGiftPage = () =>
+    route().path === '/events' && route().query.get('view') === 'gift';
+  let giftView = null,
+    giftTimer = 0,
+    giftEpoch = 0;
+  function dropGift() {
+    giftEpoch++;
+    if (giftTimer) clearInterval(giftTimer);
+    giftView?.dispose();
+    giftView = null;
+  }
+  async function syncGiftNav() {
+    const nav = document.querySelector('[data-gift-nav]');
+    if (!nav) return;
+    nav.hidden = true;
+    if (giftTimer) clearInterval(giftTimer);
+    const epoch = ++giftEpoch,
+      viewer = currentUser?.id;
+    if (!viewer || !isActiveUser(currentUser)) return;
+    let end = 0,
+      next = 0,
+      inflight = false;
+    const tick = async () => {
+      if (epoch !== giftEpoch || currentUser?.id !== viewer || !nav.isConnected)
+        return;
+      const now = Date.now();
+      if (now >= next && !inflight) {
+        next = now + 15000;
+        inflight = true;
+        try {
+          const v = await answer.request('/metar/events/gift');
+          if (epoch !== giftEpoch || currentUser?.id !== viewer) return;
+          end = Number(
+            v?.offer?.end ||
+              (isGiftPage()
+                ? document.querySelector('[data-gift-hero][data-received="1"]')
+                    ?.dataset.end
+                : 0) ||
+              0,
+          );
+        } catch {
+          end = 0;
+          next = now + 5000;
+        } finally {
+          inflight = false;
+        }
+      }
+      if (epoch !== giftEpoch) return;
+      const left = Math.max(0, Math.ceil(end - Date.now() / 1000));
+      nav.hidden = !left;
+      nav.querySelector('time').textContent = giftClock(left);
+      const hero = document.querySelector('[data-gift-hero]');
+      if (hero) {
+        const secs = Math.max(
+          0,
+          Math.ceil(Number(hero.dataset.end) - Date.now() / 1000),
+        );
+        hero.querySelector('.pc-subtitle').textContent =
+          '距赠礼结束　' + giftClock(secs);
+        if (!secs && giftView && !giftView.timeline) {
+          giftView.button.disabled = true;
+          if (hero.dataset.received !== '1')
+            giftView.button.textContent = '已结束';
+        }
+      }
+    };
+    giftTimer = setInterval(tick, 1000);
+    await tick();
+  }
+  function giftClock(n) {
+    return [Math.floor(n / 3600), Math.floor((n % 3600) / 60), n % 60]
+      .map((x) => String(x).padStart(2, '0'))
+      .join(':');
+  }
+  function mountGiftResult() {
+    const el = document.querySelector('[data-gift-hero]');
+    if (!el) return;
+    const core = el.querySelector('.pulse-core');
+    core.classList.add('limited-gift-hero');
+    core.querySelector('h1').textContent = el.dataset.name;
+    core.querySelector('.pc-brand').textContent = 'METAR / LIMITED GIFT';
+    core.querySelector('.pc-annotation').textContent = '限时赠礼';
+    core.querySelector('.pc-subtitle').textContent =
+      '距赠礼结束　' +
+      giftClock(
+        Math.max(0, Math.ceil(Number(el.dataset.end) - Date.now() / 1000)),
+      );
+    const v = (giftView = new window.MetarPulseCore.View(core, { t }));
+    const btn = v.button;
+    btn.removeAttribute('data-action');
+    btn.textContent = '领取';
+    btn.disabled = false;
+    btn.onclick = async () => {
+      if (btn.disabled) return;
+      btn.disabled = true;
+      v.begin();
+      try {
+        const { receipt: r } = await answer.request('/metar/events/gift', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Metar-Request': '1',
+          },
+          body: JSON.stringify({ id: el.dataset.id }),
+        });
+        if (v !== giftView) return;
+        if (!r) throw Error();
+        const rewards = [
+          ['Flash', 'gift_flash', '闪电', 100],
+          ['Exp', 'community_exp', '经验值', 1],
+          ['Tickets', 'gift_ticket', '抽奖券', 1],
+        ]
+          .filter(([k]) => r[k] > 0)
+          .map(([k, type, unit, scale]) => ({
+            type,
+            unit,
+            amount: r[k] / scale,
+            tier: 'gold',
+            bonus: r[k + 'Paid'] ? '已到账' : '等待到账',
+          }));
+        el.dataset.received = '1';
+        await v.reveal({ rewards });
+        if (v === giftView) btn.textContent = '已领取';
+      } catch {
+        if (v === giftView) {
+          v.fail('暂未确认结果，请重试。重试不会重复领取。');
+          btn.textContent = '重新确认';
+          btn.disabled = false;
+        }
+      }
+    };
+  }
   function personalSidebar() {
-    if (!isPersonalPath(route().path) || currentUserState !== 'ready' || !currentUser) return '';
+    if ((!isPersonalPath(route().path) && !isGiftPage()) || currentUserState !== 'ready' || !currentUser) return '';
     const { path, query } = route();
     const item = (url, label, icon) => link(url, I(icon) + `<span>${esc(label)}</span>`, `account-menu-link ${routeMatchesNavigation(path, query.toString(), url) ? 'active' : ''}`);
     const consoleBase = config.consoleUrl?.replace(/\/$/, '').replace(/\/console$/, '');
@@ -315,7 +448,7 @@
     return `<header class="topbar">
       <button type="button" class="page-back" data-action="back" aria-label="${getLanguage() === 'en_US' ? 'Back to home' : '返回主界面'}"${isHomePath() ? ' hidden' : ''}>← ${getLanguage() === 'en_US' ? 'Back' : '返回'}</button>
       ${link('/latest', LOGO + `<span class="brand-word" aria-hidden="true">${esc(config.siteName.toLowerCase())}</span>`, 'brand')}
-      <nav class="topnav" aria-label="${t("主导航")}">${link('/latest', t("社区"), active('/latest') || active('/question') || active('/topic') || active('/topics') ? 'active' : '')}${link('/marketplace', t('集市'), active('/marketplace') ? 'active' : '')}${link('/models', t('模型榜'), active('/models') || active('/model') ? 'active' : '')}${link('/pulse', 'Pulse', active('/pulse') ? 'active' : '')}${toolsMenu(active('/tools'))}</nav>
+      <nav class="topnav" aria-label="${t("主导航")}">${link('/latest', t("社区"), active('/latest') || active('/question') || active('/topic') || active('/topics') ? 'active' : '')}${link('/marketplace', t('集市'), active('/marketplace') ? 'active' : '')}${link('/models', t('模型榜'), active('/models') || active('/model') ? 'active' : '')}${link('/pulse', 'Pulse', active('/pulse') ? 'active' : '')}<a class="gift-nav" data-gift-nav data-router href="/events?view=gift" hidden><span>${t('限时赠礼')}</span><time></time></a>${toolsMenu(active('/tools'))}</nav>
       <form class="searchbox" data-form="search" role="search"><button type="submit" class="search-submit" aria-label="${t("搜索社区")}">${I('search')}</button><input type="search" name="q" aria-label="${t("搜索社区")}" placeholder="${t("搜索真实问题与回答…")}" value="${path === '/search' ? esc(route().query.get('q') || '') : ''}" autocomplete="off"><kbd>⌘ K</kbd></form>
       <div class="header-actions">${activeUser ? external('/users', I(ICONS.barChart ? 'barChart' : 'target') + `<span class="visually-hidden">${t('排行榜')}</span>`, 'icon-btn header-ranking', ` aria-label="${t('排行榜')}" title="${t('排行榜')}"`) : ''}${languageControl()}<button type="button" class="icon-btn theme-btn" data-action="theme" aria-label="${document.documentElement.dataset.theme === 'dark' ? t("切换到浅色主题") : t("切换到深色主题")}">${I(document.documentElement.dataset.theme === 'dark' ? 'sun' : 'moon')}</button>${currentUserState === 'loading' ? `<span class="identity-loading" role="status">${t("正在确认身份…")}</span>` : identityUnavailableState ? link('/me', I('server', 'sm') + `<span>${t("身份服务暂不可用")}</span>`, 'btn ghost identity-status') : logged ? (activeUser ? link('/me/notifications', I('bell') + `<span class="visually-hidden">${t("通知中心")}</span><span class="account-unread-dot" data-account-unread hidden></span>`, 'icon-btn account-notifications') + link('/me/notifications?view=achievement', I('trophy') + `<span class="visually-hidden">${getLanguage() === 'en_US' ? 'Achievements' : '成就'}</span>`, 'icon-btn account-achievements') + (isCommunityAdministrator(currentUser) ? external('/review', I('shield') + `<span class="visually-hidden">${getLanguage() === 'en_US' ? 'Review' : '审查'}</span>`, 'icon-btn account-review') : '') + `<a href="${esc(window.MetarRouter.href('/chat'))}" data-router class="icon-btn header-chat" title="${t('聊天')}">${I('chat')}<span class="visually-hidden">${t('聊天')}</span><span class="chat-unread" data-chat-unread hidden></span></a>` : external('/users/login?status=inactive', t("激活账号"), 'btn primary')) + accountMenu() : external(config.answerLoginPath, t("登录"), 'btn ghost') + external(config.answerRegisterPath, t("加入社区"), 'btn primary guest-register')}</div>
     </header>`;
@@ -374,7 +507,7 @@
     const input = document.querySelector('.searchbox input');
     const draft = input?.value, focused = document.activeElement === input;
     const header = document.querySelector('header.topbar');
-    if (header) header.outerHTML = topbar();
+    if (header) {header.outerHTML = topbar();void syncGiftNav();}
     const next = document.querySelector('.searchbox input');
     if (next && draft !== undefined) { next.value = draft; if (focused) next.focus({preventScroll:true}); }
     extrasUpdatedAt = 0;
@@ -432,11 +565,13 @@
     if (topAd || sideAd) loadFeatureScript('home-ads','MetarAds').then(() => window.MetarAds.mountSlots([topAd,sideAd],answer)).catch(() => {});
     const manager = document.querySelector('#view [data-ad-manager]');
     if (manager) window.MetarAds.mountManager(manager,answer,new AnswerAdapter({answerApiBase:'/answer/admin/api'}));
+    void syncGiftNav();
+    if(isGiftPage()) mountGiftResult();
     void mountCommunityAnnouncement();
     void mountTagShortcuts();
     void mountSearchSuggestions();
     void mountPersonalNative();
-    if (['/me/drafts', '/events', '/admin/events'].includes(route().path)) memberView?.mount(view);
+    if (!isGiftPage() && ['/me/drafts', '/events', '/admin/events'].includes(route().path)) memberView?.mount(view);
     if (['/awards','/admin/awards'].includes(route().path)) awardsView?.mount(view);
     if (route().path === '/admin/operations') operationsView?.mount(view);
     if (route().path.startsWith('/marketplace') || route().path === '/admin/marketplace') marketplaceView?.mount(view);
@@ -1360,6 +1495,12 @@
       awardsView=new window.MetarAwards.View(answer,new AnswerAdapter({answerApiBase:'/answer/admin/api'}));
       return await awardsView.page(path,currentUser,route().query);
     }
+    if(isGiftPage()) {
+      await identityReady;if(!isActiveUser(currentUser))return loginRequired('限时赠礼','请先登录社区账号。');
+      const result=await answer.request('/metar/events/gift');if(!result?.offer)return empty('暂无可领取的赠礼','',link('/latest','返回社区'),'clock');
+      if(!await loadPulseCore())return empty('赠礼页面暂不可用','请稍后刷新','','clock');
+      return '<div data-gift-hero data-id="'+esc(result.offer.id)+'" data-name="'+esc(result.offer.name)+'" data-end="'+Number(result.offer.end)+'">'+window.MetarPulseCore.markup({t})+'</div>';
+    }
     if (['/me/drafts', '/events', '/admin/events'].includes(path)) {
       await identityReady;
       const title = currentTitle();
@@ -1370,6 +1511,7 @@
         if (path === '/admin/events' && !isCommunityAdministrator(currentUser)) return empty(t('需要管理员权限'), '', link('/latest', '← ' + t('返回社区'), 'page-back'), 'shield');
       }
       await loadFeatureScript('drafts-store', 'MetarDrafts');
+      if(path==='/admin/events') await loadFeatureScript('limited-gifts','MetarLimitedGift');
       await loadFeatureScript('member-pages', 'MetarMemberPages');
       memberView = new window.MetarMemberPages.View(answer, new AnswerAdapter({answerApiBase:'/answer/admin/api'}));
       return await memberView.page(path, isActiveUser(currentUser) ? currentUser : null, route().query);
@@ -1646,6 +1788,7 @@
     personalNativeView = null;
     personalLeaveApproved = false;
     chatView?.dispose();
+    dropGift();
     memberView?.dispose();
     marketplaceView?.dispose();
     modelsView?.dispose();

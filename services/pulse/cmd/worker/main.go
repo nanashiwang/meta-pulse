@@ -132,6 +132,26 @@ func main() {
 		tasks = append(tasks, job.Task{Name: name, Interval: 30 * time.Second, Timeout: 20 * time.Second, MaxBackoff: 10 * time.Minute, Run: run})
 	}
 
+	{
+		var inboxCursor string
+		addExternalTask("limited_gift_inbox", func(ctx context.Context) error {
+			return importGifts(ctx, "/var/lib/metar-gift-receipts", &inboxCursor, mysqlstore.GiftProjection{DB: database.SQL()})
+		})
+		addExternalTask("limited_gift_delivery", func(ctx context.Context) error {
+			cfg, e := runtime.Current(ctx)
+			if e != nil {
+				return e
+			}
+			if !cfg.ActionsEnabled || cfg.RewardShadowMode {
+				return nil
+			}
+			s := service.NewCommunityTicketService(unit)
+			s.CheckinFlashEnabled = true
+			s.QuotaPerUnit = cfg.QuotaPerUnit
+			return deliverGifts(ctx, s, database.SQL())
+		})
+		tasks = append(tasks, job.Task{Name: "limited_gift_usage", Interval: 3 * time.Second, Timeout: 20 * time.Second, MaxBackoff: time.Minute, Run: func(ctx context.Context) error { return giftUsageBatch(ctx, database.SQL(), runtime) }})
+	}
 	addTask("settlement", func(checkCtx context.Context) error {
 		settlement, err := newRuntimeSettlement(checkCtx, runtime, unit)
 		if err != nil {

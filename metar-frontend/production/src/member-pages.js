@@ -43,7 +43,7 @@
           if (
             p &&
             typeof p.key === "string" &&
-            ["create", "edit", "cancel", "join", "leave"].includes(
+            ["gift_start", "create", "edit", "cancel", "join", "leave"].includes(
               p.command?.op,
             )
           )
@@ -87,7 +87,7 @@
               "",
             )}<label>${t("人数上限", "Capacity")}<input name="capacity" type="number" min="1" max="100000" value="100" required></label></div><p class="prod-page-note">${t("时间按当前设备时区填写。发布后公开；本活动不收费、不自动发放 Pulse 奖励。", "Times use your device timezone. Publishing is public; events are free and do not automatically grant Pulse rewards.")}</p><button class="btn primary" type="submit">${t("保存并发布", "Save and publish")}</button><button class="btn ghost" type="reset">${t("重置为新活动", "Reset to new event")}</button></form></details>`
         : "";
-      return `<div class="between wrap"><h1 class="member-title">${t(admin ? "活动管理" : "近期活动", admin ? "Manage events" : "Community events")}</h1>${!admin && root.MetarAdapters.isCommunityAdministrator(this.user) ? '<a class="btn" data-router href="/admin/events">' + t("管理活动", "Manage events") + "</a>" : ""}</div><nav class="flex mt16"><a class="btn ${!this.past ? "primary" : ""}" data-router href="${this.path}">${t("近期", "Upcoming")}</a><a class="btn ${this.past ? "primary" : ""}" data-router href="${this.path}?past=1">${t("往期", "Past")}</a></nav>${form}<p role="status" data-member-status>${this.pending ? t("有一个操作尚未确认，请先重试原操作。", "An earlier operation is unconfirmed. Retry it first.") + ` <button class="btn" data-member="retry">${t("重试原操作", "Retry original operation")}</button>` : ""}</p><div class="stack mt16">${
+      return `<div class="between wrap"><h1 class="member-title">${t(admin ? "活动管理" : "近期活动", admin ? "Manage events" : "Community events")}</h1>${!admin && root.MetarAdapters.isCommunityAdministrator(this.user) ? '<a class="btn" data-router href="/admin/events">' + t("管理活动", "Manage events") + "</a>" : ""}</div><nav class="flex mt16"><a class="btn ${!this.past ? "primary" : ""}" data-router href="${this.path}">${t("近期", "Upcoming")}</a><a class="btn ${this.past ? "primary" : ""}" data-router href="${this.path}?past=1">${t("往期", "Past")}</a></nav>${form}${admin ? (root.MetarLimitedGift?.adminHTML() || "") : ""}<p role="status" data-member-status>${this.pending ? t("有一个操作尚未确认，请先重试原操作。", "An earlier operation is unconfirmed. Retry it first.") + ` <button class="btn" data-member="retry">${t("重试原操作", "Retry original operation")}</button>` : ""}</p><div class="stack mt16">${
         this.events.length
           ? this.events
               .map((v) => {
@@ -176,6 +176,7 @@
       this.mountFormOnly(node);
     }
     mountFormOnly(node) {
+      if(this.path==="/admin/events")root.MetarLimitedGift?.adminMount(node.querySelector("[data-gifts]"),this.admin,cmd=>this.command(cmd,true));
       node
         .querySelector("[data-event-form]")
         ?.addEventListener("submit", (e) => {
@@ -224,7 +225,7 @@
         this.needsRefresh = true;
         root.sessionStorage.removeItem(this.pendingKey);
         this.pending = null;
-        if (gen === this.generation) await this.refresh();
+        if (gen === this.generation) {await this.refresh();if(command.op==='gift_start'&&this.root){const box=this.root.querySelector('[data-gifts]');if(box){box.open=true;box.querySelector('[role=status]').textContent=t('本轮赠礼已开启。','Gift round started.');box.querySelector('[data-list]')?.click();}}}
       } catch (e) {
         if (committed) throw Error("refresh_required");
         if (e?.status >= 400 && e?.status < 500) {

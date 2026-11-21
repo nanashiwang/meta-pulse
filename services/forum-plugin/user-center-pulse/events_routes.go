@@ -56,7 +56,12 @@ func (uc *UserCenter) communityEventStore(ctx context.Context) (*events.Store, e
 func (uc *UserCenter) registerEvents(r *gin.RouterGroup, session func(*gin.Context) (string, error), admin bool, site func() string) {
 	r.GET("/metar/events/mine", uc.eventHandler("list", session, admin, site))
 	r.POST("/metar/events/command", uc.eventHandler("command", session, admin, site))
+	if session != nil && !admin {
+		r.GET("/metar/events/gift", uc.giftMember(session, site, false))
+		r.POST("/metar/events/gift", uc.giftMember(session, site, true))
+	}
 	if admin {
+		r.GET("/metar/events/gift-history", uc.eventHandler("gift_history", session, true, site))
 		r.GET("/metar/events/roster", uc.eventHandler("roster", session, true, site))
 	}
 }
@@ -88,7 +93,7 @@ func (uc *UserCenter) eventHandler(op string, session func(*gin.Context) (string
 			return
 		}
 		for k, v := range q {
-			if len(v) != 1 || !(op == "list" && (k == "page" || k == "past") || op == "roster" && (k == "page" || k == "id")) {
+			if len(v) != 1 || !(op == "list" && (k == "page" || k == "past") || (op == "roster" || op == "gift_history") && (k == "page" || k == "id")) {
 				communityError(c, 400, "invalid_request")
 				return
 			}
@@ -111,7 +116,7 @@ func (uc *UserCenter) eventHandler(op string, session func(*gin.Context) (string
 				communityError(c, 400, "invalid_request")
 				return
 			}
-			if admin != (cmd.Op == "create" || cmd.Op == "edit" || cmd.Op == "cancel") {
+			if admin != (cmd.Op == "gift_start" || cmd.Op == "create" || cmd.Op == "edit" || cmd.Op == "cancel") {
 				communityError(c, 403, "forbidden")
 				return
 			}
@@ -127,6 +132,8 @@ func (uc *UserCenter) eventHandler(op string, session func(*gin.Context) (string
 		switch op {
 		case "list":
 			result, err = store.List(ctx, user, page, q.Get("past") == "1")
+		case "gift_history":
+			result, err = store.GiftReport(ctx, user, q.Get("id"), page)
 		case "roster":
 			result, err = store.Roster(ctx, user, q.Get("id"), page)
 		case "command":

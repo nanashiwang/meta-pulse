@@ -140,6 +140,7 @@ def build(output: Path, config_path: Path) -> None:
     (assets / "growth-presentation.js").write_text(sources["growth-presentation"], encoding="utf-8")
     (assets / "growth.js").write_text(sources["growth"], encoding="utf-8")
     (assets / "chat.js").write_text(sources["chat"], encoding="utf-8")
+    shutil.copyfile(ROOT / "src/limited-gifts.js", assets / "limited-gifts.js")
     (assets / "member-pages.js").write_text(sources["member-pages"], encoding="utf-8")
     (assets / "drafts-store.js").write_text(sources["drafts-store"], encoding="utf-8")
     (assets / "personal-workspace.js").write_text(sources["personal-workspace"], encoding="utf-8")

@@ -37,6 +37,7 @@ func (uc *UserCenter) startCommunityTickets() {
 		return
 	}
 	uc.ticketLoopOnce.Do(func() {
+		go uc.giftReceiptLoop()
 		go func() {
 			ticker := time.NewTicker(15 * time.Second)
 			defer ticker.Stop()

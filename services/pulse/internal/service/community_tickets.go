@@ -26,7 +26,13 @@ type CommunityTicket struct {
 type CommunityTicketResult struct {
 	EntryID uint64 `json:"entry_id"`
 }
+type GiftOrder = ports.GiftOrder
+type GiftProjection interface {
+	GiftUsage(context.Context, uint64) (string, *int64, bool, error)
+	GiftPaid(context.Context, uint64, uint64) (bool, int64, error)
+}
 type CommunityTicketService struct {
+	GiftProjection      GiftProjection
 	unit                ports.UnitOfWork
 	QuotaPerUnit        int64
 	CheckinFlashEnabled bool

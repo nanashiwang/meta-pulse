@@ -76,7 +76,7 @@ func main() {
 
 	metrics := observability.NewHTTPMetrics()
 	handler := app.RuntimeHandler(runtime, func(snapshot config.Config) (http.Handler, error) {
-		return buildAPIRouter(snapshot, logger, readiness, unit, nonces, runtime, metrics)
+		return buildAPIRouter(snapshot, logger, readiness, unit, nonces, runtime, metrics, mysqlstore.GiftProjection{DB: database.SQL()})
 	}, app.NewRouter(logger, readiness, metrics))
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,

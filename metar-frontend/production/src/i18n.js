@@ -2,6 +2,7 @@
 'use strict';
 (() => {
   const EN = Object.freeze({
+"限时赠礼":"Limited gifts",
 "今日签到：{experience} EXP 已到账，闪奖励金额正在由服务器生成。":"Today’s check-in: {experience} EXP delivered. The server is generating your credit reward.",
 "到账状态暂不可用":"Delivery status unavailable",
 "今日签到奖励：{experience} EXP 已到账 · {flash} 闪（{state}）":"Today’s check-in: {experience} EXP delivered · {flash} ⚡️ ({state})",
