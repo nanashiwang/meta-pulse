@@ -104,9 +104,9 @@ func (uc *UserCenter) registerCommunityRoutes(r *gin.RouterGroup, session func(*
 	if r == nil {
 		return
 	}
-	for _, operation := range []string{"summary", "rewards", "rules", "actions", "winners", "tasks"} {
+	for _, operation := range []string{"summary", "rewards", "rules", "actions", "winners", "tasks", "farm-exchanges"} {
 		method := http.MethodGet
-		if operation == "actions" {
+		if operation == "actions" || operation == "farm-exchanges" {
 			method = http.MethodPost
 		}
 		r.Handle(method, "/metar/pulse/"+operation, uc.communityHandler(operation, session, siteURL))
@@ -136,7 +136,7 @@ func (uc *UserCenter) communityHandler(operation string, session func(*gin.Conte
 		}
 		var body []byte
 		var idempotencyKey string
-		if operation == "actions" {
+		if operation == "actions" || operation == "farm-exchanges" {
 			if !communitySameOrigin(c.Request, siteURL()) {
 				communityError(c, http.StatusForbidden, "origin_rejected")
 				return
@@ -153,14 +153,22 @@ func (uc *UserCenter) communityHandler(operation string, session func(*gin.Conte
 			}
 			data, err := io.ReadAll(io.LimitReader(c.Request.Body, 4097))
 			var payload communityActionRequest
-			if err != nil || len(data) > 4096 || !decodeCommunityAction(data, &payload) {
+			if err != nil || len(data) > 4096 || (operation == "actions" && !decodeCommunityAction(data, &payload)) {
 				communityError(c, http.StatusBadRequest, "invalid_request")
 				return
 			}
-			body, _ = json.Marshal(struct {
-				communityActionRequest
-				TriggerType string `json:"trigger_type"`
-			}{payload, "pulse"})
+			if operation == "farm-exchanges" {
+				if !farmOrderPattern.MatchString(idempotencyKey) || string(data) != `{"order_id":"`+idempotencyKey+`"}` {
+					communityError(c, 400, "invalid_request")
+					return
+				}
+				body = data
+			} else {
+				body, _ = json.Marshal(struct {
+					communityActionRequest
+					TriggerType string `json:"trigger_type"`
+				}{payload, "pulse"})
+			}
 		}
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 		defer cancel()
@@ -178,6 +186,10 @@ func (uc *UserCenter) communityHandler(operation string, session func(*gin.Conte
 			communityIdentityError(c, err)
 			return
 		}
+		if operation == "farm-exchanges" && !paidFarmOrder(c.Request.Header, forumID, externalID, idempotencyKey) {
+			communityError(c, 403, "farm_receipt_required")
+			return
+		}
 		if operation == "tasks" {
 			s, e := uc.communityTicketStore(ctx)
 			if e != nil {
@@ -193,6 +205,9 @@ func (uc *UserCenter) communityHandler(operation string, session func(*gin.Conte
 			return
 		}
 		path := "/v1/internal/me/" + operation
+		if operation == "farm-exchanges" {
+			path = "/v1/internal/me/farm-ticket-exchanges"
+		}
 		if operation == "winners" {
 			path = "/v1/internal/community/rewards"
 		}
@@ -234,6 +249,18 @@ func (uc *UserCenter) communityHandler(operation string, session func(*gin.Conte
 			default:
 				communityError(c, http.StatusServiceUnavailable, "pulse_unavailable")
 			}
+			return
+		}
+		if operation == "farm-exchanges" && status == 200 {
+			var receipt struct {
+				EntryID uint64 `json:"entry_id,string"`
+				OrderID string `json:"order_id"`
+			}
+			if decodeCommunityResponse(data, &receipt) != nil || receipt.EntryID == 0 || receipt.OrderID != idempotencyKey {
+				communityError(c, 503, "invalid_receipt")
+				return
+			}
+			c.JSON(200, receipt)
 			return
 		}
 		projection, err := communityProjection(operation, externalID, data)

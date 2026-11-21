@@ -15,7 +15,38 @@ type CommunityTicketGranter interface {
 	AdminGrant(context.Context, string, string, service.AdminTicketGrant) (service.AdminTicketGrantResult, error)
 }
 
+type FarmTicketExchanger interface {
+	ExchangeFarmTicket(context.Context, uint64, service.FarmTicketExchange) (service.FarmTicketReceipt, error)
+}
+
 func CommunityTicketRoute(r *gin.RouterGroup, s CommunityTicketGranter, auth gin.HandlerFunc) {
+	if farm, ok := s.(FarmTicketExchanger); ok {
+		r.POST("/me/farm-ticket-exchanges", auth, func(c *gin.Context) {
+			c.Header("Cache-Control", "no-store")
+			p, ok := PrincipalWithRole(c, "community-bff")
+			if !ok {
+				c.JSON(403, gin.H{"error": "forbidden"})
+				return
+			}
+			var exchange service.FarmTicketExchange
+			key := c.GetHeader("Idempotency-Key")
+			if c.Request.URL.RawQuery != "" || len(c.Request.Header.Values("Idempotency-Key")) != 1 || len(key) != 32 || bindSettingsJSON(c, &exchange) != nil || exchange.OrderID != key {
+				c.JSON(400, gin.H{"error": "invalid_request"})
+				return
+			}
+			result, err := farm.ExchangeFarmTicket(c.Request.Context(), p.UserID, exchange)
+			switch {
+			case err == nil:
+				c.JSON(200, result)
+			case errors.Is(err, ledger.ErrIdempotencyConflict):
+				c.JSON(409, gin.H{"error": "exchange_conflict"})
+			case errors.Is(err, ports.ErrConflict):
+				c.JSON(400, gin.H{"error": "invalid_request"})
+			default:
+				c.JSON(503, gin.H{"error": "exchange_unavailable"})
+			}
+		})
+	}
 	if flash, ok := s.(checkinFlashService); ok {
 		CheckinFlashRoutes(r, flash, auth)
 	}

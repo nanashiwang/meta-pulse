@@ -215,3 +215,46 @@ func TestLegacyDailyCheckinBeyondActualPolicyCutoverIsRejected(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestMySQLFarmExchangeReplayMintsOneLot(t *testing.T) {
+	database, db := openMySQLIntegration(t)
+	unit, _ := mysqlstore.NewUnitOfWork(database)
+	ctx := context.Background()
+	now := time.Date(2081, 1, 1, 8, 0, 0, 0, time.UTC)
+	key := fmt.Sprintf("farm-grant-%d", time.Now().UnixNano())
+	user := uint64(time.Now().UnixNano()%1000000000 + 3000000000)
+	creator, _ := NewPeriodCreateService(unit, func() time.Time { return now })
+	p, err := creator.CreateFromAdmin(ctx, PeriodAdminRequest{Key: key, Continuous: true, QuotaValidityDays: 30, QuotaBudgetUnlimited: true, ExperienceBudgetUnlimited: true, MultiplierBps: 10000, TicketThresholdMilli: 1000, Rewards: []PeriodRewardSpec{{Key: "quota", Amount: 1, Weight: 1}, {Key: "exp", RewardType: ExperienceRewardType, Amount: 1, Weight: 1}}, Reason: "农场兑换测试"}, "test", key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Exec("DELETE FROM pulse_period WHERE id=?", p.PeriodID) })
+	now = now.Add(time.Second)
+	s := NewCommunityTicketService(unit)
+	s.now = func() time.Time { return now }
+	grant := FarmTicketExchange{OrderID: fmt.Sprintf("%032x", time.Now().UnixNano())}
+	var wg sync.WaitGroup
+	errs := make(chan error, 100)
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); _, e := s.ExchangeFarmTicket(ctx, user, grant); errs <- e }()
+	}
+	wg.Wait()
+	close(errs)
+	for e := range errs {
+		if e != nil {
+			t.Fatal(e)
+		}
+	}
+	var count, total int
+	if err = db.QueryRow("SELECT COUNT(*),SUM(remaining) FROM pulse_ticket_lot WHERE user_id=?", user).Scan(&count, &total); err != nil || count != 1 || total != 1 {
+		t.Fatalf("lots %d %d %v", count, total, err)
+	}
+	var balance int64
+	if err = db.QueryRow("SELECT COALESCE(SUM(amount),0) FROM pulse_ledger_entry WHERE user_id=? AND asset_type=?", user, ledger.AssetTicket).Scan(&balance); err != nil || balance != 1 {
+		t.Fatalf("ledger %d %v", balance, err)
+	}
+	if _, err = s.ExchangeFarmTicket(ctx, user+1, grant); err == nil {
+		t.Fatal("same key with different payload accepted")
+	}
+}

@@ -121,3 +121,36 @@ func TestAdminTicketStatisticsSuccess(t *testing.T) {
 		t.Fatalf("%d %s", w.Code, w.Body.String())
 	}
 }
+
+type farmGranter struct{ ticketGranter }
+
+func (f *farmGranter) ExchangeFarmTicket(_ context.Context, u uint64, g service.FarmTicketExchange) (service.FarmTicketReceipt, error) {
+	f.user = u
+	f.calls++
+	return service.FarmTicketReceipt{EntryID: 17, OrderID: g.OrderID}, nil
+}
+func TestFarmTicketRouteUsesOnlySignedCommunityIdentity(t *testing.T) {
+	const order = "0123456789abcdef0123456789abcdef"
+	const body = `{"order_id":"0123456789abcdef0123456789abcdef"}`
+	const path = "/v1/internal/me/farm-ticket-exchanges"
+	for _, role := range []string{"community-bff", "admin", "forum", ""} {
+		f := &farmGranter{}
+		r := gin.New()
+		CommunityTicketRoute(r.Group("/v1/internal"), f, func(c *gin.Context) { c.Set(PrincipalContextKey, security.Principal{UserID: 42, Role: role}) })
+		w := settingsTestRequest(r, "POST", path, body, order)
+		if role != "community-bff" {
+			if w.Code != 403 || f.calls != 0 {
+				t.Fatal(role, w.Code)
+			}
+			continue
+		}
+		if w.Code != 200 || f.user != 42 || f.calls != 1 {
+			t.Fatal(w.Code, f.user)
+		}
+		for _, bad := range []string{`{"order_id":"wrong"}`, `{"order_id":"0123456789abcdef0123456789abcdef","count":2}`} {
+			if w := settingsTestRequest(r, "POST", path, bad, order); w.Code != 400 || f.calls != 1 {
+				t.Fatal(w.Code, bad)
+			}
+		}
+	}
+}

@@ -125,6 +125,86 @@ func (s *CommunityTicketService) Grant(ctx context.Context, user uint64, task Co
 	return result, err
 }
 
+// FarmTicketExchange records one paid Token Farm exchange as a distinct,
+// idempotent ticket source. The caller is the authenticated community BFF;
+// order IDs are created and persisted by the farm before this request.
+type FarmTicketExchange struct {
+	OrderID string `json:"order_id"`
+}
+
+type FarmTicketReceipt struct {
+	EntryID uint64 `json:"entry_id,string"`
+	OrderID string `json:"order_id"`
+}
+
+func (s *CommunityTicketService) ExchangeFarmTicket(ctx context.Context, user uint64, exchange FarmTicketExchange) (FarmTicketReceipt, error) {
+	if user == 0 || len(exchange.OrderID) != 32 {
+		return FarmTicketReceipt{}, ports.ErrConflict
+	}
+	for _, r := range exchange.OrderID {
+		if !(r >= '0' && r <= '9' || r >= 'a' && r <= 'f') {
+			return FarmTicketReceipt{}, ports.ErrConflict
+		}
+	}
+	key := "token-farm-ticket-v1:" + exchange.OrderID
+	payload, _ := json.Marshal(struct {
+		User    uint64 `json:"user_id"`
+		OrderID string `json:"order_id"`
+	}{user, exchange.OrderID})
+	hash := sha256.Sum256(payload)
+	fingerprint := hex.EncodeToString(hash[:])
+	var result FarmTicketReceipt
+	err := s.unit.Do(ctx, func(r ports.Repositories) error {
+		if e := lockRewardRule(ctx, r.Idempotency); e != nil {
+			return e
+		}
+		receipt, e := r.Idempotency.GetOrCreateForUpdate(ctx, "farm_ticket_exchange", exchange.OrderID, fingerprint)
+		if e != nil {
+			return e
+		}
+		if receipt.PayloadHash != fingerprint {
+			return ledger.ErrIdempotencyConflict
+		}
+		if len(receipt.ResponseJSON) > 0 {
+			return json.Unmarshal(receipt.ResponseJSON, &result)
+		}
+		now := s.now().UTC().Truncate(time.Second)
+		p, e := r.Period.FindActiveAtCurrent(ctx, now)
+		if e != nil {
+			return e
+		}
+		if !p.Continuous || p.FundingPolicy != period.VerifiedPaidFunding || p.QuotaValidityDays < 1 {
+			return errors.New("farm ticket exchange requires current continuous rules")
+		}
+		if e = r.Tickets.LockUser(ctx, user); e != nil {
+			return e
+		}
+		expires := now.Add(time.Duration(p.QuotaValidityDays) * 24 * time.Hour)
+		meta, _ := json.Marshal(map[string]any{"farm_exchange": true, "order_id": exchange.OrderID, "ticket_lot_version": 1, "earned_at": now.Unix(), "quota_expires_at": expires.Unix()})
+		entry, e := appendEntry(ctx, r, ledger.Entry{UserID: user, PeriodID: p.ID, AssetType: ledger.AssetTicket, Operation: ledger.OperationTicketBonus, Amount: 1, SourceType: "token_farm_exchange", SourceRef: exchange.OrderID, IdempotencyKey: key, PayloadHash: fingerprint, Reason: "Token 农场币兑换抽奖券", MetadataJSON: meta, CreatedAt: now})
+		if e != nil {
+			return e
+		}
+		if e = r.Tickets.Mint(ctx, ports.TicketLot{UserID: user, PeriodID: p.ID, MintEntryID: entry.ID, Issued: 1, Remaining: 1, EarnedAt: now, QuotaExpiresAt: expires}); e != nil {
+			return e
+		}
+		result.EntryID = entry.ID
+		result.OrderID = exchange.OrderID
+		response, _ := json.Marshal(result)
+		after, _ := json.Marshal(map[string]any{"order_id": exchange.OrderID, "balance_after": entry.BalanceAfter, "quota_expires_at": expires.Unix()})
+		if e = r.Audit.Append(ctx, ports.AuditLog{ActorType: "token_farm", ActorID: fmt.Sprint(user), Action: "farm_ticket_exchange", ResourceType: "ledger_entry", ResourceID: fmt.Sprint(entry.ID), Reason: "Token 农场币兑换抽奖券", AfterJSON: after, RequestID: exchange.OrderID, CreatedAt: now}); e != nil {
+			return e
+		}
+		status := 200
+		receipt.ResponseStatus = &status
+		receipt.ResponseJSON = response
+		receipt.ResourceType = "ledger_entry"
+		receipt.ResourceID = fmt.Sprint(entry.ID)
+		return r.Idempotency.Save(ctx, receipt)
+	})
+	return result, err
+}
+
 // AdminTicketGrant is a reviewed manual gift from a community administrator.
 // It mints one ticket lot through the same ledger, lot and audit path as task
 // tickets; the community-task daily caps do not apply to manual gifts.
