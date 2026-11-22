@@ -46,3 +46,22 @@ func TestEventBoundaryRejectsSpoofingAndWrongRole(t *testing.T) {
 		t.Fatal("trailing object accepted")
 	}
 }
+
+func TestRepliedThreadsMustDeriveUserFromSession(t *testing.T) {
+	router := gin.New()
+	router.GET("/replies", (&UserCenter{}).eventHandler("replied_threads", func(*gin.Context) (string, error) { return "2", nil }, false, func() string { return "" }))
+	for _, tc := range []struct {
+		path, auth string
+		status     int
+	}{{"/replies", "", 401}, {"/replies?user_id=9", "session", 400}, {"/replies?page=1&page=2", "session", 400}} {
+		req := httptest.NewRequest("GET", tc.path, nil)
+		if tc.auth != "" {
+			req.Header.Set("Authorization", tc.auth)
+		}
+		out := httptest.NewRecorder()
+		router.ServeHTTP(out, req)
+		if out.Code != tc.status {
+			t.Fatalf("%s: %d", tc.path, out.Code)
+		}
+	}
+}

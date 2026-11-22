@@ -837,3 +837,5 @@ html.community-wide:not(.preview-tools) .page{padding-bottom:calc(var(--communit
 
 /* Gift results use dark cards even when the surrounding scene is light. */
 .pulse-core.limited-gift-hero .pc-unit{color:#ffefc4;font-weight:650}.pulse-core.limited-gift-hero .pc-bonus{color:#f4e7ce}
+
+.reply-search{display:flex;flex-wrap:wrap;align-items:end;gap:10px}.reply-search label{display:grid;gap:6px;flex:1;min-width:min(100%,180px)}

@@ -57,6 +57,7 @@ func (uc *UserCenter) registerEvents(r *gin.RouterGroup, session func(*gin.Conte
 	r.GET("/metar/events/mine", uc.eventHandler("list", session, admin, site))
 	r.POST("/metar/events/command", uc.eventHandler("command", session, admin, site))
 	if session != nil && !admin {
+		r.GET("/metar/replied-threads", uc.eventHandler("replied_threads", session, false, site))
 		r.GET("/metar/events/gift", uc.giftMember(session, site, false))
 		r.POST("/metar/events/gift", uc.giftMember(session, site, true))
 	}
@@ -93,7 +94,7 @@ func (uc *UserCenter) eventHandler(op string, session func(*gin.Context) (string
 			return
 		}
 		for k, v := range q {
-			if len(v) != 1 || !(op == "list" && (k == "page" || k == "past") || (op == "roster" || op == "gift_history") && (k == "page" || k == "id")) {
+			if len(v) != 1 || !(op == "replied_threads" && (k == "page" || k == "q") || op == "list" && (k == "page" || k == "past") || (op == "roster" || op == "gift_history") && (k == "page" || k == "id")) {
 				communityError(c, 400, "invalid_request")
 				return
 			}
@@ -130,6 +131,8 @@ func (uc *UserCenter) eventHandler(op string, session func(*gin.Context) (string
 		}
 		var result any
 		switch op {
+		case "replied_threads":
+			result, err = store.RepliedThreads(ctx, user, q.Get("q"), page)
 		case "list":
 			result, err = store.List(ctx, user, page, q.Get("past") == "1")
 		case "gift_history":

@@ -1,0 +1,810 @@
+diff --git a/internal/schema/simple_obj_info_schema.go b/internal/schema/simple_obj_info_schema.go
+index a9bcf3b..9992b5e 100644
+--- a/internal/schema/simple_obj_info_schema.go
++++ b/internal/schema/simple_obj_info_schema.go
+@@ -30,6 +30,7 @@ type SimpleObjectInfo struct {
+ 	ObjectCreatorUserID string `json:"object_creator_user_id"`
+ 	QuestionID          string `json:"question_id"`
+ 	QuestionStatus      int    `json:"question_status"`
++	QuestionShow        int    `json:"-"`
+ 	AnswerID            string `json:"answer_id"`
+ 	AnswerStatus        int    `json:"answer_status"`
+ 	CommentID           string `json:"comment_id"`
+@@ -40,6 +41,14 @@ type SimpleObjectInfo struct {
+ 	Content             string `json:"content"`
+ }
+ 
++// CanNotifyMentions requires a public, published parent.
++func (s *SimpleObjectInfo) CanNotifyMentions() bool {
++	if s.QuestionShow != entity.QuestionShow || (s.QuestionStatus != entity.QuestionStatusAvailable && s.QuestionStatus != entity.QuestionStatusClosed) {
++		return false
++	}
++	return s.ObjectType == constant.QuestionObjectType || s.ObjectType == constant.AnswerObjectType && s.AnswerStatus == entity.AnswerStatusAvailable
++}
++
+ // IsDeleted is deleted
+ func (s *SimpleObjectInfo) IsDeleted() bool {
+ 	switch s.ObjectType {
+diff --git a/internal/service/comment/comment_service.go b/internal/service/comment/comment_service.go
+index eeca3bf..f27411d 100644
+--- a/internal/service/comment/comment_service.go
++++ b/internal/service/comment/comment_service.go
+@@ -40,6 +40,7 @@ import (
+ 	"github.com/apache/answer/internal/service/object_info"
+ 	"github.com/apache/answer/internal/service/permission"
+ 	usercommon "github.com/apache/answer/internal/service/user_common"
++	"github.com/apache/answer/pkg/converter"
+ 	"github.com/apache/answer/pkg/htmltext"
+ 	"github.com/apache/answer/pkg/token"
+ 	"github.com/apache/answer/pkg/uid"
+@@ -237,20 +238,18 @@ func (cs *CommentService) addCommentNotification(
+ 			resp.ReplyUsername = replyUser.Username
+ 			resp.ReplyUserDisplayName = replyUser.DisplayName
+ 			resp.ReplyUserStatus = replyUser.Status
++			cs.notificationCommentReply(ctx, replyUser.ID, comment.ID, req.UserID,
++				objInfo.QuestionID, objInfo.Title, htmltext.FetchExcerpt(comment.ParsedText, "...", 240))
++			alreadyNotifiedUserID[replyUser.ID] = true
+ 		}
+-		cs.notificationCommentReply(ctx, replyUser.ID, comment.ID, req.UserID,
+-			objInfo.QuestionID, objInfo.Title, htmltext.FetchExcerpt(comment.ParsedText, "...", 240))
+-		alreadyNotifiedUserID[replyUser.ID] = true
+-		return nil
+ 	}
+ 
+-	if len(req.MentionUsernameList) > 0 {
++	if mentions := converter.PublishedMentionUsernames(comment.ParsedText); len(mentions) > 0 && objInfo.CanNotifyMentions() {
+ 		alreadyNotifiedUserIDs := cs.notificationMention(
+-			ctx, req.MentionUsernameList, comment.ID, req.UserID, alreadyNotifiedUserID)
++			ctx, mentions, comment.ID, req.UserID, alreadyNotifiedUserID)
+ 		for _, userID := range alreadyNotifiedUserIDs {
+ 			alreadyNotifiedUserID[userID] = true
+ 		}
+-		return nil
+ 	}
+ 
+ 	if objInfo.ObjectType == constant.QuestionObjectType && !alreadyNotifiedUserID[objInfo.ObjectCreatorUserID] {
+@@ -676,7 +675,7 @@ func (cs *CommentService) notificationMention(
+ 			log.Error(err)
+ 			continue
+ 		}
+-		if exist && !alreadyNotifiedUserID[userInfo.ID] {
++		if exist && userInfo.Status == "normal" && userInfo.ID != commentUserID && !alreadyNotifiedUserID[userInfo.ID] {
+ 			msg := &schema.NotificationMsg{
+ 				ReceiverUserID: userInfo.ID,
+ 				TriggerUserID:  commentUserID,
+@@ -686,6 +685,7 @@ func (cs *CommentService) notificationMention(
+ 			msg.ObjectType = constant.CommentObjectType
+ 			msg.NotificationAction = constant.NotificationMentionYou
+ 			cs.notificationQueueService.Send(ctx, msg)
++			alreadyNotifiedUserID[userInfo.ID] = true
+ 			alreadyNotifiedUserIDs = append(alreadyNotifiedUserIDs, userInfo.ID)
+ 		}
+ 	}
+diff --git a/internal/service/object_info/object_info.go b/internal/service/object_info/object_info.go
+index 5ef438f..7890724 100644
+--- a/internal/service/object_info/object_info.go
++++ b/internal/service/object_info/object_info.go
+@@ -204,6 +204,7 @@ func (os *ObjService) GetInfo(ctx context.Context, objectID string) (objInfo *sc
+ 			ObjectCreatorUserID: questionInfo.UserID,
+ 			QuestionID:          questionInfo.ID,
+ 			QuestionStatus:      questionInfo.Status,
++			QuestionShow:        questionInfo.Show,
+ 			ObjectType:          objectType,
+ 			Title:               questionInfo.Title,
+ 			Content:             questionInfo.ParsedText, // todo trim
+@@ -228,6 +229,7 @@ func (os *ObjService) GetInfo(ctx context.Context, objectID string) (objInfo *sc
+ 			ObjectCreatorUserID: answerInfo.UserID,
+ 			QuestionID:          answerInfo.QuestionID,
+ 			QuestionStatus:      questionInfo.Status,
++			QuestionShow:        questionInfo.Show,
+ 			AnswerStatus:        answerInfo.Status,
+ 			AnswerID:            answerInfo.ID,
+ 			ObjectType:          objectType,
+@@ -258,6 +260,7 @@ func (os *ObjService) GetInfo(ctx context.Context, objectID string) (objInfo *sc
+ 			if exist {
+ 				objInfo.QuestionID = questionInfo.ID
+ 				objInfo.QuestionStatus = questionInfo.Status
++				objInfo.QuestionShow = questionInfo.Show
+ 				objInfo.Title = questionInfo.Title
+ 			}
+ 			answerInfo, exist, err := os.answerRepo.GetAnswer(ctx, commentInfo.ObjectID)
+diff --git a/internal/service/review/review_service.go b/internal/service/review/review_service.go
+index a23b9ee..b8b84c4 100644
+--- a/internal/service/review/review_service.go
++++ b/internal/service/review/review_service.go
+@@ -36,6 +36,7 @@ import (
+ 	"github.com/apache/answer/internal/service/siteinfo_common"
+ 	tagcommon "github.com/apache/answer/internal/service/tag_common"
+ 	usercommon "github.com/apache/answer/internal/service/user_common"
++	"github.com/apache/answer/pkg/converter"
+ 	"github.com/apache/answer/pkg/htmltext"
+ 	"github.com/apache/answer/pkg/token"
+ 	"github.com/apache/answer/pkg/uid"
+@@ -441,25 +442,25 @@ func (cs *ReviewService) notificationCommentOnTheQuestion(ctx context.Context, c
+ 	// get reply user info
+ 	replyUserID := comment.GetReplyUserID()
+ 	if len(replyUserID) > 0 && replyUserID != comment.UserID {
+-		replyUser, _, err := cs.userCommon.GetUserBasicInfoByID(ctx, replyUserID)
++		replyUser, exist, err := cs.userCommon.GetUserBasicInfoByID(ctx, replyUserID)
+ 		if err != nil {
+ 			log.Error(err)
+ 			return
+ 		}
+-		cs.notificationCommentReply(ctx, replyUser.ID, comment.ID, comment.UserID,
+-			objInfo.QuestionID, objInfo.Title, htmltext.FetchExcerpt(comment.ParsedText, "...", 240))
+-		alreadyNotifiedUserID[replyUser.ID] = true
+-		return
++		if exist {
++			cs.notificationCommentReply(ctx, replyUser.ID, comment.ID, comment.UserID,
++				objInfo.QuestionID, objInfo.Title, htmltext.FetchExcerpt(comment.ParsedText, "...", 240))
++			alreadyNotifiedUserID[replyUser.ID] = true
++		}
+ 	}
+ 
+-	mentionUsernameList := comment.GetMentionUsernameList()
+-	if len(mentionUsernameList) > 0 {
++	mentionUsernameList := converter.PublishedMentionUsernames(comment.ParsedText)
++	if len(mentionUsernameList) > 0 && objInfo.CanNotifyMentions() {
+ 		alreadyNotifiedUserIDs := cs.notificationMention(
+ 			ctx, mentionUsernameList, comment.ID, comment.UserID, alreadyNotifiedUserID)
+ 		for _, userID := range alreadyNotifiedUserIDs {
+ 			alreadyNotifiedUserID[userID] = true
+ 		}
+-		return
+ 	}
+ 
+ 	if objInfo.ObjectType == constant.QuestionObjectType && !alreadyNotifiedUserID[objInfo.ObjectCreatorUserID] {
+@@ -522,7 +523,7 @@ func (cs *ReviewService) notificationMention(
+ 			log.Error(err)
+ 			continue
+ 		}
+-		if exist && !alreadyNotifiedUserID[userInfo.ID] {
++		if exist && userInfo.Status == "normal" && userInfo.ID != commentUserID && !alreadyNotifiedUserID[userInfo.ID] {
+ 			msg := &schema.NotificationMsg{
+ 				ReceiverUserID: userInfo.ID,
+ 				TriggerUserID:  commentUserID,
+@@ -532,6 +533,7 @@ func (cs *ReviewService) notificationMention(
+ 			msg.ObjectType = constant.CommentObjectType
+ 			msg.NotificationAction = constant.NotificationMentionYou
+ 			cs.notificationQueueService.Send(ctx, msg)
++			alreadyNotifiedUserID[userInfo.ID] = true
+ 			alreadyNotifiedUserIDs = append(alreadyNotifiedUserIDs, userInfo.ID)
+ 		}
+ 	}
+diff --git a/pkg/converter/user.go b/pkg/converter/user.go
+index b55b744..81f58e7 100644
+--- a/pkg/converter/user.go
++++ b/pkg/converter/user.go
+@@ -21,6 +21,9 @@ package converter
+ 
+ import (
+ 	"regexp"
++	"strings"
++
++	"golang.org/x/net/html"
+ 
+ 	"github.com/segmentfault/pacman/utils"
+ )
+@@ -41,3 +44,61 @@ func GetMentionUsernameList(text string) []string {
+ 	}
+ 	return usernames
+ }
++
++// PublishedMentionUsernames derives recipients from the rendered comment, not
++// from a client-supplied recipient list or mentions inside code.
++func PublishedMentionUsernames(rendered string) []string {
++	const max = 5
++	token := html.NewTokenizer(strings.NewReader(rendered))
++	var names []string
++	seen := map[string]bool{}
++	var candidate, text string
++	ignored := 0
++	for token.Next() != html.ErrorToken {
++		tk := token.Token()
++		switch tk.Type {
++		case html.StartTagToken:
++			if tk.Data == "pre" || tk.Data == "code" {
++				ignored++
++				candidate = ""
++			}
++			if tk.Data == "a" && ignored == 0 {
++				candidate, text = "", ""
++				for _, attr := range tk.Attr {
++					if attr.Key == "href" && strings.HasPrefix(attr.Val, "/users/") {
++						candidate = strings.TrimPrefix(attr.Val, "/users/")
++					}
++				}
++				if !mentionUsername.MatchString(candidate) {
++					candidate = ""
++				}
++			}
++		case html.TextToken:
++			if candidate != "" {
++				if len(text)+len(tk.Data) > 33 {
++					candidate = ""
++				} else {
++					text += tk.Data
++				}
++			}
++		case html.EndTagToken:
++			if (tk.Data == "pre" || tk.Data == "code") && ignored > 0 {
++				ignored--
++			}
++			if tk.Data == "a" && candidate != "" {
++				name := strings.ToLower(candidate)
++				if text == "@"+candidate && !seen[name] {
++					names = append(names, name)
++					seen[name] = true
++					if len(names) == max {
++						return names
++					}
++				}
++				candidate = ""
++			}
++		}
++	}
++	return names
++}
++
++var mentionUsername = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,32}$`)
+diff --git a/pkg/converter/user_mention_test.go b/pkg/converter/user_mention_test.go
+new file mode 100644
+index 0000000..9c5d370
+--- /dev/null
++++ b/pkg/converter/user_mention_test.go
+@@ -0,0 +1,36 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one
++ * or more contributor license agreements.  See the NOTICE file
++ * distributed with this work for additional information
++ * regarding copyright ownership.  The ASF licenses this file
++ * to you under the Apache License, Version 2.0 (the
++ * "License"); you may not use this file except in compliance
++ * with the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing,
++ * software distributed under the License is distributed on an
++ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++ * KIND, either express or implied.  See the License for the
++ * specific language governing permissions and limitations
++ * under the License.
++ */
++
++package converter
++
++import (
++	"reflect"
++	"testing"
++)
++
++func TestPublishedMentionUsernames(t *testing.T) {
++	html := `<p><a href="/users/luna.one">@luna.one</a><a href="/users/LUNA.ONE">@LUNA.ONE</a><a href="/users/ben-name">@ben-name</a><a href="/users/other">@wrong</a> <code><a href="/users/code">@code</a></code><a href="https://other.test/users/out">@out</a> @bare</p>`
++	if got := PublishedMentionUsernames(html); !reflect.DeepEqual(got, []string{"luna.one", "ben-name"}) {
++		t.Fatal(got)
++	}
++	html = `<a href="/users/a">@a</a><a href="/users/b">@b</a><a href="/users/c">@c</a><a href="/users/d">@d</a><a href="/users/e">@e</a><a href="/users/f">@f</a>`
++	if got := PublishedMentionUsernames(html); len(got) != 5 || got[4] != "e" {
++		t.Fatal(got)
++	}
++}
+diff --git a/ui/src/components/Comment/components/Form/index.tsx b/ui/src/components/Comment/components/Form/index.tsx
+index ef49304..868d30d 100644
+--- a/ui/src/components/Comment/components/Form/index.tsx
++++ b/ui/src/components/Comment/components/Form/index.tsx
+@@ -24,7 +24,7 @@ import { useTranslation } from 'react-i18next';
+ import classNames from 'classnames';
+ 
+ import { TextArea, Mentions } from '@/components';
+-import { usePageUsers, usePromptWithUnload } from '@/hooks';
++import { usePromptWithUnload } from '@/hooks';
+ import { parseEditMentionUser } from '@/utils';
+ import { AIContentDisclosure } from '@/components/MetarAIContent';
+ 
+@@ -37,12 +37,12 @@ const Index = ({
+   type = '',
+   onCancel,
+   mode,
++  participants,
+ }) => {
+   const [value, setValue] = useState('');
+   const [declaration, setDeclaration] = useState<boolean>();
+   const containsAI = declaration ?? initialContainsAI;
+   const [immData, setImmData] = useState('');
+-  const pageUsers = usePageUsers();
+   const { t } = useTranslation('translation', { keyPrefix: 'comment' });
+   const [validationErrorMsg, setValidationErrorMsg] = useState('');
+ 
+@@ -85,9 +85,7 @@ const Index = ({
+           className={classNames('custom-form-control', {
+             'is-invalid': validationErrorMsg,
+           })}>
+-          <Mentions
+-            pageUsers={pageUsers.getUsers()}
+-            onSelected={handleSelected}>
++          <Mentions pageUsers={participants} onSelected={handleSelected}>
+             <TextArea
+               size="sm"
+               value={type === 'edit' ? parseEditMentionUser(value) : value}
+diff --git a/ui/src/components/Comment/components/Reply/index.tsx b/ui/src/components/Comment/components/Reply/index.tsx
+index 5adf2ab..91125d5 100644
+--- a/ui/src/components/Comment/components/Reply/index.tsx
++++ b/ui/src/components/Comment/components/Reply/index.tsx
+@@ -25,12 +25,11 @@ import classNames from 'classnames';
+ 
+ import { TextArea, Mentions } from '@/components';
+ import { AIContentDisclosure } from '@/components/MetarAIContent';
+-import { usePageUsers, usePromptWithUnload } from '@/hooks';
++import { usePromptWithUnload } from '@/hooks';
+ 
+-const Index = ({ userName, onSendReply, onCancel, mode }) => {
++const Index = ({ userName, onSendReply, onCancel, mode, participants }) => {
+   const [value, setValue] = useState('');
+   const [containsAI, setContainsAI] = useState(false);
+-  const pageUsers = usePageUsers();
+   const { t } = useTranslation('translation', { keyPrefix: 'comment' });
+   const [validationErrorMsg, setValidationErrorMsg] = useState('');
+ 
+@@ -63,9 +62,7 @@ const Index = ({ userName, onSendReply, onCancel, mode }) => {
+             className={classNames('custom-form-control', {
+               'is-invalid': validationErrorMsg,
+             })}>
+-            <Mentions
+-              pageUsers={pageUsers.getUsers()}
+-              onSelected={handleSelected}>
++            <Mentions pageUsers={participants} onSelected={handleSelected}>
+               <TextArea
+                 size="sm"
+                 value={value}
+diff --git a/ui/src/components/Comment/index.tsx b/ui/src/components/Comment/index.tsx
+index 7ade312..87784b1 100644
+--- a/ui/src/components/Comment/index.tsx
++++ b/ui/src/components/Comment/index.tsx
+@@ -23,17 +23,11 @@ import { useTranslation } from 'react-i18next';
+ import { Link } from 'react-router-dom';
+ 
+ import classNames from 'classnames';
+-import unionBy from 'lodash/unionBy';
+ 
+ import * as Types from '@/common/interface';
+ import { Modal } from '@/components';
+-import { usePageUsers, useReportModal, useCaptchaModal } from '@/hooks';
+-import {
+-  matchedUsers,
+-  parseUserInfo,
+-  scrollToElementTop,
+-  bgFadeOut,
+-} from '@/utils';
++import { useReportModal, useCaptchaModal } from '@/hooks';
++import { parseUserInfo, scrollToElementTop, bgFadeOut } from '@/utils';
+ import { tryNormalLogged } from '@/utils/guard';
+ import { useCaptchaPlugin } from '@/utils/pluginKit';
+ import {
+@@ -54,11 +48,17 @@ interface IProps {
+   objectId: string;
+   mode?: 'answer' | 'question';
+   commentId?: string | null;
++  author?: Types.UserInfoBase;
+   children?: React.ReactNode;
+ }
+ 
+-const Comment: FC<IProps> = ({ objectId, mode, commentId, children }) => {
+-  const pageUsers = usePageUsers();
++const Comment: FC<IProps> = ({
++  objectId,
++  mode,
++  commentId,
++  children,
++  author,
++}) => {
+   const [pageIndex, setPageIndex] = useState(0);
+   const [visibleComment, setVisibleComment] = useState(false);
+   const { id: currentReplyId, update: updateCurrentReplyId } =
+@@ -73,6 +73,18 @@ const Comment: FC<IProps> = ({ objectId, mode, commentId, children }) => {
+   const [comments, setComments] = useState<any>([]);
+   const username = loggedUserInfoStore((state) => state.user?.username);
+ 
++  const participants: Types.PageUser[] = [
++    {
++      displayName: author?.display_name,
++      userName: author?.username,
++      avatar_url: author?.avatar,
++    },
++    ...comments.map((item) => ({
++      displayName: item.user_display_name,
++      userName: item.username,
++      avatar_url: item.avatar,
++    })),
++  ].filter((user) => user.userName && user.userName !== username);
+   const reportModal = useReportModal();
+ 
+   const addCaptcha = useCaptchaModal('comment');
+@@ -115,20 +127,6 @@ const Comment: FC<IProps> = ({ objectId, mode, commentId, children }) => {
+     } else {
+       setComments([...comments, ...data.list]);
+     }
+-    const user: Types.PageUser[] = [];
+-    data.list.forEach((item) => {
+-      user.push({
+-        id: item.user_id,
+-        displayName: item.user_display_name,
+-        userName: item.username,
+-      });
+-      user.push({
+-        id: item.reply_comment_id,
+-        displayName: item.reply_user_display_name,
+-        userName: item.username,
+-      });
+-    });
+-    pageUsers.setUsers(user);
+   }, [data]);
+ 
+   const handleReply = (id) => {
+@@ -234,15 +232,12 @@ const Comment: FC<IProps> = ({ objectId, mode, commentId, children }) => {
+   };
+ 
+   const handleSendReply = (item) => {
+-    const users = matchedUsers(item.value);
+-    const userNames = unionBy(users.map((user) => user.userName));
+     const commentMarkDown = parseUserInfo(item.value);
+ 
+     const params = {
+       object_id: objectId,
+       original_text: commentMarkDown,
+       contains_ai_generated: item.contains_ai_generated,
+-      mention_username_list: userNames,
+       ...(item.type === 'reply'
+         ? {
+             reply_comment_id: item.comment_id,
+@@ -426,6 +421,7 @@ const Comment: FC<IProps> = ({ objectId, mode, commentId, children }) => {
+               className="py-2 comment-item">
+               {item.showEdit ? (
+                 <Form
++                  participants={participants}
+                   className="mt-2"
+                   value={item.original_text}
+                   initialContainsAI={item.contains_ai_generated === true}
+@@ -466,6 +462,7 @@ const Comment: FC<IProps> = ({ objectId, mode, commentId, children }) => {
+ 
+               {currentReplyId === item.comment_id ? (
+                 <Reply
++                  participants={participants}
+                   userName={item.user_display_name}
+                   mode={mode}
+                   onSendReply={(value, contains_ai_generated) =>
+@@ -532,6 +529,7 @@ const Comment: FC<IProps> = ({ objectId, mode, commentId, children }) => {
+ 
+         {visibleComment && (
+           <Form
++            participants={participants}
+             mode={mode}
+             className={classNames(
+               comments.length <= 0 ? 'mt-3' : 'mt-2',
+diff --git a/ui/src/components/Mentions/index.tsx b/ui/src/components/Mentions/index.tsx
+index 662ffc9..3650a43 100644
+--- a/ui/src/components/Mentions/index.tsx
++++ b/ui/src/components/Mentions/index.tsx
+@@ -20,158 +20,169 @@
+ import React, { useEffect, useRef, useState, FC } from 'react';
+ import { Dropdown } from 'react-bootstrap';
+ 
+-import { useSearchUserStaff } from '@/services';
++import { userSearchByName } from '@/services';
+ import * as Types from '@/common/interface';
+ 
+ import './index.scss';
+ 
+ interface IProps {
+   children: React.ReactNode;
+-  pageUsers;
++  pageUsers: Types.PageUser[];
+   onSelected: (val: string) => void;
+ }
+ 
+-const MAX_RECODE = 5;
+-
+-const Mentions: FC<IProps> = ({ children, pageUsers, onSelected }) => {
+-  const menuRef = useRef<HTMLDivElement>(null);
+-  const dropdownRef = useRef<HTMLDivElement>(null);
+-  const [val, setValue] = useState('');
+-  const [users, setUsers] = useState<Types.PageUser[]>([]);
++const max = 5;
++const MentionPicker: FC<IProps> = ({ children, pageUsers, onSelected }) => {
++  const ref = useRef<HTMLDivElement>(null);
++  const [query, setQuery] = useState<string | null>(null);
++  const [remote, setRemote] = useState<Types.PageUser[]>([]);
+   const [cursor, setCursor] = useState(0);
+-  const [isRequested, setRequestedState] = useState(false);
+-  const { data: staffUserList = [] } = useSearchUserStaff(val);
+-  const mapStaffUsers =
+-    staffUserList
+-      ?.map((item) => ({
+-        displayName: item.display_name,
+-        userName: item.username,
+-      }))
+-      ?.filter(
+-        (item) =>
+-          users.findIndex((user) => user.userName === item.userName) < 0,
+-      ) || [];
+-
+-  const searchUser = () => {
+-    const element = dropdownRef.current?.children[0];
+-    const { value, selectionStart = 0 } = element as HTMLTextAreaElement;
+-
+-    if (value.indexOf('@') < 0) {
+-      setValue('');
+-    }
+-    if (!selectionStart) {
+-      return;
+-    }
+-
+-    const str = value.substring(
+-      value.substring(0, selectionStart).lastIndexOf('@'),
+-      selectionStart,
+-    );
+-
+-    if (str.substring(str.lastIndexOf(' '), selectionStart).indexOf('@') < 0) {
+-      return;
+-    }
+-
+-    setValue(str.substring(1));
+-
+-    if (!str.substring(1)) {
+-      return;
+-    }
+-    if (isRequested) {
+-      return;
++  const composing = useRef(false);
++  const read = (el: HTMLTextAreaElement) => {
++    const end = el.selectionStart;
++    if (!el.isConnected || el.selectionEnd !== end) return null;
++    const found = el.value
++      .slice(0, end)
++      .match(/(?:^|[^a-zA-Z0-9_@])@([\p{L}\p{N}_.-]{0,32})$/u);
++    if (!found) return null;
++    return { query: found[1], start: end - found[1].length - 1, end };
++  };
++  const sync = (target: EventTarget | null) => {
++    if (!composing.current && target instanceof HTMLTextAreaElement) {
++      setQuery(read(target)?.query ?? null);
+     }
+-    setRequestedState(true);
+   };
+-
+   useEffect(() => {
+-    const element = dropdownRef.current?.children[0] as HTMLTextAreaElement;
+-
+-    if (element) {
+-      element.addEventListener('input', searchUser);
+-    }
++    setRemote([]);
++    setCursor(0);
++    if (!query) return undefined;
++    let active = true;
++    const timer = window.setTimeout(() => {
++      userSearchByName(query)
++        .then((users) => {
++          if (active && Array.isArray(users))
++            setRemote(
++              users.map((u) => ({
++                userName: u.username,
++                displayName: u.display_name,
++                avatar_url: u.avatar,
++              })),
++            );
++        })
++        .catch(() => {});
++    }, 250);
+     return () => {
+-      element.removeEventListener('input', searchUser);
++      active = false;
++      window.clearTimeout(timer);
+     };
+-  }, [dropdownRef]);
+-
+-  useEffect(() => {
+-    setUsers(pageUsers);
+-  }, [pageUsers, val]);
+-
+-  const handleClick = (item) => {
+-    const element = dropdownRef.current?.children[0] as HTMLTextAreaElement;
+-
+-    const { value, selectionStart = 0 } = element;
+-
+-    if (!selectionStart) {
+-      return;
+-    }
+-
+-    const text = `@${item?.userName} `;
+-    onSelected(
+-      `${value.substring(
+-        0,
+-        value.substring(0, selectionStart).lastIndexOf('@'),
+-      )}${text}${value.substring(selectionStart)}`,
+-    );
+-    setUsers([]);
+-    setValue('');
+-  };
+-  const filterData = val
+-    ? [...users, ...mapStaffUsers].filter(
+-        (item) =>
+-          item.displayName?.indexOf(val) === 0 ||
+-          item.userName?.indexOf(val) === 0,
+-      )
+-    : [];
+-  const handleKeyDown = (e) => {
+-    const { keyCode } = e;
+-
+-    if (keyCode === 38 && cursor > 0) {
+-      e.preventDefault();
+-      setCursor(cursor - 1);
+-    }
+-    if (keyCode === 40 && cursor < filterData.length - 1) {
+-      e.preventDefault();
+-
+-      setCursor(cursor + 1);
+-    }
+-    if (keyCode === 13 && cursor > -1 && cursor <= filterData.length - 1) {
+-      e.preventDefault();
+-
+-      const item = filterData[cursor];
+-
+-      handleClick(item);
+-      setCursor(0);
+-    }
++  }, [query]);
++  const prefix = query?.toLowerCase();
++  const seen = new Set<string>();
++  const options =
++    query === null
++      ? []
++      : [...(pageUsers || []), ...remote]
++          .filter((user) => {
++            const username = String(user.userName || '').toLowerCase();
++            if (!/^[a-z0-9_.-]{1,32}$/i.test(username) || seen.has(username))
++              return false;
++            if (
++              prefix &&
++              !username.startsWith(prefix) &&
++              !String(user.displayName || '')
++                .toLowerCase()
++                .startsWith(prefix)
++            )
++              return false;
++            seen.add(username);
++            return true;
++          })
++          .slice(0, max);
++  const choose = (user: Types.PageUser) => {
++    const input = ref.current?.querySelector('textarea');
++    const token = input && read(input);
++    if (!input || !token || token.query !== query) return;
++    const replacement = `@${user.userName} `;
++    const tail = input.value.slice(token.end).replace(/^[\p{L}\p{N}_.-]+/u, '');
++    onSelected(input.value.slice(0, token.start) + replacement + tail);
++    setQuery(null);
++    window.requestAnimationFrame(() => {
++      if (!input.isConnected) return;
++      input.focus();
++      const position = token.start + replacement.length;
++      input.setSelectionRange(position, position);
++    });
+   };
+ 
+   return (
+     <Dropdown
+-      ref={dropdownRef}
++      ref={ref}
+       className="mentions-wrap"
+-      show={filterData.length > 0}
+-      onKeyDown={handleKeyDown}>
++      show={options.length > 0}
++      onInput={(event) => sync(event.target)}
++      onClick={(event) => sync(event.target)}
++      onKeyUp={(event) => {
++        if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key))
++          sync(event.target);
++      }}
++      onCompositionStart={() => {
++        composing.current = true;
++        setQuery(null);
++      }}
++      onCompositionEnd={(event) => {
++        composing.current = false;
++        sync(event.target);
++      }}
++      onBlur={() => setQuery(null)}
++      onKeyDown={(event) => {
++        if (composing.current || event.nativeEvent.isComposing) return;
++        if (event.key === 'Escape') {
++          if (query !== null) event.stopPropagation();
++          setQuery(null);
++          return;
++        }
++        if (!options.length || !(event.target instanceof HTMLTextAreaElement))
++          return;
++        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
++          event.preventDefault();
++          event.stopPropagation();
++          setCursor(
++            (i) =>
++              (i + (event.key === 'ArrowDown' ? 1 : options.length - 1)) %
++              options.length,
++          );
++        } else if (event.key === 'Enter' && !event.shiftKey) {
++          event.preventDefault();
++          event.stopPropagation();
++          choose(options[Math.min(cursor, options.length - 1)]);
++        }
++      }}>
+       {children}
+-      <Dropdown.Menu
+-        className={filterData.length > 0 ? 'visible' : 'invisible'}
+-        ref={menuRef}>
+-        {filterData
+-          .filter((_, index) => index < MAX_RECODE)
+-          .map((item, index) => {
+-            return (
+-              <Dropdown.Item
+-                className={`${cursor === index ? 'bg-gray-200' : ''}`}
+-                key={item.displayName}
+-                onClick={() => handleClick(item)}>
+-                <span className="link-dark me-1">{item.displayName}</span>
+-                <small className="link-secondary">@{item.userName}</small>
+-              </Dropdown.Item>
+-            );
+-          })}
++      <Dropdown.Menu>
++        {options.map((item, index) => (
++          <Dropdown.Item
++            as="button"
++            type="button"
++            active={cursor === index}
++            key={item.userName}
++            onMouseDown={(event) => event.preventDefault()}
++            onClick={() => choose(item)}>
++            {item.avatar_url && (
++              <img
++                className="rounded-circle me-2"
++                src={item.avatar_url}
++                width={22}
++                height={22}
++                alt=""
++              />
++            )}
++            <span className="me-1">{item.displayName}</span>
++            <small>@{item.userName}</small>
++          </Dropdown.Item>
++        ))}
+       </Dropdown.Menu>
+     </Dropdown>
+   );
+ };
+ 
+-export default Mentions;
++export default MentionPicker;
+diff --git a/ui/src/pages/Questions/Detail/components/Answer/index.tsx b/ui/src/pages/Questions/Detail/components/Answer/index.tsx
+index ea99716..63375c3 100644
+--- a/ui/src/pages/Questions/Detail/components/Answer/index.tsx
++++ b/ui/src/pages/Questions/Detail/components/Answer/index.tsx
+@@ -169,6 +169,7 @@ const Index: FC<Props> = ({
+       </div>
+ 
+       <Comment
++        author={data.user_info}
+         objectId={data.id}
+         mode="answer"
+         commentId={searchParams.get('commentId')}>
+diff --git a/ui/src/pages/Questions/Detail/components/Question/index.tsx b/ui/src/pages/Questions/Detail/components/Question/index.tsx
+index d2f6acc..dd75e62 100644
+--- a/ui/src/pages/Questions/Detail/components/Question/index.tsx
++++ b/ui/src/pages/Questions/Detail/components/Question/index.tsx
+@@ -193,6 +193,7 @@ const Index: FC<Props> = ({ data, initPage, hasAnswer, isLogged }) => {
+ 
+       <div className="mt-4">
+         <Comment
++          author={data.user_info}
+           objectId={data?.id}
+           mode="question"
+           commentId={searchParams.get('commentId')}>

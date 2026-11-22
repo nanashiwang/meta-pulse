@@ -2,6 +2,10 @@
 'use strict';
 (() => {
   const EN = Object.freeze({
+    "我回过的帖": "Threads I replied to",
+    "按帖子标题搜索": "Search by thread title",
+    "跳到我的回复": "Jump to my reply",
+    "没有找到回复过的帖子": "No threads with your replies found",
     "刷新明细": "Refresh details",
     "仅管理员可见": "Visible to administrators only",
     "正在读取领取明细…": "Loading claim details…",
