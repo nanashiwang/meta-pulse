@@ -15,6 +15,12 @@ jobs:
   preflight:
     name: Release metadata preflight
     runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      reuse-ci: ${{ steps.ci.outputs.reuse }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -23,12 +29,21 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: python3 release/preflight.py "$RELEASE_TAG" --tagged
+      - name: Reuse successful CI for the exact commit
+        id: ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 release/ci_reuse.py
   verify:
     needs: preflight
+    if: needs.preflight.outputs.reuse-ci != 'true'
     uses: ./.github/workflows/ci.yml
   publish:
     name: Build, verify and publish release assets
-    needs: verify
+    needs: [preflight, verify]
+    if: >-
+      ${{ !cancelled() && needs.preflight.result == 'success' &&
+          (needs.preflight.outputs.reuse-ci == 'true' || needs.verify.result == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
