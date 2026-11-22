@@ -3,11 +3,12 @@ package pulse_user_center
 import (
 	"context"
 	"database/sql"
-	"github.com/gin-gonic/gin"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 func TestMySQLAdminCommunityStatistics(t *testing.T) {
@@ -20,13 +21,13 @@ func TestMySQLAdminCommunityStatistics(t *testing.T) {
 	statements := []string{
 		"DROP TABLE IF EXISTS question,answer,comment,activity,config,metar_question_share",
 		"CREATE TABLE question(id BIGINT PRIMARY KEY,user_id BIGINT,status INT,`show` INT)",
-		"CREATE TABLE answer(id BIGINT PRIMARY KEY,user_id BIGINT,status INT)",
+		"CREATE TABLE answer(id BIGINT PRIMARY KEY,user_id BIGINT,status INT,created_at TIMESTAMP NULL)",
 		"CREATE TABLE comment(id BIGINT PRIMARY KEY,user_id BIGINT,status INT,created_at TIMESTAMP NULL)",
 		"CREATE TABLE config(id INT PRIMARY KEY,`key` VARCHAR(64))",
 		"CREATE TABLE activity(user_id BIGINT,trigger_user_id BIGINT,original_object_id BIGINT,activity_type INT,cancelled INT,created_at TIMESTAMP NULL)",
 		"CREATE TABLE metar_question_share(question_id BIGINT PRIMARY KEY,clicks BIGINT NOT NULL DEFAULT 0)",
 		"INSERT INTO question VALUES(101,12,1,1),(102,12,2,1),(103,12,10,1)",
-		"INSERT INTO answer VALUES(201,12,1),(202,12,10)",
+		"INSERT INTO answer(id,user_id,status) VALUES(201,12,1),(202,12,10)",
 		"INSERT INTO comment(id,user_id,status) VALUES(301,12,1),(302,12,10)",
 		"INSERT INTO config VALUES(1,'question.voted_up'),(2,'answer.voted_up'),(3,'question.voted_down')",
 		"INSERT INTO activity(user_id,trigger_user_id,original_object_id,activity_type,cancelled) VALUES(12,13,101,1,0),(12,13,101,1,1),(12,13,103,1,0),(13,12,201,2,0),(13,12,101,3,0)",
@@ -59,6 +60,9 @@ func TestMySQLAdminCommunityStatistics(t *testing.T) {
 		if _, err = db.Exec("INSERT INTO comment VALUES(?,12,1,FROM_UNIXTIME(?))", 400+i, sec); err != nil {
 			t.Fatal(err)
 		}
+		if _, err = db.Exec("INSERT INTO answer VALUES(?,12,1,FROM_UNIXTIME(?))", 400+i, sec); err != nil {
+			t.Fatal(err)
+		}
 		if _, err = db.Exec("INSERT INTO activity VALUES(13,12,301,4,0,FROM_UNIXTIME(?))", sec); err != nil {
 			t.Fatal(err)
 		}
@@ -69,8 +73,11 @@ func TestMySQLAdminCommunityStatistics(t *testing.T) {
 	if _, err = db.Exec("INSERT INTO activity VALUES(13,12,301,4,1,FROM_UNIXTIME(?)),(12,13,301,4,0,FROM_UNIXTIME(?))", start, start); err != nil {
 		t.Fatal(err)
 	}
-	got, err = g.adminCommunityStatisticsAt(context.Background(), []string{"12", "14"}, now)
-	if err != nil || got["12"].RangeComments != 2 || got["12"].RangeLikes != 2 || got["14"].RangeLikes != 0 {
+	if _, err = db.Exec("INSERT INTO answer VALUES(500,12,10,FROM_UNIXTIME(?)),(501,12,11,FROM_UNIXTIME(?)),(502,13,1,FROM_UNIXTIME(?))", start, start, start); err != nil {
+		t.Fatal(err)
+	}
+	got, err = g.adminCommunityStatisticsAt(context.Background(), []string{"12", "13", "14"}, now)
+	if err != nil || got["12"].RangeComments != 4 || got["12"].RangeLikes != 2 || got["13"].RangeComments != 1 || got["14"].RangeComments != 0 || got["14"].RangeLikes != 0 {
 		t.Fatalf("daily %+v err=%v", got, err)
 	}
 	from, to, err := parseStatisticsRange("2026-11-16", "2026-11-16", now)
@@ -78,7 +85,7 @@ func TestMySQLAdminCommunityStatistics(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err = g.adminCommunityStatisticsRange(context.Background(), []string{"12"}, from, to, now)
-	if err != nil || got["12"].RangeComments != 1 || got["12"].RangeLikes != 1 || got["12"].RangeEnd != "2026-11-16" {
+	if err != nil || got["12"].RangeComments != 2 || got["12"].RangeLikes != 1 || got["12"].RangeEnd != "2026-11-16" {
 		t.Fatal(got, err)
 	}
 

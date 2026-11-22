@@ -5,14 +5,28 @@
 })(typeof window==='undefined'?globalThis:window,function(){
  'use strict';
  const stateKey='metarReturnV2', pendingKey='_metar_return_pending_v2';
- // Settings tabs are one branch, including the shell binding page.
+ // Only tab sets and their list filters share an area; details and other users
+ // remain distinct even when their paths share a prefix.
+ const listAreas=new Set(['/topics','/marketplace','/users','/tags','/badges','/review']);
+ const nonProfiles=new Set(['settings','notifications','change-email','confirm-new-email','account-suspended','unsubscribe']);
  const area=url=>{
-  const path=url.split('?')[0];
+  const queryAt=url.indexOf('?');
+  const path=(queryAt<0?url:url.slice(0,queryAt)).replace(/\/+$/,'')||'/';
+  const params=()=>new URLSearchParams(queryAt<0?'':url.slice(queryAt+1));
   if(/^\/admin(?:\/|$)/.test(path))return '/admin';
   if(/^\/users\/settings(?:\/|$)/.test(path))return '/personal';
-  if(/^\/users\/notifications\/(?:inbox(?:\/(?:all|posts|invites|votes|comments|answers|likes))?|achievement)\/?$/.test(path))return '/personal';
-  if((/^\/me(?:\/|$)/.test(path) && !(path==='/me/badges' && new URLSearchParams(url.split('?')[1]||'').has('badge'))) || ['/settings/binding','/chat','/pulse'].includes(path))return '/personal';
+  if(/^\/users\/notifications\/(?:inbox(?:\/(?:all|posts|invites|votes|comments|answers|likes))?|achievement)$/.test(path))return '/personal';
+  if((/^\/me(?:\/|$)/.test(path) && !(path==='/me/badges' && params().has('badge'))) || ['/settings/binding','/chat','/pulse'].includes(path) || (path==='/awards' && params().get('view')==='honors'))return '/personal';
   if(/^\/settings(?:\/|$)/.test(path))return '/settings';
+  // Answer mounts these routes in a single Personal view. Use an explicit
+  // tab list so an unrelated route below /users is never a profile sibling.
+  const profile=path.match(/^\/users\/([^/]+)(?:\/(?:overview|answers|questions|bookmarks|reputation|comments|votes|badges))?$/);
+  if(profile && !nonProfiles.has(profile[1]))return '/users/'+profile[1];
+  if(['/','/latest','/questions','/discover'].includes(path))return '/latest';
+  if(['/models','/models/leaderboard','/models/methodology'].includes(path))return '/models';
+  if(listAreas.has(path))return path;
+  const tag=path.match(/^\/tags\/([^/]+)(?:\/questions)?$/);
+  if(tag && tag[1]!=='create')return '/tags/'+tag[1];
   return url;
  };
  function local(value,origin){

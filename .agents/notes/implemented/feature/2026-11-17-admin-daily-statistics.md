@@ -10,7 +10,7 @@ Status: implemented
 
 增加start_date/end_date，默认北京时间今天。严格解析年月日，拒绝单边/倒序/未来日期；结束日期含全天，采用次日00:00的半开边界，当前日截断到查询时刻。使用Unix秒与FROM_UNIXTIME匹配数据库会话时区。
 
-返回range_comments/range_likes及range_start/range_end。评论只含正常comment及回复，点赞按主动trigger_user_id和未取消voted_up活动创建时间统计。前端日期存入URL，变更重置分页并重载排序缓存，仅展示匹配范围的数据；累计列、权限和奖励规则不变。
+返回range_comments/range_likes及range_start/range_end。范围评论合计正常评论（含回复）和正式回答，两个来源都按同一日期及用户集合聚合后相加；点赞按主动trigger_user_id和未取消voted_up活动创建时间统计。前端日期存入URL，变更重置分页并重载排序缓存，仅展示匹配范围的数据；累计列、权限和奖励规则不变。
 
 ## Alternatives considered
 
@@ -18,8 +18,10 @@ Status: implemented
 
 ## Consequences
 
-每批增加两次时间与用户集合限定的聚合。宽范围可能较慢，沿用请求超时和失败提示。补丁沿用answer-admin-daily-statistics文件名，实际已为自定义范围；需重建forum和语言资源。
+每批增加两次时间与用户集合限定的查询；范围评论在一次查询中用 UNION ALL 合计两个来源，保留每个来源恰好相等的计数，不另开接口、不改变点赞或累计列。宽范围可能较慢，沿用请求超时和失败提示。补丁沿用answer-admin-daily-statistics文件名，实际已为自定义范围；需重建forum和语言资源。
 
 ## Verification
 
 插件Go测试通过，覆盖北京日界、自定义区间、结束日期和非法日期。新增MySQL回归覆盖历史单日、午夜前后、未来活动、删除/待审评论及取消点赞，DSN未提供时跳过。实际补丁排序代码测试通过，TSX经过上游Prettier格式化。
+
+2026-11-23：范围评论验证使用本地 MySQL，覆盖回答与评论计数相同仍相加、只有回答的账号、无活动账号、删除/待审状态、历史日期与当前时刻边界，以及点赞统计不变。

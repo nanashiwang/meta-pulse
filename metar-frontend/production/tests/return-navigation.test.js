@@ -22,7 +22,7 @@ test('admin siblings collapse while query-only list changes preserve history and
  const h=setup('/latest?order=newest&page=2');h.host.history.replaceState({metarScroll:{x:0,y:700}},'',h.host.location.href);
  for(const p of ['/admin/users','/admin/settings','/admin/dashboard'])h.host.history.pushState(null,'',p);
  assert.equal(h.nav.distance(),3);h.nav.back('/me');assert.equal(h.host.location.search,'?order=newest&page=2');assert.equal(h.host.history.state.metarScroll.y,700);
- h.host.history.pushState(null,'','/latest?order=hot');h.nav.back('/latest');assert.equal(h.host.location.search,'?order=newest&page=2');
+ h.host.history.pushState(null,'','/latest?order=hot');h.host.history.go(-1);assert.equal(h.host.location.search,'?order=newest&page=2');
 });
 test('reload restores current snapshot; direct links and invalid snapshots use fallback',()=>{
  const h=setup('/latest');h.host.history.pushState(null,'','/questions/1');const nav=create(h.host);nav.restore(h.host.history.state.metarReturnV2,'/questions/1');assert.equal(nav.destination('',null),'/latest');
@@ -74,4 +74,62 @@ test('old native notification history snapshots cannot bounce between sibling ta
  h.nav.restore({url:'/users/notifications/inbox/invites',step:4,trail:[{url:'/latest',step:0},{url:'/me/notifications?view=inbox',step:1},{url:'/users/notifications/inbox/posts',step:2},{url:'/users/notifications/inbox/votes',step:3}]},'/users/notifications/inbox/invites');
  assert.equal(h.nav.destination('',null),'/latest');assert.equal(h.nav.distance(),4);
  const direct=setup('/users/notifications/inbox/posts');direct.host.history.pushState(null,'','/users/notifications/inbox/invites');direct.nav.back('/me');assert.equal(direct.host.replaced,'/me');
+});
+
+test('all Answer profile tabs skip to the entry, while native browser Back visits tabs',()=>{
+ const h=setup('/questions/7/entry');
+ const tabs=['','/answers','/questions','/bookmarks','/reputation','/comments','/votes','/badges'];
+ for(const tab of tabs)h.host.history.pushState(null,'','/users/alice'+tab+(tab==='/comments'?'?page=2':''));
+ h.host.history.go(-1);assert.equal(h.host.location.pathname,'/users/alice/votes');
+ h.host.history.go(1);assert.equal(h.host.location.pathname,'/users/alice/badges');
+ h.nav.back('/latest');assert.equal(h.host.location.pathname,'/questions/7/entry');
+});
+
+test('other profiles and actual badge details retain their own entries',()=>{
+ const h=setup('/users?rank=posts');
+ for(const path of ['/users/alice/comments','/users/bob/answers','/users/bob/badges/','/badges/123?username=bob'])h.host.history.pushState(null,'',path);
+ for(const path of ['/users/bob/badges/','/users/alice/comments','/users']){
+  h.nav.back('/latest');assert.equal(h.host.location.pathname,path);
+ }
+ assert.equal(h.host.location.search,'?rank=posts');
+});
+
+test('pre-update profile snapshots and direct links do not bounce between tabs',()=>{
+ const h=setup('/latest?order=hot');
+ for(const path of ['/users/alice','/users/alice/comments','/users/alice/badges'])h.host.history.pushState(null,'',path);
+ const saved={url:'/users/alice/badges',step:3,trail:[{url:'/latest?order=hot',step:0},{url:'/users/alice',step:1},{url:'/users/alice/comments',step:2}]};
+ h.nav.restore(saved,saved.url);h.nav.back('/latest');assert.equal(h.host.location.search,'?order=hot');
+ const direct=setup('/users/alice/comments');direct.host.history.pushState(null,'','/users/alice/badges');direct.nav.back('/latest');assert.equal(direct.host.replaced,'/latest');
+});
+
+test('other tab and list families skip sibling selections but keep real origins',()=>{
+ for(const tabs of [
+  ['/latest?order=active','/latest?order=newest','/latest?order=unanswered'],
+  ['/topics','/topics?view=tags'],
+  ['/marketplace?kind=project','/marketplace?kind=idea'],
+  ['/models','/models?open=1','/models/leaderboard?open=1'],
+  ['/users?rank=reputation','/users?rank=posts'],
+  ['/tags?order=popular','/tags?order=name'],
+  ['/tags/go','/tags/go/questions?page=2'],
+  ['/me','/me/replies','/awards?view=honors','/me/badges'],
+ ]){
+  const h=setup('/questions/7?from=entry');
+  for(const path of tabs)h.host.history.pushState(null,'',path);
+  h.nav.back('/latest');assert.equal(h.host.location.pathname+h.host.location.search,'/questions/7?from=entry',tabs.join(' → '));
+ }
+});
+
+test('topic information, marketplace editors, model details and distinct searches are not sibling tabs',()=>{
+ for(const [origin,detail] of [
+  ['/tags/go/questions?page=2','/tags/go/info'],
+  ['/tags/go','/tags/javascript'],
+  ['/marketplace?kind=idea','/marketplace/item/42'],
+  ['/marketplace/mine','/marketplace/publish?id=42'],
+  ['/models?open=1','/model/demo'],
+  ['/awards','/awards?view=honors'],
+  ['/search?q=one','/search?q=two'],
+ ]){
+  const h=setup(origin);h.host.history.pushState(null,'',detail);h.nav.back('/latest');
+  assert.equal(h.host.location.pathname+h.host.location.search,origin);
+ }
 });

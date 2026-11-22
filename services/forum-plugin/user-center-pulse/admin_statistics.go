@@ -118,12 +118,19 @@ func (g *mysqlBindingGuard) adminCommunityStatisticsRange(ctx context.Context, i
 	if end > now.Unix()+1 {
 		end = now.Unix() + 1
 	}
+	// Count answers and comments separately before summing: both may have a row
+	// for the same author (and may even have the same count).
+	responseFilter := " WHERE status=1 AND created_at>=FROM_UNIXTIME(?) AND created_at<FROM_UNIXTIME(?) AND user_id IN " + in + " GROUP BY user_id"
 	rangeQueries := []string{
-		"SELECT user_id,COUNT(*) FROM comment WHERE status=1 AND created_at>=FROM_UNIXTIME(?) AND created_at<FROM_UNIXTIME(?) AND user_id IN " + in + " GROUP BY user_id",
+		"SELECT user_id,SUM(n) FROM (SELECT user_id,COUNT(*) n FROM answer" + responseFilter +
+			" UNION ALL SELECT user_id,COUNT(*) n FROM comment" + responseFilter + ") t GROUP BY user_id",
 		"SELECT a.trigger_user_id,COUNT(*) FROM activity a JOIN config c ON c.id=a.activity_type WHERE a.cancelled=0 AND c.`key` IN ('question.voted_up','answer.voted_up','comment.voted_up') AND a.created_at>=FROM_UNIXTIME(?) AND a.created_at<FROM_UNIXTIME(?) AND a.trigger_user_id IN " + in + " GROUP BY a.trigger_user_id",
 	}
 	for kind, query := range rangeQueries {
 		params := append([]any{start, end}, args...)
+		if kind == 0 {
+			params = append(params, params...)
+		}
 		rows, err := g.db.QueryContext(ctx, query, params...)
 		if err != nil {
 			return nil, err

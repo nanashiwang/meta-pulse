@@ -137,7 +137,7 @@ new-api 接收端与实际到账、生产普通账号流程、邮件与跨实例
 
 共享固定页脚背景贴合视口或手机导航边缘；个人侧栏保持边界。正文按 ResizeObserver 测得的页脚高度预留底部空间，防止换行后挡住末项；验证见 `footer.test.js`。
 
-返回导航：共用 return-navigation.js 使用逐历史位置的 v2 快照，重复帖子访问可逐步退回，后台子页跳过同区域；原生页面与壳层一致，浏览器前进后退和刷新恢复原快照，旧来源字典自动清除。验证：`return-navigation.test.js`。
+返回导航：共用 return-navigation.js 使用逐历史位置的 v2 快照，同一用户资料的标签、个人工作区、通知、后台及同个列表的筛选切换不逐项返回；不同用户、帖子与徽章等详情保留真实来源。原生页面与壳层一致，浏览器前进后退和刷新恢复各自历史快照。验证：`return-navigation.test.js`。
 
 构建缓存与磁盘保护（2026-11-18）：`metar update` 保留 8 GB 常规 GC；[缓存助手](../deploy/build-cache.py)回读含 shared 总量，超过16 GB或空闲低于30 GiB时完整回收未使用缓存，20 GiB为失败门禁。[独立维护](../deploy/maintain-disk.sh)及[定时器安装](../deploy/install-disk-maintenance-timer.sh)每15分钟复用更新锁、单份备份保留与缓存校验，不依赖更新或业务配置。锁忙重试、错误留在journal，不删除业务卷/镜像/binlog/上传。验收见[缓存测试](../deploy/test_build_cache.py)、[维护入口测试](../deploy/test_disk_maintenance.py)及[运维说明](../deploy/README.md#构建缓存与磁盘保护)。
 
@@ -182,7 +182,7 @@ new-api 接收端与实际到账、生产普通账号流程、邮件与跨实例
 
 ### 用户管理自定义时间范围统计
 
-新增范围内评论数、范围内点赞数，可选开始/结束日期，默认今天。北京时间结束日包含全天；未来、倒序及单边日期被拒绝。范围随页面查询参数保留，切换范围重载翻页与全结果排序，不展示不匹配范围的旧数据。累计列不变；正常评论/回复和未取消的主动点赞按创建时间计数，正式回答不计评论。接口追加start_date/end_date，返回range_comments/range_likes和范围元信息。需重建forum及语言资源。
+范围内评论数（含回答）、范围内点赞数可选开始/结束日期，默认今天。北京时间结束日包含全天；未来、倒序及单边日期被拒绝。范围随页面查询参数保留，切换范围重载翻页与全结果排序，不展示不匹配范围的旧数据。累计列不变；范围评论合计正常评论、评论回复和正式回答，范围点赞照旧统计未取消的主动点赞，均按创建时间计数。接口追加start_date/end_date，返回range_comments/range_likes和范围元信息。需重建forum及语言资源。
 
 签到奖池政策升级：`checkin_reward_policy.go` 与 `meta-pulse-tool apply-checkin-reward-policy` 使用原规则发布事务，一次性切换至每券期望2.5闪；`deploy/update.sh` 在迁移后执行，后续升级保留管理员新规则。推荐预设同步；旧券期限与历史中奖结果不变。
 
