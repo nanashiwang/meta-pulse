@@ -154,9 +154,12 @@ func giftPick(r *GiftRange) (int64, error) {
 }
 
 type GiftOffer struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	End  int64  `json:"end"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	End          int64  `json:"end"`
+	ClaimedCount *int64 `json:"claimed_count,omitempty"`
+	Unavailable  bool   `json:"unavailable,omitempty"`
+	Locked       bool   `json:"locked,omitempty"`
 }
 type GiftReceipt struct {
 	ID                              string `json:"id"`
@@ -196,6 +199,29 @@ func (s *Store) Gift(ctx context.Context, user, requested string, spend GiftUsag
 	if json.Unmarshal([]byte(blob), &g) != nil || !g.valid() {
 		return nil, nil, ErrInvalid
 	}
+	offer := &GiftOffer{ID: id, Name: g.Name, End: end}
+	var oversight *GiftOffer
+	if requested == "" {
+		admin, err := isEventAdministrator(ctx, s.DB, user)
+		if err != nil {
+			return nil, nil, err
+		}
+		if admin {
+			var count int64
+			if err = s.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM metar_gift_claim WHERE round_id=?", id).Scan(&count); err != nil {
+				return nil, nil, err
+			}
+			offer.ClaimedCount = &count
+			oversight = offer
+		}
+	}
+	blocked := func(unavailable bool) (*GiftOffer, *GiftReceipt, error) {
+		if oversight != nil {
+			oversight.Locked = true
+			oversight.Unavailable = unavailable
+		}
+		return oversight, nil, nil
+	}
 	ext := func(q queryer) (string, error) {
 		var v string
 		e := q.QueryRowContext(ctx, "SELECT b.external_id FROM user_external_login b JOIN `user` u ON u.id=b.user_id WHERE b.meta_pulse_user_id_guard=? AND b.provider='pulse_user_center' AND u.status=1 AND u.mail_status=1", user).Scan(&v)
@@ -203,7 +229,7 @@ func (s *Store) Gift(ctx context.Context, user, requested string, spend GiftUsag
 	}
 	external, e := ext(s.DB)
 	if errors.Is(e, sql.ErrNoRows) {
-		return nil, nil, nil
+		return blocked(false)
 	}
 	if e != nil {
 		return nil, nil, e
@@ -221,6 +247,9 @@ func (s *Store) Gift(ctx context.Context, user, requested string, spend GiftUsag
 	if e == nil {
 		if requested != "" {
 			return nil, v, nil
+		}
+		if oversight != nil {
+			return oversight, v, nil
 		}
 		return nil, nil, nil
 	}
@@ -246,8 +275,14 @@ func (s *Store) Gift(ctx context.Context, user, requested string, spend GiftUsag
 		}
 		return spend(ctx, external, lo.Format("2006-01-02"))
 	})
-	if e != nil || rule == nil {
+	if e != nil {
+		if oversight != nil {
+			return blocked(true)
+		}
 		return nil, nil, e
+	}
+	if rule == nil {
+		return blocked(false)
 	}
 	tx, e := s.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if e != nil {
@@ -271,7 +306,6 @@ func (s *Store) Gift(ctx context.Context, user, requested string, spend GiftUsag
 	if checked.Unix() >= end || !checked.Before(hi.AddDate(0, 0, 1)) || checked.Before(hi) {
 		return nil, nil, nil
 	}
-	offer := &GiftOffer{id, g.Name, end}
 	if requested == "" {
 		return offer, nil, nil
 	}

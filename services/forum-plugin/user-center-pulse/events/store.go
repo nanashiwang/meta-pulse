@@ -145,16 +145,24 @@ func active(ctx context.Context, q queryer, user string, admin bool) error {
 		return ErrForbidden
 	}
 	if admin {
-		var count, admins int
-		if e = q.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(role_id=2),0) FROM user_role_rel WHERE user_id=?`, user).Scan(&count, &admins); e != nil {
-			return e
+		ok, err := isEventAdministrator(ctx, q, user)
+		if err != nil {
+			return err
 		}
-		if count != 1 || admins != 1 {
+		if !ok {
 			return ErrForbidden
 		}
 	}
 	return nil
 }
+
+// Keep the same role boundary for admin event management and read-only oversight.
+func isEventAdministrator(ctx context.Context, q queryer, user string) (bool, error) {
+	var count, admins int
+	err := q.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(role_id=2),0) FROM user_role_rel WHERE user_id=?`, user).Scan(&count, &admins)
+	return count == 1 && admins == 1, err
+}
+
 func valid(v Event, now int64) bool {
 	return strings.TrimSpace(v.Title) != "" && len([]rune(v.Title)) <= 100 && strings.TrimSpace(v.Body) != "" && len(v.Body) <= 12000 && len([]rune(v.Location)) <= 300 && v.Starts > now && v.Ends > v.Starts && v.Ends-v.Starts <= 86400*90 && v.Deadline > now && v.Deadline <= v.Starts && v.Capacity >= 1 && v.Capacity <= 100000
 }

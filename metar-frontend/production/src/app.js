@@ -299,6 +299,7 @@
           const receiptPage = isGiftPage() ? document.querySelector('[data-gift-hero][data-received="1"]') : null;
           end = Number(v?.offer?.end || receiptPage?.dataset.end || 0);
           const name = v?.offer?.name || receiptPage?.dataset.name || '';
+          giftView?.refresh?.(v);
           nav.querySelector('span').textContent = name;
           nav.title = name;
         } catch {
@@ -320,11 +321,7 @@
         );
         hero.querySelector('.pc-subtitle').textContent =
           '距赠礼结束　' + giftClock(secs);
-        if (!secs && giftView && !giftView.timeline) {
-          giftView.button.disabled = true;
-          if (hero.dataset.received !== '1')
-            giftView.button.textContent = '已结束';
-        }
+        if (!secs) giftView?.expire?.();
       }
     };
     giftTimer = setInterval(tick, 1000);
@@ -350,49 +347,89 @@
       );
     const v = (giftView = new window.MetarPulseCore.View(core, { t }));
     const btn = v.button;
-    btn.removeAttribute('data-action');
-    btn.textContent = '领取';
-    btn.disabled = false;
+    let locked = false, unavailable = false, busy = false, expired = false;
+    const result = receipt => ({rewards: [
+      ['Flash', 'gift_flash', '闪电'],
+      ['Exp', 'community_exp', '经验值'],
+      ['Tickets', 'gift_ticket', '抽奖券'],
+    ].filter(([key]) => receipt[key] > 0).map(([key, type, unit]) => ({
+      type, unit: t(unit), amount: key === 'Flash' ? (receipt[key] / 100).toFixed(2) : receipt[key], tier: 'gold',
+      bonus: t(receipt[key + 'Paid'] ? '已到账' : '等待到账'),
+    }))});
+    function paint() {
+      const received = el.dataset.received === '1';
+      core.classList.toggle('limited-gift-locked', locked && !received);
+      btn.disabled = busy || received || expired || locked;
+      btn.textContent = t(received ? '已领取' : expired ? '已结束' : locked ? '无法领取' : '领取');
+      if (locked && !received) v.status.textContent = t(unavailable ? '暂时无法确认领取资格，请稍后刷新。' : '当前账号不满足本轮领取条件。');
+    }
+    v.refresh = snapshot => {
+      const offer = snapshot?.offer;
+      if (offer?.id !== el.dataset.id) return;
+      const counter = el.querySelector('[data-gift-count]');
+      if (counter && Number.isSafeInteger(offer.claimed_count)) {
+        counter.textContent = number(offer.claimed_count);
+      }
+      if (busy || expired) return;
+      const wasLocked = locked;
+      locked = Boolean(offer.locked);
+      unavailable = Boolean(offer.unavailable);
+      if (snapshot.receipt?.id === offer.id) {
+        const prizes = result(snapshot.receipt);
+        if (prizes.rewards.length) {
+          el.dataset.received = '1';
+          const signature = JSON.stringify(prizes);
+          if (el.dataset.resultSignature !== signature) {
+            el.dataset.resultSignature = signature;
+            v.showResult(prizes);
+          }
+        }
+      } else if (wasLocked && !locked) v.status.textContent = '';
+      paint();
+    };
+    v.expire = () => {
+      if (expired) return;
+      expired = true;
+      if (!busy) paint();
+    };
+    v.refresh(JSON.parse(el.dataset.giftSnapshot));
     btn.onclick = async () => {
       if (btn.disabled) return;
-      btn.disabled = true;
+      busy = true;
       v.begin();
+      btn.textContent = t('领取');
       try {
-        const { receipt: r } = await answer.request('/metar/events/gift', {
+        const { receipt } = await answer.request('/metar/events/gift', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Metar-Request': '1',
-          },
+          headers: { 'Content-Type': 'application/json', 'X-Metar-Request': '1' },
           body: JSON.stringify({ id: el.dataset.id }),
         });
         if (v !== giftView) return;
-        if (!r) throw Error();
-        const rewards = [
-          ['Flash', 'gift_flash', '闪电', 100],
-          ['Exp', 'community_exp', '经验值', 1],
-          ['Tickets', 'gift_ticket', '抽奖券', 1],
-        ]
-          .filter(([k]) => r[k] > 0)
-          .map(([k, type, unit, scale]) => ({
-            type,
-            unit,
-            amount: r[k] / scale,
-            tier: 'gold',
-            bonus: r[k + 'Paid'] ? '已到账' : '等待到账',
-          }));
+        if (receipt?.id !== el.dataset.id) throw Error();
+        const prizes = result(receipt);
+        if (!prizes.rewards.length) throw Error();
         el.dataset.received = '1';
-        await v.reveal({ rewards });
-        if (v === giftView) btn.textContent = '已领取';
-      } catch {
-        if (v === giftView) {
-          v.fail('暂未确认结果，请重试。重试不会重复领取。');
-          btn.textContent = '重新确认';
-          btn.disabled = false;
+        el.dataset.resultSignature = JSON.stringify(prizes);
+        await v.reveal(prizes);
+      } catch (err) {
+        if (v !== giftView) return;
+        v.fail(t('暂未确认结果，请重试。重试不会重复领取。'));
+        if (err?.status === 409 && el.querySelector('[data-gift-count]')) {
+          try {
+            const latest = await answer.request('/metar/events/gift');
+            if (v !== giftView) return;
+            busy = false;
+            if(latest?.offer?.id === el.dataset.id) v.refresh(latest);
+            else v.expire();
+          } catch { /* Keep the retry hint when eligibility is unavailable. */ }
         }
+      } finally {
+        busy = false;
+        if (v === giftView) paint();
       }
     };
   }
+
   function personalSidebar() {
     if ((!isPersonalPath(route().path) && !isGiftPage()) || currentUserState !== 'ready' || !currentUser) return '';
     const { path, query } = route();
@@ -580,7 +617,7 @@
     const chatRoot = document.querySelector('[data-chat-root]');
     if (chatRoot && chatView) chatView.mount(chatRoot, route().query.get('room') || '');
     const core = document.querySelector('[data-pulse-core]');
-    if (core && window.MetarPulseCore && pulseCoreState) {
+    if (route().path === '/pulse' && core && window.MetarPulseCore && pulseCoreState) {
       pulseView = new window.MetarPulseCore.View(core, { t });
       pulseView.update(pulseCoreState);
     }
@@ -1520,7 +1557,9 @@
       await identityReady;if(!isActiveUser(currentUser))return loginRequired('限时赠礼','请先登录社区账号。');
       const result=await answer.request('/metar/events/gift');if(!result?.offer)return empty('暂无可领取的赠礼','',link('/latest','返回社区'),'clock');
       if(!await loadPulseCore())return empty('赠礼页面暂不可用','请稍后刷新','','clock');
-      return '<div data-gift-hero data-id="'+esc(result.offer.id)+'" data-name="'+esc(result.offer.name)+'" data-end="'+Number(result.offer.end)+'">'+window.MetarPulseCore.markup({t})+'</div>';
+      const {offer, receipt} = result;
+      const activity = Number.isSafeInteger(offer.claimed_count) ? '<section class="prod-pulse-panel prod-pulse-community gift-community"><header><h2>'+I('trophy')+' '+t('社区领取动态')+'</h2></header><p class="prod-pulse-feed-note">'+t('本轮已领取人数')+'：<strong data-gift-count>'+number(offer.claimed_count)+'</strong></p></section>' : '';
+      return '<div data-gift-hero data-id="'+esc(offer.id)+'" data-name="'+esc(offer.name)+'" data-end="'+Number(offer.end)+'" data-gift-snapshot="'+esc(JSON.stringify({offer,receipt}))+'">'+window.MetarPulseCore.markup({t,gift:true})+activity+'</div>';
     }
     if (['/me/drafts', '/events', '/admin/events'].includes(path)) {
       await identityReady;

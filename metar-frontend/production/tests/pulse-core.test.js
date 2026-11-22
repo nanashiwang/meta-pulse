@@ -168,3 +168,11 @@ test('the jade palette holds through charging and blends only during fracture', 
   assert.match(blendLight('#178a66','#a98bf7',half),/^rgb/);
   assert.equal(blendLight('#178a66','#a98bf7',1),'#a98bf7');
 });
+
+test('gift markup has a free claim button and is isolated from Pulse draw controls', () => {
+  const t = s => s;
+  const gift = markup({t, gift: true});
+  assert.match(gift, /class="pc-primary" disabled>领取<\/button>/);
+  assert.doesNotMatch(gift, /data-pulse-core|data-action="pulse-draw"|class="pc-primary"[^>]*>[^<]*消耗/);
+  assert.match(markup({t}), /data-action="pulse-draw" disabled>抽一次（消耗 1 张）/);
+});

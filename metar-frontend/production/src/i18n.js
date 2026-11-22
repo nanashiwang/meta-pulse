@@ -2,6 +2,18 @@
 'use strict';
 (() => {
   const EN = Object.freeze({
+    "领取": "Claim",
+    "已领取": "Claimed",
+    "无法领取": "Not eligible",
+    "闪电": "Credits",
+    "经验值": "EXP",
+    "抽奖券": "Draw tickets",
+    "等待到账": "Pending delivery",
+    "社区领取动态": "Community claims",
+    "本轮已领取人数": "Members who claimed this round",
+    "暂时无法确认领取资格，请稍后刷新。": "Eligibility is temporarily unavailable. Refresh later.",
+    "当前账号不满足本轮领取条件。": "This account does not meet the requirements for this round.",
+    "暂未确认结果，请重试。重试不会重复领取。": "The result could not be confirmed. Retrying will not claim twice.",
 "限时赠礼":"Limited gifts",
 "今日签到：{experience} EXP 已到账，闪奖励金额正在由服务器生成。":"Today’s check-in: {experience} EXP delivered. The server is generating your credit reward.",
 "到账状态暂不可用":"Delivery status unavailable",

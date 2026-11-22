@@ -32,6 +32,12 @@ func TestMySQLGiftConcurrentClaimAndReport(t *testing.T) {
 	if _, e = s.Execute(ctx, "1", "gift-other-key", cmd); !errors.Is(e, ErrConflict) {
 		t.Fatal(e)
 	}
+	if o, receipt, e := s.Gift(ctx, "1", "", nil); e != nil || o == nil || !o.Locked || o.ClaimedCount == nil || *o.ClaimedCount != 0 || receipt != nil {
+		t.Fatalf("unbound admin should see the locked round: %+v %+v %v", o, receipt, e)
+	}
+	if o, receipt, e := s.Gift(ctx, "1", r.ID, nil); e != nil || o != nil || receipt != nil {
+		t.Fatalf("view permission must not allow claiming: %+v %+v %v", o, receipt, e)
+	}
 	calls := 0
 	raw := int64(15000)
 	get := func(_ context.Context, ex, day string) (*int64, error) {
@@ -58,7 +64,7 @@ func TestMySQLGiftConcurrentClaimAndReport(t *testing.T) {
 	if _, e = s.DB.Exec("INSERT INTO comment VALUES(2,1,FROM_UNIXTIME(?))", y); e != nil {
 		t.Fatal(e)
 	}
-	if o, _, e := s.Gift(ctx, "2", "", get); e != nil || o == nil {
+	if o, _, e := s.Gift(ctx, "2", "", get); e != nil || o == nil || o.ClaimedCount != nil || o.Locked {
 		t.Fatal(o, e)
 	}
 	get = func(context.Context, string, string) (*int64, error) { return &raw, nil }
@@ -110,7 +116,32 @@ func TestMySQLGiftConcurrentClaimAndReport(t *testing.T) {
 	if _, e = s.GiftReport(ctx, "2", r.ID, 1); !errors.Is(e, ErrForbidden) {
 		t.Fatal(e)
 	}
+	if o, receipt, e := s.Gift(ctx, "1", "", nil); e != nil || o == nil || !o.Locked || o.ClaimedCount == nil || *o.ClaimedCount != 1 || receipt != nil {
+		t.Fatalf("admin should see the round and the member count but not the member receipt: %+v %+v %v", o, receipt, e)
+	}
+	if _, err := s.DB.Exec("INSERT INTO user_external_login(user_id,external_id,provider) VALUES(1,41,'pulse_user_center')"); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{"INSERT INTO activity VALUES(9,1,0,1,FROM_UNIXTIME(?))", "INSERT INTO comment VALUES(1,1,FROM_UNIXTIME(?))"} {
+		if _, err := s.DB.Exec(q, y); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if o, receipt, err := s.Gift(ctx, "1", "", nil); err != nil || o == nil || !o.Locked || !o.Unavailable || receipt != nil {
+		t.Fatalf("temporarily unavailable qualification must stay locked: %+v %+v %v", o, receipt, err)
+	}
+	_, saved, err := s.Gift(ctx, "1", r.ID, get)
+	if err != nil || saved == nil {
+		t.Fatalf("eligible admin should be able to claim: %+v %v", saved, err)
+	}
+	if o, receipt, err := s.Gift(ctx, "1", "", nil); err != nil || o == nil || o.Locked || o.ClaimedCount == nil || *o.ClaimedCount != 2 || receipt == nil || *receipt != *saved {
+		t.Fatalf("admin should retain access and see only the original personal receipt: %+v %+v %v", o, receipt, err)
+	}
 	s.Now = func() time.Time { return time.Unix(1900000000, 0) }
+	if o, receipt, err := s.Gift(ctx, "1", "", nil); err != nil || o != nil || receipt != nil {
+		t.Fatalf("finished rounds must not remain in nav: %+v %+v %v", o, receipt, err)
+	}
 	if offer, _, e := s.Gift(ctx, "2", "", get); e != nil || offer != nil {
 		t.Fatal(fmt.Sprint(offer, e))
 	}

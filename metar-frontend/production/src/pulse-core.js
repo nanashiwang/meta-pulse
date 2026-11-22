@@ -67,14 +67,14 @@
     }
   }
 
-  function markup({ t }) {
-    return `<section class="pulse-core" data-pulse-core data-stage="idle" aria-label="${esc(t('脉冲核心'))}">
+  function markup({ t, gift = false }) {
+    return `<section class="pulse-core${gift ? ' limited-gift-hero' : ''}" ${gift ? '' : 'data-pulse-core'} data-stage="idle" aria-label="${esc(t('脉冲核心'))}">
       <div class="pc-header"><span class="pc-brand">METAR / PULSE</span><button type="button" class="pc-wallet" data-action="pulse-benefits" aria-haspopup="dialog" aria-controls="pulse-benefits" title="${esc(t('我的权益'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 7h16v4a2 2 0 0 0 0 4v4H4v-4a2 2 0 0 0 0-4V7Z"/><path d="m6 7 1-4 13 3M9 10v6m6-6v6"/></svg><span class="pc-tickets"></span><span aria-hidden="true">›</span></button></div>
       <div class="pc-heading"><div class="pc-title"><h1>${esc(t('开启你的脉冲时刻'))}<span class="pc-title-spark" aria-hidden="true">ϟ</span></h1><details class="pc-help"><summary aria-label="${esc(t('抽取规则'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9 8a3 3 0 0 1 6 0c0 2-3 2-3 4m0 4v.5"/></svg></summary><div class="pc-help-panel" tabindex="0"><p>${esc(t('每次消耗 1 张券。额度用于 API 调用，经验用于社区升级，均不可转赠。'))}</p><p>${esc(t('连抽可以合并不同时间获得的券，每轮最多抽 5 张；不足 5 张可全部抽。每抽使用最新规则，中断时保留已获得的奖励。'))}</p><p>${esc(t('光效仅作展示，不影响中奖概率。'))}</p></div></details></div><p class="pc-subtitle">${esc(t('让每一次积累，在这一刻绽放。'))}</p></div>
       <div class="pc-stage"><canvas aria-hidden="true"></canvas><div class="pc-horizon" aria-hidden="true"></div><span class="pc-annotation" aria-hidden="true">PULSE CORE</span>
         <div class="pc-reward" aria-hidden="true"></div>
       </div>
-      <div class="pc-bottom"><p class="pc-state" role="status" aria-live="polite" aria-atomic="true"></p><div class="pc-controls"><div class="pc-actions"><button type="button" class="pc-primary" data-action="pulse-draw" disabled>${esc(t('抽一次（消耗 1 张）'))}</button><button type="button" class="pc-primary pc-batch" data-action="pulse-draw-batch" disabled>${esc(t('全部抽'))}</button></div></div></div>
+      <div class="pc-bottom"><p class="pc-state" role="status" aria-live="polite" aria-atomic="true"></p><div class="pc-controls"><div class="pc-actions"><button type="button" class="pc-primary"${gift ? '' : ' data-action="pulse-draw"'} disabled>${esc(t(gift ? '领取' : '抽一次（消耗 1 张）'))}</button><button type="button" class="pc-primary pc-batch" data-action="pulse-draw-batch" disabled>${esc(t('全部抽'))}</button></div></div></div>
       <div class="pc-footer"><label class="pc-skip" title="${esc(t('保留闪光与翻牌'))}"><input type="checkbox" data-core-skip>${esc(t('跳过蓄能'))}</label><button type="button" class="pc-refresh" data-action="pulse-refresh">${esc(t('刷新权益'))}</button></div>
     </section>`;
   }
