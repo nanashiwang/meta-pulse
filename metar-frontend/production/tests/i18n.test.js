@@ -160,7 +160,7 @@ async function shell({ language = 'en_US', user = null, binding = 'unbound', con
     pushState(_state, _title, url) { context.location = localLocation(url); },
   };
   context.MetarLoading = require('../src/loading.js');
-  for (const name of ['theme.js', 'adapters.js', 'taxonomy.js', 'avatars.js', 'growth.js', 'admin-pulse.js', 'route-policy.js', 'router.js', 'pulse-core.js', 'app.js']) {
+  for (const name of ['theme.js', 'adapters.js', 'taxonomy.js', 'avatars.js', 'growth.js', 'admin-pulse.js', 'route-policy.js', 'router.js', 'pulse-core.js', 'discussion-stream.js', 'app.js']) {
     vm.runInContext(script(name), context);
     if(name==='adapters.js') {
       const Session=context.MetarAdapters.PulseDrawSession;

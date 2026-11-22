@@ -55,6 +55,8 @@ class ProductionBuildTest(unittest.TestCase):
                 if path.name == 'latest.html':
                     self.assertIn('<noscript><section class="page-inner seo-fallback"><h1>最新讨论</h1>', source)
             self.assertTrue((output / 'assets/loading.js').is_file())
+            self.assertTrue((output / 'assets/discussion-stream.js').is_file())
+            self.assertLess(source.index('/metar-assets/discussion-stream.js'), source.index('/metar-assets/app.js'))
 
     def test_private_deployment_umask_keeps_public_assets_readable(self):
         with tempfile.TemporaryDirectory() as temp:

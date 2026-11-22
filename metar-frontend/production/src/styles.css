@@ -828,3 +828,5 @@ html.community-wide:not(.preview-tools) .page{padding-bottom:calc(var(--communit
 .lg-modes{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}.member-event-form .lg-modes label{display:inline-flex;align-items:center;gap:5px;min-height:32px;cursor:pointer;white-space:nowrap}.lg-modes input[type=radio]{width:auto;height:auto;margin:0;accent-color:var(--green)}
 
 .lg-rule-list>p{margin:0 0 12px;color:var(--muted)}[data-rule-list]{display:grid;gap:12px;margin-bottom:12px}.lg-rule{min-width:0;padding:12px;border:1px solid var(--border);border-radius:10px;display:grid;gap:10px}.lg-rule-actions{display:flex;flex-wrap:wrap;gap:6px}.lg-rule-actions button:disabled{opacity:.45}
+
+.discussion-stream-tail{display:flex;align-items:center;justify-content:center;gap:12px;min-height:72px;padding:16px;color:var(--muted);font-size:13px;text-align:center}.discussion-stream-tail[hidden],.discussion-stream-tail button[hidden]{display:none}

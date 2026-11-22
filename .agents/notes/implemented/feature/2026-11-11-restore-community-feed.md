@@ -25,3 +25,5 @@ Status: implemented
 ## Testing
 
 前端与插件 Node 测试、Python 构建测试、make test-community、make deploy-test、博客和社区构建通过。真实 Nginx 容器验证首页和别名 GET/HEAD、SEO、原生帖子与发帖转发，以及代理安全边界。Playwright 使用本地构建读取线上匿名讨论，核对桌面与手机布局及分页；登录态功能沿用既有权限回归测试。笔记与工作流检查随本次提交执行。
+
+讨论列表的页码交互与加载深度恢复现由[连续滚动决定](2026-11-22-discussion-infinite-scroll.md)接管；既有路由、身份隔离及其他页面恢复边界继续适用。

@@ -59,9 +59,10 @@ test('late notices cannot update a detached view or a later route or session', a
   }
 });
 
-test('renders one awards link before the feed and only mounts notices on the first unfiltered page', async () => {
+test('renders one awards link before the feed and mounts notices on the unfiltered stream including legacy page links', async () => {
   let query = new URLSearchParams();
   const questionsPage = load('questionsPage', {
+    window:{MetarDiscussionStream:require('../src/discussion-stream.js')}, discussionList:()=>'<div class="discussion-list"></div>',
     loadTagDirectory:async () => {}, route:() => ({query}), questionOrders:() => ({active:'active',newest:'newest',unanswered:'unanswered'}),
     answer:{listQuestions:async () => ({list:[],count:0})}, taxonomy:{scope:() => 'guest',askURL:() => '/questions/ask'},
     navigationCatalogScope:'', config:{answerAskPath:'/questions/ask'}, t:x => x, esc:x => x, I:() => '',
@@ -80,5 +81,7 @@ test('renders one awards link before the feed and only mounts notices on the fir
     assert.ok(page.indexOf('class="community-award"') < page.indexOf('class="community-feed"'));
     assert.ok(page.indexOf('class="community-award"') < page.indexOf('data-rail-disclosure'));
   }
-  for (const page of [filtered,paginated]) assert.doesNotMatch(page, /data-community-announcement/);
+  assert.doesNotMatch(filtered, /data-community-announcement/);
+  assert.match(paginated, /data-community-announcement/);
+  for (const html of [home,filtered,paginated]) assert.doesNotMatch(html, /prod-pager/);
 });

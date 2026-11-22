@@ -29,3 +29,5 @@ Status: implemented
 ## Consequences
 
 失败时 URL 表示请求目标而内容仍为原列表，必须显示明确提示。范围仅限公开讨论列表族，不扩大到草稿、聊天、权益或管理页面。
+
+讨论列表的页码交互与加载深度恢复现由[连续滚动决定](../feature/2026-11-22-discussion-infinite-scroll.md)接管；既有路由、身份隔离及其他页面恢复边界继续适用。

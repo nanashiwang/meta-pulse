@@ -99,6 +99,7 @@
     const url = new URL(pendingListTransition.source, location.origin);
     return {path:url.pathname === '/' ? '/latest' : url.pathname, query:url.searchParams};
   }
+  let discussionStream = null;
   let extrasUpdatedAt = 0;
 
   const ICONS = {
@@ -216,7 +217,7 @@
         if (seen.has(key)) return false;
         seen.add(key); return true;
       }).slice(0, 5);
-    return `<article class="discussion-row">
+    return `<article class="discussion-row" data-question-id="${esc(question.id || question.question_id)}">
       <div class="discussion-main">
         <div class="discussion-heading">
           ${external(questionHref(question.id || question.question_id), `<h3>${question.pin === 2 ? I('flag', 'sm') + `<span class="visually-hidden">${t("置顶")} </span>` : ''}${esc(question.title)}</h3>`, 'discussion-title')}
@@ -549,13 +550,14 @@
     }
   }
 
-  function renderView(html, {focus = true} = {}) {
+  function renderView(html, {focus = true, restore = null} = {}) {
     const view = document.getElementById('view');
     if (view) view.innerHTML = html;
     fitFooter();
     document.title = `${currentTitle()} · ${config.siteName}`;
     syncNavigation();
     enhanceTaxonomy();
+    mountDiscussionStream(restore);
     void mountDiscussionRail();
     const topAd = document.querySelector('#view [data-home-ad="top"]');
     const sideAd = document.querySelector('#view [data-home-ad="side"]');
@@ -850,35 +852,57 @@
     }));
   }
 
+  function mountDiscussionStream(restore = null) {
+    discussionStream?.dispose();
+    discussionStream = null;
+    const node = document.querySelector('#view [data-discussion-stream]');
+    if (!node) return;
+    const sequence = navigationSequence, scope = taxonomy.scope(answer);
+    const key = location.pathname + location.search;
+    const saved = history.state?.metarDiscussion;
+    const restorePage = restore && saved?.key === key && saved.language === getLanguage() && Number.isSafeInteger(saved.nextPage) && saved.nextPage >= 6 ? saved.nextPage : 6;
+    if (!restore) history.replaceState({...history.state, metarDiscussion:{key, language:getLanguage(), nextPage:Number(node.dataset.nextPage)}}, '', location.href);
+    discussionStream = window.MetarDiscussionStream.mount(node, {
+      request: options => answer.listQuestions(options), row:questionRow, t, restorePage,
+      onProgress: (nextPage, restoring) => {
+        history.replaceState({...history.state, metarDiscussion:{key, language:getLanguage(), nextPage}}, '', location.href);
+        if (restoring && restore) window.scrollTo({top:restore.y, left:restore.x, behavior:'auto'});
+      },
+      current: () => sequence === navigationSequence && scope === taxonomy.scope(answer),
+      onDenied: error => { renderedKey = null; renderError(error); },
+    });
+  }
+
   async function questionsPage(tag = '') {
     await loadTagDirectory();
     const { query } = route();
     const requested = query.get('order') || 'active';
     const orders = questionOrders();
     const order = Object.prototype.hasOwnProperty.call(orders, requested) ? requested : 'active';
-    const page = Math.max(1, Number.parseInt(query.get('page') || '1', 10) || 1);
-    const result = await answer.listQuestions({ page, pageSize: 20, order, tag });
+    const result = await answer.listQuestions({ page:1, pageSize:50, order, tag });
+    const stream = window.MetarDiscussionStream.batch(result, 0, 50);
     const catalog = navigationCatalogScope === taxonomy.scope(answer) ? navigationCatalog : null;
-    const list = Array.isArray(result?.list) ? result.list : [];
-    const total = Number(result?.count) || 0;
+    const list = stream.list;
     const base = tag ? `/topic/${encodeURIComponent(tag)}` : '/latest';
     const title = tag || t("最新话题");
     const askPath = tag ? taxonomy.askURL(config.answerAskPath, tag) : config.answerAskPath;
     const tab = value => link(`${base}?order=${value}`, `<span${order === value ? ' aria-current="page"' : ''}>${esc(orders[value])}</span>`, `discussion-tab ${order === value ? 'active' : ''}`);
     const tabs = ['active','newest','unanswered'].map(tab).join('') + `<details class="discussion-more"><summary>${esc(['hot','score'].includes(order) ? orders[order] : t('更多'))}</summary><div>${['hot','score'].map(tab).join('')}${link('/topics?view=tags',t('标签'))}</div></details>`;
-    const totalPages = Math.max(1, Math.ceil(total / 20));
-    const pager = totalPages > 1 ? `<div class="prod-pager">${page > 1 ? link(`${base}?order=${order}&page=${page - 1}`, t("上一页"), 'btn small') : ''}<span>${t("第 {page} / {total} 页", { page: number(page), total: number(totalPages) })}</span>${page < totalPages ? link(`${base}?order=${order}&page=${page + 1}`, t("下一页"), 'btn small') : ''}</div>` : '';
     return `<section class="community-discussions">
       ${pageTitle(title)}
       <div data-tag-shortcuts><p class="muted">${t('正在加载…')}</p></div>
-      ${!tag && page === 1 ? '<div data-community-announcement hidden></div><div data-home-ad="top" hidden></div>' : ''}
+      ${!tag ? '<div data-community-announcement hidden></div><div data-home-ad="top" hidden></div>' : ''}
       <div class="community-layout">
         ${link('/awards', `<span class="community-award-icon">${I('trophy')}</span><span class="community-award-copy"><small>${t('社区活动')}</small><strong>${t('优秀内容评选')}</strong></span>${I('arrow', 'sm')}`, 'community-award')}
         <div class="community-feed">
           <div class="discussion-toolbar"><nav class="discussion-tabs" aria-label="${t('话题筛选')}">${tabs}</nav>${external(askPath, I('plus', 'sm') + t('新建话题'), 'btn primary')}</div>
-          ${list.length ? discussionList(list) : empty(order === 'unanswered' ? t("暂时没有待回答问题") : t("当前筛选没有内容"), t("可以调整筛选，或发起一个新问题。"), external(askPath, t("发起提问"), 'btn primary'), 'chat')}${pager}
+          <div data-discussion-stream data-next-page="6" data-done="${stream.done}" data-order="${esc(order)}" data-tag="${esc(tag)}">
+            ${discussionList(list)}
+            ${!list.length ? empty(order === 'unanswered' ? t("暂时没有待回答问题") : t("当前筛选没有内容"), t("可以调整筛选，或发起一个新问题。"), external(askPath, t("发起提问"), 'btn primary'), 'chat') : ''}
+            <div class="discussion-stream-tail" data-stream-tail${!list.length ? ' hidden' : ''}><span role="status" aria-live="polite"></span><button type="button" class="btn small" hidden>${t('加载更多')}</button></div>
+          </div>
         </div>
-        <aside class="community-rail" data-discussion-rail aria-label="${t('社区侧栏')}">${!tag && page === 1 ? '<div data-home-ad="side" hidden></div>' : ''}<details data-rail-disclosure open><summary class="rail-mobile-summary">${t('社区推荐')}</summary><div class="rail-disclosure-content">
+        <aside class="community-rail" data-discussion-rail aria-label="${t('社区侧栏')}">${!tag ? '<div data-home-ad="side" hidden></div>' : ''}<details data-rail-disclosure open><summary class="rail-mobile-summary">${t('社区推荐')}</summary><div class="rail-disclosure-content">
           <section class="rail-card"><div class="rail-head"><h2>${t('等你来回答')}</h2></div><div data-rail-content="unanswered" aria-live="polite"><p class="rail-content-state">${t('正在加载…')}</p></div></section>
           <details class="rail-card rail-curated"><summary>${t('精选阅读')}</summary><div data-rail-content="featured" aria-live="polite"><p class="rail-content-state">${t('正在加载…')}</p></div></details>
           <section class="rail-card" data-followed-card${currentUser && tagDirectory?.followed?.size ? '' : ' hidden'}>
@@ -1778,6 +1802,8 @@
   }
 
   async function navigate({restore = null, preservePublicView = false} = {}) {
+    discussionStream?.dispose();
+    discussionStream = null;
     const destination = nativeDestination(location, config);
     if (destination) { location.replace(destination); return; }
     if (!isHomePath(location.pathname) && !location.pathname.startsWith('/topic/')) tagPanelOpen = false;
@@ -1797,6 +1823,16 @@
     const key = location.pathname + location.search;
     const session = answer.token();
     const restorePublic = preservePublicView && shellReady && window.MetarLoading.canRetain(route().path, key, renderedKey, getLanguage(), renderedLanguage, session === renderedSession);
+    // bfcache restores the complete stream: do not truncate it to the first 50.
+    if (restorePublic && restore && document.querySelector('#view [data-discussion-stream]')) {
+      clearTimeout(navigationNoticeTimer);
+      pendingListTransition = null;
+      document.getElementById('view-refresh-message')?.remove();
+      mountDiscussionStream(restore);
+      app.setAttribute('aria-busy', 'false');
+      window.scrollTo({top:restore.y, left:restore.x, behavior:'auto'});
+      return;
+    }
     const switchingLists = !restorePublic && shellReady && window.MetarLoading.canSwitchList(key, renderedKey, getLanguage(), renderedLanguage, session === renderedSession);
     const retain = restorePublic || switchingLists;
     clearTimeout(navigationNoticeTimer);
@@ -1823,7 +1859,7 @@
       if (sequence !== navigationSequence) return;
       clearTimeout(navigationNoticeTimer);
       pendingListTransition = null;
-      renderView(html, {focus:!retain || switchingLists});
+      renderView(html, {focus:!retain || switchingLists, restore});
       if (switchingLists) window.scrollTo({top:restore?.y || 0, left:restore?.x || 0, behavior:'auto'});
       renderedKey = key;
       renderedLanguage = getLanguage();
@@ -2017,7 +2053,7 @@
     }
     return navigate({restore:router.position(), preservePublicView:true});
   });
-  window.addEventListener('pagehide', () => router.checkpoint());
+  window.addEventListener('pagehide', () => { router.checkpoint(); discussionStream?.dispose(); });
   window.addEventListener('focus', refreshAccountExtras);
   window.addEventListener('storage', event => {
     if (event.key === '_a_ltk_' || event.key === null) { initializeIdentity(); refreshChrome(); navigate(); }
