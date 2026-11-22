@@ -36,25 +36,40 @@
           k,
           title,
         ]) => `<fieldset class="lg-prize" data-prize="${k}"><legend>${title}</legend>
-      <label>发放方式<select name="${k}mode"><option value="none">不发放</option><option value="fixed">固定数量</option><option value="random">随机范围</option></select></label>
-      <div class="lg-quantities"><label data-low><span>数量</span><input name="${k}lo" inputmode="decimal" aria-label="${title}数量" placeholder="—" disabled></label>
-      <label data-high hidden>上限<input name="${k}hi" inputmode="decimal" aria-label="${title}上限" disabled></label></div></fieldset>`,
+      <div class="lg-modes" role="group" aria-label="${title}发放方式">${[
+        ["none", "不发放"],
+        ["fixed", "固定数量"],
+        ["random", "随机"],
+      ]
+        .map(
+          ([value, label]) =>
+            `<label><input type="radio" name="${k}mode" value="${value}"${
+              value === "none" ? " checked" : ""
+            }>${label}</label>`,
+        )
+        .join("")}</div>
+      <div class="lg-quantities" hidden><label data-low><span>数量</span><input name="${k}lo" inputmode="decimal" disabled></label>
+      <label data-high hidden>上限<input name="${k}hi" inputmode="decimal" disabled></label></div></fieldset>`,
       )
       .join("");
-    return `<section class="card card-pad lg-admin" data-gifts><div class="lg-heading"><h3>限时赠礼</h3><button type="button" data-list="1" class="btn">刷新记录</button></div><p data-round-state>正在核对当前轮次…</p><details data-gift-editor><summary>配置新一轮赠礼</summary><form class="member-event-form lg-form">
+    return `<section class="card card-pad lg-admin" data-gifts><details data-gift-editor><summary>限时赠礼 · 创建活动</summary><p data-round-state>正在核对当前轮次…</p><form class="member-event-form lg-form">
       <section class="lg-group lg-basic"><h3>基本设置</h3><div class="lg-basics"><label>赠礼名称<input name="name" required maxlength="80" placeholder="例如：周末回馈"></label><label>持续时间（分钟）<input type="number" name="minutes" min="1" max="43200" value="60" required></label></div></section>
       <section class="lg-group lg-gates"><h3>昨日领取门槛 <small>留空不限 · 填写项须同时满足</small></h3><div class="lg-criteria"><label>API 消耗大于<span class="lg-unit"><input name="usage" inputmode="decimal" placeholder="不限"><select aria-label="用量单位" name="unit"><option value="4">万</option><option value="8">亿</option></select></span></label>
       <label>点赞数大于<input type="number" min="0" max="1000000" name="likes" placeholder="不限"></label><label>评论数大于<input type="number" min="0" max="1000000" name="comments" placeholder="不限"></label></div></section>
       <section class="lg-group lg-rewards"><h3>奖品配置 <small>可组合发放</small></h3><div class="lg-prizes">${rewards}</div></section>
       <div class="lg-submit"><span>仅限已绑定 API 的账号，每人每轮一次。</span><button class="btn primary" disabled>开启本轮赠礼</button></div><p role="status"></p></form>
-      </details><section class="lg-history"><h3>赠礼发布记录</h3><div data-report aria-live="polite">正在读取发布记录…</div></section></section>`;
+      </details></section>`;
+  }
+  function historyHTML() {
+    return '<section class="card card-pad lg-admin" data-gift-history><div class="lg-heading"><h3>赠礼发布记录</h3><button type="button" class="btn" data-list="1">刷新记录</button></div><div data-report aria-live="polite">正在读取发布记录…</div></section>';
   }
   function rewardFields(row) {
     const key = row.dataset.prize,
       pick = (name) => row.querySelector('[name="' + key + name + '"]');
-    const mode = pick("mode").value,
+    const mode = row.querySelector('[name="' + key + 'mode"]:checked').value,
       low = pick("lo"),
       high = pick("hi");
+    row.querySelector(".lg-quantities").hidden = mode === "none";
     low.disabled = mode === "none";
     high.disabled = mode !== "random";
     low.required = !low.disabled;
@@ -62,11 +77,7 @@
     row.querySelector("[data-low] span").textContent =
       mode === "random" ? "下限" : "数量";
     row.querySelector("[data-high]").hidden = high.disabled;
-    low.placeholder = low.disabled
-      ? "—"
-      : mode === "fixed"
-        ? "固定数量"
-        : "最小值";
+    low.placeholder = mode === "random" ? "最小值" : "固定数量";
     high.placeholder = "最大值";
   }
   function read(form) {
@@ -159,17 +170,17 @@
       "</tbody></table></div>"
     );
   }
-  function adminMount(el, admin, command) {
-    if (!el) return;
+  function adminMount(el, admin, command, history) {
+    if (!el || !history) return;
     const form = el.querySelector("form"),
       msg = form.querySelector("[role=status]");
     for (const row of form.querySelectorAll("[data-prize]")) {
       rewardFields(row);
-      row.querySelector("select").onchange = () => rewardFields(row);
+      row.querySelector(".lg-modes").onchange = () => rewardFields(row);
     }
     const button = form.querySelector("button"),
       status = el.querySelector("[data-round-state]"),
-      report = el.querySelector("[data-report]");
+      report = history.querySelector("[data-report]");
     let state = "checking",
       current = null,
       until = 0,
@@ -252,7 +263,7 @@
         return false;
       }
     }
-    el.onclick = (e) => {
+    history.onclick = (e) => {
       const b = e.target.closest("[data-list]");
       if (b) void load(Number(b.dataset.list), b.dataset.round || "");
     };
@@ -306,5 +317,5 @@
       .map((x) => String(x).padStart(2, "0"))
       .join(":");
   }
-  root.MetarLimitedGift = { units, adminHTML, adminMount, clock };
+  root.MetarLimitedGift = { units, adminHTML, historyHTML, adminMount, clock };
 })(window);

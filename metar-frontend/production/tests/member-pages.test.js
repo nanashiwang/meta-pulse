@@ -7,7 +7,8 @@ function setup(){
  const records=new Map();
  const sessionStorage={getItem:k=>records.get(k)||null,setItem:(k,v)=>records.set(k,v),removeItem:k=>records.delete(k)};
  const window={sessionStorage,MetarI18n:{getLanguage:()=> 'zh_CN',locale:()=> 'zh-CN'},MetarAdapters:{isCommunityAdministrator:()=> false}};
- vm.runInNewContext(fs.readFileSync(require.resolve('../src/member-pages.js'),'utf8'),{window,crypto:webcrypto,URLSearchParams,Date});
+ const context=vm.createContext({window,crypto:webcrypto,URLSearchParams,Date});
+ for(const file of ['limited-gifts','member-pages'])vm.runInContext(fs.readFileSync(require.resolve('../src/'+file+'.js'),'utf8'),context);
  return {View:window.MetarMemberPages.View,records};
 }
 test('unconfirmed event commands keep the original key across a page reload',async()=>{
@@ -33,4 +34,12 @@ test('activity markup escapes authored content and does not expose the admin ros
  const {View}=setup();const api={request:async()=>({items:[{id:'7',title:'<img src=x>',body:'<script>alert(1)</script>',location:'<b>online</b>',starts_at:Date.now()/1000+3600,ends_at:Date.now()/1000+7200,deadline:Date.now()/1000+3000,capacity:1,registered_count:1,status:'published',joined:false}],more:false})};
  const view=new View(api,api),html=await view.page('/events',{id:'2'},new URLSearchParams());
  assert.ok(html.includes('&lt;script&gt;'));assert.ok(!html.includes('<script>'));assert.ok(html.includes('名额已满'));assert.ok(!html.includes('data-member="roster"'));
+});
+
+test('gift history is in the admin activity list, separate from the creation form',async()=>{
+ const {View}=setup(),api={request:async()=>({items:[],more:false})};const view=new View(api,api);
+ const html=await view.page('/admin/events',{id:'2'},new URLSearchParams());
+ assert.match(html, /data-gifts>.*?<form[\s\S]*?<\/form>\s*<\/details><\/section>[\s\S]*?class="stack mt16"><section[^>]*data-gift-history>/);
+ assert.doesNotMatch(html,/暂无近期报名活动/);
+ const member=await view.page('/events',{id:'2'},new URLSearchParams());assert.doesNotMatch(member,/data-gift-history/);assert.match(member,/暂时没有已发布的活动/);
 });
