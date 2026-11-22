@@ -83,7 +83,7 @@
   let pulseRefreshing = false;
   let pulseStatusTimer = 0, pulseStatusAttempts = 0, pulseStatusEpoch = 0, pulseHasPendingRewards = false;
   const pulseRewardStates = { pending: '发放中', settling: '发放中', settled: '已到账', reversed: '已撤销', failed: '等待处理', settlement_dead: '发放受阻，待处理' };
-  const pulseRewardPending = reward => ['pending', 'settling'].includes(reward?.status);
+  const pulseRewardPending = reward => ['pending', 'settling'].includes(reward?.status) || ['pending', 'reversal_pending'].includes(reward?.bonus_experience_status);
   const knowledge = new KnowledgeAdapter(config);
   const app = document.getElementById('app');
   let navigationSequence = 0;
@@ -1765,8 +1765,14 @@
       document.querySelectorAll('[data-pulse-history-error]').forEach(historyError => { historyError.hidden = true; historyError.textContent = ''; });
       const last = pulseLastResult?.userId === userId ? pulseLastResult : null;
       if (last) {
+        const previous = last.rewards.map(pulseBonusDisplay);
         last.rewards = last.rewards.map(reward => rewards.find(item => item.grant_id === reward.grant_id && validPulseResult(item, reward.action_id)) || reward);
-        // Delivery updates belong to history; leave the draw presentation untouched.
+        if (last.rewards.some((reward, index) => pulseBonusDisplay(reward) !== previous[index])) {
+          const result = pulseSessionDisplay(last);
+          pulseCoreState = {...pulseCoreState, result};
+          // Refresh the confirmed cards without replaying the draw animation.
+          pulseView?.refreshResult?.(result);
+        }
       }
       const byGrant = new Map(rewards.map(reward => [reward.grant_id, reward]));
       document.querySelectorAll('[data-pulse-reward-status]').forEach(node => {

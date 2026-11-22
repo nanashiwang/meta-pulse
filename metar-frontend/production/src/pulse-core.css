@@ -133,7 +133,7 @@
   .pulse-core .pc-help summary { width:32px; height:32px; }
 }
 
-.pc-bonus{font-size:12px;font-weight:600;margin-top:4px;overflow-wrap:anywhere}
+.pulse-core .pc-bonus{color:var(--pc-ink);font-size:12px;font-weight:650;margin-top:4px;overflow-wrap:anywhere}
 
 .pulse-core .pc-card[data-tier="green"], .pulse-core[data-tier="green"] { --pc-energy:#1a8057; --pc-soft:#e3f6eb; --pc-secondary:#62c692; --pc-flare:#6df9aa; --pc-hot:#e7fff1; --light-strength:.87; --bloom-strength:.68; }
 :root[data-theme="dark"] .pulse-core .pc-card[data-tier="green"], :root[data-theme="dark"] .pulse-core[data-tier="green"] { --pc-energy:#8cfdbe; --pc-soft:#193c2c; --pc-secondary:#64e2a9; }

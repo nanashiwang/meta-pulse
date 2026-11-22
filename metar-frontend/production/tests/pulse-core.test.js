@@ -176,3 +176,18 @@ test('gift markup has a free claim button and is isolated from Pulse draw contro
   assert.doesNotMatch(gift, /data-pulse-core|data-action="pulse-draw"|class="pc-primary"[^>]*>[^<]*消耗/);
   assert.match(markup({t}), /data-action="pulse-draw" disabled>抽一次（消耗 1 张）/);
 });
+
+test('confirmed bonus belongs to its own credit card and refresh does not replay the animation', () => {
+  const reward = {amount:'1', unit:'⚡️', type:'newapi_quota', tier:'white'};
+  const result = {rewards:[reward,{...reward,bonus:'+ 4 EXP'},reward]};
+  const html = cards(result);
+  assert.equal((html.match(/class="pc-bonus"/g) || []).length, 1);
+  assert.match(html, /class="pc-bonus">\+ 4 EXP<\/div>/);
+  const calls = [];
+  const view = {root:{dataset:{stage:'result'}},fillResult:value=>calls.push(value),scene:{paint:progress=>calls.push(progress)}};
+  context.window.MetarPulseCore.View.prototype.refreshResult.call(view,result);
+  assert.deepEqual(calls,[result,1]);
+  view.timeline = {};
+  context.window.MetarPulseCore.View.prototype.refreshResult.call(view,result);
+  assert.equal(calls.length,2);
+});

@@ -327,6 +327,12 @@
       if (html !== this.resultHTML) { this.reward.innerHTML = html; this.resultHTML = html; }
       this.scene.size();
     }
+    refreshResult(result) {
+      if (this.dead || this.timeline || this.root.dataset.stage !== 'result') return;
+      this.result = result;
+      this.fillResult(result);
+      this.scene.paint(1);
+    }
     showResult(result) {
       this.fillResult(result); this.root.dataset.stage = 'result'; this.scene.paint(1);
       this.reward.setAttribute('aria-hidden', 'false');

@@ -82,6 +82,11 @@ func ActionRoute(router *gin.RouterGroup, executor ActionExecutor, auth gin.Hand
 			c.JSON(status, gin.H{"error": code})
 			return
 		}
-		c.JSON(http.StatusCreated, gin.H{"grant_id": result.GrantID, "period_id": result.PeriodID, "action_id": result.ActionID, "reward_type": result.RewardType, "amount": result.Amount, "status": result.Status})
+		response := gin.H{"grant_id": result.GrantID, "period_id": result.PeriodID, "action_id": result.ActionID, "reward_type": result.RewardType, "amount": result.Amount, "status": result.Status}
+		if result.BonusExperience > 0 {
+			response["bonus_experience"] = result.BonusExperience
+			response["bonus_experience_status"] = result.BonusExperienceStatus
+		}
+		c.JSON(http.StatusCreated, response)
 	})
 }

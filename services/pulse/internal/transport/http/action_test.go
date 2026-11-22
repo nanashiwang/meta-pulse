@@ -2,6 +2,7 @@ package transporthttp
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,11 +13,19 @@ import (
 	"github.com/nanashiwang/meta-pulse/internal/service"
 )
 
-type actionStub struct{ command service.ActionCommand }
+type actionStub struct {
+	command service.ActionCommand
+	bonus   int64
+}
 
 func (s *actionStub) Execute(_ context.Context, command service.ActionCommand) (service.ActionResult, error) {
 	s.command = command
-	return service.ActionResult{GrantID: "pg_1", UserID: command.UserID, ActionID: command.ActionID, Status: service.RewardStatusPending}, nil
+	result := service.ActionResult{GrantID: "pg_1", PeriodID: 1, UserID: command.UserID, ActionID: command.ActionID, RewardType: "newapi_quota", Amount: 500000, Status: service.RewardStatusPending}
+	if s.bonus > 0 {
+		result.BonusExperience = s.bonus
+		result.BonusExperienceStatus = "pending"
+	}
+	return result, nil
 }
 
 func TestActionRouteDerivesIdentityAndRequiresIdempotency(t *testing.T) {
@@ -128,5 +137,32 @@ func TestActionRoutePreservesV2Selection(t *testing.T) {
 	router.ServeHTTP(response, request)
 	if response.Code != 201 || reader.command.ProtocolVersion != 2 || reader.command.Selection != "original-server-choice" || reader.command.UserID != 7 {
 		t.Fatalf("selection was changed: %+v / %d", reader.command, response.Code)
+	}
+}
+
+func TestActionResponseIncludesConfirmedBonusWithoutPrivateFields(t *testing.T) {
+	for _, bonus := range []int64{4, 0} {
+		router := gin.New()
+		ActionRoute(router.Group("/v1/internal"), &actionStub{bonus: bonus}, func(c *gin.Context) {
+			c.Set(PrincipalContextKey, security.Principal{UserID: 7, Role: "community-bff"})
+		})
+		req := httptest.NewRequest(http.MethodPost, "/v1/internal/me/actions", strings.NewReader(`{"action_id":"a1","trigger_type":"pulse"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Idempotency-Key", "request-1")
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, req)
+		var body map[string]json.RawMessage
+		if response.Code != http.StatusCreated || json.Unmarshal(response.Body.Bytes(), &body) != nil {
+			t.Fatalf("unexpected action result: %d %s", response.Code, response.Body.String())
+		}
+		if bonus > 0 && (string(body["bonus_experience"]) != "4" || string(body["bonus_experience_status"]) != `"pending"`) {
+			t.Fatalf("confirmed bonus missing: %s", response.Body.String())
+		}
+		if bonus == 0 && (body["bonus_experience"] != nil || body["bonus_experience_status"] != nil) {
+			t.Fatalf("no bonus should be shown: %s", response.Body.String())
+		}
+		if body["user_id"] != nil || body["random_value"] != nil {
+			t.Fatal("private fields leaked")
+		}
 	}
 }
