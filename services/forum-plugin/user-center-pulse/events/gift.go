@@ -26,10 +26,46 @@ type GiftRules struct {
 	UsageRaw string     `json:"usage_raw"`
 	Likes    *int64     `json:"likes"`
 	Comments *int64     `json:"comments"`
+	Groups   []GiftRule `json:"groups,omitempty"`
 }
 
+type GiftRule struct {
+	Flash    *GiftRange `json:"flash"`
+	Exp      *GiftRange `json:"exp"`
+	Tickets  *GiftRange `json:"tickets"`
+	UsageRaw string     `json:"usage_raw"`
+	Likes    *int64     `json:"likes"`
+	Comments *int64     `json:"comments"`
+}
+
+const maxGiftRules = 8
+
+func (g GiftRules) legacyRule() GiftRule {
+	return GiftRule{g.Flash, g.Exp, g.Tickets, g.UsageRaw, g.Likes, g.Comments}
+}
+func (g GiftRules) orderedRules() []GiftRule {
+	if len(g.Groups) > 0 {
+		return g.Groups
+	}
+	return []GiftRule{g.legacyRule()}
+}
 func (g GiftRules) valid() bool {
-	if strings.TrimSpace(g.Name) == "" || len([]rune(g.Name)) > 80 || g.Minutes < 1 || g.Minutes > 43200 || g.Flash == nil && g.Exp == nil && g.Tickets == nil {
+	if strings.TrimSpace(g.Name) == "" || len([]rune(g.Name)) > 80 || g.Minutes < 1 || g.Minutes > 43200 {
+		return false
+	}
+	if len(g.Groups) > maxGiftRules || (g.Groups != nil && (len(g.Groups) == 0 || g.legacyRule() != (GiftRule{}))) {
+		return false
+	}
+	for _, rule := range g.orderedRules() {
+		if !rule.valid() {
+			return false
+		}
+	}
+	return true
+}
+
+func (g GiftRule) valid() bool {
+	if g.Flash == nil && g.Exp == nil && g.Tickets == nil {
 		return false
 	}
 	for _, p := range []struct {
@@ -53,6 +89,56 @@ func (g GiftRules) valid() bool {
 	}
 	return true
 }
+
+// Evaluate only as far as necessary. Missing usage is a failed threshold, but
+// an unavailable fact cannot demote a potentially eligible higher-priority rule.
+func firstGiftMatch(rules []GiftRule, likes, comments func() (int64, error), usage func() (*int64, error)) (*GiftRule, error) {
+	var counts [2]*int64
+	var raw *int64
+	usageRead := false
+	for _, rule := range rules {
+		ok := true
+		for i, check := range []struct {
+			limit *int64
+			read  func() (int64, error)
+		}{{rule.Likes, likes}, {rule.Comments, comments}} {
+			if check.limit == nil {
+				continue
+			}
+			if counts[i] == nil {
+				v, err := check.read()
+				if err != nil {
+					return nil, err
+				}
+				counts[i] = &v
+			}
+			if *counts[i] <= *check.limit {
+				ok = false
+				break
+			}
+		}
+		if !ok {
+			continue
+		}
+		if rule.UsageRaw != "" {
+			if !usageRead {
+				v, err := usage()
+				if err != nil {
+					return nil, err
+				}
+				raw = v
+				usageRead = true
+			}
+			limit, _ := strconv.ParseInt(rule.UsageRaw, 10, 64)
+			if raw == nil || *raw <= limit {
+				continue
+			}
+		}
+		return &rule, nil
+	}
+	return nil, nil
+}
+
 func giftPick(r *GiftRange) (int64, error) {
 	if r == nil {
 		return 0, nil
@@ -147,18 +233,21 @@ func (s *Store) Gift(ctx context.Context, user, requested string, spend GiftUsag
 	day := now.In(giftZone)
 	hi := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, giftZone)
 	lo := hi.AddDate(0, 0, -1)
-	if g.UsageRaw != "" {
+	count := func(statement string) func() (int64, error) {
+		return func() (int64, error) {
+			var n int64
+			err := s.DB.QueryRowContext(ctx, statement, user, lo.Unix(), hi.Unix()).Scan(&n)
+			return n, err
+		}
+	}
+	rule, e := firstGiftMatch(g.orderedRules(), count("SELECT COUNT(*) FROM activity a JOIN config c ON c.id=a.activity_type WHERE c.`key` IN ('question.voted_up','answer.voted_up') AND a.trigger_user_id=? AND a.cancelled=0 AND a.created_at>=FROM_UNIXTIME(?) AND a.created_at<FROM_UNIXTIME(?)"), count("SELECT COUNT(*) FROM comment WHERE user_id=? AND status=1 AND created_at>=FROM_UNIXTIME(?) AND created_at<FROM_UNIXTIME(?)"), func() (*int64, error) {
 		if spend == nil {
-			return nil, nil, errors.New("usage temporarily unavailable")
+			return nil, errors.New("usage temporarily unavailable")
 		}
-		raw, e := spend(ctx, external, lo.Format("2006-01-02"))
-		if e != nil {
-			return nil, nil, e
-		}
-		limit, _ := strconv.ParseInt(g.UsageRaw, 10, 64)
-		if raw == nil || *raw <= limit {
-			return nil, nil, nil
-		}
+		return spend(ctx, external, lo.Format("2006-01-02"))
+	})
+	if e != nil || rule == nil {
+		return nil, nil, e
 	}
 	tx, e := s.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if e != nil {
@@ -178,20 +267,6 @@ func (s *Store) Gift(ctx context.Context, user, requested string, spend GiftUsag
 	if current, e := ext(tx); e != nil || current != external {
 		return nil, nil, ErrForbidden
 	}
-	for _, c := range []struct {
-		gate *int64
-		sql  string
-	}{{g.Likes, "SELECT COUNT(*) FROM activity a JOIN config c ON c.id=a.activity_type WHERE c.`key` IN ('question.voted_up','answer.voted_up') AND a.trigger_user_id=? AND a.cancelled=0 AND a.created_at>=FROM_UNIXTIME(?) AND a.created_at<FROM_UNIXTIME(?)"}, {g.Comments, "SELECT COUNT(*) FROM comment WHERE user_id=? AND status=1 AND created_at>=FROM_UNIXTIME(?) AND created_at<FROM_UNIXTIME(?)"}} {
-		if c.gate != nil {
-			var count int64
-			if e := tx.QueryRowContext(ctx, c.sql, user, lo.Unix(), hi.Unix()).Scan(&count); e != nil {
-				return nil, nil, e
-			}
-			if count <= *c.gate {
-				return nil, nil, nil
-			}
-		}
-	}
 	checked := s.Now()
 	if checked.Unix() >= end || !checked.Before(hi.AddDate(0, 0, 1)) || checked.Before(hi) {
 		return nil, nil, nil
@@ -204,7 +279,7 @@ func (s *Store) Gift(ctx context.Context, user, requested string, spend GiftUsag
 	for _, item := range []struct {
 		to   *int64
 		from *GiftRange
-	}{{&v.Flash, g.Flash}, {&v.Exp, g.Exp}, {&v.Tickets, g.Tickets}} {
+	}{{&v.Flash, rule.Flash}, {&v.Exp, rule.Exp}, {&v.Tickets, rule.Tickets}} {
 		*item.to, e = giftPick(item.from)
 		if e != nil {
 			return nil, nil, e

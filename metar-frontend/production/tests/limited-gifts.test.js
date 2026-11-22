@@ -20,16 +20,16 @@ test("gift thresholds retain the API integer through wan/yi and flash cents", ()
 test("admin can choose each reward mode and numeric limits", () => {
   const html = adminHTML();
   for (const n of [
-    "flashmode",
-    "expmode",
-    "ticketsmode",
-    "unit",
-    "likes",
-    "comments",
+    "r1-flashmode",
+    "r1-expmode",
+    "r1-ticketsmode",
+    "r1-unit",
+    "r1-likes",
+    "r1-comments",
   ])
     assert.ok(html.includes('name="' + n + '"'));
-  assert.match(html, /type="radio" name="flashmode" value="none" checked/);
-  assert.match(html, /type="radio" name="flashmode" value="random"/);
+  assert.match(html, /type="radio" name="r1-flashmode" value="none" checked/);
+  assert.match(html, /type="radio" name="r1-flashmode" value="random"/);
   assert.match(html, /class="lg-quantities" hidden/);
 });
 
@@ -38,7 +38,8 @@ test("gift history remains outside the collapsed editor and active or unreadable
     status = {},
     report = {},
     form = {
-      querySelector: (s) => (s === "button" ? button : {}),
+      querySelector: (s) =>
+        s === ".lg-submit button" ? button : s === "[role=status]" ? {} : null,
       querySelectorAll: () => [],
     };
   const el = {

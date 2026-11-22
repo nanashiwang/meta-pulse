@@ -29,7 +29,7 @@
   function amount(n, p) {
     return p === 2 ? (Number(n) / 100).toFixed(2) : String(n);
   }
-  function adminHTML() {
+  function ruleHTML(prefix) {
     const rewards = points
       .map(
         ([
@@ -43,20 +43,26 @@
       ]
         .map(
           ([value, label]) =>
-            `<label><input type="radio" name="${k}mode" value="${value}"${
+            `<label><input type="radio" name="${prefix}${k}mode" value="${value}"${
               value === "none" ? " checked" : ""
             }>${label}</label>`,
         )
         .join("")}</div>
-      <div class="lg-quantities" hidden><label data-low><span>数量</span><input name="${k}lo" inputmode="decimal" disabled></label>
-      <label data-high hidden>上限<input name="${k}hi" inputmode="decimal" disabled></label></div></fieldset>`,
+      <div class="lg-quantities" hidden><label data-low><span>数量</span><input name="${prefix}${k}lo" inputmode="decimal" disabled></label>
+      <label data-high hidden>上限<input name="${prefix}${k}hi" inputmode="decimal" disabled></label></div></fieldset>`,
       )
       .join("");
+    return `<section class="lg-rule" data-rule="${prefix}"><header class="lg-heading"><h3 data-rule-title>规则 1（最高优先级）</h3><div class="lg-rule-actions"><button type="button" class="btn" data-rule-action="up">上移</button><button type="button" class="btn" data-rule-action="down">下移</button><button type="button" class="btn" data-rule-action="remove">删除</button></div></header>
+      <section class="lg-group lg-gates"><h3>昨日领取门槛 <small>留空不限 · 填写项须同时满足</small></h3><div class="lg-criteria"><label>API 消耗大于<span class="lg-unit"><input name="${prefix}usage" inputmode="decimal" placeholder="不限"><select aria-label="用量单位" name="${prefix}unit"><option value="4">万</option><option value="8">亿</option></select></span></label>
+      <label>点赞数大于<input type="number" min="0" max="1000000" name="${prefix}likes" placeholder="不限"></label><label>评论数大于<input type="number" min="0" max="1000000" name="${prefix}comments" placeholder="不限"></label></div></section>
+      <section class="lg-group lg-rewards"><h3>奖品配置 <small>可组合发放</small></h3><div class="lg-prizes">${rewards}</div></section></section>`;
+  }
+  function adminHTML() {
     return `<section class="card card-pad lg-admin" data-gifts><details data-gift-editor><summary>限时赠礼 · 创建活动</summary><p data-round-state>正在核对当前轮次…</p><form class="member-event-form lg-form">
       <section class="lg-group lg-basic"><h3>基本设置</h3><div class="lg-basics"><label>赠礼名称<input name="name" required maxlength="80" placeholder="例如：周末回馈"></label><label>持续时间（分钟）<input type="number" name="minutes" min="1" max="43200" value="60" required></label></div></section>
-      <section class="lg-group lg-gates"><h3>昨日领取门槛 <small>留空不限 · 填写项须同时满足</small></h3><div class="lg-criteria"><label>API 消耗大于<span class="lg-unit"><input name="usage" inputmode="decimal" placeholder="不限"><select aria-label="用量单位" name="unit"><option value="4">万</option><option value="8">亿</option></select></span></label>
-      <label>点赞数大于<input type="number" min="0" max="1000000" name="likes" placeholder="不限"></label><label>评论数大于<input type="number" min="0" max="1000000" name="comments" placeholder="不限"></label></div></section>
-      <section class="lg-group lg-rewards"><h3>奖品配置 <small>可组合发放</small></h3><div class="lg-prizes">${rewards}</div></section>
+      <div class="lg-rule-list"><p>按顺序从上到下匹配，同一用户只领取第一组满足条件的奖励，不叠加。</p><div data-rule-list>${ruleHTML(
+        "r1-",
+      )}</div><button type="button" class="btn" data-add-rule>＋ 添加条件与奖励</button></div>
       <div class="lg-submit"><span>仅限已绑定 API 的账号，每人每轮一次。</span><button class="btn primary" disabled>开启本轮赠礼</button></div><p role="status"></p></form>
       </details></section>`;
   }
@@ -64,7 +70,7 @@
     return '<section class="card card-pad lg-admin" data-gift-history><div class="lg-heading"><h3>赠礼发布记录</h3><button type="button" class="btn" data-list="1">刷新记录</button></div><div data-report aria-live="polite">正在读取发布记录…</div></section>';
   }
   function rewardFields(row) {
-    const key = row.dataset.prize,
+    const key = row.closest("[data-rule]").dataset.rule + row.dataset.prize,
       pick = (name) => row.querySelector('[name="' + key + name + '"]');
     const mode = row.querySelector('[name="' + key + 'mode"]:checked').value,
       low = pick("lo"),
@@ -83,9 +89,20 @@
   function read(form) {
     const f = new FormData(form),
       val = (k) => String(f.get(k) || "").trim();
+    const groups = Array.from(
+      form.querySelectorAll("[data-rule]"),
+      (group, index) => {
+        try {
+          return readRule((key) => val(group.dataset.rule + key));
+        } catch (e) {
+          throw Error("规则 " + (index + 1) + "：" + e.message);
+        }
+      },
+    );
+    return { name: val("name"), minutes: Number(val("minutes")), groups };
+  }
+  function readRule(val) {
     const g = {
-      name: val("name"),
-      minutes: Number(val("minutes")),
       usage_raw: val("usage")
         ? String(units(val("usage"), Number(val("unit"))))
         : "",
@@ -174,11 +191,47 @@
     if (!el || !history) return;
     const form = el.querySelector("form"),
       msg = form.querySelector("[role=status]");
-    for (const row of form.querySelectorAll("[data-prize]")) {
-      rewardFields(row);
-      row.querySelector(".lg-modes").onchange = () => rewardFields(row);
+    const list = form.querySelector("[data-rule-list]"),
+      add = form.querySelector("[data-add-rule]");
+    if (list && add) {
+      let nextRule = 2;
+      const updateOrder = () => {
+        const rows = Array.from(list.children);
+        rows.forEach((row, i) => {
+          row.querySelector("[data-rule-title]").textContent =
+            "规则 " + (i + 1) + (i === 0 ? "（最高优先级）" : "");
+          row.querySelector('[data-rule-action="up"]').disabled = i === 0;
+          row.querySelector('[data-rule-action="down"]').disabled =
+            i === rows.length - 1;
+          row.querySelector('[data-rule-action="remove"]').disabled =
+            rows.length === 1;
+        });
+        add.disabled = rows.length >= 8;
+      };
+      list.onchange = (e) => {
+        if (e.target.matches("input[type=radio]"))
+          rewardFields(e.target.closest("[data-prize]"));
+      };
+      list.onclick = (e) => {
+        const action = e.target.closest("[data-rule-action]");
+        if (!action || action.disabled) return;
+        const row = action.closest("[data-rule]");
+        if (action.dataset.ruleAction === "up")
+          row.previousElementSibling.before(row);
+        else if (action.dataset.ruleAction === "down")
+          row.nextElementSibling.after(row);
+        else row.remove();
+        updateOrder();
+      };
+      add.onclick = () => {
+        if (list.children.length >= 8) return;
+        list.insertAdjacentHTML("beforeend", ruleHTML("r" + nextRule++ + "-"));
+        updateOrder();
+        list.lastElementChild.querySelector("input").focus();
+      };
+      updateOrder();
     }
-    const button = form.querySelector("button"),
+    const button = form.querySelector(".lg-submit button"),
       status = el.querySelector("[data-round-state]"),
       report = history.querySelector("[data-report]");
     let state = "checking",

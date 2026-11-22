@@ -18,7 +18,10 @@ func TestMySQLGiftConcurrentClaimAndReport(t *testing.T) {
 		}
 	}
 	gate := int64(0)
-	cmd := Command{Op: "gift_start", Gift: &GiftRules{Name: "gift", Minutes: 5, UsageRaw: "15000", Likes: &gate, Comments: &gate, Flash: &GiftRange{1, 50}, Exp: &GiftRange{2, 2}, Tickets: &GiftRange{1, 1}}}
+	cmd := Command{Op: "gift_start", Gift: &GiftRules{Name: "gift", Minutes: 5, Groups: []GiftRule{
+		{UsageRaw: "15000", Likes: &gate, Comments: &gate, Flash: &GiftRange{1, 50}, Exp: &GiftRange{2, 2}, Tickets: &GiftRange{1, 1}},
+		{Likes: &gate, Comments: &gate, Exp: &GiftRange{100, 100}, Tickets: &GiftRange{10, 10}},
+	}}}
 	if _, e := s.Execute(ctx, "2", "gift-admin-key", cmd); !errors.Is(e, ErrForbidden) {
 		t.Fatal(e)
 	}
