@@ -122,8 +122,13 @@
     if (!count) throw Error("至少选择一种奖品。");
     return g;
   }
-  function historyGrid(rows, detail, nav) {
-    if (!rows.length) return '<p class="lg-empty">暂无记录</p>';
+  function historyGrid(rows, detail, nav, translate = (text) => text) {
+    if (!rows.length)
+      return (
+        '<p class="lg-empty">' +
+        esc(translate(detail ? "暂无领取记录。" : "暂无记录")) +
+        "</p>"
+      );
     const labels = detail
       ? ["领取人", "领取时间", "闪电", "经验值", "抽奖券"]
       : [
@@ -136,7 +141,9 @@
           "抽奖券",
           "明细",
         ];
-    const caption = detail ? "每人领取明细" : "各轮赠礼 · 奖品列为实际到账总量";
+    const caption = esc(
+      translate(detail ? "每人领取明细" : "各轮赠礼 · 奖品列为实际到账总量"),
+    );
     const body = rows
       .map((v) => {
         const initial = detail
@@ -156,7 +163,7 @@
             esc(amount(v[prop], precision)) +
             (detail && v[prop] > 0
               ? "<small>" +
-                (v[prop + "Paid"] ? "已到账" : "待到账") +
+                esc(translate(v[prop + "Paid"] ? "已到账" : "待到账")) +
                 "</small>"
               : "")
           );
@@ -181,12 +188,76 @@
       '"><table><caption>' +
       caption +
       "</caption><thead><tr>" +
-      labels.map((h) => '<th scope="col">' + h + "</th>").join("") +
+      labels
+        .map((h) => '<th scope="col">' + esc(translate(h)) + "</th>")
+        .join("") +
       "</tr></thead><tbody>" +
       body +
       "</tbody></table></div>"
     );
   }
+  // The caller supplies the administrator adapter. The server still verifies
+  // the administrator session before returning any per-person rows.
+  function mountClaimDetails(panel, admin, round, isCurrent, translate) {
+    const rowsNode = panel.querySelector("[data-claim-rows]");
+    const status = panel.querySelector("[data-claim-status]");
+    const previous = panel.querySelector("[data-claim-prev]");
+    const next = panel.querySelector("[data-claim-next]");
+    const refresh = panel.querySelector("[data-claim-refresh]");
+    const pageLabel = panel.querySelector("[data-claim-page]");
+    let page = 1,
+      loading = false,
+      more = false;
+    async function load(target = page) {
+      if (!isCurrent() || loading) return;
+      loading = true;
+      refresh.disabled = previous.disabled = next.disabled = true;
+      status.textContent = translate("正在读取领取明细…");
+      try {
+        const rows = await admin.request(
+          "/metar/events/gift-history?id=" +
+            encodeURIComponent(round) +
+            "&page=" +
+            target,
+        );
+        if (!isCurrent()) return;
+        if (!Array.isArray(rows)) throw Error("Invalid gift history");
+        rowsNode.innerHTML = historyGrid(rows, true, null, translate);
+        page = target;
+        more = rows.length === 50 && target < 1000;
+        pageLabel.textContent = translate("第 {page} 页", { page });
+        status.textContent = "";
+      } catch (err) {
+        if (!isCurrent()) return;
+        rowsNode.textContent = "";
+        more = false;
+        page = 1;
+        pageLabel.textContent = "";
+        status.textContent = translate(
+          err?.status === 403
+            ? "仅管理员可以查看领取明细。"
+            : "暂时无法读取领取明细，请刷新重试。",
+        );
+      } finally {
+        loading = false;
+        if (isCurrent()) {
+          refresh.disabled = false;
+          previous.disabled = page <= 1;
+          next.disabled = !more;
+        }
+      }
+    }
+    previous.onclick = () => {
+      if (page > 1) void load(page - 1);
+    };
+    next.onclick = () => {
+      if (more) void load(page + 1);
+    };
+    refresh.onclick = () => void load();
+    void load();
+    return load;
+  }
+
   function adminMount(el, admin, command, history) {
     if (!el || !history) return;
     const form = el.querySelector("form"),
@@ -370,5 +441,12 @@
       .map((x) => String(x).padStart(2, "0"))
       .join(":");
   }
-  root.MetarLimitedGift = { units, adminHTML, historyHTML, adminMount, clock };
+  root.MetarLimitedGift = {
+    units,
+    adminHTML,
+    historyHTML,
+    adminMount,
+    mountClaimDetails,
+    clock,
+  };
 })(window);

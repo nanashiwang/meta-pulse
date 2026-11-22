@@ -832,3 +832,8 @@ html.community-wide:not(.preview-tools) .page{padding-bottom:calc(var(--communit
 .discussion-stream-tail{display:flex;align-items:center;justify-content:center;gap:12px;min-height:72px;padding:16px;color:var(--muted);font-size:13px;text-align:center}.discussion-stream-tail[hidden],.discussion-stream-tail button[hidden]{display:none}
 
 .limited-gift-hero.limited-gift-locked{filter:grayscale(1)}.limited-gift-hero.limited-gift-locked .pc-primary:disabled{background:#555;color:#fff}.gift-community{margin-top:16px}
+
+.gift-community{min-width:0}.gift-claim-pages{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px}.gift-claim-pages:has([data-claim-page]:empty){display:none}.gift-claim-pages button:disabled{opacity:.55}
+
+/* Gift results use dark cards even when the surrounding scene is light. */
+.pulse-core.limited-gift-hero .pc-unit{color:#ffefc4;font-weight:650}.pulse-core.limited-gift-hero .pc-bonus{color:#f4e7ce}

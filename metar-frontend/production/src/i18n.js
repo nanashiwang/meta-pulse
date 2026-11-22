@@ -2,6 +2,18 @@
 'use strict';
 (() => {
   const EN = Object.freeze({
+    "刷新明细": "Refresh details",
+    "仅管理员可见": "Visible to administrators only",
+    "正在读取领取明细…": "Loading claim details…",
+    "暂时无法读取领取明细，请刷新重试。": "Claim details are unavailable. Refresh to retry.",
+    "仅管理员可以查看领取明细。": "Only administrators can view claim details.",
+    "领取明细分页": "Claim details pagination",
+    "第 {page} 页": "Page {page}",
+    "暂无领取记录。": "No claims yet.",
+    "领取人": "Recipient",
+    "领取时间": "Claim time",
+    "每人领取明细": "Individual claims",
+    "待到账": "Pending delivery",
     "领取": "Claim",
     "已领取": "Claimed",
     "无法领取": "Not eligible",

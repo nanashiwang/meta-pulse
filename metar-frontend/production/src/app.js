@@ -393,6 +393,18 @@
       if (!busy) paint();
     };
     v.refresh(JSON.parse(el.dataset.giftSnapshot));
+    const panel = el.querySelector('[data-gift-claim-details]');
+    let reloadDetails;
+    if (panel && isCommunityAdministrator(currentUser)) {
+      const viewer = currentUser.id;
+      const isCurrent = () => v === giftView && panel.isConnected && currentUser?.id === viewer && isCommunityAdministrator(currentUser);
+      loadFeatureScript('limited-gifts', 'MetarLimitedGift').then(() => {
+        if (!isCurrent()) return;
+        reloadDetails = window.MetarLimitedGift.mountClaimDetails(panel, new AnswerAdapter({answerApiBase:'/answer/admin/api'}), el.dataset.id, isCurrent, t);
+      }).catch(() => {
+        if (isCurrent()) panel.querySelector('[data-claim-status]').textContent = t('暂时无法读取领取明细，请刷新重试。');
+      });
+    }
     btn.onclick = async () => {
       if (btn.disabled) return;
       busy = true;
@@ -411,6 +423,7 @@
         el.dataset.received = '1';
         el.dataset.resultSignature = JSON.stringify(prizes);
         await v.reveal(prizes);
+        if (v === giftView) void reloadDetails?.();
       } catch (err) {
         if (v !== giftView) return;
         v.fail(t('暂未确认结果，请重试。重试不会重复领取。'));
@@ -1558,7 +1571,12 @@
       const result=await answer.request('/metar/events/gift');if(!result?.offer)return empty('暂无可领取的赠礼','',link('/latest','返回社区'),'clock');
       if(!await loadPulseCore())return empty('赠礼页面暂不可用','请稍后刷新','','clock');
       const {offer, receipt} = result;
-      const activity = Number.isSafeInteger(offer.claimed_count) ? '<section class="prod-pulse-panel prod-pulse-community gift-community"><header><h2>'+I('trophy')+' '+t('社区领取动态')+'</h2></header><p class="prod-pulse-feed-note">'+t('本轮已领取人数')+'：<strong data-gift-count>'+number(offer.claimed_count)+'</strong></p></section>' : '';
+      const activity = isCommunityAdministrator(currentUser) && Number.isSafeInteger(offer.claimed_count) ? `<section class="prod-pulse-panel prod-pulse-community gift-community lg-admin" data-gift-claim-details>
+        <header class="lg-heading"><h2>${I('trophy')} ${t('社区领取动态')}</h2><button type="button" class="btn" data-claim-refresh disabled>${t('刷新明细')}</button></header>
+        <p class="prod-pulse-feed-note">${t('本轮已领取人数')}：<strong data-gift-count>${number(offer.claimed_count)}</strong> · ${t('仅管理员可见')}</p>
+        <p data-claim-status role="status">${t('正在读取领取明细…')}</p><div data-claim-rows></div>
+        <nav class="gift-claim-pages" aria-label="${esc(t('领取明细分页'))}"><button type="button" class="btn" data-claim-prev disabled>${t('上一页')}</button><span data-claim-page></span><button type="button" class="btn" data-claim-next disabled>${t('下一页')}</button></nav>
+      </section>` : '';
       return '<div data-gift-hero data-id="'+esc(offer.id)+'" data-name="'+esc(offer.name)+'" data-end="'+Number(offer.end)+'" data-gift-snapshot="'+esc(JSON.stringify({offer,receipt}))+'">'+window.MetarPulseCore.markup({t,gift:true})+activity+'</div>';
     }
     if (['/me/drafts', '/events', '/admin/events'].includes(path)) {

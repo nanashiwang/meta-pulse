@@ -94,3 +94,59 @@ test("gift history remains outside the collapsed editor and active or unreadable
   assert.equal(button.disabled, false);
   stop();
 });
+
+test("claim detail pages render actual rewards and clear stale rows after denied access", async () => {
+  const elements = new Map();
+  const panel = {
+    querySelector(key) {
+      if (!elements.has(key)) elements.set(key, {});
+      return elements.get(key);
+    },
+  };
+  const requests = [];
+  let denied = false,
+    current = true;
+  const row = {
+    Name: "<img src=x>",
+    User: "95",
+    At: 1700000000,
+    Flash: 523,
+    Exp: 8,
+    Tickets: 2,
+    ExpPaid: true,
+  };
+  const admin = {
+    async request(path) {
+      requests.push(path);
+      if (denied) throw { status: 403 };
+      return path.endsWith("page=1") ? Array(50).fill(row) : [row];
+    },
+  };
+  const translate = (s, values) => s.replace("{page}", values?.page);
+  const reload = w.MetarLimitedGift.mountClaimDetails(
+    panel,
+    admin,
+    "7",
+    () => current,
+    translate,
+  );
+  const flush = () => new Promise(setImmediate);
+  const el = (key) => elements.get("[data-claim-" + key + "]");
+  await flush();
+  assert.equal(requests[0], "/metar/events/gift-history?id=7&page=1");
+  assert.match(el("rows").innerHTML, /&lt;img src=x&gt;.*5\.23.*已到账/);
+  assert.doesNotMatch(el("rows").innerHTML, /<img/);
+  assert.equal(el("next").disabled, false);
+  el("next").onclick();
+  await flush();
+  assert.equal(el("page").textContent, "第 2 页");
+  assert.equal(el("next").disabled, true);
+  assert.equal(el("prev").disabled, false);
+  denied = true;
+  await reload();
+  assert.equal(el("rows").textContent, "");
+  assert.match(el("status").textContent, /仅管理员/);
+  current = false;
+  await reload();
+  assert.equal(requests.length, 3);
+});
