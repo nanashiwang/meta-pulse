@@ -31,18 +31,19 @@ type GiftRules struct {
 }
 
 type GiftRule struct {
-	Flash    *GiftRange `json:"flash"`
-	Exp      *GiftRange `json:"exp"`
-	Tickets  *GiftRange `json:"tickets"`
-	UsageRaw string     `json:"usage_raw"`
-	Likes    *int64     `json:"likes"`
-	Comments *int64     `json:"comments"`
+	Flash     *GiftRange `json:"flash"`
+	Exp       *GiftRange `json:"exp"`
+	Tickets   *GiftRange `json:"tickets"`
+	UsageRaw  string     `json:"usage_raw"`
+	Likes     *int64     `json:"likes"`
+	Comments  *int64     `json:"comments"`
+	MaxClaims *int64     `json:"max_claims,omitempty"`
 }
 
 const maxGiftRules = 8
 
 func (g GiftRules) legacyRule() GiftRule {
-	return GiftRule{g.Flash, g.Exp, g.Tickets, g.UsageRaw, g.Likes, g.Comments}
+	return GiftRule{Flash: g.Flash, Exp: g.Exp, Tickets: g.Tickets, UsageRaw: g.UsageRaw, Likes: g.Likes, Comments: g.Comments}
 }
 func (g GiftRules) orderedRules() []GiftRule {
 	if len(g.Groups) > 0 {
@@ -66,6 +67,9 @@ func (g GiftRules) valid() bool {
 }
 
 func (g GiftRule) valid() bool {
+	if g.MaxClaims != nil && (*g.MaxClaims < 1 || *g.MaxClaims > 1000000) {
+		return false
+	}
 	if g.Flash == nil && g.Exp == nil && g.Tickets == nil {
 		return false
 	}
@@ -94,27 +98,24 @@ func (g GiftRule) valid() bool {
 
 // Evaluate only as far as necessary. Missing usage is a failed threshold, but
 // an unavailable fact cannot demote a potentially eligible higher-priority rule.
-func firstGiftMatch(rules []GiftRule, socialInclusive bool, likes, comments func() (int64, error), usage func() (*int64, error)) (*GiftRule, error) {
-	var counts [2]*int64
-	var raw *int64
-	usageRead := false
-	for _, rule := range rules {
+func firstGiftMatch(rules []GiftRule, full map[int]bool, socialInclusive bool, likes, comments func() (int64, error), usage func() (*int64, error)) (int, error) {
+	for index, rule := range rules {
+		if full[index] {
+			continue
+		}
 		ok := true
-		for i, check := range []struct {
+		for _, check := range []struct {
 			limit *int64
 			read  func() (int64, error)
 		}{{rule.Likes, likes}, {rule.Comments, comments}} {
 			if check.limit == nil {
 				continue
 			}
-			if counts[i] == nil {
-				v, err := check.read()
-				if err != nil {
-					return nil, err
-				}
-				counts[i] = &v
+			v, err := check.read()
+			if err != nil {
+				return -1, err
 			}
-			if *counts[i] < *check.limit || (!socialInclusive && *counts[i] == *check.limit) {
+			if v < *check.limit || (!socialInclusive && v == *check.limit) {
 				ok = false
 				break
 			}
@@ -123,22 +124,18 @@ func firstGiftMatch(rules []GiftRule, socialInclusive bool, likes, comments func
 			continue
 		}
 		if rule.UsageRaw != "" {
-			if !usageRead {
-				v, err := usage()
-				if err != nil {
-					return nil, err
-				}
-				raw = v
-				usageRead = true
+			raw, err := usage()
+			if err != nil {
+				return -1, err
 			}
 			limit, _ := strconv.ParseInt(rule.UsageRaw, 10, 64)
 			if raw == nil || *raw <= limit {
 				continue
 			}
 		}
-		return &rule, nil
+		return index, nil
 	}
-	return nil, nil
+	return -1, nil
 }
 
 func giftPick(r *GiftRange) (int64, error) {
@@ -168,6 +165,7 @@ type GiftReceipt struct {
 	Flash, Exp, Tickets             int64
 	FlashPaid, ExpPaid, TicketsPaid bool
 	NoTicketAward                   bool `json:"no_ticket_award,omitempty"`
+	RuleNumber                      int  `json:"rule_number,omitempty"`
 }
 
 var giftZone = time.FixedZone("Asia/Shanghai", 8*3600)
@@ -243,7 +241,7 @@ func (s *Store) Gift(ctx context.Context, user, requested string, spend GiftUsag
 	}
 	lookup := func(q queryer) (*GiftReceipt, error) {
 		v := GiftReceipt{ID: id}
-		e := q.QueryRowContext(ctx, "SELECT flash,exp,tickets,flash_paid,exp_paid,tickets_paid,no_ticket_award FROM metar_gift_claim WHERE round_id=? AND user_id=? AND external_id=?", id, user, external).Scan(&v.Flash, &v.Exp, &v.Tickets, &v.FlashPaid, &v.ExpPaid, &v.TicketsPaid, &v.NoTicketAward)
+		e := q.QueryRowContext(ctx, "SELECT flash,exp,tickets,flash_paid,exp_paid,tickets_paid,no_ticket_award,rule_number FROM metar_gift_claim WHERE round_id=? AND user_id=? AND external_id=?", id, user, external).Scan(&v.Flash, &v.Exp, &v.Tickets, &v.FlashPaid, &v.ExpPaid, &v.TicketsPaid, &v.NoTicketAward, &v.RuleNumber)
 		return &v, e
 	}
 	v, e := lookup(s.DB)
@@ -272,62 +270,157 @@ func (s *Store) Gift(ctx context.Context, user, requested string, spend GiftUsag
 			return n, err
 		}
 	}
-	rule, e := firstGiftMatch(g.orderedRules(), g.SocialInclusive, count("SELECT COUNT(*) FROM activity a JOIN config c ON c.id=a.activity_type WHERE c.`key` IN ('question.voted_up','answer.voted_up') AND a.trigger_user_id=? AND a.cancelled=0 AND a.created_at>=FROM_UNIXTIME(?) AND a.created_at<FROM_UNIXTIME(?)"), count("SELECT COUNT(*) FROM comment WHERE user_id=? AND status=1 AND created_at>=FROM_UNIXTIME(?) AND created_at<FROM_UNIXTIME(?)"), func() (*int64, error) {
+	rules := g.orderedRules()
+	full, err := s.fullGiftRules(ctx, id, rules)
+	if err != nil {
+		return nil, nil, err
+	}
+	likes := giftFact(count("SELECT COUNT(*) FROM activity a JOIN config c ON c.id=a.activity_type WHERE c.`key` IN ('question.voted_up','answer.voted_up') AND a.trigger_user_id=? AND a.cancelled=0 AND a.created_at>=FROM_UNIXTIME(?) AND a.created_at<FROM_UNIXTIME(?)"))
+	comments := giftFact(count("SELECT COUNT(*) FROM comment WHERE user_id=? AND status=1 AND created_at>=FROM_UNIXTIME(?) AND created_at<FROM_UNIXTIME(?)"))
+	usage := giftFact(func() (*int64, error) {
 		if spend == nil {
 			return nil, errors.New("usage temporarily unavailable")
 		}
 		return spend(ctx, external, lo.Format("2006-01-02"))
 	})
-	if e != nil {
-		if oversight != nil {
-			return blocked(true)
+	for {
+		index, err := firstGiftMatch(rules, full, g.SocialInclusive, likes, comments, usage)
+		if err != nil {
+			if oversight != nil {
+				return blocked(true)
+			}
+			return nil, nil, err
 		}
-		return nil, nil, e
+		checked := s.Now()
+		if checked.Unix() >= end || checked.Before(hi) || !checked.Before(hi.AddDate(0, 0, 1)) {
+			return nil, nil, nil
+		}
+		if index < 0 {
+			// A parallel request by this user may have filled the last slot
+			// after the initial receipt lookup. Return that receipt on retry.
+			if requested != "" {
+				if saved, err := lookup(s.DB); err == nil {
+					return nil, saved, nil
+				} else if !errors.Is(err, sql.ErrNoRows) {
+					return nil, nil, err
+				}
+			}
+			return blocked(false)
+		}
+		if requested == "" {
+			if current, e := ext(s.DB); e != nil || current != external {
+				return nil, nil, ErrForbidden
+			}
+			return offer, nil, nil
+		}
+		result, err := s.claimGift(ctx, offer, user, external, index, rules[index], hi, ext, lookup)
+		if errors.Is(err, errGiftRuleFull) {
+			full[index] = true
+			continue
+		}
+		if err != nil || result == nil {
+			return nil, nil, err
+		}
+		return offer, result, nil
 	}
-	if rule == nil {
-		return blocked(false)
+}
+
+// Snapshot already full rules before eligibility checks so they cannot trigger a
+// usage lookup or block a lower-priority rule during a data-source outage.
+func (s *Store) fullGiftRules(ctx context.Context, id string, rules []GiftRule) (map[int]bool, error) {
+	full := make(map[int]bool)
+	args := []any{id}
+	for i, rule := range rules {
+		if rule.MaxClaims != nil {
+			args = append(args, i+1)
+		}
 	}
+	if len(args) == 1 {
+		return full, nil
+	}
+	marks := strings.Repeat("?,", len(args)-2) + "?"
+	rows, err := s.DB.QueryContext(ctx, "SELECT rule_number,COUNT(*) FROM metar_gift_claim WHERE round_id=? AND rule_number IN ("+marks+") GROUP BY rule_number", args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var number int
+		var used int64
+		if err := rows.Scan(&number, &used); err != nil {
+			return nil, err
+		}
+		if used >= *rules[number-1].MaxClaims {
+			full[number-1] = true
+		}
+	}
+	return full, rows.Err()
+}
+
+func giftFact[T any](read func() (T, error)) func() (T, error) {
+	var v T
+	var err error
+	done := false
+	return func() (T, error) {
+		if !done {
+			v, err = read()
+			done = true
+		}
+		return v, err
+	}
+}
+
+var errGiftRuleFull = errors.New("gift rule full")
+
+func (s *Store) claimGift(ctx context.Context, offer *GiftOffer, user, external string, index int, rule GiftRule, hi time.Time, ext func(queryer) (string, error), lookup func(queryer) (*GiftReceipt, error)) (*GiftReceipt, error) {
+	id := offer.ID
 	tx, e := s.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if e != nil {
-		return nil, nil, e
+		return nil, e
 	}
 	defer tx.Rollback()
-	if requested != "" {
-		if e = tx.QueryRowContext(ctx, "SELECT ends FROM metar_gift_round WHERE id=? FOR UPDATE", id).Scan(&end); e != nil {
-			return nil, nil, e
-		}
-		if got, e := lookup(tx); e == nil {
-			return nil, got, nil
-		} else if !errors.Is(e, sql.ErrNoRows) {
-			return nil, nil, e
-		}
+	var end int64
+	if e = tx.QueryRowContext(ctx, "SELECT ends FROM metar_gift_round WHERE id=? FOR UPDATE", id).Scan(&end); e != nil {
+		return nil, e
+	}
+	if got, err := lookup(tx); err == nil {
+		return got, nil
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
 	}
 	if current, e := ext(tx); e != nil || current != external {
-		return nil, nil, ErrForbidden
+		return nil, ErrForbidden
 	}
 	checked := s.Now()
 	if checked.Unix() >= end || !checked.Before(hi.AddDate(0, 0, 1)) || checked.Before(hi) {
-		return nil, nil, nil
+		return nil, nil
 	}
-	if requested == "" {
-		return offer, nil, nil
+	// All claims for this round share the row lock; the count and insert are atomic.
+	if rule.MaxClaims != nil {
+		var used int64
+		if e = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM metar_gift_claim WHERE round_id=? AND rule_number=?", id, index+1).Scan(&used); e != nil {
+			return nil, e
+		}
+		if used >= *rule.MaxClaims {
+			return nil, errGiftRuleFull
+		}
 	}
-	v = &GiftReceipt{ID: id}
+	v := &GiftReceipt{ID: id, RuleNumber: index + 1}
 	for _, item := range []struct {
 		to   *int64
 		from *GiftRange
 	}{{&v.Flash, rule.Flash}, {&v.Exp, rule.Exp}, {&v.Tickets, rule.Tickets}} {
 		*item.to, e = giftPick(item.from)
 		if e != nil {
-			return nil, nil, e
+			return nil, e
 		}
 	}
 	v.NoTicketAward = rule.Tickets != nil && v.Tickets == 0
-	_, e = tx.ExecContext(ctx, "INSERT INTO metar_gift_claim(round_id,user_id,external_id,flash,exp,tickets,no_ticket_award,created_at) VALUES(?,?,?,?,?,?,?,?)", id, user, external, v.Flash, v.Exp, v.Tickets, v.NoTicketAward, checked.Unix())
+	_, e = tx.ExecContext(ctx, "INSERT INTO metar_gift_claim(round_id,user_id,external_id,flash,exp,tickets,no_ticket_award,rule_number,created_at) VALUES(?,?,?,?,?,?,?,?,?)", id, user, external, v.Flash, v.Exp, v.Tickets, v.NoTicketAward, v.RuleNumber, checked.Unix())
 	if e != nil {
-		return nil, nil, e
+		return nil, e
 	}
-	return offer, v, tx.Commit()
+	return v, tx.Commit()
 }
 
 type GiftReport struct {
@@ -353,7 +446,7 @@ func (s *Store) GiftReport(ctx context.Context, actor, id string, page int) (any
 		if _, e := strconv.ParseUint(id, 10, 64); e != nil {
 			return nil, ErrInvalid
 		}
-		rs, e := s.DB.QueryContext(ctx, "SELECT c.user_id,COALESCE(NULLIF(u.display_name,''),u.username,''),c.flash,c.exp,c.tickets,c.flash_paid,c.exp_paid,c.tickets_paid,c.no_ticket_award,c.created_at FROM metar_gift_claim c LEFT JOIN `user` u ON u.id=c.user_id WHERE round_id=? ORDER BY c.user_id LIMIT 50 OFFSET ?", id, (page-1)*50)
+		rs, e := s.DB.QueryContext(ctx, "SELECT c.user_id,COALESCE(NULLIF(u.display_name,''),u.username,''),c.flash,c.exp,c.tickets,c.flash_paid,c.exp_paid,c.tickets_paid,c.no_ticket_award,c.rule_number,c.created_at FROM metar_gift_claim c LEFT JOIN `user` u ON u.id=c.user_id WHERE round_id=? ORDER BY c.user_id LIMIT 50 OFFSET ?", id, (page-1)*50)
 		if e != nil {
 			return nil, e
 		}
@@ -362,7 +455,7 @@ func (s *Store) GiftReport(ctx context.Context, actor, id string, page int) (any
 		for rs.Next() {
 			var v GiftPerson
 			v.ID = id
-			if e = rs.Scan(&v.User, &v.Name, &v.Flash, &v.Exp, &v.Tickets, &v.FlashPaid, &v.ExpPaid, &v.TicketsPaid, &v.NoTicketAward, &v.At); e != nil {
+			if e = rs.Scan(&v.User, &v.Name, &v.Flash, &v.Exp, &v.Tickets, &v.FlashPaid, &v.ExpPaid, &v.TicketsPaid, &v.NoTicketAward, &v.RuleNumber, &v.At); e != nil {
 				return nil, e
 			}
 			out = append(out, v)

@@ -168,3 +168,119 @@ func TestMySQLGiftConcurrentClaimAndReport(t *testing.T) {
 		t.Fatal(fmt.Sprint(offer, e))
 	}
 }
+
+func TestMySQLGiftRuleCapacityFallsThroughUnderConcurrency(t *testing.T) {
+	s := fixture(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	for _, q := range []string{
+		"DELETE FROM metar_gift_claim", "DELETE FROM metar_gift_round", "DROP TABLE IF EXISTS user_external_login",
+		"CREATE TABLE user_external_login(user_id BIGINT PRIMARY KEY,external_id BIGINT,provider VARCHAR(50),meta_pulse_user_id_guard BIGINT GENERATED ALWAYS AS (IF(provider='pulse_user_center',user_id,NULL)) STORED UNIQUE)",
+		"INSERT INTO user_external_login(user_id,external_id,provider) VALUES(1,41,'pulse_user_center'),(2,42,'pulse_user_center'),(3,43,'pulse_user_center')",
+	} {
+		if _, err := s.DB.ExecContext(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r, err := s.Execute(ctx, "1", "capacity-gift", Command{Op: "gift_start", Gift: &GiftRules{Name: "capacity", Minutes: 5, Groups: []GiftRule{
+		{UsageRaw: "100", MaxClaims: giftNumber(1), Exp: &GiftRange{10, 10}},
+		{MaxClaims: giftNumber(1), Exp: &GiftRange{1, 1}},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	type result struct {
+		user    string
+		receipt *GiftReceipt
+		err     error
+	}
+	ready, release := make(chan struct{}, 2), make(chan struct{})
+	get := func(c context.Context, _, _ string) (*int64, error) {
+		select {
+		case ready <- struct{}{}:
+		case <-c.Done():
+			return nil, c.Err()
+		}
+		select {
+		case <-release:
+			return giftNumber(101), nil
+		case <-c.Done():
+			return nil, c.Err()
+		}
+	}
+	got := make(chan result, 2)
+	for _, user := range []string{"2", "3"} {
+		go func(user string) {
+			_, receipt, err := s.Gift(ctx, user, r.ID, get)
+			got <- result{user, receipt, err}
+		}(user)
+	}
+	// Both requests see the first rule as available before either starts claiming.
+	for i := 0; i < 2; i++ {
+		select {
+		case <-ready:
+		case v := <-got:
+			t.Fatalf("claim returned before both checks started: %+v", v)
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
+	}
+	close(release)
+	seen := make(map[int]int64)
+	for i := 0; i < 2; i++ {
+		v := <-got
+		if v.err != nil || v.receipt == nil {
+			t.Fatalf("missing claim for %s: %v", v.user, v.err)
+		}
+		seen[v.receipt.RuleNumber] = v.receipt.Exp
+		_, replay, err := s.Gift(ctx, v.user, r.ID, nil)
+		if err != nil || replay == nil || *replay != *v.receipt {
+			t.Fatalf("claim changed on replay: %+v, %v", replay, err)
+		}
+	}
+	if len(seen) != 2 || seen[1] != 10 || seen[2] != 1 {
+		t.Fatalf("expected one winner per rule, got %v", seen)
+	}
+	if offer, receipt, err := s.Gift(ctx, "1", "", nil); err != nil || offer == nil || !offer.Locked || offer.Unavailable || receipt != nil {
+		t.Fatalf("full rules should be skipped without a usage lookup: %+v, %+v, %v", offer, receipt, err)
+	}
+	if offer, receipt, err := s.Gift(ctx, "1", r.ID, nil); err != nil || offer != nil || receipt != nil {
+		t.Fatalf("all rules full should prevent claiming: %+v, %+v, %v", offer, receipt, err)
+	}
+	detail, err := s.GiftReport(ctx, "1", r.ID, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := detail.([]GiftPerson)
+	if len(rows) != 2 || rows[0].RuleNumber+rows[1].RuleNumber != 3 {
+		t.Fatalf("expected both matched rules in the administrator report: %+v", rows)
+	}
+}
+
+func TestMySQLGiftRuleNumberMigrationPreservesLegacyClaims(t *testing.T) {
+	s := fixture(t)
+	ctx := context.Background()
+	for _, q := range []string{
+		"DELETE FROM metar_gift_claim", "DELETE FROM metar_gift_round",
+		"ALTER TABLE metar_gift_claim DROP INDEX gift_rule_claims, DROP COLUMN rule_number",
+		"INSERT INTO metar_gift_claim(round_id,user_id,external_id,flash,exp,tickets,flash_paid,created_at) VALUES(1,2,42,125,0,0,1,1800000000)",
+	} {
+		if _, err := s.DB.ExecContext(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Ensure is reentrant when the column and index have already been added.
+	for i := 0; i < 2; i++ {
+		if err := s.Ensure(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	report, err := s.GiftReport(ctx, "1", "1", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := report.([]GiftPerson)
+	if len(rows) != 1 || rows[0].RuleNumber != 0 || rows[0].Flash != 125 || !rows[0].FlashPaid {
+		t.Fatalf("legacy claim changed after upgrade: %+v", rows)
+	}
+}

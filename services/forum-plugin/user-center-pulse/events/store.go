@@ -85,7 +85,7 @@ func (s *Store) Ensure(ctx context.Context) error {
 		`CREATE TABLE IF NOT EXISTS metar_gift_gate(id INT PRIMARY KEY) ENGINE=InnoDB`,
 		`INSERT IGNORE INTO metar_gift_gate VALUES(1)`,
 		`CREATE TABLE IF NOT EXISTS metar_gift_round(id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,actor BIGINT UNSIGNED NOT NULL,starts BIGINT NOT NULL,ends BIGINT NOT NULL,rules JSON NOT NULL,INDEX(ends)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
-		`CREATE TABLE IF NOT EXISTS metar_gift_claim(round_id BIGINT UNSIGNED NOT NULL,user_id BIGINT UNSIGNED NOT NULL,external_id BIGINT UNSIGNED NOT NULL,flash BIGINT NOT NULL,exp BIGINT NOT NULL,tickets BIGINT NOT NULL,flash_paid BOOL NOT NULL DEFAULT 0,exp_paid BOOL NOT NULL DEFAULT 0,tickets_paid BOOL NOT NULL DEFAULT 0,no_ticket_award BOOL NOT NULL DEFAULT 0,created_at BIGINT NOT NULL,PRIMARY KEY(round_id,user_id),UNIQUE KEY(round_id,external_id)) ENGINE=InnoDB`,
+		`CREATE TABLE IF NOT EXISTS metar_gift_claim(round_id BIGINT UNSIGNED NOT NULL,user_id BIGINT UNSIGNED NOT NULL,external_id BIGINT UNSIGNED NOT NULL,flash BIGINT NOT NULL,exp BIGINT NOT NULL,tickets BIGINT NOT NULL,flash_paid BOOL NOT NULL DEFAULT 0,exp_paid BOOL NOT NULL DEFAULT 0,tickets_paid BOOL NOT NULL DEFAULT 0,no_ticket_award BOOL NOT NULL DEFAULT 0,rule_number TINYINT UNSIGNED NOT NULL DEFAULT 0,created_at BIGINT NOT NULL,PRIMARY KEY(round_id,user_id),UNIQUE KEY(round_id,external_id), INDEX gift_rule_claims(round_id,rule_number)) ENGINE=InnoDB`,
 		`CREATE TABLE IF NOT EXISTS metar_home_ad(id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, target VARCHAR(2048) NOT NULL, picture MEDIUMBLOB NOT NULL) ENGINE=InnoDB`,
 		`CREATE TABLE IF NOT EXISTS metar_event(id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,title VARCHAR(100) NOT NULL,body TEXT NOT NULL,location VARCHAR(300) NOT NULL,starts_at BIGINT NOT NULL,ends_at BIGINT NOT NULL,deadline BIGINT NOT NULL,capacity INT NOT NULL,registered_count INT NOT NULL DEFAULT 0,status VARCHAR(16) NOT NULL,version INT NOT NULL DEFAULT 1,created_by BIGINT UNSIGNED NOT NULL,updated_by BIGINT UNSIGNED NOT NULL,INDEX upcoming(starts_at,id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 		`CREATE TABLE IF NOT EXISTS metar_event_member(event_id BIGINT UNSIGNED NOT NULL,user_id BIGINT UNSIGNED NOT NULL,joined BOOLEAN NOT NULL,joined_at BIGINT NOT NULL,PRIMARY KEY(event_id,user_id)) ENGINE=InnoDB`,
@@ -103,6 +103,15 @@ func (s *Store) Ensure(ctx context.Context) error {
 	}
 	if columns == 0 {
 		if _, e = c.ExecContext(ctx, "ALTER TABLE metar_gift_claim ADD COLUMN no_ticket_award BOOL NOT NULL DEFAULT 0"); e != nil {
+			return e
+		}
+	}
+	// Old receipts have no saved rule number; old rounds also have no limits.
+	if e = c.QueryRowContext(ctx, "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='metar_gift_claim' AND column_name='rule_number'").Scan(&columns); e != nil {
+		return e
+	}
+	if columns == 0 {
+		if _, e = c.ExecContext(ctx, "ALTER TABLE metar_gift_claim ADD COLUMN rule_number TINYINT UNSIGNED NOT NULL DEFAULT 0, ADD INDEX gift_rule_claims(round_id,rule_number)"); e != nil {
 			return e
 		}
 	}

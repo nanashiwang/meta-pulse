@@ -53,14 +53,14 @@
       )
       .join("");
     return `<section class="lg-rule" data-rule="${prefix}"><header class="lg-heading"><h3 data-rule-title>规则 1（最高优先级）</h3><div class="lg-rule-actions"><button type="button" class="btn" data-rule-action="up">上移</button><button type="button" class="btn" data-rule-action="down">下移</button><button type="button" class="btn" data-rule-action="remove">删除</button></div></header>
-      <section class="lg-group lg-gates"><h3>昨日领取门槛 <small>留空不限 · 填写项须同时满足</small></h3><div class="lg-criteria"><label>API 消耗大于<span class="lg-unit"><input name="${prefix}usage" inputmode="decimal" placeholder="不限"><select aria-label="用量单位" name="${prefix}unit"><option value="4">万</option><option value="8">亿</option></select></span></label>
-      <label>点赞数大于等于<input type="number" min="0" max="1000000" name="${prefix}likes" placeholder="不限"></label><label>评论数大于等于<input type="number" min="0" max="1000000" name="${prefix}comments" placeholder="不限"></label></div></section>
+      <section class="lg-group lg-gates"><h3>领取条件 <small>点赞、评论和 API 消耗按昨日统计 · 留空不限</small></h3><div class="lg-criteria"><label>API 消耗大于<span class="lg-unit"><input name="${prefix}usage" inputmode="decimal" placeholder="不限"><select aria-label="用量单位" name="${prefix}unit"><option value="4">万</option><option value="8">亿</option></select></span></label>
+      <label>点赞数大于等于<input type="number" min="0" max="1000000" name="${prefix}likes" placeholder="不限"></label><label>评论数大于等于<input type="number" min="0" max="1000000" name="${prefix}comments" placeholder="不限"></label><label>领取人数上限<input type="number" min="1" max="1000000" step="1" name="${prefix}max_claims" placeholder="留空不限"></label></div></section>
       <section class="lg-group lg-rewards"><h3>奖品配置 <small>可组合发放 · 抽奖券随机下限可填 0</small></h3><div class="lg-prizes">${rewards}</div></section></section>`;
   }
   function adminHTML() {
     return `<section class="card card-pad lg-admin" data-gifts><details data-gift-editor><summary>限时赠礼 · 创建活动</summary><p data-round-state>正在核对当前轮次…</p><form class="member-event-form lg-form">
       <section class="lg-group lg-basic"><h3>基本设置</h3><div class="lg-basics"><label>赠礼名称<input name="name" required maxlength="80" placeholder="例如：周末回馈"></label><label>持续时间（分钟）<input type="number" name="minutes" min="1" max="43200" value="60" required></label></div></section>
-      <div class="lg-rule-list"><p>按顺序从上到下匹配，同一用户只领取第一组满足条件的奖励，不叠加。</p><div data-rule-list>${ruleHTML(
+      <div class="lg-rule-list"><p>按顺序从上到下匹配，满员规则直接跳过；每人只领取第一组满足条件且有名额的奖励。</p><div data-rule-list>${ruleHTML(
         "r1-",
       )}</div><button type="button" class="btn" data-add-rule>＋ 添加条件与奖励</button></div>
       <div class="lg-submit"><span>仅限已绑定 API 的账号，每人每轮一次。</span><button class="btn primary" disabled>开启本轮赠礼</button></div><p role="status"></p></form>
@@ -111,6 +111,13 @@
       likes: val("likes") ? Number(val("likes")) : null,
       comments: val("comments") ? Number(val("comments")) : null,
     };
+    const cap = val("max_claims");
+    if (cap) {
+      const n = Number(cap);
+      if (!/^\d+$/.test(cap) || !Number.isInteger(n) || n < 1 || n > 1000000)
+        throw Error("领取人数上限必须是 1 到 1000000 的整数，留空不限。");
+      g.max_claims = n;
+    }
     let count = 0;
     for (const [k, , p] of points) {
       if (val(k + "mode") === "none") continue;
@@ -139,7 +146,7 @@
         "</p>"
       );
     const labels = detail
-      ? ["领取人", "领取时间", "闪电", "经验值", "抽奖券"]
+      ? ["领取人", "领取时间", "命中规则", "闪电", "经验值", "抽奖券"]
       : [
           "赠礼名称",
           "发起人",
@@ -159,6 +166,7 @@
           ? [
               esc(v.Name) + " <small>#" + esc(v.User) + "</small>",
               esc(new Date(v.At * 1000).toLocaleString()),
+              v.rule_number > 0 ? "#" + esc(v.rule_number) : "—",
             ]
           : [
               esc(v.Name),

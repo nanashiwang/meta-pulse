@@ -3,6 +3,7 @@
 (() => {
   const EN = Object.freeze({
     "本次未获得抽奖券": "No draw tickets this time",
+    "命中规则": "Matched rule",
     "我回过的帖": "Threads I replied to",
     "按帖子标题搜索": "Search by thread title",
     "跳到我的回复": "Jump to my reply",

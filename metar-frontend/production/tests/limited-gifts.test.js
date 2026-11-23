@@ -5,7 +5,14 @@ const test = require("node:test"),
 const w = {};
 vm.runInNewContext(
   fs.readFileSync(require.resolve("../src/limited-gifts.js"), "utf8"),
-  { window: w },
+  {
+    window: w,
+    FormData: class {
+      constructor(form) {
+        return form.values;
+      }
+    },
+  },
 );
 const { units, adminHTML, historyHTML } = w.MetarLimitedGift;
 test("gift thresholds retain the API integer through wan/yi and flash cents", () => {
@@ -26,11 +33,13 @@ test("admin can choose each reward mode and numeric limits", () => {
     "r1-unit",
     "r1-likes",
     "r1-comments",
+    "r1-max_claims",
   ])
     assert.ok(html.includes('name="' + n + '"'));
   assert.match(html, /type="radio" name="r1-flashmode" value="none" checked/);
   assert.match(html, /type="radio" name="r1-flashmode" value="random"/);
   assert.match(html, /class="lg-quantities" hidden/);
+  assert.match(html, /min="1" max="1000000" step="1" name="r1-max_claims" placeholder="留空不限"/);
 });
 
 test("gift history remains outside the collapsed editor and active or unreadable state blocks submit", async () => {
@@ -114,6 +123,7 @@ test("claim detail pages render actual rewards and clear stale rows after denied
     Exp: 8,
     Tickets: 2,
     ExpPaid: true,
+    rule_number: 2,
   };
   const admin = {
     async request(path) {
@@ -134,7 +144,7 @@ test("claim detail pages render actual rewards and clear stale rows after denied
   const el = (key) => elements.get("[data-claim-" + key + "]");
   await flush();
   assert.equal(requests[0], "/metar/events/gift-history?id=7&page=1");
-  assert.match(el("rows").innerHTML, /&lt;img src=x&gt;.*5\.23.*已到账/);
+  assert.match(el("rows").innerHTML, /&lt;img src=x&gt;.*#2.*5\.23.*已到账/);
   assert.doesNotMatch(el("rows").innerHTML, /<img/);
   assert.equal(el("next").disabled, false);
   el("next").onclick();
@@ -149,4 +159,48 @@ test("claim detail pages render actual rewards and clear stale rows after denied
   current = false;
   await reload();
   assert.equal(requests.length, 3);
+});
+
+
+test("each gift rule posts its own limit and omits empty limits", async () => {
+  const button = {},
+    msg = {},
+    sent = [];
+  const fields = { name: "Test", minutes: "5" };
+  for (const prefix of ["r2-", "r1-"])
+    Object.assign(fields, {
+      [prefix + "flashmode"]: "none",
+      [prefix + "ticketsmode"]: "none",
+      [prefix + "expmode"]: "fixed",
+      [prefix + "explo"]: "5",
+    });
+  const form = {
+    values: new Map(Object.entries(fields)),
+    querySelector: (s) =>
+      s === ".lg-submit button" ? button : s === "[role=status]" ? msg : null,
+    querySelectorAll: () => ["r2-", "r1-"].map((rule) => ({ dataset: { rule } })),
+  };
+  const el = { querySelector: (s) => s === "form" ? form : {} };
+  w.confirm = () => true;
+  const stop = w.MetarLimitedGift.adminMount(
+    el,
+    { request: async () => [] },
+    (data) => sent.push(data),
+    { querySelector: () => ({}) },
+  );
+  await new Promise(setImmediate);
+  const submit = () => form.onsubmit({ preventDefault() {} });
+  for (const value of ["0", "1.5", "1000001"]) {
+    form.values.set("r2-max_claims", value);
+    await submit();
+    assert.match(msg.textContent, /规则 1：领取人数上限/);
+  }
+  assert.equal(sent.length, 0);
+  form.values.set("r2-max_claims", "1");
+  await submit();
+  assert.equal(sent.length, 1);
+  const [first, second] = sent[0].gift.groups;
+  assert.equal(first.max_claims, 1);
+  assert.ok(!Object.hasOwn(second, "max_claims"));
+  stop();
 });
