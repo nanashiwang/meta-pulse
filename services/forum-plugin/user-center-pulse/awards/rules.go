@@ -136,6 +136,18 @@ func (c Command) Validate() error {
 		return nil
 	case "sync", "publish":
 		return nil
+	case "grant", "rec_grant":
+		if !idRE.MatchString(c.SubjectID) || c.Reason != "" || c.QuestionID != "" || c.TitleKey != "" || c.CriterionOne || c.CriterionTwo {
+			return ErrInvalid
+		}
+		if c.Op == "rec_grant" {
+			if c.Period.Type != "week" || c.Period.Kind != "post" || !idRE.MatchString(c.RecommenderID) {
+				return ErrInvalid
+			}
+		} else if c.RecommenderID != "" {
+			return ErrInvalid
+		}
+		return nil
 	case "rec_paid":
 		if c.Period.Type != "week" || c.Period.Kind != "post" || !idRE.MatchString(c.SubjectID) || !idRE.MatchString(c.RecommenderID) || strings.TrimSpace(c.Reason) == "" || len([]rune(c.Reason)) > 2000 {
 			return ErrInvalid

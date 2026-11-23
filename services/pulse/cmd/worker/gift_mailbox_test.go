@@ -40,3 +40,18 @@ func TestGiftMailboxAcceptsOnlyCompletedMatchingReceipts(t *testing.T) {
 		t.Fatal(e, s)
 	}
 }
+
+func TestAwardReceiptKeepsExactIDThroughSharedDelivery(t *testing.T) {
+	dir := t.TempDir()
+	// Above JavaScript's safe integer range; the server-side mailbox must not round it.
+	const id = 4611686018427387905
+	body := `{"round":4611686018427387905,"actor":1,"user":42,"forum":2,"flash":5000,"tickets":0}`
+	if err := os.WriteFile(filepath.Join(dir, "4611686018427387905-42.json"), []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	capture := &capturedGift{}
+	cursor := ""
+	if err := importGifts(context.Background(), dir, &cursor, capture); err != nil || capture.n != 1 || capture.v.Round != id || capture.v.Flash != 5000 {
+		t.Fatal(err, capture)
+	}
+}

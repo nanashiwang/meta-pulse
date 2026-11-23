@@ -197,6 +197,9 @@ func (s *Store) markPaid(ctx context.Context, tx *sql.Tx, actor string, c Comman
 	if status != "awarded" {
 		return ErrForbidden
 	}
+	if err := ensureNotQueued(ctx, tx, winnerSource(p, user)); err != nil {
+		return err
+	}
 	_, err = tx.ExecContext(ctx, "INSERT INTO metar_award_manual_payment(period_type,period_key,kind,user_id,actor_id,paid_at,note) VALUES(?,?,?,?,?,?,?)", p.Type, p.Key, p.Kind, user, actor, now.Unix(), c.Reason)
 	if err != nil {
 		var mysqlErr *mysql.MySQLError

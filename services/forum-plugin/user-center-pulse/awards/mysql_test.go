@@ -31,7 +31,7 @@ func fixture(t *testing.T) (*Store, *time.Time) {
 	}
 	t.Cleanup(func() { db.Close() })
 	db.SetMaxOpenConns(12)
-	for _, table := range []string{"metar_award_recommendation_reward", "metar_award_title_preference", "metar_award_manual_payment", "metar_award_audit", "metar_award_command", "metar_award_winner", "metar_award_candidate", "metar_award_nomination", "metar_award_period", "activity", "config", "answer", "question", "user_role_rel", "user"} {
+	for _, table := range []string{"metar_award_delivery", "user_external_login", "metar_award_recommendation_reward", "metar_award_title_preference", "metar_award_manual_payment", "metar_award_audit", "metar_award_command", "metar_award_winner", "metar_award_candidate", "metar_award_nomination", "metar_award_period", "activity", "config", "answer", "question", "user_role_rel", "user"} {
 		if _, err = db.Exec("DROP TABLE IF EXISTS " + "`" + table + "`"); err != nil {
 			t.Fatal(err)
 		}
@@ -461,5 +461,106 @@ func TestSubmissionClickWeekAndCancellationMySQL(t *testing.T) {
 	rows, err = s.Submissions(ctx, "2", clickWeek)
 	if err != nil || len(rows) != 0 {
 		t.Fatal(rows, err)
+	}
+}
+
+func TestMySQLAwardDeliveryUsesPublishedAwardsAndPreventsDuplicatePayment(t *testing.T) {
+	s, now := fixture(t)
+	ctx := context.Background()
+	if _, err := s.DB.Exec("CREATE TABLE user_external_login(user_id BIGINT PRIMARY KEY,external_id BIGINT UNSIGNED,provider VARCHAR(50),meta_pulse_user_id_guard BIGINT GENERATED ALWAYS AS (IF(provider='pulse_user_center',user_id,NULL)) STORED UNIQUE)"); err != nil {
+		t.Fatal(err)
+	}
+	p := Weekly(*now, "post")
+	grant := Command{Op: "grant", Period: p, SubjectID: "100"}
+	rec := Command{Op: "rec_grant", Period: p, SubjectID: "100", RecommenderID: "2"}
+	fail := func(actor, key string, c Command, want error) {
+		t.Helper()
+		if _, err := s.Execute(ctx, actor, key, c, true); !errors.Is(err, want) {
+			t.Fatalf("%s: got %v, want %v", key, err, want)
+		}
+	}
+	fail("2", "non-admin-delivery-01", grant, ErrForbidden)
+	fail("3", "no-unpublished-award", grant, ErrClosed)
+	execute(t, s, "2", "award-nomination-001", Command{Op: "nominate", QuestionID: "100"}, false)
+	*now = date(t, "2026-11-17 00:00:00")
+	selected := execute(t, s, "3", "award-select-test-01", reviewCommand("select", "post", "100", 0), true)
+	pver := execute(t, s, "3", "award-publish-test-1", reviewCommand("publish", "post", "", selected.Version), true).Version
+	grant.Version, rec.Version = pver, pver
+	fail("3", "unbound-award-user-1", grant, ErrRecipientUnbound)
+	if _, err := s.DB.Exec("INSERT INTO user_external_login(user_id,external_id,provider) VALUES(1,51,'pulse_user_center'),(2,52,'pulse_user_center')"); err != nil {
+		t.Fatal(err)
+	}
+	sent := execute(t, s, "3", "award-actual-send-01", grant, true)
+	if replay := execute(t, s, "3", "award-actual-send-01", grant, true); replay != sent {
+		t.Fatal(replay, sent)
+	}
+	grant.Version = sent.Version
+	fail("3", "award-double-send-01", grant, ErrConflict)
+	manual := Command{Op: "paid", Period: p, SubjectID: "100", Reason: "legacy", Version: sent.Version}
+	fail("3", "legacy-after-queue-1", manual, ErrConflict)
+	unknown := rec
+	unknown.RecommenderID, unknown.Version = "6", sent.Version
+	fail("3", "wrong-recommender-01", unknown, ErrNotFound)
+	rec.Version = sent.Version
+	recSent := execute(t, s, "3", "recommender-send-001", rec, true)
+	rec.Version = recSent.Version
+	fail("3", "recommender-double-1", rec, ErrConflict)
+	rec.Op, rec.Reason = "rec_paid", "legacy"
+	fail("3", "rec-legacy-after-001", rec, ErrConflict)
+	work, err := s.PendingDeliveries(ctx, 0)
+	if err != nil || len(work) != 2 {
+		t.Fatal(work, err)
+	}
+	amounts := map[uint64]int64{1: 5000, 2: 2000}
+	for _, d := range work {
+		if d.ID < 1<<62 || d.Actor != 3 || amounts[d.User] != d.Cents {
+			t.Fatalf("wrong receipt: %+v", d)
+		}
+	}
+	view, err := s.List(ctx, "3", p, 1, true)
+	if err != nil || len(view.Items) != 1 || view.Items[0].RewardStatus != "queued" || view.Items[0].Recommendations[0].RewardStatus != "queued" {
+		t.Fatal(view, err)
+	}
+	for _, d := range work {
+		if err := s.ConfirmDelivery(ctx, d.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	view, err = s.List(ctx, "3", p, 1, true)
+	if err != nil || view.Items[0].RewardStatus != "settled" || view.Items[0].Recommendations[0].RewardStatus != "settled" {
+		t.Fatal(view, err)
+	}
+	mine, err := s.Honors(ctx, "2", "", 1)
+	if err != nil || len(mine.Recommendations) != 1 || mine.Recommendations[0].RewardStatus != "settled" {
+		t.Fatal(mine, err)
+	}
+	if out, err := s.PendingDeliveries(ctx, 0); err != nil || len(out) != 0 {
+		t.Fatal(out, err)
+	}
+}
+
+func TestMySQLAwardDeliveryRespectsHistoricalManualPayments(t *testing.T) {
+	s, now := fixture(t)
+	ctx := context.Background()
+	execute(t, s, "2", "legacy-nomination-01", Command{Op: "nominate", QuestionID: "100"}, false)
+	p := Weekly(*now, "post")
+	*now = date(t, "2026-11-17 00:00:00")
+	a := execute(t, s, "3", "legacy-select-test01", reviewCommand("select", "post", "100", 0), true)
+	a = execute(t, s, "3", "legacy-publish-test1", reviewCommand("publish", "post", "", a.Version), true)
+	for _, cmd := range []Command{{Op: "paid", Period: p, SubjectID: "100", Reason: "legacy"}, {Op: "rec_paid", Period: p, SubjectID: "100", RecommenderID: "2", Reason: "legacy"}} {
+		cmd.Version = a.Version
+		a = execute(t, s, "3", "legacy-paid-"+cmd.Op, cmd, true)
+		cmd.Version, cmd.Reason = a.Version, ""
+		if cmd.Op == "paid" {
+			cmd.Op = "grant"
+		} else {
+			cmd.Op = "rec_grant"
+		}
+		if _, err := s.Execute(ctx, "3", "no-legacy-redelivery-"+cmd.Op, cmd, true); !errors.Is(err, ErrConflict) {
+			t.Fatal(err)
+		}
+	}
+	if out, err := s.PendingDeliveries(ctx, 0); err != nil || len(out) != 0 {
+		t.Fatal(out, err)
 	}
 }

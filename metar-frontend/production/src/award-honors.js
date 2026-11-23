@@ -89,7 +89,7 @@
     html() {
       const d = this.data;
       return (
-        '<section class="card card-pad"><h1>我的头衔与勋章</h1><p>头衔与勋章在公布入选时获得，与手动发放闪分开处理。</p><form data-honor-form><label>帖子等级旁展示的头衔<select name="title"><option value="">不展示</option>' +
+        '<section class="card card-pad"><h1>我的头衔与勋章</h1><p>头衔与勋章在公布入选时获得，与闪电奖励分开处理。</p><form data-honor-form><label>帖子等级旁展示的头衔<select name="title"><option value="">不展示</option>' +
         d.titles
           .map(
             (v) =>
@@ -127,7 +127,7 @@
           .join("") +
         (d.recommendations?.length ? '<h2 class="mt24">' + translate('推荐获奖记录','Recommendation rewards') + '</h2>' + d.recommendations.map(r => {
           const title = r.title ? '<a href="/questions/' + esc(r.question_id) + '">' + esc(r.title) + '</a>' : translate('帖子暂不可见','Post unavailable');
-          return '<article class="card card-pad mt8">' + title + '<p>' + esc(r.period_key) + ' · ' + esc((r.cents / 100).toFixed(2)) + ' ⚡️ · ' + (r.paid_at ? translate('已手动发放','Manually delivered') : translate('待手动发放','Pending manual delivery')) + '</p></article>';
+          return '<article class="card card-pad mt8">' + title + '<p>' + esc(r.period_key) + ' · ' + esc((r.cents / 100).toFixed(2)) + ' ⚡️ · ' + (r.reward_status === 'settled' ? translate('已到账','Credited') : r.paid_at ? translate('已手动发放','Manually delivered') : r.reward_status === 'queued' ? translate('待到账','Awaiting credit') : translate('待发放','Awaiting distribution')) + '</p></article>';
         }).join('') : '') +
         '<div class="flex mt16">' +
         (this.pageNo > 1

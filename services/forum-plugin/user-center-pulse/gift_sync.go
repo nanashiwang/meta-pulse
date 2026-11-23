@@ -15,13 +15,16 @@ import (
 )
 
 func (uc *UserCenter) giftReceiptLoop() {
-	var round, user uint64
+	var round, user, afterAward uint64
 	for {
 		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 		s, e := uc.communityEventStore(ctx)
 		if e == nil {
 			_ = uc.giftReceipts(ctx, s, &round, &user)
 		}
+		cancel()
+		ctx, cancel = context.WithTimeout(context.Background(), 12*time.Second)
+		_ = uc.awardReceipts(ctx, &afterAward)
 		cancel()
 		time.Sleep(15 * time.Second)
 	}
@@ -57,43 +60,12 @@ func (uc *UserCenter) giftReceipts(ctx context.Context, s *events.Store, afterRo
 		*afterRound = x.r
 		*afterUser = x.u
 		fid := fmt.Sprint(x.u)
-		uc.runtimeMu.RLock()
-		reader, ok := uc.Guard.(communityIdentityReader)
-		if !ok || uc.Client == nil {
-			uc.runtimeMu.RUnlock()
+		paid, valid, err := uc.syncRewardReceipt(ctx, x.r, x.u, x.actor, x.ex, x.flash, x.tickets)
+		if err != nil {
+			return err
+		}
+		if !valid {
 			continue
-		}
-		ex, e := reader.CommunityIdentity(ctx, fid)
-		if e != nil || ex != x.ex {
-			uc.runtimeMu.RUnlock()
-			continue
-		}
-		var paid struct {
-			Flash   bool  `json:"flash_paid"`
-			Tickets int64 `json:"tickets"`
-		}
-		receiptPath := ""
-		if x.flash > 0 || x.tickets > 0 {
-			subject, _ := strconv.ParseUint(ex, 10, 64)
-			body, _ := json.Marshal(map[string]any{"user": subject, "round": x.r, "forum": x.u, "actor": x.actor, "flash": x.flash, "tickets": x.tickets})
-			receiptPath = filepath.Join(giftMailbox, fmt.Sprintf("%d-%d.json", x.r, subject))
-			if e := mirrorGift(receiptPath, body); e != nil {
-				uc.runtimeMu.RUnlock()
-				return e
-			}
-			data, status, e := uc.Client.communityRequest(ctx, http.MethodGet, fmt.Sprintf("/v1/internal/me/gift-status/%d", x.r), ex, "", nil)
-			if e == nil && status == 200 {
-				if e = decodeCommunityResponse(data, &paid); e != nil {
-					paid.Flash = false
-					paid.Tickets = 0
-				}
-			}
-		}
-		uc.runtimeMu.RUnlock()
-		if receiptPath != "" && (x.flash == 0 || paid.Flash) && (x.tickets == 0 || paid.Tickets == x.tickets) {
-			if err := os.Remove(receiptPath); err != nil && !os.IsNotExist(err) {
-				return err
-			}
 		}
 		expOK := false
 		if x.exp > 0 {
@@ -111,6 +83,78 @@ func (uc *UserCenter) giftReceipts(ctx context.Context, s *events.Store, afterRo
 		*afterUser = 0
 	}
 	return nil
+}
+
+func (uc *UserCenter) awardReceipts(ctx context.Context, after *uint64) error {
+	s, err := uc.awardStore(ctx)
+	if err != nil {
+		return err
+	}
+	work, err := s.PendingDeliveries(ctx, *after)
+	if err != nil {
+		return err
+	}
+	var first error
+	for _, d := range work {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		*after = d.ID
+		paid, _, err := uc.syncRewardReceipt(ctx, d.ID, d.User, d.Actor, d.External, d.Cents, 0)
+		if err == nil && paid.Flash {
+			err = s.ConfirmDelivery(ctx, d.ID)
+		}
+		if err != nil && first == nil {
+			first = err
+		}
+	}
+	if len(work) < 20 {
+		*after = 0
+	}
+	return first
+}
+
+type giftSettlement struct {
+	Flash   bool  `json:"flash_paid"`
+	Tickets int64 `json:"tickets"`
+}
+
+func (uc *UserCenter) syncRewardReceipt(ctx context.Context, round, user, actor uint64, external string, flash, tickets int64) (giftSettlement, bool, error) {
+	var paid giftSettlement
+	uc.runtimeMu.RLock()
+	defer uc.runtimeMu.RUnlock()
+	reader, ok := uc.Guard.(communityIdentityReader)
+	if !ok || uc.Client == nil {
+		return paid, false, nil
+	}
+	ex, err := reader.CommunityIdentity(ctx, fmt.Sprint(user))
+	if err != nil || ex != external {
+		return paid, false, nil
+	}
+	if flash == 0 && tickets == 0 {
+		return paid, true, nil
+	}
+	subject, err := strconv.ParseUint(ex, 10, 64)
+	if err != nil || subject == 0 {
+		return paid, false, nil
+	}
+	body, _ := json.Marshal(map[string]any{"user": subject, "round": round, "forum": user, "actor": actor, "flash": flash, "tickets": tickets})
+	path := filepath.Join(giftMailbox, fmt.Sprintf("%d-%d.json", round, subject))
+	if err := mirrorGift(path, body); err != nil {
+		return paid, false, err
+	}
+	data, status, err := uc.Client.communityRequest(ctx, http.MethodGet, fmt.Sprintf("/v1/internal/me/gift-status/%d", round), ex, "", nil)
+	if err == nil && status == 200 {
+		if err = decodeCommunityResponse(data, &paid); err != nil {
+			paid = giftSettlement{}
+		}
+	}
+	if (flash == 0 || paid.Flash) && (tickets == 0 || paid.Tickets == tickets) {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return giftSettlement{}, true, err
+		}
+	}
+	return paid, true, nil
 }
 
 // Only Forum mounts this dedicated mailbox writable. Contents are replayable

@@ -2,8 +2,8 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const source=fs.readFileSync(require('node:path').join(__dirname,'../src/awards.js'),'utf8');
 function setup(){class Clock extends Date{static now(){return Date.parse("2026-11-18T06:00:00Z");}}const memory=new Map();const host={MetarI18n:{getLanguage:()=> 'zh_CN'},sessionStorage:{getItem:k=>memory.get(k),setItem:(k,v)=>memory.set(k,v),removeItem:k=>memory.delete(k)},crypto:{randomUUID:()=> 'stable-request-key'}};vm.runInNewContext(source,{window:host,URLSearchParams,Date:Clock});return {api:host.MetarAwards,host,memory}}
 const data={status:'open',version:1,review_at:1794931200,items:[{subject_id:'100',user_id:'1',question_id:'100',answer_id:'0',title:'<img src=x>',name:'<script>bad</script>',status:'pending',reason:'<b>proof</b>',eligible:true,nominations:2}],more:false};
-test('award page uses Beijing Monday and escapes candidate evidence',async()=>{const h=setup();assert.equal(h.api.currentWeek(new Date('2026-11-15T16:00:00Z')),'2026-11-16');assert.equal(h.api.currentWeek(new Date('2026-11-15T15:59:59Z')),'2026-11-09');const view=new h.api.View({}, {request:async()=>data});const html=await view.page('/admin/awards',{id:'3',role_id:2},new URLSearchParams('type=week&key=2026-11-09&kind=post'));assert.ok(html.includes('&lt;img'));assert.ok(!html.includes('<script>bad'));assert.ok(html.includes('data-criterion="one"'));assert.ok(html.includes('由管理员手动发放'));});
-test('public winners show deferred reward and never admin review controls',async()=>{const h=setup(),view=new h.api.View({request:async()=>({...data,status:'published',items:[{...data.items[0],status:'awarded',amount:50,reward_status:'deferred'}]})},{});const html=await view.page('/awards',null,new URLSearchParams('key=2026-11-09'));assert.ok(html.includes('50'));assert.ok(html.includes('待手动发放'));assert.ok(!html.includes('data-award="select"'));assert.ok(!html.includes('data-award="publish"'));});
+test('award page uses Beijing Monday and escapes candidate evidence',async()=>{const h=setup();assert.equal(h.api.currentWeek(new Date('2026-11-15T16:00:00Z')),'2026-11-16');assert.equal(h.api.currentWeek(new Date('2026-11-15T15:59:59Z')),'2026-11-09');const view=new h.api.View({}, {request:async()=>data});const html=await view.page('/admin/awards',{id:'3',role_id:2},new URLSearchParams('type=week&key=2026-11-09&kind=post'));assert.ok(html.includes('&lt;img'));assert.ok(!html.includes('<script>bad'));assert.ok(html.includes('data-criterion="one"'));assert.ok(html.includes('由管理员点击发放'));});
+test('public winners show deferred reward and never admin review controls',async()=>{const h=setup(),view=new h.api.View({request:async()=>({...data,status:'published',items:[{...data.items[0],status:'awarded',amount:50,reward_status:'deferred'}]})},{});const html=await view.page('/awards',null,new URLSearchParams('key=2026-11-09'));assert.ok(html.includes('50'));assert.ok(html.includes('待发放'));assert.ok(!html.includes('data-award="select"'));assert.ok(!html.includes('data-award="publish"'));});
 test('uncertain review is replayed with the same key; confirmed command is cleared before refresh',async()=>{const h=setup();let fail=true;const requests=[];const client={request:async(path,opts)=>{if(opts){requests.push(opts);if(fail)throw Error('timeout');return {ok:true}}return data}};const view=new h.api.View({},client);await view.page('/admin/awards',{id:'3'},new URLSearchParams('key=2026-11-09'));const cmd={op:'sync',period:{type:'week',key:'2026-11-09',kind:'post'},version:1};await assert.rejects(view.command(cmd));assert.equal(h.memory.size,1);await assert.rejects(view.command({...cmd}));fail=false;await view.command(view.pending.command);assert.equal(requests.length,2);assert.equal(requests[0].headers['Idempotency-Key'],requests[1].headers['Idempotency-Key']);assert.equal(requests[0].body,requests[1].body);assert.equal(h.memory.size,0);});
 test('definitive denial clears pending review rather than replaying against a new version',async()=>{const h=setup();const client={request:async(path,opts)=>{if(opts)throw Object.assign(Error('conflict'),{status:409});return data}};const view=new h.api.View({},client);await view.page('/admin/awards',{id:'3'},new URLSearchParams('key=2026-11-09'));await assert.rejects(view.command({op:'sync',version:1}));assert.equal(view.pending,null);assert.equal(h.memory.size,0);});
 
@@ -57,3 +57,47 @@ test('my submissions keeps the period, separates both awards and escapes answer 
 });
 test('award header has two distinct stacked controls for admins',async()=>{const h=setup(),v=new h.api.View({request:async()=>data},{});const html=await v.page('/awards',{id:'3',role_id:2},new URLSearchParams('key=2026-11-16'));assert.match(html,/<nav class="award-header-actions"><a class="btn primary"[^>]+>我的提交<\/a><a class="btn"[^>]+>管理审核<\/a><\/nav>/);});
 test('missing submissions API retains both sections and does not claim empty history',async()=>{const h=setup(),v=new h.api.View({request:async()=>{throw Error('invalid_response')}},{});const html=await v.page('/awards',{id:'3'},new URLSearchParams('key=2026-11-16&view=submissions'));for(const expected of ['重新加载','优秀帖子奖','优秀回答奖','伯乐奖'])assert.ok(html.includes(expected));assert.ok(!html.includes('本期暂无提交'));});
+
+
+test('published awards use three-column cards and only offer valid delivery actions', async () => {
+ const h = setup();
+ const item = {...data.items[0], status:'awarded', amount:50, reward_status:'manual_pending', recommendations:[{user_id:'2', name:'推荐者', cents:2000, reward_status:'ready'}]};
+ const open = {...data, status:'published', items:[item]};
+ const view = new h.api.View({request:async()=>open},{request:async()=>open});
+ const html = await view.page('/admin/awards',{id:'3'},new URLSearchParams('key=2026-11-09'));
+ assert.match(html, /award-entry--three/);
+ assert.match(html, /data-award="grant">发放/);
+ assert.match(html, /data-award="rec_grant".*>发放/);
+ assert.doesNotMatch(html, /确认已手动发放|登记发放/);
+ const publicView = await view.page('/awards',null,new URLSearchParams('key=2026-11-09'));
+ assert.doesNotMatch(publicView, /推荐名单|data-award="(?:grant|rec_grant)"/);
+ item.reward_status='manual_paid';
+ item.recommendations[0].reward_status = 'queued';
+ const paid = await view.page('/admin/awards',{id:'3'},new URLSearchParams('key=2026-11-09'));
+ assert.match(paid, /已手动发放/);
+ assert.match(paid, /待到账/);
+ assert.doesNotMatch(paid, /data-award="(?:grant|rec_grant)"/);
+});
+
+test('send action needs confirmation, no manual payment note or client amount', async () => {
+ const h = setup(), ui = candidateControls(), posts = [];
+ const published = {...data,status:'published',items:[{...data.items[0],status:'awarded',amount:50,reward_status:'manual_pending'}]};
+ const client = {request:async(path,opts)=>{
+  if(opts) {posts.push(JSON.parse(opts.body)); return {version:2};}
+  if (posts.length) return {...published,version:2,items:[{...published.items[0],reward_status:'queued'}]};
+  return published;
+ }};
+ const view = new h.api.View({},client);
+ await view.page('/admin/awards',{id:'3'},new URLSearchParams('key=2026-11-09'));
+ view.mount(ui.viewRoot);
+ ui.button.dataset.award='grant';
+ h.host.confirm=()=>false;
+ await ui.button.onclick();
+ assert.equal(posts.length,0);
+ h.host.confirm=()=>true;
+ await ui.button.onclick();
+ assert.deepEqual(posts,[{op:'grant',period:{type:'week',key:'2026-11-09',kind:'post'},version:1,subject_id:'100'}]);
+ assert.match(ui.viewRoot.innerHTML,/待到账/);
+ assert.doesNotMatch(ui.viewRoot.innerHTML,/data-award="grant"/);
+ assert.match(ui.feedback.textContent,/已提交发放/);
+});

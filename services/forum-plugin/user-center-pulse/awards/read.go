@@ -108,6 +108,15 @@ func (s *Store) List(ctx context.Context, user string, p Period, page int, admin
 				}
 			} else if !errors.Is(paymentErr, sql.ErrNoRows) {
 				return out, paymentErr
+			} else {
+				state, at, err := deliveryStatus(ctx, tx, winnerSource(p, c.UserID))
+				if err != nil {
+					return out, err
+				}
+				if state != "ready" {
+					c.RewardStatus = state
+					c.PaidAt = at
+				}
 			}
 		}
 		out.Items = append(out.Items, c)

@@ -839,3 +839,22 @@ html.community-wide:not(.preview-tools) .page{padding-bottom:calc(var(--communit
 .pulse-core.limited-gift-hero .pc-unit{color:#ffefc4;font-weight:650}.pulse-core.limited-gift-hero .pc-bonus{color:#f4e7ce}
 
 .reply-search{display:flex;flex-wrap:wrap;align-items:end;gap:10px}.reply-search label{display:grid;gap:6px;flex:1;min-width:min(100%,180px)}
+
+/* Content award review: retain dense rows without truncating titles or controls. */
+.award-entry{display:grid;gap:12px;min-width:0;align-items:start}
+.award-entry>*{min-width:0}
+.award-entry-heading,.award-prize,.award-buttons,.award-criteria{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px}
+.award-entry-heading h3,.award-entry p{margin:0}
+.award-topic,.award-reason,.award-recommendations li{overflow-wrap:anywhere}
+.award-topic{display:block;margin-top:4px}
+.award-entry .award-reason,.award-entry .award-sources{margin-top:5px}
+.award-side{display:grid;gap:7px}
+.award-prize strong{font-size:1.05rem}
+.award-prize span{font-size:.9em;color:var(--muted)}
+.award-side textarea{min-height:0;margin:4px 0}
+.award-management summary,.award-recommendations summary{cursor:pointer;font-weight:600}
+.award-recommendations ul{margin:5px 0 0;padding-inline-start:16px}
+.award-recommendations li+li{margin-top:4px}
+.award-entry .award-review-feedback{grid-column:1/-1;margin:0}
+.award-entry .award-review-feedback:empty{display:none}
+@media(min-width:920px){.award-entry--side{grid-template-columns:minmax(0,1.65fr) minmax(0,1fr)}.award-entry--three{grid-template-columns:minmax(0,1.65fr) minmax(0,1.15fr) minmax(0,1fr)}.award-entry--three>.award-recommendations,.award-entry--side>.award-side{padding-inline-start:12px;border-inline-start:1px solid var(--border)}}

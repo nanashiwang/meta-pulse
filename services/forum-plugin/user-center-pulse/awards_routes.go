@@ -197,6 +197,8 @@ func (uc *UserCenter) awardHandler(op string, session func(*gin.Context) (string
 				status, code = 409, "nomination_limit"
 			case errors.Is(err, awards.ErrConflict):
 				status, code = 409, "conflict"
+			case errors.Is(err, awards.ErrRecipientUnbound):
+				status, code = 409, "award_recipient_unbound"
 			case errors.Is(err, awards.ErrNotReady):
 				status, code = 409, "review_not_ready"
 			}

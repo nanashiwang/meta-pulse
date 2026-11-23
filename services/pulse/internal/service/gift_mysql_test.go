@@ -11,6 +11,15 @@ import (
 )
 
 func TestMySQLGiftCommittedOrderReplay(t *testing.T) {
+	testForumFlashReceipt(t, false)
+}
+
+func TestMySQLContentAwardReceiptReplay(t *testing.T) {
+	testForumFlashReceipt(t, true)
+}
+
+func testForumFlashReceipt(t *testing.T, award bool) {
+	t.Helper()
 	db, sqlDB := openMySQLIntegration(t)
 	ctx := context.Background()
 	u, e := ms.NewUnitOfWork(db)
@@ -23,6 +32,12 @@ func TestMySQLGiftCommittedOrderReplay(t *testing.T) {
 	user := uint64(time.Now().UnixNano()%100000000 + 8000000000)
 	g := ms.GiftProjection{DB: sqlDB}
 	o := GiftOrder{Round: user, Forum: user, Actor: 1, Flash: 199}
+	reason := "限时赠礼"
+	if award {
+		o.Round |= 1 << 62
+		o.Flash = 5000
+		reason = "优秀内容评选"
+	}
 	if e = g.QueueGift(ctx, user, o); e != nil {
 		t.Fatal(e)
 	}
@@ -44,14 +59,14 @@ func TestMySQLGiftCommittedOrderReplay(t *testing.T) {
 			t.Fatal(next, e)
 		}
 	}
-	if _, e = s.GrantGiftFlash(ctx, user, o.Round, 200); !errors.Is(e, ports.ErrConflict) {
+	if _, e = s.GrantGiftFlash(ctx, user, o.Round, o.Flash+1); !errors.Is(e, ports.ErrConflict) {
 		t.Fatal(e)
 	}
 	var count, amount int64
-	if e = sqlDB.QueryRow("SELECT COUNT(*),COALESCE(SUM(amount),0) FROM pulse_reward_grant WHERE user_id=? AND trigger_type='gift'", user).Scan(&count, &amount); e != nil || count != 1 || amount != 199*5002 {
+	if e = sqlDB.QueryRow("SELECT COUNT(*),COALESCE(SUM(amount),0) FROM pulse_reward_grant WHERE user_id=? AND trigger_type='gift' AND reason=?", user, reason).Scan(&count, &amount); e != nil || count != 1 || amount != o.Flash*5002 {
 		t.Fatal(count, amount, e)
 	}
-	if _, e = sqlDB.Exec("INSERT INTO pulse_gift_delivery(round_id,user_id,grant_id) VALUES(?,?,?)", user, user, v.GrantID); e != nil {
+	if _, e = sqlDB.Exec("INSERT INTO pulse_gift_delivery(round_id,user_id,grant_id) VALUES(?,?,?)", o.Round, user, v.GrantID); e != nil {
 		t.Fatal(e)
 	}
 	paid, _, e := g.GiftPaid(ctx, user, o.Round)

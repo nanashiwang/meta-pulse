@@ -48,6 +48,11 @@ func (s *CommunityTicketService) grantForumFlash(ctx context.Context, user uint6
 	scope, reason, trigger, maxCents := "checkin_flash", "每日签到随机闪", "checkin", int64(150)
 	if gift {
 		scope, reason, trigger, maxCents = "limited_gift", "限时赠礼", "gift", task.Cents
+		// Keep the same idempotency namespace across worker versions. The upper
+		// receipt range is reserved for published forum content awards.
+		if task.EventID >= 1<<62 {
+			reason = "优秀内容评选"
+		}
 	}
 	raw, _ := json.Marshal(task)
 	hash := sha256Hex(raw)

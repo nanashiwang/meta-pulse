@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	mysql "github.com/go-sql-driver/mysql"
+	"github.com/nanashiwang/meta-pulse/services/forum-plugin/user-center-pulse/rewarddelivery"
 	"regexp"
 	"strconv"
 	"strings"
@@ -289,6 +290,9 @@ func (s *Store) execute(ctx context.Context, user, key string, c Command) (Resul
 		id, e := res.LastInsertId()
 		if e != nil {
 			return r, e
+		}
+		if id <= 0 || id >= rewarddelivery.AwardBase {
+			return r, ErrInvalid
 		}
 		r.ID = strconv.FormatInt(id, 10)
 	} else if c.Op == "create" {

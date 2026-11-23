@@ -23,7 +23,18 @@
     kind === "post"
       ? t("优秀帖子奖", "Excellent posts")
       : t("优秀回应奖", "Helpful responses");
+  const readyToPay = (state) => !state || state === "ready" || state === "manual_pending";
+  const paidLabel = (state, status) => {
+    if (state === "settled") return t("已到账", "Credited");
+    if (state === "manual_paid") return t("已手动发放", "Manually delivered");
+    if (state === "queued") return t("待到账", "Awaiting credit");
+    if (status === "revoked") return t("已撤销", "Revoked");
+    if (status === "review_required") return t("待复核", "Awaiting review");
+    return t("待发放", "Awaiting distribution");
+  };
   const errors = {
+    award_recipient_unbound: ["获奖账号尚未绑定 API，绑定后可重新发放。", "The recipient must link their API account before the reward can be sent."],
+    award_refresh_failed: ["暂时无法刷新到账状态，请稍后重试。", "The delivery status could not be refreshed."],
     forbidden: [
       "需要管理员权限，且不能审核自己的候选。",
       "Administrator access required; self-review is not allowed.",
@@ -98,7 +109,7 @@
       return this.html();
     }
     scout() {
-      return '<strong>' + t('伯乐奖：','Talent Scout award: ') + '</strong>' + t("推荐的帖子获得周奖后，前 10 位有效推荐者平分 20 闪，每人至少 3 闪，并各获一次「伯乐」勋章。闪由管理员手动发放，同帖月奖不重复发。", "When a recommended post wins a weekly award, the first 10 recommenders share 20 credits (minimum 3 each) and each earn a Talent Scout medal. Credits are paid manually; the monthly award does not pay again.");
+      return '<strong>' + t('伯乐奖：','Talent Scout award: ') + '</strong>' + t("推荐的帖子获得周奖后，前 10 位有效推荐者平分 20 闪，每人至少 3 闪，并各获一次「伯乐」勋章。闪由管理员点击发放后到账，同帖月奖不重复发。", "When a recommended post wins a weekly award, the first 10 recommenders share 20 credits (minimum 3 each) and each earn a Talent Scout medal. An administrator sends the credits; the monthly award does not pay again.");
     }
     async loadSubmissions() {
       const rows = await this.api.request('/metar/awards/submissions?' + new URLSearchParams({type:this.period.type,key:this.period.key}));
@@ -168,8 +179,8 @@
         ) +
         `</p><p>` +
         t(
-          "周奖50闪、月奖100闪由管理员手动发放；头衔与勋章在公布入选时获得。",
-          "Rewards are delivered manually; titles and medals are granted upon publication.",
+          "周奖 50 闪、月奖 100 闪由管理员点击发放；头衔与勋章在公布入选时获得。",
+          "An administrator sends the rewards; titles and medals are granted upon publication.",
         ) +
         `</p><p>` + this.scout() + `</p><p><a href="/awards?view=honors">我的头衔与勋章</a></p><details><summary>` +
         t("参与规则", "Participation rules") +
@@ -239,7 +250,7 @@
             t("公布本期名单", "Publish selection") +
             `</button><button class="btn" data-award="audit">` +
             t("审核记录", "Audit log") +
-            `</button></div>`
+            `</button>` + (d.status === "published" ? '<button class="btn" data-award="refresh">' + t("刷新到账状态", "Refresh delivery status") + '</button>' : '') + `</div>`
           : "") +
         `
  ` +
@@ -255,125 +266,7 @@
           : "") +
         `<p data-award-error role="status"></p><div class="stack mt16">` +
         (d.items.length
-          ? d.items
-              .map(
-                (c) =>
-                  `<article class="card card-pad" data-candidate="` +
-                  esc(c.subject_id) +
-                  `"><div class="between wrap"><h3>` +
-                  esc(c.name || "ID " + c.user_id) +
-                  `</h3><span class="badge">` +
-                  esc(states[c.status] || c.status) +
-                  `</span></div><p><a href="/questions/` +
-                  esc(c.question_id) +
-                  (c.answer_id !== "0" ? "/" + esc(c.answer_id) : "") +
-                  `" target="_blank" rel="noopener">` +
-                  esc(c.title) +
-                  ` ↗</a></p>` +
-                  (this.admin &&
-                  this.period.kind === "post" &&
-                  this.period.type === "week"
-                    ? `<p class="muted">` +
-                      t(
-                        "提名次数仅供参考：",
-                        "Nominations (reference only): ",
-                      ) +
-                      c.nominations +
-                      `</p>`
-                    : "") +
-                  (this.admin ? this.recommendationList(c) : "") +
-                  (c.sources?.length
-                    ? "<p>" +
-                      t("月度来源：", "Weekly sources: ") +
-                      c.sources
-                        .map(
-                          (s) =>
-                            '<a target="_blank" rel="noopener" href="/questions/' +
-                            esc(s.question_id) +
-                            (s.answer_id !== "0"
-                              ? "/" + esc(s.answer_id)
-                              : "") +
-                            '">' +
-                            esc(s.week) +
-                            "</a>",
-                        )
-                        .join(" · ") +
-                      "</p>"
-                    : "") +
-                  (c.reason ? "<p>" + esc(c.reason) + "</p>" : "") +
-                  (c.amount
-                    ? "<p>" +
-                      c.amount +
-                      " " +
-                      t(
-                        c.reward_status === "manual_paid"
-                          ? "闪 · 已手动发放"
-                          : "闪 · 待手动发放",
-                        c.reward_status === "manual_paid"
-                          ? "reward units · Manually delivered"
-                          : "reward units · Pending manual delivery",
-                      ) +
-                      "</p>"
-                    : "") +
-                  (this.admin
-                    ? d.status === "open"
-                      ? `<label><input type="checkbox" data-criterion="one" ` +
-                        (c.criterion_one ? "checked" : "") +
-                        `> ` +
-                        criteria[0] +
-                        `</label> <label><input type="checkbox" data-criterion="two" ` +
-                        (c.criterion_two ? "checked" : "") +
-                        `> ` +
-                        criteria[1] +
-                        `</label><textarea maxlength="2000" data-reason placeholder="` +
-                        t(
-                          "必填：具体审核依据",
-                          "Required: specific review evidence",
-                        ) +
-                        `">` +
-                        esc(c.reason) +
-                        `</textarea><div class="flex mt8"><button class="btn primary" data-award="select" ` +
-                        (!reviewOpen || !c.eligible ? "disabled" : "") +
-                        `>` +
-                        t("入选", "Select") +
-                        `</button><button type="button" class="btn" data-award="reject" ` +
-                        (!reviewOpen ? "disabled" : "") +
-                        `>` + t("不入选", "Reject") + `</button></div>` +
-                        (!reviewOpen ? '<p class="muted mt8">' + t("尚未到审核时间", "Review not open yet") + '</p>' : "")
-                      : ["awarded", "review_required"].includes(c.status)
-                        ? `<textarea data-reason maxlength="2000" placeholder="` +
-                          t(
-                            "操作备注（手动发放需注明凭据／说明）",
-                            "Operation note or delivery reference (required)",
-                          ) +
-                          `"></textarea><button class="btn danger" data-award="revoke">` +
-                          t("撤销此奖项", "Revoke award") +
-                          `</button>` +
-                          (c.status === "awarded" &&
-                          c.reward_status !== "manual_paid"
-                            ? `<button class="btn primary" data-award="paid">确认已手动发放</button>`
-                            : "") +
-                          (c.payment_note
-                            ? `<p>发放人 ID ${esc(c.paid_by)} · ${esc(new Date(c.paid_at * 1000).toLocaleString())} · ${esc(c.payment_note)}</p>`
-                            : "") +
-                          (c.status === "review_required"
-                            ? `<label><input type="checkbox" data-criterion="one"> ` +
-                              criteria[0] +
-                              `</label><label><input type="checkbox" data-criterion="two"> ` +
-                              criteria[1] +
-                              `</label><button class="btn primary" data-award="reconfirm">` +
-                              t(
-                                "复核后保留月奖",
-                                "Confirm monthly eligibility",
-                              ) +
-                              `</button>`
-                            : "")
-                        : ""
-                    : "") +
-                  (this.admin ? '<p class="award-review-feedback" data-award-feedback role="status"></p>' : "") +
-                  `</article>`,
-              )
-              .join("")
+          ? d.items.map((c) => this.candidateCard(c, states, reviewOpen, criteria)).join("")
           : '<p class="card card-pad">' +
             t(
               this.admin
@@ -452,15 +345,63 @@
           })),
         );
     }
+    candidateCard(c, states, reviewOpen, criteria) {
+      const questionURL = (row) => "/questions/" + esc(row.question_id) +
+        (row.answer_id && row.answer_id !== "0" ? "/" + esc(row.answer_id) : "");
+      const open = this.data.status === "open";
+      const canManage = this.admin && ["awarded", "review_required"].includes(c.status);
+      const recommenders = this.admin ? this.recommendationList(c) : "";
+      const check = (key, text, checked) => '<label><input type="checkbox" data-criterion="' + key + '" ' +
+        (checked ? "checked" : "") + '> ' + text + '</label>';
+      const checks = check("one", criteria[0], open && c.criterion_one) +
+        check("two", criteria[1], open && c.criterion_two);
+      const btn = (op, cls, label, disabled = false) => '<button type="button" class="btn ' + cls + '" data-award="' + op + '"' +
+        (disabled ? " disabled" : "") + '>' + label + '</button>';
+      const note = (placeholder, value = "") => '<textarea rows="2" maxlength="2000" data-reason placeholder="' +
+        esc(placeholder) + '">' + esc(value) + '</textarea>';
+      const reason = c.reason ? '<p class="award-reason muted">' + esc(c.reason) + '</p>' : '';
+      const sources = c.sources?.length ? '<p class="award-sources">' + t("月度来源：", "Weekly sources: ") +
+        c.sources.map(row => '<a target="_blank" rel="noopener" href="' + questionURL(row) + '">' + esc(row.week) + '</a>').join(' · ') + '</p>' : '';
+      const nominations = this.admin && this.period.type === "week" && this.period.kind === "post"
+        ? '<small class="muted">' + t("提名：", "Nominations: ") + esc(c.nominations ?? 0) + '</small>' : '';
+      const prize = c.amount ? '<div class="award-prize"><strong>' + esc(c.amount) + ' ⚡</strong><span>' + paidLabel(c.reward_status, c.status) + '</span>' +
+        (canManage && c.status === "awarded" && c.eligible && readyToPay(c.reward_status)
+          ? btn("grant", "primary small", t("发放", "Send reward")) : '') + '</div>' : '';
+      const audit = this.admin && c.payment_note ? '<p class="muted">' + t("历史登记 · ", "Manual record · ") +
+        esc(new Date(c.paid_at * 1000).toLocaleString()) + ' · ' + esc(c.payment_note) + '</p>' : '';
+      let controls = '';
+      if (this.admin && open) {
+        controls = '<div class="award-criteria">' + checks + '</div>' +
+          note(t("必填：具体审核依据", "Required: specific review evidence"), c.reason) +
+          '<div class="award-buttons">' + btn("select", "primary", t("入选", "Select"), !reviewOpen || !c.eligible) +
+          btn("reject", "", t("不入选", "Reject"), !reviewOpen) + '</div>' +
+          (!reviewOpen ? '<small class="muted">' + t("尚未到审核时间", "Review not open yet") + '</small>' : '');
+      } else if (canManage) {
+        controls = '<details class="award-management"' + (c.status === 'review_required' ? ' open' : '') + '><summary>' +
+          t("奖项管理", "Manage award") + '</summary>' + note(t("必填：撤销或复核理由", "Required: reason for revocation or review")) +
+          (c.status === "review_required" ? '<div class="award-criteria">' + checks + '</div>' : '') +
+          '<div class="award-buttons">' + btn("revoke", "danger small", t("撤销此奖项", "Revoke award")) +
+          (c.status === "review_required" ? btn("reconfirm", "primary small", t("复核后保留月奖", "Confirm monthly eligibility")) : '') + '</div></details>';
+      }
+      const side = prize + audit + controls;
+      return '<article class="card card-pad award-entry' + (side ? ' award-entry--side' : '') +
+        (recommenders && side && !open ? ' award-entry--three' : '') + '" data-candidate="' + esc(c.subject_id) + '">' +
+        '<div class="award-content"><div class="award-entry-heading"><h3>' + esc(c.name || "ID " + c.user_id) +
+        '</h3><span class="badge">' + esc(states[c.status] || c.status) + '</span>' + nominations + '</div>' +
+        '<a class="award-topic" href="' + questionURL(c) + '" target="_blank" rel="noopener">' + esc(c.title) + ' ↗</a>' +
+        reason + sources + (open ? recommenders : '') + '</div>' + (!open ? recommenders : '') +
+        (side ? '<div class="award-side">' + side + '</div>' : '') +
+        (this.admin ? '<p class="award-review-feedback" data-award-feedback role="status"></p>' : '') + '</article>';
+    }
     recommendationList(c) {
       if (!c.recommendations?.length) return '';
       const published = this.data.status === 'published';
-      return '<details class="mt8"><summary>' + esc(t('推荐名单', 'Recommenders')) + ' · ' + esc(c.nominations) + '</summary><ul>' + c.recommendations.map(row => {
+      return '<details class="award-recommendations"' + (c.recommendations.length <= 3 ? ' open' : '') + '><summary>' + esc(t('推荐名单', 'Recommenders')) + ' · ' + esc(c.nominations) + '</summary><ul>' + c.recommendations.map(row => {
         const hasAward = Number.isInteger(row.cents) && row.cents > 0;
         const value = hasAward ? ' · ' + (row.cents / 100).toFixed(2) + ' ⚡️' : '';
-        const label = row.paid_at ? t('已手动发放', 'Manually delivered') : c.status === 'revoked' ? t('已撤销', 'Revoked') : t('待手动发放', 'Pending manual delivery');
-        const action = published && hasAward && !row.paid_at && c.status === 'awarded'
-          ? ' <button type="button" class="btn small" data-award="rec_paid" data-recommender="' + esc(row.user_id) + '">' + esc(t('登记发放', 'Record delivery')) + '</button>' : '';
+        const label = paidLabel(row.reward_status || (row.paid_at ? 'manual_paid' : ''), c.status);
+        const action = published && hasAward && !row.paid_at && readyToPay(row.reward_status) && c.eligible && c.status === 'awarded'
+          ? ' <button type="button" class="btn small" data-award="rec_grant" data-recommender="' + esc(row.user_id) + '">' + esc(t('发放', 'Send reward')) + '</button>' : '';
         return '<li>' + esc(row.name) + ' <small>ID ' + esc(row.user_id) + '</small>' + value + (published && hasAward ? ' · ' + label : '') + action + '</li>';
       }).join('') + '</ul></details>';
     }
@@ -502,6 +443,25 @@
         if (this.pending) await this.command(this.pending.command);
         return;
       }
+      if (op === "refresh") {
+        const gen = this.generation;
+        this.busy = true;
+        b.disabled = true;
+        try {
+          const fresh = await this.client().request("/metar/awards?" + this.query());
+          if (gen === this.generation && this.root) {
+            this.data = fresh;
+            this.root.innerHTML = this.html();
+            this.mount(this.root);
+          }
+        } catch (_) {
+          throw Error("award_refresh_failed");
+        } finally {
+          this.busy = false;
+          b.disabled = false;
+        }
+        return;
+      }
       if (op === "audit") {
         const gen = this.generation;
         const rows = await this.adminAPI.request(
@@ -536,7 +496,7 @@
         op === "publish" &&
         !root.confirm(
           t(
-            "公布后不能修改本期名单。允许零人入选；头衔和勋章将生效，闪由管理员另行手动发放。确认公布？",
+            "公布后不能修改本期名单。允许零人入选；头衔和勋章将生效，闪由管理员另行点击发放。确认公布？",
             "Publish and freeze this period? Zero winners is allowed. Rewards will not be credited.",
           ),
         )
@@ -544,14 +504,11 @@
         return;
       const item = b.closest("[data-candidate]");
       const cmd = { op, period: this.period, version: this.data.version };
-      if (op === 'rec_paid') {
-        if (!item) return;
-        const reason = root.prompt(t('请在实际发放后输入凭据或备注。此操作仅登记，不会转账。', 'After paying, enter a receipt or note. This records delivery and does not transfer credits.'));
-        if (reason === null) return;
-        if (!reason.trim() || Array.from(reason.trim()).length > 2000) throw Error('reason_required');
+      if (op === "grant" || op === "rec_grant") {
+        if (!item || this.data.status !== "published") return;
+        if (!root.confirm(t("确认这笔奖励此前未通过其他方式发出？点击确定后将进入到账流程，请勿重复转账。", "Confirm that this reward has not already been paid. It will enter the delivery queue; do not pay separately."))) return;
         cmd.subject_id = item.dataset.candidate;
-        cmd.recommender_id = b.dataset.recommender;
-        cmd.reason = reason.trim();
+        if (op === "rec_grant") cmd.recommender_id = b.dataset.recommender;
       } else if (item) {
         cmd.subject_id = item.dataset.candidate;
         const reason = item.querySelector("[data-reason]");
@@ -573,15 +530,10 @@
         op === "revoke" &&
         !root.confirm(
           t(
-            "确认撤销？操作会保留审核记录，相关月奖可能需要复核。",
-            "Revoke this award? The audit trail is retained; related monthly awards may need review.",
+            "确认撤销？操作会保留审核记录，相关月奖可能需要复核；已提交发放的奖励不会自动撤回。",
+            "Revoke this award? The audit trail is retained; related monthly awards may need review. Submitted rewards are not automatically reversed.",
           ),
         )
-      )
-        return;
-      if (
-        op === "paid" &&
-        !root.confirm("请确认已经完成手动发放。此操作只登记记录，不会转账。")
       )
         return;
       const feedback = this.feedbackTarget(b);
@@ -622,12 +574,14 @@
           this.data = fresh;
           this.root.innerHTML = this.html();
           this.mount(this.root);
-          if (command.op === "reject" || command.op === "select") {
+          if (["reject", "select", "grant", "rec_grant"].includes(command.op)) {
             const candidate = [...this.root.querySelectorAll("[data-candidate]")].find(row => row.dataset.candidate === command.subject_id);
             const target = candidate?.querySelector("[data-award-feedback]") || this.feedbackTarget();
             if (target) {
               target.classList.add("green");
-              target.textContent = command.op === "reject" ? t("已保存为不入选。", "Rejection saved.") : t("已保存为入选。", "Selection saved.");
+              target.textContent = command.op === "reject" ? t("已保存为不入选。", "Rejection saved.")
+                : command.op === "select" ? t("已保存为入选。", "Selection saved.")
+                : t("已提交发放，可刷新查看到账状态。", "Reward submitted. Refresh to check delivery.");
             }
           }
         }

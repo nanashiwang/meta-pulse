@@ -20,6 +20,7 @@ type Store struct {
 func New(db *sql.DB) *Store { return &Store{db, time.Now} }
 func (s *Store) Ensure(ctx context.Context) error {
 	for _, query := range []string{
+		deliveryDDL,
 		"CREATE TABLE IF NOT EXISTS metar_award_title_preference(user_id BIGINT UNSIGNED PRIMARY KEY,title_key VARCHAR(24) NOT NULL) ENGINE=InnoDB",
 		"CREATE TABLE IF NOT EXISTS metar_award_manual_payment(period_type VARCHAR(8) NOT NULL,period_key VARCHAR(10) NOT NULL,kind VARCHAR(10) NOT NULL,user_id BIGINT UNSIGNED NOT NULL,actor_id BIGINT UNSIGNED NOT NULL,paid_at BIGINT NOT NULL,note TEXT NOT NULL,PRIMARY KEY(period_type,period_key,kind,user_id)) ENGINE=InnoDB",
 		"CREATE TABLE IF NOT EXISTS metar_award_period(period_type VARCHAR(8) NOT NULL,period_key VARCHAR(10) NOT NULL,kind VARCHAR(10) NOT NULL,status VARCHAR(16) NOT NULL DEFAULT 'open',version BIGINT NOT NULL DEFAULT 0,published_at BIGINT NOT NULL DEFAULT 0,PRIMARY KEY(period_type,period_key,kind)) ENGINE=InnoDB",
@@ -114,7 +115,11 @@ func (s *Store) Execute(ctx context.Context, actor, key string, c Command, admin
 	if admin != (c.Op != "withdraw" && c.Op != "nominate" && c.Op != "title") {
 		return Result{}, ErrForbidden
 	}
-	tx, err := s.DB.BeginTx(ctx, nil)
+	var opts *sql.TxOptions
+	if c.Op == "grant" || c.Op == "rec_grant" {
+		opts = &sql.TxOptions{Isolation: sql.LevelReadCommitted}
+	}
+	tx, err := s.DB.BeginTx(ctx, opts)
 	if err != nil {
 		return Result{}, err
 	}
@@ -152,8 +157,18 @@ func (s *Store) Execute(ctx context.Context, actor, key string, c Command, admin
 		if err == nil && version != c.Version {
 			err = ErrConflict
 		}
-		if err == nil && c.Op != "revoke" && c.Op != "reconfirm" && c.Op != "paid" && c.Op != "rec_paid" && status != "open" {
-			err = ErrClosed
+		if err == nil {
+			switch c.Op {
+			case "grant", "rec_grant":
+				if status != "published" {
+					err = ErrClosed
+				}
+			case "revoke", "reconfirm", "paid", "rec_paid":
+			default:
+				if status != "open" {
+					err = ErrClosed
+				}
+			}
 		}
 		if err == nil {
 			switch c.Op {
@@ -165,6 +180,8 @@ func (s *Store) Execute(ctx context.Context, actor, key string, c Command, admin
 				err = s.publish(ctx, tx, p, now)
 			case "revoke":
 				err = s.revoke(ctx, tx, c, now)
+			case "grant", "rec_grant":
+				err = s.queueDelivery(ctx, tx, actor, c, now)
 			case "rec_paid":
 				err = s.markRecommendationPaid(ctx, tx, actor, c, now)
 			case "paid":
@@ -182,6 +199,9 @@ func (s *Store) Execute(ctx context.Context, actor, key string, c Command, admin
 		return Result{}, err
 	}
 	auditReason := c.Reason
+	if c.Op == "rec_grant" {
+		auditReason = "推荐人 #" + c.RecommenderID
+	}
 	if c.Op == "title" {
 		auditReason = "title=" + c.TitleKey
 	}

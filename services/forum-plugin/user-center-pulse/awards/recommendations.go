@@ -43,10 +43,11 @@ func nominationCountLocked(ctx context.Context, tx *sql.Tx, id string) (int, err
 }
 
 type Recommendation struct {
-	UserID string `json:"user_id"`
-	Name   string `json:"name"`
-	Cents  int    `json:"cents,omitempty"`
-	PaidAt int64  `json:"paid_at,omitempty"`
+	UserID       string `json:"user_id"`
+	Name         string `json:"name"`
+	Cents        int    `json:"cents,omitempty"`
+	PaidAt       int64  `json:"paid_at,omitempty"`
+	RewardStatus string `json:"reward_status,omitempty"`
 }
 
 func listRecommendations(ctx context.Context, tx *sql.Tx, id string, published, lock bool) ([]Recommendation, error) {
@@ -67,12 +68,32 @@ func listRecommendations(ctx context.Context, tx *sql.Tx, id string, published, 
 		}
 		out = append(out, row)
 	}
-	if !published {
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	if published {
+		for i := range out {
+			row := &out[i]
+			if row.Cents == 0 {
+				continue
+			}
+			if row.PaidAt != 0 {
+				row.RewardStatus = "manual_paid"
+				continue
+			}
+			state, at, err := deliveryStatus(ctx, tx, recommendationSource(id, row.UserID))
+			if err != nil {
+				return nil, err
+			}
+			row.RewardStatus, row.PaidAt = state, at
+		}
+	} else {
 		for i, cents := range recommendationShares(len(out)) {
 			out[i].Cents = cents
 		}
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 func freezeRecommendationRewards(ctx context.Context, tx *sql.Tx, p Period, c Candidate) error {
@@ -103,6 +124,9 @@ func (s *Store) markRecommendationPaid(ctx context.Context, tx *sql.Tx, actor st
 	if status != "awarded" {
 		return ErrForbidden
 	}
+	if err := ensureNotQueued(ctx, tx, recommendationSource(questionID, c.RecommenderID)); err != nil {
+		return err
+	}
 	result, err := tx.ExecContext(ctx, "UPDATE metar_award_recommendation_reward SET paid_by=?,paid_at=?,payment_note=? WHERE period_key=? AND question_id=? AND user_id=? AND paid_at=0", actor, now.Unix(), c.Reason, c.Period.Key, questionID, c.RecommenderID)
 	if err != nil {
 		return err
@@ -118,11 +142,12 @@ func (s *Store) markRecommendationPaid(ctx context.Context, tx *sql.Tx, actor st
 }
 
 type RecommendationHonor struct {
-	PeriodKey  string `json:"period_key"`
-	QuestionID string `json:"question_id"`
-	Title      string `json:"title"`
-	Cents      int    `json:"cents"`
-	PaidAt     int64  `json:"paid_at"`
+	PeriodKey    string `json:"period_key"`
+	QuestionID   string `json:"question_id"`
+	Title        string `json:"title"`
+	Cents        int    `json:"cents"`
+	PaidAt       int64  `json:"paid_at"`
+	RewardStatus string `json:"reward_status,omitempty"`
 }
 
 const validRecommendationSource = " FROM metar_award_recommendation_reward r JOIN metar_award_winner w ON w.period_type='week' AND w.period_key=r.period_key AND w.kind='post' AND w.question_id=r.question_id AND w.status='awarded'"
@@ -151,5 +176,21 @@ func addRecommendationHonors(ctx context.Context, tx *sql.Tx, user string, page 
 		out.More = true
 		out.Recommendations = out.Recommendations[:20]
 	}
-	return rows.Err()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	rows.Close()
+	for i := range out.Recommendations {
+		row := &out.Recommendations[i]
+		if row.PaidAt != 0 {
+			row.RewardStatus = "manual_paid"
+			continue
+		}
+		state, at, err := deliveryStatus(ctx, tx, recommendationSource(row.QuestionID, user))
+		if err != nil {
+			return err
+		}
+		row.RewardStatus, row.PaidAt = state, at
+	}
+	return nil
 }
