@@ -81,3 +81,21 @@ func TestGiftInclusiveSocialThresholdsKeepStrictUsage(t *testing.T) {
 		})
 	}
 }
+
+func TestGiftZeroIsOnlyAllowedAsATicketRangeMinimum(t *testing.T) {
+	for _, tc := range []struct {
+		rule GiftRule
+		want bool
+	}{
+		{GiftRule{Tickets: &GiftRange{0, 1}}, true},
+		{GiftRule{Tickets: &GiftRange{0, 2}}, true},
+		{GiftRule{Tickets: &GiftRange{0, 0}}, false},
+		{GiftRule{Tickets: &GiftRange{-1, 1}}, false},
+		{GiftRule{Flash: &GiftRange{0, 1}}, false},
+		{GiftRule{Exp: &GiftRange{0, 1}}, false},
+	} {
+		if tc.rule.valid() != tc.want {
+			t.Fatalf("unexpected validation for %+v", tc.rule)
+		}
+	}
+}

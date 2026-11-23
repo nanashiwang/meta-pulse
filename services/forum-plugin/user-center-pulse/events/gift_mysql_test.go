@@ -138,6 +138,28 @@ func TestMySQLGiftConcurrentClaimAndReport(t *testing.T) {
 	if o, receipt, err := s.Gift(ctx, "1", "", nil); err != nil || o == nil || o.Locked || o.ClaimedCount == nil || *o.ClaimedCount != 2 || receipt == nil || *receipt != *saved {
 		t.Fatalf("admin should retain access and see only the original personal receipt: %+v %+v %v", o, receipt, err)
 	}
+	// Seed the zero outcome to verify replay deterministically regardless of the random generator.
+	if _, err := s.DB.Exec("INSERT INTO user_external_login(user_id,external_id,provider) VALUES(3,43,'pulse_user_center')"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DB.Exec("INSERT INTO metar_gift_claim(round_id,user_id,external_id,flash,exp,tickets,no_ticket_award,created_at) VALUES(?,3,43,0,0,0,1,?)", r.ID, s.Now().Unix()); err != nil {
+		t.Fatal(err)
+	}
+	if o, v, err := s.Gift(ctx, "3", r.ID, nil); err != nil || o != nil || v == nil || v.Tickets != 0 || !v.NoTicketAward {
+		t.Fatalf("zero result should replay as an already recorded claim: %+v %+v %v", o, v, err)
+	}
+	if o, v, err := s.Gift(ctx, "3", "", nil); err != nil || o != nil || v != nil {
+		t.Fatalf("zero result should hide entry for members: %+v %+v %v", o, v, err)
+	}
+	rows, err := s.GiftReport(ctx, "1", r.ID, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	people := rows.([]GiftPerson)
+	if len(people) != 3 || !people[2].NoTicketAward || people[2].Tickets != 0 {
+		t.Fatalf("zero result missing from administrator report: %+v", people)
+	}
+
 	s.Now = func() time.Time { return time.Unix(1900000000, 0) }
 	if o, receipt, err := s.Gift(ctx, "1", "", nil); err != nil || o != nil || receipt != nil {
 		t.Fatalf("finished rounds must not remain in nav: %+v %+v %v", o, receipt, err)

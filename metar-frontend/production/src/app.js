@@ -352,9 +352,9 @@
       ['Flash', 'gift_flash', '闪电'],
       ['Exp', 'community_exp', '经验值'],
       ['Tickets', 'gift_ticket', '抽奖券'],
-    ].filter(([key]) => receipt[key] > 0).map(([key, type, unit]) => ({
+    ].filter(([key]) => receipt[key] > 0 || (key === 'Tickets' && receipt.no_ticket_award === true)).map(([key, type, unit]) => ({
       type, unit: t(unit), amount: key === 'Flash' ? (receipt[key] / 100).toFixed(2) : receipt[key], tier: 'gold',
-      bonus: t(receipt[key + 'Paid'] ? '已到账' : '等待到账'),
+      bonus: t(key === 'Tickets' && receipt[key] === 0 ? '本次未获得抽奖券' : receipt[key + 'Paid'] ? '已到账' : '等待到账'),
     }))});
     function paint() {
       const received = el.dataset.received === '1';

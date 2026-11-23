@@ -55,7 +55,7 @@
     return `<section class="lg-rule" data-rule="${prefix}"><header class="lg-heading"><h3 data-rule-title>规则 1（最高优先级）</h3><div class="lg-rule-actions"><button type="button" class="btn" data-rule-action="up">上移</button><button type="button" class="btn" data-rule-action="down">下移</button><button type="button" class="btn" data-rule-action="remove">删除</button></div></header>
       <section class="lg-group lg-gates"><h3>昨日领取门槛 <small>留空不限 · 填写项须同时满足</small></h3><div class="lg-criteria"><label>API 消耗大于<span class="lg-unit"><input name="${prefix}usage" inputmode="decimal" placeholder="不限"><select aria-label="用量单位" name="${prefix}unit"><option value="4">万</option><option value="8">亿</option></select></span></label>
       <label>点赞数大于等于<input type="number" min="0" max="1000000" name="${prefix}likes" placeholder="不限"></label><label>评论数大于等于<input type="number" min="0" max="1000000" name="${prefix}comments" placeholder="不限"></label></div></section>
-      <section class="lg-group lg-rewards"><h3>奖品配置 <small>可组合发放</small></h3><div class="lg-prizes">${rewards}</div></section></section>`;
+      <section class="lg-group lg-rewards"><h3>奖品配置 <small>可组合发放 · 抽奖券随机下限可填 0</small></h3><div class="lg-prizes">${rewards}</div></section></section>`;
   }
   function adminHTML() {
     return `<section class="card card-pad lg-admin" data-gifts><details data-gift-editor><summary>限时赠礼 · 创建活动</summary><p data-round-state>正在核对当前轮次…</p><form class="member-event-form lg-form">
@@ -85,6 +85,8 @@
     row.querySelector("[data-high]").hidden = high.disabled;
     low.placeholder = mode === "random" ? "最小值" : "固定数量";
     high.placeholder = "最大值";
+    if (mode === "random" && row.dataset.prize === "tickets")
+      low.placeholder = "可填 0";
   }
   function read(form) {
     const f = new FormData(form),
@@ -112,9 +114,16 @@
     let count = 0;
     for (const [k, , p] of points) {
       if (val(k + "mode") === "none") continue;
-      let min = units(val(k + "lo"), p),
-        max = val(k + "mode") === "random" ? units(val(k + "hi"), p) : min;
-      if (min < 1n || max < min || max > (k === "tickets" ? 100n : 1000000n))
+      const random = val(k + "mode") === "random";
+      const min = units(val(k + "lo"), p),
+        max = random ? units(val(k + "hi"), p) : min;
+      const minimum = random && k === "tickets" ? 0n : 1n;
+      if (
+        min < minimum ||
+        max < 1n ||
+        max < min ||
+        max > (k === "tickets" ? 100n : 1000000n)
+      )
         throw Error("奖品数量或范围无效。");
       g[k] = { min: Number(min), max: Number(max) };
       count++;
@@ -161,11 +170,13 @@
           const prop = { flash: "Flash", exp: "Exp", tickets: "Tickets" }[key];
           return (
             esc(amount(v[prop], precision)) +
-            (detail && v[prop] > 0
-              ? "<small>" +
-                esc(translate(v[prop + "Paid"] ? "已到账" : "待到账")) +
-                "</small>"
-              : "")
+            (detail && prop === "Tickets" && v.no_ticket_award
+              ? "<small>" + esc(translate("本次未获得抽奖券")) + "</small>"
+              : detail && v[prop] > 0
+                ? "<small>" +
+                  esc(translate(v[prop + "Paid"] ? "已到账" : "待到账")) +
+                  "</small>"
+                : "")
           );
         });
         return (

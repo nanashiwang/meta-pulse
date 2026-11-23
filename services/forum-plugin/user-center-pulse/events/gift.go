@@ -70,10 +70,11 @@ func (g GiftRule) valid() bool {
 		return false
 	}
 	for _, p := range []struct {
-		r     *GiftRange
-		limit int64
-	}{{g.Flash, 1000000}, {g.Exp, 1000000}, {g.Tickets, 100}} {
-		if p.r != nil && (p.r.Min < 1 || p.r.Max < p.r.Min || p.r.Max > p.limit) {
+		r         *GiftRange
+		allowZero bool
+		limit     int64
+	}{{g.Flash, false, 1000000}, {g.Exp, false, 1000000}, {g.Tickets, true, 100}} {
+		if p.r != nil && (p.r.Min < 0 || (p.r.Min == 0 && !p.allowZero) || p.r.Max < 1 || p.r.Max < p.r.Min || p.r.Max > p.limit) {
 			return false
 		}
 	}
@@ -166,6 +167,7 @@ type GiftReceipt struct {
 	ID                              string `json:"id"`
 	Flash, Exp, Tickets             int64
 	FlashPaid, ExpPaid, TicketsPaid bool
+	NoTicketAward                   bool `json:"no_ticket_award,omitempty"`
 }
 
 var giftZone = time.FixedZone("Asia/Shanghai", 8*3600)
@@ -241,7 +243,7 @@ func (s *Store) Gift(ctx context.Context, user, requested string, spend GiftUsag
 	}
 	lookup := func(q queryer) (*GiftReceipt, error) {
 		v := GiftReceipt{ID: id}
-		e := q.QueryRowContext(ctx, "SELECT flash,exp,tickets,flash_paid,exp_paid,tickets_paid FROM metar_gift_claim WHERE round_id=? AND user_id=? AND external_id=?", id, user, external).Scan(&v.Flash, &v.Exp, &v.Tickets, &v.FlashPaid, &v.ExpPaid, &v.TicketsPaid)
+		e := q.QueryRowContext(ctx, "SELECT flash,exp,tickets,flash_paid,exp_paid,tickets_paid,no_ticket_award FROM metar_gift_claim WHERE round_id=? AND user_id=? AND external_id=?", id, user, external).Scan(&v.Flash, &v.Exp, &v.Tickets, &v.FlashPaid, &v.ExpPaid, &v.TicketsPaid, &v.NoTicketAward)
 		return &v, e
 	}
 	v, e := lookup(s.DB)
@@ -320,7 +322,8 @@ func (s *Store) Gift(ctx context.Context, user, requested string, spend GiftUsag
 			return nil, nil, e
 		}
 	}
-	_, e = tx.ExecContext(ctx, "INSERT INTO metar_gift_claim(round_id,user_id,external_id,flash,exp,tickets,created_at) VALUES(?,?,?,?,?,?,?)", id, user, external, v.Flash, v.Exp, v.Tickets, checked.Unix())
+	v.NoTicketAward = rule.Tickets != nil && v.Tickets == 0
+	_, e = tx.ExecContext(ctx, "INSERT INTO metar_gift_claim(round_id,user_id,external_id,flash,exp,tickets,no_ticket_award,created_at) VALUES(?,?,?,?,?,?,?,?)", id, user, external, v.Flash, v.Exp, v.Tickets, v.NoTicketAward, checked.Unix())
 	if e != nil {
 		return nil, nil, e
 	}
@@ -350,7 +353,7 @@ func (s *Store) GiftReport(ctx context.Context, actor, id string, page int) (any
 		if _, e := strconv.ParseUint(id, 10, 64); e != nil {
 			return nil, ErrInvalid
 		}
-		rs, e := s.DB.QueryContext(ctx, "SELECT c.user_id,COALESCE(NULLIF(u.display_name,''),u.username,''),c.flash,c.exp,c.tickets,c.flash_paid,c.exp_paid,c.tickets_paid,c.created_at FROM metar_gift_claim c LEFT JOIN `user` u ON u.id=c.user_id WHERE round_id=? ORDER BY c.user_id LIMIT 50 OFFSET ?", id, (page-1)*50)
+		rs, e := s.DB.QueryContext(ctx, "SELECT c.user_id,COALESCE(NULLIF(u.display_name,''),u.username,''),c.flash,c.exp,c.tickets,c.flash_paid,c.exp_paid,c.tickets_paid,c.no_ticket_award,c.created_at FROM metar_gift_claim c LEFT JOIN `user` u ON u.id=c.user_id WHERE round_id=? ORDER BY c.user_id LIMIT 50 OFFSET ?", id, (page-1)*50)
 		if e != nil {
 			return nil, e
 		}
@@ -359,7 +362,7 @@ func (s *Store) GiftReport(ctx context.Context, actor, id string, page int) (any
 		for rs.Next() {
 			var v GiftPerson
 			v.ID = id
-			if e = rs.Scan(&v.User, &v.Name, &v.Flash, &v.Exp, &v.Tickets, &v.FlashPaid, &v.ExpPaid, &v.TicketsPaid, &v.At); e != nil {
+			if e = rs.Scan(&v.User, &v.Name, &v.Flash, &v.Exp, &v.Tickets, &v.FlashPaid, &v.ExpPaid, &v.TicketsPaid, &v.NoTicketAward, &v.At); e != nil {
 				return nil, e
 			}
 			out = append(out, v)
