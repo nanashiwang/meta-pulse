@@ -20,7 +20,7 @@ func verifyFarmReceipt(headers http.Header, forum, subject, order, pin string) b
 		return false
 	}
 	parts := strings.Split(values[0], ".")
-	if len(parts) != 3 || parts[0] != "v2" {
+	if len(parts) != 3 {
 		return false
 	}
 	pub, e := hex.DecodeString(parts[1])
@@ -35,6 +35,16 @@ func verifyFarmReceipt(headers http.Header, forum, subject, order, pin string) b
 	if e != nil || len(sig) != ed25519.SignatureSize {
 		return false
 	}
-	message := strings.Join([]string{"meta-pulse:token-farm:paid:v2", forum, subject, order, "10000:1"}, "\n")
+	// Preserve previously paid orders, but verify the new price in its own domain.
+	var cost string
+	switch parts[0] {
+	case "v2":
+		cost = "10000:1"
+	case "v3":
+		cost = "500000:1:lightning_milli"
+	default:
+		return false
+	}
+	message := strings.Join([]string{"meta-pulse:token-farm:paid:" + parts[0], forum, subject, order, cost}, "\n")
 	return ed25519.Verify(ed25519.PublicKey(pub), []byte(message), sig)
 }
