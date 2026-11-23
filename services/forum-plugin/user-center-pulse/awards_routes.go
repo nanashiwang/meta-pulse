@@ -98,6 +98,7 @@ func (uc *UserCenter) awardHandler(op string, session func(*gin.Context) (string
 			}
 		}
 		p := awards.Period{Type: q.Get("type"), Key: q.Get("key"), Kind: q.Get("kind")}
+		archive := op == "list" && session == nil && !admin && !q.Has("key")
 		page := 1
 		var cmd awards.Command
 		if op == "profile" && q.Get("username") == "" {
@@ -115,7 +116,12 @@ func (uc *UserCenter) awardHandler(op string, session func(*gin.Context) (string
 			p.Kind = "post"
 		}
 		if op == "list" || op == "audit" || op == "submissions" {
-			if _, err = p.Start(); err != nil {
+			if archive {
+				if (p.Type != "week" && p.Type != "month") || (p.Kind != "post" && p.Kind != "response") {
+					communityError(c, 400, "invalid_request")
+					return
+				}
+			} else if _, err = p.Start(); err != nil {
 				communityError(c, 400, "invalid_request")
 				return
 			}
@@ -172,7 +178,11 @@ func (uc *UserCenter) awardHandler(op string, session func(*gin.Context) (string
 		case "honors":
 			result, err = store.Honors(ctx, user, "", page)
 		case "list":
-			result, err = store.List(ctx, user, p, page, admin)
+			if archive {
+				result, err = store.Archive(ctx, p.Type, p.Kind, page)
+			} else {
+				result, err = store.List(ctx, user, p, page, admin)
+			}
 		case "audit":
 			result, err = store.Audit(ctx, user, p)
 		case "status":

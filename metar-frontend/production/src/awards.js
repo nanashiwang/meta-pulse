@@ -23,6 +23,8 @@
     kind === "post"
       ? t("优秀帖子奖", "Excellent posts")
       : t("优秀回应奖", "Helpful responses");
+  const questionURL = (row) => "/questions/" + esc(row.question_id) +
+    (row.answer_id && row.answer_id !== "0" ? "/" + esc(row.answer_id) : "");
   const readyToPay = (state) => !state || state === "ready" || state === "manual_pending";
   const paidLabel = (state, status) => {
     if (state === "settled") return t("已到账", "Credited");
@@ -81,14 +83,17 @@
       this.path = path;
       this.user = user;
       this.admin = path === "/admin/awards";
+      this.mine = !this.admin && query.get("view") === "submissions";
+      this.archive = !this.admin && !this.mine && !query.get("key");
       this.period = {
         type: query.get("type") === "month" ? "month" : "week",
-        key: query.get("key") || currentWeek(),
+        key: query.get("key") || (this.archive ? "" : currentWeek()),
         kind: query.get("kind") === "response" ? "response" : "post",
       };
       if (this.period.type === "month")
         this.period.key = this.period.key.slice(0, 7);
-      this.pageNo = Math.max(1, Number(query.get("page") || 1));
+      const page = Number(query.get("page") || 1);
+      this.pageNo = Number.isInteger(page) && page >= 1 && page <= 10000 ? page : 1;
       this.pendingKey = "metar-awards-review-v1:" + user?.id;
       this.pending = null;
       if (this.admin) {
@@ -98,7 +103,6 @@
           );
         } catch (_) {}
       }
-      this.mine = !this.admin && query.get('view') === 'submissions';
       if (this.mine) {
         this.data = null;
         try { this.data = await this.loadSubmissions(); }
@@ -106,6 +110,7 @@
         return this.submissionHTML();
       }
       this.data = await this.client().request("/metar/awards?" + this.query());
+      if (this.archive && !Array.isArray(this.data?.periods)) throw Error("invalid_response");
       return this.html();
     }
     scout() {
@@ -128,20 +133,19 @@
     client() {
       return this.admin ? this.adminAPI : this.api;
     }
-    query() {
-      return new URLSearchParams({ ...this.period, page: String(this.pageNo) });
+    query(page = this.pageNo, patch = {}) {
+      const params = new URLSearchParams({ ...this.period, ...patch, page: String(page) });
+      if (!params.get("key")) params.delete("key");
+      return params;
     }
     link(page = this.pageNo, patch = {}) {
-      return (
-        this.path +
-        "?" +
-        new URLSearchParams({ ...this.period, ...patch, page: String(page) })
-      );
+      return this.path + "?" + this.query(page, patch);
     }
     reviewOpen() {
       return this.data.status === "open" && Date.now() >= this.data.review_at * 1000;
     }
     html() {
+      if (!this.admin) return this.publicHTML();
       const d = this.data,
         reviewOpen = this.reviewOpen(),
         criteria =
@@ -166,60 +170,8 @@
         ),
       };
       return (
-        `<section class="card card-pad"><div class="between wrap"><h1>` +
-        t("优秀内容评选", "Community content awards") +
-        `</h1><nav class="award-header-actions">` +
-        (this.admin ? '<a data-router href="/awards?'+esc(this.query())+'">'+t('查看获奖名单','Published awards')+'</a>' :
-          '<a class="btn primary" data-router href="'+esc(this.link(1,{type:'week',key:currentWeek(),view:'submissions'}))+'">'+t('我的提交','My submissions')+'</a>' +
-          (this.user?.role_id === 2 ? '<a class="btn" data-router href="/admin/awards?'+esc(this.query())+'">'+t('管理审核','Review awards')+'</a>' : '')) +
-        '</nav></div><p class="muted">' +
-        t(
-          "周奖每类最多10人，月奖每类最多5人，不分排名、不强制补位。",
-          "Up to 10 weekly and 5 monthly winners per category. No ranking or forced allocation.",
-        ) +
-        `</p><p>` +
-        t(
-          "周奖 50 闪、月奖 100 闪由管理员点击发放；头衔与勋章在公布入选时获得。",
-          "An administrator sends the rewards; titles and medals are granted upon publication.",
-        ) +
-        `</p><p>` + this.scout() + `</p><p><a href="/awards?view=honors">我的头衔与勋章</a></p><details><summary>` +
-        t("参与规则", "Participation rules") +
-        `</summary><p>` +
-        t(
-          "在帖子中点击“优秀稿件”提名他人内容，每天最多2次、每周10次；同一帖不能重复提名。按发帖周归属，次周周二 00:00（北京时间）截止提名并开放审核。作者采纳回答后，以服务端首次采纳时间归属优秀回应候选。月度按评选周周一所属月份归类，需等待该月全部周奖公布。",
-          "Nominate others’ posts: 2 daily, 10 weekly, once per post. Nominations close and review opens at 00:00 Tuesday of the following week (Beijing time). Responses use first author acceptance. Monthly eligibility follows the month of the week’s Monday and waits for all weekly selections.",
-        ) +
-        `</p></details></section>
- <form data-award-period class="card card-pad mt16"><div class="flex wrap"><label>` +
-        t("周期", "Period") +
-        `<select name="type"><option value="week" ` +
-        (this.period.type === "week" ? "selected" : "") +
-        `>` +
-        t("每周", "Weekly") +
-        `</option><option value="month" ` +
-        (this.period.type === "month" ? "selected" : "") +
-        `>` +
-        t("每月", "Monthly") +
-        `</option></select></label><label>` +
-        t("周一日期／月份", "Monday date / month") +
-        `<input name="key" type="` +
-        (this.period.type === "month" ? "month" : "date") +
-        `" value="` +
-        esc(this.period.key) +
-        `" required></label><label>` +
-        t("奖项", "Award") +
-        `<select name="kind"><option value="post" ` +
-        (this.period.kind === "post" ? "selected" : "") +
-        `>` +
-        label("post") +
-        `</option><option value="response" ` +
-        (this.period.kind === "response" ? "selected" : "") +
-        `>` +
-        label("response") +
-        `</option></select></label><button class="btn primary">` +
-        t("查看", "View") +
-        `</button></div></form>
- <section class="mt16"><div class="between wrap"><h2>` +
+        this.headerHTML() + this.filterHTML() +
+        ` <section class="mt16"><div class="between wrap"><h2>` +
         esc(this.period.key) +
         " · " +
         label(this.period.kind) +
@@ -295,6 +247,100 @@
         `</div><div data-award-audit></div></section>`
       );
     }
+    headerHTML() {
+      return `<section class="card card-pad award-overview"><div class="between wrap"><h1>` +
+        t("优秀内容评选", "Community content awards") +
+        `</h1><nav class="award-header-actions">` +
+        (this.admin ? '<a data-router href="/awards?'+esc(this.query())+'">'+t('查看获奖名单','Published awards')+'</a>' :
+          '<a class="btn primary" data-router href="'+esc(this.link(1,{type:'week',key:currentWeek(),view:'submissions'}))+'">'+t('我的提交','My submissions')+'</a>' +
+          (this.user?.role_id === 2 ? '<a class="btn" data-router href="/admin/awards?'+esc(this.query(1,{key:this.period.key || currentWeek()}))+'">'+t('管理审核','Review awards')+'</a>' : '')) +
+        '</nav></div><details class="award-rules"' + (this.admin ? ' open' : '') + '><summary>' + t("评选说明与参与规则", "Award rules and details") + '</summary><p class="muted">' +
+        t(
+          "周奖每类最多10人，月奖每类最多5人，不分排名、不强制补位。",
+          "Up to 10 weekly and 5 monthly winners per category. No ranking or forced allocation.",
+        ) +
+        `</p><p>` +
+        t(
+          "周奖 50 闪、月奖 100 闪由管理员点击发放；头衔与勋章在公布入选时获得。",
+          "An administrator sends the rewards; titles and medals are granted upon publication.",
+        ) +
+        `</p><p>` + this.scout() + `</p><p><a href="/awards?view=honors">我的头衔与勋章</a></p><p>` +
+        t(
+          "在帖子中点击“优秀稿件”提名他人内容，每天最多2次、每周10次；同一帖不能重复提名。按发帖周归属，次周周二 00:00（北京时间）截止提名并开放审核。作者采纳回答后，以服务端首次采纳时间归属优秀回应候选。月度按评选周周一所属月份归类，需等待该月全部周奖公布。",
+          "Nominate others’ posts: 2 daily, 10 weekly, once per post. Nominations close and review opens at 00:00 Tuesday of the following week (Beijing time). Responses use first author acceptance. Monthly eligibility follows the month of the week’s Monday and waits for all weekly selections.",
+        ) +
+        `</p></details></section>`;
+    }
+    filterHTML() {
+      return ` <form data-award-period class="card card-pad mt16"><div class="award-filter-fields"><label>` +
+        t("周期", "Period") +
+        `<select name="type"><option value="week" ` +
+        (this.period.type === "week" ? "selected" : "") +
+        `>` +
+        t("每周", "Weekly") +
+        `</option><option value="month" ` +
+        (this.period.type === "month" ? "selected" : "") +
+        `>` +
+        t("每月", "Monthly") +
+        `</option></select></label><label>` +
+        (this.admin ? t("周一日期／月份", "Monday date / month") : t("期次（可留空）", "Period (optional)")) +
+        `<input name="key" type="` +
+        (this.period.type === "month" ? "month" : "date") +
+        `" value="` +
+        esc(this.period.key) +
+        `"` + (this.admin ? " required" : "") + `></label><label>` +
+        t("奖项", "Award") +
+        `<select name="kind"><option value="post" ` +
+        (this.period.kind === "post" ? "selected" : "") +
+        `>` +
+        label("post") +
+        `</option><option value="response" ` +
+        (this.period.kind === "response" ? "selected" : "") +
+        `>` +
+        label("response") +
+        `</option></select></label><button class="btn primary">` +
+        t(this.admin ? "查看" : "筛选", this.admin ? "View" : "Filter") + '</button>' +
+        (!this.admin && !this.archive ? '<a class="btn" data-router href="' + esc(this.link(1,{key:""})) + '">' + t("查看全部期次", "All periods") + '</a>' : '') + '</div></form>';
+    }
+    publicHTML() {
+      const groups = this.archive ? this.data.periods.filter(d => d.status === "published") : [this.data];
+      const body = groups.length ? groups.map(d => this.publicPeriod(d)).join("") :
+        '<p class="card card-pad muted">' + t("暂无已公布的评选期次。", "No award periods have been published.") + '</p>';
+      const pageLink = (page, label) => '<a class="btn" data-router href="' + esc(this.link(page)) + '">' + label + '</a>';
+      const pagination = (this.pageNo > 1 ? pageLink(this.pageNo - 1,t("上一页","Previous")) : '') +
+        (this.data.more && this.pageNo < 10000 ? pageLink(this.pageNo + 1,t("下一页","Next")) : '');
+      return this.headerHTML() + this.filterHTML() + '<div class="award-public-periods">' +
+        (this.archive ? '<p class="muted award-archive-order">' + t("已公布期次 · 按开始日期从新到旧", "Published periods · Newest start date first") + '</p>' : '') +
+        body + (pagination ? '<nav class="award-public-pagination">' + pagination + '</nav>' : '') + '</div>';
+    }
+    publicPeriod(d) {
+      const p = this.archive ? d.period : this.period;
+      const heading = esc(p.key) + " · " + label(p.kind);
+      let span = '';
+      if (p.type === "week") {
+        const end = new Date(p.key + "T00:00:00Z");
+        if (!Number.isNaN(end.getTime())) {
+          end.setUTCDate(end.getUTCDate() + 6);
+          span = '<small class="muted">' + esc(p.key) + ' — ' + end.toISOString().slice(0,10) + '</small>';
+        }
+      }
+      const published = d.status === "published";
+      const items = published ? d.items : [];
+      const body = items.length ? '<div class="award-public-items">' + items.map(c => this.publicWinner(c)).join("") + '</div>' :
+        '<p class="muted award-period-empty">' + t(published ? "本期无可展示的获奖内容。" : "本期尚未公布。", published ? "No winners to display for this period." : "This period has not been published.") + '</p>';
+      return '<section class="card card-pad award-public-period"><header class="award-period-header"><div><h2>' + heading + '</h2>' + span +
+        '</div><div class="award-period-actions"><span class="badge">' + (published ? t("已公布", "Published") : t("尚未公布", "Unpublished")) + '</span>' +
+        (this.archive ? '<a data-router class="btn small" href="' + esc(this.link(1,p)) + '">' + t("仅看本期", "View this period") + '</a>' : '') +
+        '</div></header>' + body + '</section>';
+    }
+    publicWinner(c) {
+      const sources = c.sources?.length ? '<small class="award-sources">' + t("周奖来源：", "Weekly sources: ") + c.sources.map(row =>
+        '<a href="' + questionURL(row) + '" target="_blank" rel="noopener">' + esc(row.week) + '</a>').join(' · ') + '</small>' : '';
+      return '<article class="award-public-winner"><div class="award-public-topic"><a class="award-topic" href="' + questionURL(c) +
+        '" target="_blank" rel="noopener">' + esc(c.title) + ' ↗</a><div class="award-public-meta"><span>' + esc(c.name || "ID " + c.user_id) + '</span>' +
+        (c.reason ? '<span class="award-public-reason">' + esc(c.reason) + '</span>' : '') + '</div>' + sources + '</div>' +
+        (c.amount ? '<div class="award-prize"><strong>' + esc(c.amount) + ' ⚡</strong><span>' + paidLabel(c.reward_status,c.status) + '</span></div>' : '') + '</article>';
+    }
     mount(node) {
       const form = node.querySelector("[data-award-period]");
       if (this.mine) {
@@ -317,25 +363,15 @@
       form.onsubmit = (e) => {
         e.preventDefault();
         const data = new FormData(form);
-        root.location.assign(
-          this.path +
-            "?" +
-            new URLSearchParams({
-              type: data.get("type"),
-              key:
-                data.get("type") === "week"
-                  ? currentWeek(new Date(data.get("key") + "T00:00:00+08:00"))
-                  : data.get("key"),
-              kind: data.get("kind"),
-            }),
-        );
+        const type = data.get("type"), key = data.get("key");
+        const params = new URLSearchParams({type,kind:data.get("kind")});
+        if (key) params.set("key",type === "week" ? currentWeek(new Date(key + "T00:00:00+08:00")) : key);
+        root.location.assign(this.path + "?" + params);
       };
       form.elements.type.onchange = () => {
         const month = form.elements.type.value === "month";
         form.elements.key.type = month ? "month" : "date";
-        form.elements.key.value = month
-          ? this.period.key.slice(0, 7)
-          : currentWeek();
+        form.elements.key.value = this.admin ? (month ? this.period.key.slice(0, 7) : currentWeek()) : "";
       };
       node
         .querySelectorAll("[data-award]")
@@ -346,8 +382,6 @@
         );
     }
     candidateCard(c, states, reviewOpen, criteria) {
-      const questionURL = (row) => "/questions/" + esc(row.question_id) +
-        (row.answer_id && row.answer_id !== "0" ? "/" + esc(row.answer_id) : "");
       const open = this.data.status === "open";
       const canManage = this.admin && ["awarded", "review_required"].includes(c.status);
       const recommenders = this.admin ? this.recommendationList(c) : "";

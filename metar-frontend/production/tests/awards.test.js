@@ -1,6 +1,6 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const source=fs.readFileSync(require('node:path').join(__dirname,'../src/awards.js'),'utf8');
-function setup(){class Clock extends Date{static now(){return Date.parse("2026-11-18T06:00:00Z");}}const memory=new Map();const host={MetarI18n:{getLanguage:()=> 'zh_CN'},sessionStorage:{getItem:k=>memory.get(k),setItem:(k,v)=>memory.set(k,v),removeItem:k=>memory.delete(k)},crypto:{randomUUID:()=> 'stable-request-key'}};vm.runInNewContext(source,{window:host,URLSearchParams,Date:Clock});return {api:host.MetarAwards,host,memory}}
+function setup(){class Clock extends Date{static now(){return Date.parse("2026-11-18T06:00:00Z");}}const memory=new Map();const host={MetarI18n:{getLanguage:()=> 'zh_CN'},sessionStorage:{getItem:k=>memory.get(k),setItem:(k,v)=>memory.set(k,v),removeItem:k=>memory.delete(k)},crypto:{randomUUID:()=> 'stable-request-key'}};vm.runInNewContext(source,{window:host,URLSearchParams,Date:Clock,FormData:class {constructor(form){return form.values;}}});return {api:host.MetarAwards,host,memory}}
 const data={status:'open',version:1,review_at:1794931200,items:[{subject_id:'100',user_id:'1',question_id:'100',answer_id:'0',title:'<img src=x>',name:'<script>bad</script>',status:'pending',reason:'<b>proof</b>',eligible:true,nominations:2}],more:false};
 test('award page uses Beijing Monday and escapes candidate evidence',async()=>{const h=setup();assert.equal(h.api.currentWeek(new Date('2026-11-15T16:00:00Z')),'2026-11-16');assert.equal(h.api.currentWeek(new Date('2026-11-15T15:59:59Z')),'2026-11-09');const view=new h.api.View({}, {request:async()=>data});const html=await view.page('/admin/awards',{id:'3',role_id:2},new URLSearchParams('type=week&key=2026-11-09&kind=post'));assert.ok(html.includes('&lt;img'));assert.ok(!html.includes('<script>bad'));assert.ok(html.includes('data-criterion="one"'));assert.ok(html.includes('由管理员点击发放'));});
 test('public winners show deferred reward and never admin review controls',async()=>{const h=setup(),view=new h.api.View({request:async()=>({...data,status:'published',items:[{...data.items[0],status:'awarded',amount:50,reward_status:'deferred'}]})},{});const html=await view.page('/awards',null,new URLSearchParams('key=2026-11-09'));assert.ok(html.includes('50'));assert.ok(html.includes('待发放'));assert.ok(!html.includes('data-award="select"'));assert.ok(!html.includes('data-award="publish"'));});
@@ -100,4 +100,42 @@ test('send action needs confirmation, no manual payment note or client amount', 
  assert.match(ui.viewRoot.innerHTML,/待到账/);
  assert.doesNotMatch(ui.viewRoot.innerHTML,/data-award="grant"/);
  assert.match(ui.feedback.textContent,/已提交发放/);
+});
+
+
+test('public archive keeps periods separate, links to an exact period and paginates by period', async () => {
+ const h=setup(), requests=[];
+ const group=(key,title,status='published')=>({period:{type:'week',key,kind:'post'},status,items:[{...data.items[0],title,status:'awarded'}]});
+ const groups=[group('2026-11-16','最近期获奖'),group('2026-11-09','上一期获奖'),group('2026-11-23','不可公开内容','open')];
+ const view=new h.api.View({request:async path=>{
+   requests.push(path);
+   return path.includes('key=2026-11-16') ? groups[0] : {periods:groups,more:true};
+ }},{});
+ const archive=await view.page('/awards',null,new URLSearchParams());
+ assert.equal(requests[0],'/metar/awards?type=week&kind=post&page=1');
+ assert.equal((archive.match(/class="card card-pad award-public-period"/g)||[]).length,2);
+ assert.match(archive,/2026-11-16 · 优秀帖子奖.*最近期获奖.*2026-11-09 · 优秀帖子奖.*上一期获奖/s);
+ assert.match(archive,/href="\/awards\?type=week&amp;key=2026-11-16&amp;kind=post&amp;page=1">仅看本期/);
+ assert.match(archive,/href="\/awards\?type=week&amp;kind=post&amp;page=2">下一页/);
+ assert.doesNotMatch(archive,/不可公开内容/);
+ const exact=await view.page('/awards',null,new URLSearchParams('type=week&key=2026-11-16&kind=post'));
+ assert.match(requests[1],/key=2026-11-16/);
+ assert.match(exact,/最近期获奖|查看全部期次/);
+ assert.doesNotMatch(exact,/上一期获奖/);
+ assert.match(exact,/href="\/awards\?type=week&amp;kind=post&amp;page=1">查看全部期次/);
+});
+
+test('blank public filter keeps award and cycle without inventing a date', async () => {
+ const h=setup(); const destinations=[];
+ h.host.location={assign: url=>destinations.push(url)};
+ const v=new h.api.View({request:async()=>({periods:[],more:false})},{});
+ await v.page('/awards',null,new URLSearchParams('type=month&kind=response'));
+ const fields=new Map([['type','month'],['kind','response'],['key','']]);
+ const form={elements:{type:{value:'month'},key:{value:''}},values:fields};
+ v.mount({querySelector:()=>form,querySelectorAll:()=>[]});
+ form.onsubmit({preventDefault(){}});
+ assert.equal(destinations[0],'/awards?type=month&kind=response');
+ fields.set('key','2026-11');
+ form.onsubmit({preventDefault(){}});
+ assert.equal(destinations[1],'/awards?type=month&kind=response&key=2026-11');
 });

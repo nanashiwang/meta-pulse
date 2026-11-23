@@ -865,3 +865,30 @@ html.community-wide:not(.preview-tools) .page{padding-bottom:calc(var(--communit
 .lg-report-title{margin:14px 0 4px}
 .lg-report-note{margin:0 0 8px;color:var(--muted)}
 .lg-table-wrap:has(.lg-tier-values) table{min-width:800px}
+
+/* Public awards: keep each period together and use width for the winners. */
+.award-overview h1{margin:0}
+.award-rules{margin-top:6px;color:var(--muted)}
+.award-rules summary{cursor:pointer}
+.award-rules p{margin:6px 0 0;max-width:86ch}
+.award-filter-fields,.award-period-header,.award-period-actions,.award-public-meta,.award-public-pagination{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.award-filter-fields{align-items:end}
+.award-filter-fields label{display:grid;gap:3px;min-width:0}
+.award-filter-fields :is(input,select){max-width:100%;min-width:0}
+.award-public-periods{display:grid;gap:14px;margin-top:12px;min-width:0}
+.award-archive-order,.award-period-empty{margin:0}
+.award-public-period{container-type:inline-size;min-width:0}
+.award-period-header{justify-content:space-between;margin-bottom:10px}
+.award-period-header h2{margin:0;font-size:1.125rem;overflow-wrap:anywhere}
+.award-period-header small{display:block;margin-top:2px}
+.award-public-items{display:grid;gap:8px;min-width:0}
+.award-public-winner{display:flex;align-items:flex-start;justify-content:space-between;gap:6px 12px;min-width:0;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius)}
+.award-public-topic{flex:1;min-width:0}
+.award-public-topic .award-topic{margin:0;font-weight:600}
+.award-public-meta,.award-public-topic .award-sources{font-size:.875rem;color:var(--muted);overflow-wrap:anywhere}
+.award-public-meta{margin-top:3px;gap:2px 8px}
+.award-public-reason{min-width:0}
+.award-public-winner .award-prize{flex:0 0 auto;gap:4px 8px}
+@container (min-width:850px){.award-public-items{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@container (max-width:420px){.award-public-winner{display:grid}.award-public-winner .award-prize{justify-content:flex-start}}
+@media(min-width:720px){.award-overview .award-header-actions{display:flex;flex-wrap:wrap;align-items:center}}

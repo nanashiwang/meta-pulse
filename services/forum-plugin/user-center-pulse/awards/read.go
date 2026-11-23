@@ -20,25 +20,35 @@ type Page struct {
 }
 
 func (s *Store) List(ctx context.Context, user string, p Period, page int, admin bool) (Page, error) {
-	out := Page{Period: p, Items: []Candidate{}, Status: "open", Limit: p.Limit(), Amount: p.Amount(), RewardStatus: "manual_pending"}
-	at, err := p.ReviewAt()
-	if err != nil || page < 1 || page > 10000 {
-		return out, ErrInvalid
+	if _, err := p.Start(); err != nil || page < 1 || page > 10000 {
+		return Page{}, ErrInvalid
 	}
-	out.ReviewAt = at.Unix()
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
-		return out, err
+		return Page{}, err
 	}
 	defer tx.Rollback()
 	if admin {
 		if err = active(ctx, tx, user, true, false); err != nil {
-			return out, err
+			return Page{}, err
 		}
 	}
+	return readAwardPeriod(ctx, tx, p, page, admin)
+}
+
+func readAwardPeriod(ctx context.Context, tx *sql.Tx, p Period, page int, admin bool) (Page, error) {
+	out := Page{Period: p, Items: []Candidate{}, Status: "open", Limit: p.Limit(), Amount: p.Amount(), RewardStatus: "manual_pending"}
+	at, err := p.ReviewAt()
+	if err != nil {
+		return out, err
+	}
+	out.ReviewAt = at.Unix()
 	err = tx.QueryRowContext(ctx, "SELECT status,version FROM metar_award_period WHERE period_type=? AND period_key=? AND kind=?", p.Type, p.Key, p.Kind).Scan(&out.Status, &out.Version)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return out, err
+	}
+	if !admin && out.Status != "published" {
+		return out, nil
 	}
 	query := "SELECT subject_id,user_id,question_id,answer_id,status,reason,criterion_one,criterion_two FROM metar_award_candidate WHERE period_type=? AND period_key=? AND kind=? ORDER BY created_at,subject_id LIMIT 21 OFFSET ?"
 	if !admin || out.Status == "published" {
@@ -120,6 +130,56 @@ func (s *Store) List(ctx context.Context, user string, p Period, page int, admin
 			}
 		}
 		out.Items = append(out.Items, c)
+	}
+	return out, nil
+}
+
+// AwardArchive pages complete published periods, and shares visibility checks
+// with a direct period link. Unpublished candidates are never queried.
+type AwardArchive struct {
+	Periods []Page `json:"periods"`
+	More    bool   `json:"more"`
+}
+
+const awardArchiveSize = 5
+
+func (s *Store) Archive(ctx context.Context, typ, kind string, page int) (AwardArchive, error) {
+	out := AwardArchive{Periods: []Page{}}
+	if (typ != "week" && typ != "month") || (kind != "post" && kind != "response") || page < 1 || page > 10000 {
+		return out, ErrInvalid
+	}
+	tx, err := s.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead})
+	if err != nil {
+		return out, err
+	}
+	defer tx.Rollback()
+	rows, err := tx.QueryContext(ctx, "SELECT period_key FROM metar_award_period WHERE period_type=? AND kind=? AND status='published' ORDER BY period_key DESC LIMIT ? OFFSET ?", typ, kind, awardArchiveSize+1, (page-1)*awardArchiveSize)
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	var keys []string
+	for rows.Next() {
+		var key string
+		if err = rows.Scan(&key); err != nil {
+			return out, err
+		}
+		keys = append(keys, key)
+	}
+	if err = rows.Err(); err != nil {
+		return out, err
+	}
+	rows.Close()
+	out.More = len(keys) > awardArchiveSize
+	if out.More {
+		keys = keys[:awardArchiveSize]
+	}
+	for _, key := range keys {
+		p, err := readAwardPeriod(ctx, tx, Period{Type: typ, Key: key, Kind: kind}, 1, false)
+		if err != nil {
+			return out, err
+		}
+		out.Periods = append(out.Periods, p)
 	}
 	return out, nil
 }

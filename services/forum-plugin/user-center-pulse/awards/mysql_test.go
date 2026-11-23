@@ -564,3 +564,68 @@ func TestMySQLAwardDeliveryRespectsHistoricalManualPayments(t *testing.T) {
 		t.Fatal(out, err)
 	}
 }
+
+func TestMySQLPublicAwardArchiveOrdersAndFiltersCompletePeriods(t *testing.T) {
+	s, _ := fixture(t)
+	ctx := context.Background()
+	insertPeriod := func(typ, key, kind, status string, published int) {
+		t.Helper()
+		if _, err := s.DB.Exec("INSERT INTO metar_award_period(period_type,period_key,kind,status,published_at) VALUES(?,?,?,?,?)", typ, key, kind, status, published); err != nil {
+			t.Fatal(err)
+		}
+	}
+	insertWinner := func(key string, id int) {
+		t.Helper()
+		if _, err := s.DB.Exec("INSERT INTO metar_award_winner(period_type,period_key,kind,user_id,subject_id,question_id,month_key,reason,amount,created_at) VALUES('week',?,'post',1,?,?,?,'获奖理由',50,1)", key, id, id, key[:7]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Start date order is independent of insert order and publication time.
+	keys := []string{"2026-11-16", "2026-10-12", "2026-11-09", "2026-10-26", "2026-11-02", "2026-10-19"}
+	for i, key := range keys {
+		insertPeriod("week", key, "post", "published", 100+i)
+		if key != "2026-11-02" {
+			insertWinner(key, 100+i)
+		}
+	}
+	insertPeriod("week", "2026-11-23", "post", "open", 0)
+	insertWinner("2026-11-23", 110) // A stale winner row must not make an open period public.
+	insertPeriod("month", "2026-11", "post", "published", 100)
+	insertPeriod("week", "2026-11-30", "response", "published", 100)
+	if _, err := s.DB.Exec("UPDATE question SET `show`=0 WHERE id=102"); err != nil {
+		t.Fatal(err)
+	}
+	archive, err := s.Archive(ctx, "week", "post", 1)
+	if err != nil || !archive.More || len(archive.Periods) != 5 {
+		t.Fatal(archive, err)
+	}
+	want := []string{"2026-11-16", "2026-11-09", "2026-11-02", "2026-10-26", "2026-10-19"}
+	for i, p := range archive.Periods {
+		if p.Period.Key != want[i] || p.Status != "published" {
+			t.Fatal(p)
+		}
+	}
+	if len(archive.Periods[0].Items) != 1 || archive.Periods[0].Items[0].QuestionID != "100" || len(archive.Periods[1].Items) != 0 || len(archive.Periods[2].Items) != 0 {
+		t.Fatal(archive)
+	}
+	last, err := s.Archive(ctx, "week", "post", 2)
+	if err != nil || last.More || len(last.Periods) != 1 || last.Periods[0].Period.Key != "2026-10-12" {
+		t.Fatal(last, err)
+	}
+	monthly, err := s.Archive(ctx, "month", "post", 1)
+	if err != nil || len(monthly.Periods) != 1 || monthly.Periods[0].Period.Key != "2026-11" {
+		t.Fatal(monthly, err)
+	}
+	responses, err := s.Archive(ctx, "week", "response", 1)
+	if err != nil || len(responses.Periods) != 1 || responses.Periods[0].Period.Key != "2026-11-30" {
+		t.Fatal(responses, err)
+	}
+	exact, err := s.List(ctx, "", Period{"week", "2026-11-16", "post"}, 1, false)
+	if err != nil || len(exact.Items) != 1 || exact.Items[0].QuestionID != "100" {
+		t.Fatal(exact, err)
+	}
+	open, err := s.List(ctx, "", Period{"week", "2026-11-23", "post"}, 1, false)
+	if err != nil || len(open.Items) != 0 || open.Status != "open" {
+		t.Fatal(open, err)
+	}
+}

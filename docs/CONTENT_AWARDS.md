@@ -38,7 +38,7 @@
 
 ## 接口与数据
 
-公开GET /answer/api/v1/metar/awards?type=week|month&key=周期&kind=post|response&page=1，只返回已公布获奖者。
+公开GET /answer/api/v1/metar/awards?type=week|month&key=周期&kind=post|response&page=1，只返回指定期次且当前可公开的已公布获奖者。不指定期次时，按已选周期（周／月）与奖项分页浏览已公布名单，按期次开始日期从新到旧；每期为独立区块，可点「仅看本期」。发布为空名单或后来失效的内容不会混入其他期次。桌面端获奖卡并排，窄屏单列。
 
 成员GET /answer/api/v1/metar/awards/status?question_id=...，POST /answer/api/v1/metar/awards/command（仅nominate）。
 
