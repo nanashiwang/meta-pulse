@@ -130,12 +130,19 @@ func TestNominationQuotaReplayAndConcurrencyMySQL(t *testing.T) {
 func TestWeeklyPublicationNeverPaysAndFreezesMySQL(t *testing.T) {
 	s, now := fixture(t)
 	ctx := context.Background()
+	*now = date(t, "2026-11-16 23:59:59")
 	execute(t, s, "2", "post-nomination01", Command{Op: "nominate", QuestionID: "100"}, false)
 	selectCmd := reviewCommand("select", "post", "100", 0)
 	if _, err := s.Execute(ctx, "3", "review-too-early1", selectCmd, true); !errors.Is(err, ErrNotReady) {
 		t.Fatal(err)
 	}
-	*now = date(t, "2026-11-18 00:00:00")
+	*now = date(t, "2026-11-17 00:00:00")
+	if status, err := s.Status(ctx, "2", "101"); err != nil || status.CanNominate || status.ClosesAt != now.Unix() {
+		t.Fatalf("nomination status must use the same cutoff: %+v %v", status, err)
+	}
+	if _, err := s.Execute(ctx, "2", "nominate-too-late1", Command{Op: "nominate", QuestionID: "101"}, false); !errors.Is(err, ErrClosed) {
+		t.Fatalf("nominations must close when review opens: %v", err)
+	}
 	execute(t, s, "3", "review-selected1", selectCmd, true)
 	execute(t, s, "3", "publish-weekly01", reviewCommand("publish", "post", "", 1), true)
 	list, err := s.List(ctx, "", selectCmd.Period, 1, false)
@@ -218,7 +225,7 @@ func TestAwardCapsAndMonthlySourceReviewMySQL(t *testing.T) {
 func TestMonthWaitsDeduplicatesAndRechecksSourcesMySQL(t *testing.T) {
 	s, now := fixture(t)
 	ctx := context.Background()
-	*now = date(t, "2026-12-09 12:00:00")
+	*now = date(t, "2026-12-08 00:00:00")
 	p := Period{"month", "2026-11", "post"}
 	syncCmd := Command{Op: "sync", Period: p}
 	if _, err := s.Execute(ctx, "3", "month-too-soon001", syncCmd, true); !errors.Is(err, ErrNotReady) {
@@ -235,6 +242,11 @@ func TestMonthWaitsDeduplicatesAndRechecksSourcesMySQL(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	*now = date(t, "2026-12-07 23:59:59")
+	if _, err := s.Execute(ctx, "3", "month-before-open", syncCmd, true); !errors.Is(err, ErrNotReady) {
+		t.Fatalf("month must wait for review time even with published weeks: %v", err)
+	}
+	*now = date(t, "2026-12-08 00:00:00")
 	execute(t, s, "3", "month-sync-000001", syncCmd, true)
 	list, err := s.List(ctx, "3", p, 1, true)
 	if err != nil || len(list.Items) != 1 || len(list.Items[0].Sources) != 2 {

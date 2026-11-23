@@ -50,16 +50,22 @@ func (p Period) Start() (time.Time, error) {
 	}
 	return v, nil
 }
+
+// Weekly review opens at the same instant that nominations close.
+func weeklyReviewAt(t time.Time) time.Time {
+	return Week(t).AddDate(0, 0, 8) // The Tuesday after the award week.
+}
+
 func (p Period) ReviewAt() (time.Time, error) {
 	v, err := p.Start()
 	if err != nil {
 		return v, err
 	}
 	if p.Type == "week" {
-		return v.AddDate(0, 0, 9), nil
+		return weeklyReviewAt(v), nil
 	}
 	last := v.AddDate(0, 1, -1)
-	return Week(last).AddDate(0, 0, 9), nil
+	return weeklyReviewAt(last), nil
 }
 func (p Period) Limit() int {
 	if p.Type == "month" {
@@ -74,7 +80,7 @@ func (p Period) Amount() int {
 	return 50
 }
 func CanNominate(created, now time.Time) bool {
-	return !created.After(now) && now.Before(Week(created).AddDate(0, 0, 9))
+	return !created.After(now) && now.Before(weeklyReviewAt(created))
 }
 func MonthWeeks(p Period) ([]string, error) {
 	v, err := p.Start()

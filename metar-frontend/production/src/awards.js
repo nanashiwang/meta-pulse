@@ -175,8 +175,8 @@
         t("参与规则", "Participation rules") +
         `</summary><p>` +
         t(
-          "在帖子中点击“优秀稿件”提名他人内容，每天最多2次、每周10次；同一帖不能重复提名。按发帖周归属，次周周二结束提名，周三审核。作者采纳回答后，以服务端首次采纳时间归属优秀回应候选。月度按评选周周一所属月份归类，需等待该月全部周奖公布。",
-          "Nominate others’ posts: 2 daily, 10 weekly, once per post. Nominations close next Tuesday; review begins Wednesday (Beijing time). Responses use first author acceptance. Monthly eligibility follows the month of the week’s Monday and waits for all weekly selections.",
+          "在帖子中点击“优秀稿件”提名他人内容，每天最多2次、每周10次；同一帖不能重复提名。按发帖周归属，次周周二 00:00（北京时间）截止提名并开放审核。作者采纳回答后，以服务端首次采纳时间归属优秀回应候选。月度按评选周周一所属月份归类，需等待该月全部周奖公布。",
+          "Nominate others’ posts: 2 daily, 10 weekly, once per post. Nominations close and review opens at 00:00 Tuesday of the following week (Beijing time). Responses use first author acceptance. Monthly eligibility follows the month of the week’s Monday and waits for all weekly selections.",
         ) +
         `</p></details></section>
  <form data-award-period class="card card-pad mt16"><div class="flex wrap"><label>` +

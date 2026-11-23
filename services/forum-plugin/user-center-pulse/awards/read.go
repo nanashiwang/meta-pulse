@@ -153,7 +153,7 @@ func (s *Store) Status(ctx context.Context, user, id string) (NominationStatus, 
 	}
 	now := s.Now()
 	out.Period = Weekly(created, "post")
-	out.ClosesAt = Week(created).AddDate(0, 0, 9).Unix()
+	out.ClosesAt = weeklyReviewAt(created).Unix()
 	var daily, weekly, nominated int
 	if err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM metar_award_nomination WHERE user_id=? AND click_day=?", user, now.In(Zone).Format("2006-01-02")).Scan(&daily); err != nil {
 		return out, err

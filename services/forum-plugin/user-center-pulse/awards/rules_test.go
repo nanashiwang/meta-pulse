@@ -18,8 +18,12 @@ func TestBeijingWeekAndNominationDeadline(t *testing.T) {
 	if Week(sunday).Format("2006-01-02") != "2026-11-09" {
 		t.Fatal(Week(sunday))
 	}
-	if !CanNominate(sunday, date(t, "2026-11-17 23:59:59")) || CanNominate(sunday, date(t, "2026-11-18 00:00:00")) {
-		t.Fatal("Tuesday cutoff")
+	at, err := Weekly(sunday, "post").ReviewAt()
+	if err != nil || !at.Equal(date(t, "2026-11-17 00:00:00")) {
+		t.Fatalf("review must open next Tuesday at midnight: %v %v", at, err)
+	}
+	if !CanNominate(sunday, at.Add(-time.Second)) || CanNominate(sunday, at) {
+		t.Fatal("nominations must close at the exact instant review opens")
 	}
 	if CanNominate(sunday, sunday.Add(-time.Second)) {
 		t.Fatal("future post")
@@ -34,9 +38,9 @@ func TestCrossMonthReviewWaitsForLastMondayWeek(t *testing.T) {
 		t.Fatal(p)
 	}
 	month := Period{"month", "2026-11", "response"}
-	at, _ := month.ReviewAt()
-	if at.Format("2006-01-02") != "2026-12-09" {
-		t.Fatal(at)
+	at, err := month.ReviewAt()
+	if err != nil || !at.Equal(date(t, "2026-12-08 00:00:00")) {
+		t.Fatal(at, err)
 	}
 	weeks, _ := MonthWeeks(month)
 	if len(weeks) != 5 || weeks[4] != "2026-11-30" {
