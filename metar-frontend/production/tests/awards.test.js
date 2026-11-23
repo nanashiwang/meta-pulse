@@ -112,11 +112,11 @@ test('public archive keeps periods separate, links to an exact period and pagina
    return path.includes('key=2026-11-16') ? groups[0] : {periods:groups,more:true};
  }},{});
  const archive=await view.page('/awards',null,new URLSearchParams());
- assert.equal(requests[0],'/metar/awards?type=week&kind=post&page=1');
+ assert.equal(requests[0],'/metar/awards?page=1');
  assert.equal((archive.match(/class="card card-pad award-public-period"/g)||[]).length,2);
  assert.match(archive,/2026-11-16 · 优秀帖子奖.*最近期获奖.*2026-11-09 · 优秀帖子奖.*上一期获奖/s);
  assert.match(archive,/href="\/awards\?type=week&amp;key=2026-11-16&amp;kind=post&amp;page=1">仅看本期/);
- assert.match(archive,/href="\/awards\?type=week&amp;kind=post&amp;page=2">下一页/);
+ assert.match(archive,/href="\/awards\?page=2">下一页/);
  assert.doesNotMatch(archive,/不可公开内容/);
  const exact=await view.page('/awards',null,new URLSearchParams('type=week&key=2026-11-16&kind=post'));
  assert.match(requests[1],/key=2026-11-16/);
@@ -138,4 +138,22 @@ test('blank public filter keeps award and cycle without inventing a date', async
  fields.set('key','2026-11');
  form.onsubmit({preventDefault(){}});
  assert.equal(destinations[1],'/awards?type=month&kind=response&key=2026-11');
+});
+
+
+test('admin without a date opens the server suggested period and preserves explicit choices', async () => {
+ const h = setup(), requests = [];
+ const view = new h.api.View({}, {request:async path=>{
+   requests.push(path);
+   return {...data,period:{type:'week',key:'2026-11-09',kind:'post'},recent:['2026-11-16','2026-11-09','2026-11-02']};
+ }});
+ const html=await view.page('/admin/awards',{id:'3'},new URLSearchParams());
+ assert.equal(requests[0],'/metar/awards?type=week&kind=post&page=1');
+ assert.equal(view.period.key,'2026-11-09');
+ assert.match(html,/近期审核期次.*aria-current="page"[^>]*>2026-11-09/s);
+ assert.match(html,/已自动打开推荐期次/);
+ const exact=await view.page('/admin/awards',{id:'3'},new URLSearchParams('type=week&key=2026-11-02&kind=post'));
+ assert.match(requests[1],/key=2026-11-02/);
+ assert.equal(view.period.key,'2026-11-02');
+ assert.doesNotMatch(exact,/已自动打开推荐期次/);
 });

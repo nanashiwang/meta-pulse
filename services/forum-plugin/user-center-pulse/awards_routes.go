@@ -99,6 +99,15 @@ func (uc *UserCenter) awardHandler(op string, session func(*gin.Context) (string
 		}
 		p := awards.Period{Type: q.Get("type"), Key: q.Get("key"), Kind: q.Get("kind")}
 		archive := op == "list" && session == nil && !admin && !q.Has("key")
+		defaultReview := op == "list" && admin && !q.Has("key")
+		if defaultReview {
+			if !q.Has("type") {
+				p.Type = "week"
+			}
+			if !q.Has("kind") {
+				p.Kind = "post"
+			}
+		}
 		page := 1
 		var cmd awards.Command
 		if op == "profile" && q.Get("username") == "" {
@@ -116,8 +125,8 @@ func (uc *UserCenter) awardHandler(op string, session func(*gin.Context) (string
 			p.Kind = "post"
 		}
 		if op == "list" || op == "audit" || op == "submissions" {
-			if archive {
-				if (p.Type != "week" && p.Type != "month") || (p.Kind != "post" && p.Kind != "response") {
+			if archive || defaultReview {
+				if (p.Type != "week" && p.Type != "month" && !(archive && !q.Has("type"))) || (p.Kind != "post" && p.Kind != "response" && !(archive && !q.Has("kind"))) {
 					communityError(c, 400, "invalid_request")
 					return
 				}

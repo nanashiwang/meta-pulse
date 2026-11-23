@@ -18,7 +18,7 @@ func TestAwardsRejectUnsafeRequestsBeforeDatabase(t *testing.T) {
 		{"GET", "/public/metar/awards?type=week&kind=post&page=0", "", "", "", 400},
 		{"GET", "/public/metar/awards?type=month&kind=unknown", "", "", "", 400},
 		{"GET", "/public/metar/awards?type=week&key=&kind=post", "", "", "", 400},
-		{"GET", "/admin/metar/awards?type=week&kind=post", "", "Bearer x", "", 400},
+		{"GET", "/admin/metar/awards?type=week&kind=post&key=", "", "Bearer x", "", 400},
 		{"GET", "/member/metar/awards/honors", "", "", "", 401},
 		{"POST", "/member/metar/awards/command", `{"op":"paid","period":{"type":"week","key":"2026-11-09","kind":"post"},"subject_id":"100","reason":"fake"}`, "Bearer x", "https://forum.test", 403},
 		{"POST", "/member/metar/awards/command", `{"op":"grant","period":{"type":"week","key":"2026-11-09","kind":"post"},"subject_id":"100"}`, "Bearer x", "https://forum.test", 403},

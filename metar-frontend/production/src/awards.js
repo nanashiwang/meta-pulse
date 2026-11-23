@@ -86,9 +86,9 @@
       this.mine = !this.admin && query.get("view") === "submissions";
       this.archive = !this.admin && !this.mine && !query.get("key");
       this.period = {
-        type: query.get("type") === "month" ? "month" : "week",
-        key: query.get("key") || (this.archive ? "" : currentWeek()),
-        kind: query.get("kind") === "response" ? "response" : "post",
+        type: query.get("type") === "month" ? "month" : this.archive && !query.get("type") ? "" : "week",
+        key: query.get("key") || (this.mine ? currentWeek() : ""),
+        kind: query.get("kind") === "response" ? "response" : this.archive && !query.get("kind") ? "" : "post",
       };
       if (this.period.type === "month")
         this.period.key = this.period.key.slice(0, 7);
@@ -111,6 +111,12 @@
       }
       this.data = await this.client().request("/metar/awards?" + this.query());
       if (this.archive && !Array.isArray(this.data?.periods)) throw Error("invalid_response");
+      this.defaultReview = this.admin && !this.period.key;
+      if (this.defaultReview) {
+        const selected = this.data?.period;
+        if (!selected?.key || selected.type !== this.period.type || selected.kind !== this.period.kind) throw Error("invalid_response");
+        this.period = selected;
+      }
       return this.html();
     }
     scout() {
@@ -135,7 +141,7 @@
     }
     query(page = this.pageNo, patch = {}) {
       const params = new URLSearchParams({ ...this.period, ...patch, page: String(page) });
-      if (!params.get("key")) params.delete("key");
+      for (const key of ["type", "kind", "key"]) if (!params.get(key)) params.delete(key);
       return params;
     }
     link(page = this.pageNo, patch = {}) {
@@ -170,7 +176,7 @@
         ),
       };
       return (
-        this.headerHTML() + this.filterHTML() +
+        this.headerHTML() + this.filterHTML() + this.reviewShortcuts() +
         ` <section class="mt16"><div class="between wrap"><h2>` +
         esc(this.period.key) +
         " · " +
@@ -253,7 +259,7 @@
         `</h1><nav class="award-header-actions">` +
         (this.admin ? '<a data-router href="/awards?'+esc(this.query())+'">'+t('查看获奖名单','Published awards')+'</a>' :
           '<a class="btn primary" data-router href="'+esc(this.link(1,{type:'week',key:currentWeek(),view:'submissions'}))+'">'+t('我的提交','My submissions')+'</a>' +
-          (this.user?.role_id === 2 ? '<a class="btn" data-router href="/admin/awards?'+esc(this.query(1,{key:this.period.key || currentWeek()}))+'">'+t('管理审核','Review awards')+'</a>' : '')) +
+          (this.user?.role_id === 2 ? '<a class="btn" data-router href="/admin/awards?'+esc(this.query(1,{type:this.period.type || 'week',kind:this.period.kind || 'post'}))+'">'+t('管理审核','Review awards')+'</a>' : '')) +
         '</nav></div><details class="award-rules"' + (this.admin ? ' open' : '') + '><summary>' + t("评选说明与参与规则", "Award rules and details") + '</summary><p class="muted">' +
         t(
           "周奖每类最多10人，月奖每类最多5人，不分排名、不强制补位。",
@@ -271,10 +277,22 @@
         ) +
         `</p></details></section>`;
     }
+    reviewShortcuts() {
+      const dates = this.data.recent;
+      if (!Array.isArray(dates) || !dates.length) return "";
+      const options = dates.map(key => '<a data-router class="btn small' + (key === this.period.key ? ' primary' : '') + '"' +
+        (key === this.period.key ? ' aria-current="page"' : '') + ' href="' + esc(this.link(1,{key})) + '">' + esc(key) + '</a>').join("");
+      return '<nav class="award-review-shortcuts card card-pad mt16" aria-label="' + t("近期审核期次", "Recent review periods") + '">' +
+        '<strong>' + t("近期审核期次", "Recent review periods") + '</strong>' + options +
+        '<a data-router class="btn small" href="' + esc(this.link(1,{key:""})) + '">' + t("推荐审核期次", "Suggested period") + '</a>' +
+        (this.defaultReview ? '<small class="muted">' + t("已自动打开推荐期次，可直接切换。", "Opened the suggested period automatically.") + '</small>' : '') + '</nav>';
+    }
     filterHTML() {
       return ` <form data-award-period class="card card-pad mt16"><div class="award-filter-fields"><label>` +
         t("周期", "Period") +
-        `<select name="type"><option value="week" ` +
+        `<select name="type">` +
+        (!this.admin ? '<option value=""' + (this.period.type ? "" : " selected") + ">" + t("全部周期", "All cycles") + "</option>" : "") +
+        `<option value="week" ` +
         (this.period.type === "week" ? "selected" : "") +
         `>` +
         t("每周", "Weekly") +
@@ -283,14 +301,16 @@
         `>` +
         t("每月", "Monthly") +
         `</option></select></label><label>` +
-        (this.admin ? t("周一日期／月份", "Monday date / month") : t("期次（可留空）", "Period (optional)")) +
+        (this.admin ? t("自选日期（可留空）", "Custom date (optional)") : t("期次（可留空）", "Period (optional)")) +
         `<input name="key" type="` +
         (this.period.type === "month" ? "month" : "date") +
         `" value="` +
         esc(this.period.key) +
-        `"` + (this.admin ? " required" : "") + `></label><label>` +
+        `"></label><label>` +
         t("奖项", "Award") +
-        `<select name="kind"><option value="post" ` +
+        `<select name="kind">` +
+        (!this.admin ? '<option value=""' + (this.period.kind ? "" : " selected") + ">" + t("全部奖项", "All awards") + "</option>" : "") +
+        `<option value="post" ` +
         (this.period.kind === "post" ? "selected" : "") +
         `>` +
         label("post") +
@@ -300,7 +320,8 @@
         label("response") +
         `</option></select></label><button class="btn primary">` +
         t(this.admin ? "查看" : "筛选", this.admin ? "View" : "Filter") + '</button>' +
-        (!this.admin && !this.archive ? '<a class="btn" data-router href="' + esc(this.link(1,{key:""})) + '">' + t("查看全部期次", "All periods") + '</a>' : '') + '</div></form>';
+        (!this.admin && !this.archive ? '<a class="btn" data-router href="' + esc(this.link(1,{key:""})) + '">' + t("查看全部期次", "All periods") + '</a>' : '') +
+        (!this.admin && (this.period.type || this.period.kind || this.period.key) ? '<a class="btn" data-router href="/awards">' + t("清除筛选", "Clear filters") + '</a>' : '') + '</div></form>';
     }
     publicHTML() {
       const groups = this.archive ? this.data.periods.filter(d => d.status === "published") : [this.data];
@@ -363,15 +384,18 @@
       form.onsubmit = (e) => {
         e.preventDefault();
         const data = new FormData(form);
-        const type = data.get("type"), key = data.get("key");
-        const params = new URLSearchParams({type,kind:data.get("kind")});
+        const key = data.get("key"), type = data.get("type") || (key ? "week" : "");
+        const kind = data.get("kind") || (key ? "post" : "");
+        const params = new URLSearchParams();
+        if (type) params.set("type",type);
+        if (kind) params.set("kind",kind);
         if (key) params.set("key",type === "week" ? currentWeek(new Date(key + "T00:00:00+08:00")) : key);
         root.location.assign(this.path + "?" + params);
       };
       form.elements.type.onchange = () => {
         const month = form.elements.type.value === "month";
         form.elements.key.type = month ? "month" : "date";
-        form.elements.key.value = this.admin ? (month ? this.period.key.slice(0, 7) : currentWeek()) : "";
+        form.elements.key.value = "";
       };
       node
         .querySelectorAll("[data-award]")

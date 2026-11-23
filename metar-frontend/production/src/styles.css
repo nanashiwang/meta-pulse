@@ -892,3 +892,6 @@ html.community-wide:not(.preview-tools) .page{padding-bottom:calc(var(--communit
 @container (min-width:850px){.award-public-items{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @container (max-width:420px){.award-public-winner{display:grid}.award-public-winner .award-prize{justify-content:flex-start}}
 @media(min-width:720px){.award-overview .award-header-actions{display:flex;flex-wrap:wrap;align-items:center}}
+
+.award-review-shortcuts{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center}
+.award-review-shortcuts strong{margin-inline-end:4px}

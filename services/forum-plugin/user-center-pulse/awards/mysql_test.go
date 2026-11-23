@@ -612,6 +612,10 @@ func TestMySQLPublicAwardArchiveOrdersAndFiltersCompletePeriods(t *testing.T) {
 	if err != nil || last.More || len(last.Periods) != 1 || last.Periods[0].Period.Key != "2026-10-12" {
 		t.Fatal(last, err)
 	}
+	mixed, err := s.Archive(ctx, "", "", 1)
+	if err != nil || !mixed.More || len(mixed.Periods) != 5 || mixed.Periods[0].Period.Kind != "response" || mixed.Periods[4].Period.Type != "month" {
+		t.Fatal(mixed, err)
+	}
 	monthly, err := s.Archive(ctx, "month", "post", 1)
 	if err != nil || len(monthly.Periods) != 1 || monthly.Periods[0].Period.Key != "2026-11" {
 		t.Fatal(monthly, err)
@@ -627,5 +631,41 @@ func TestMySQLPublicAwardArchiveOrdersAndFiltersCompletePeriods(t *testing.T) {
 	open, err := s.List(ctx, "", Period{"week", "2026-11-23", "post"}, 1, false)
 	if err != nil || len(open.Items) != 0 || open.Status != "open" {
 		t.Fatal(open, err)
+	}
+}
+
+func TestMySQLDefaultReviewPeriodFindsWorkAndPreservesExactSelection(t *testing.T) {
+	s, now := fixture(t)
+	ctx := context.Background()
+	if _, err := s.DB.Exec("INSERT INTO metar_award_period(period_type,period_key,kind,status) VALUES('week','2026-11-02','post','published')"); err != nil {
+		t.Fatal(err)
+	}
+	execute(t, s, "2", "default-nominated-1", Command{Op: "nominate", QuestionID: "100"}, false)
+	*now = date(t, "2026-11-16 23:59:59")
+	p := Period{Type: "week", Kind: "post"}
+	earlier, err := s.List(ctx, "3", p, 1, true)
+	if err != nil || earlier.Period.Key != "2026-11-02" || earlier.Status != "published" {
+		t.Fatal(earlier, err)
+	}
+	*now = date(t, "2026-11-17 00:00:00")
+	current, err := s.List(ctx, "3", p, 1, true)
+	if err != nil || current.Period.Key != "2026-11-09" || len(current.Items) != 1 || len(current.Recent) != 6 || current.Recent[0] != "2026-11-16" {
+		t.Fatal(current, err)
+	}
+	*now = date(t, "2026-11-24 10:00:00")
+	current, err = s.List(ctx, "3", p, 1, true)
+	if err != nil || current.Period.Key != "2026-11-09" {
+		t.Fatal(current, err)
+	}
+	exact, err := s.List(ctx, "3", Period{"week", "2026-11-23", "post"}, 1, true)
+	if err != nil || exact.Period.Key != "2026-11-23" {
+		t.Fatal(exact, err)
+	}
+	response, err := s.List(ctx, "3", Period{Type: "week", Kind: "response"}, 1, true)
+	if err != nil || response.Period.Key != "2026-11-16" {
+		t.Fatal(response, err)
+	}
+	if _, err := s.List(ctx, "2", p, 1, true); !errors.Is(err, ErrForbidden) {
+		t.Fatal(err)
 	}
 }

@@ -8,6 +8,7 @@ import (
 )
 
 type Page struct {
+	Recent       []string    `json:"recent,omitempty"`
 	Period       Period      `json:"period"`
 	Status       string      `json:"status"`
 	Version      int64       `json:"version"`
@@ -20,8 +21,13 @@ type Page struct {
 }
 
 func (s *Store) List(ctx context.Context, user string, p Period, page int, admin bool) (Page, error) {
-	if _, err := p.Start(); err != nil || page < 1 || page > 10000 {
+	if !validAwardCategory(p.Type, p.Kind, false) || page < 1 || page > 10000 {
 		return Page{}, ErrInvalid
+	}
+	if !admin || p.Key != "" {
+		if _, err := p.Start(); err != nil {
+			return Page{}, err
+		}
 	}
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -33,7 +39,17 @@ func (s *Store) List(ctx context.Context, user string, p Period, page int, admin
 			return Page{}, err
 		}
 	}
-	return readAwardPeriod(ctx, tx, p, page, admin)
+	if admin && p.Key == "" {
+		p, err = defaultReviewPeriod(ctx, tx, p, s.Now())
+		if err != nil {
+			return Page{}, err
+		}
+	}
+	out, err := readAwardPeriod(ctx, tx, p, page, admin)
+	if err == nil && admin {
+		out.Recent = recentReviewKeys(p.Type, s.Now())
+	}
+	return out, err
 }
 
 func readAwardPeriod(ctx context.Context, tx *sql.Tx, p Period, page int, admin bool) (Page, error) {
@@ -145,7 +161,7 @@ const awardArchiveSize = 5
 
 func (s *Store) Archive(ctx context.Context, typ, kind string, page int) (AwardArchive, error) {
 	out := AwardArchive{Periods: []Page{}}
-	if (typ != "week" && typ != "month") || (kind != "post" && kind != "response") || page < 1 || page > 10000 {
+	if !validAwardCategory(typ, kind, true) || page < 1 || page > 10000 {
 		return out, ErrInvalid
 	}
 	tx, err := s.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead})
@@ -153,29 +169,41 @@ func (s *Store) Archive(ctx context.Context, typ, kind string, page int) (AwardA
 		return out, err
 	}
 	defer tx.Rollback()
-	rows, err := tx.QueryContext(ctx, "SELECT period_key FROM metar_award_period WHERE period_type=? AND kind=? AND status='published' ORDER BY period_key DESC LIMIT ? OFFSET ?", typ, kind, awardArchiveSize+1, (page-1)*awardArchiveSize)
+	query := "SELECT period_type,period_key,kind FROM metar_award_period WHERE status='published'"
+	var args []any
+	if typ != "" {
+		query += " AND period_type=?"
+		args = append(args, typ)
+	}
+	if kind != "" {
+		query += " AND kind=?"
+		args = append(args, kind)
+	}
+	// Monthly keys are shorter; pad to their actual start date for mixed archives.
+	query += " ORDER BY IF(period_type='month',CONCAT(period_key,'-01'),period_key) DESC,period_type,kind LIMIT ? OFFSET ?"
+	rows, err := tx.QueryContext(ctx, query, append(args, awardArchiveSize+1, (page-1)*awardArchiveSize)...)
 	if err != nil {
 		return out, err
 	}
 	defer rows.Close()
-	var keys []string
+	var periods []Period
 	for rows.Next() {
-		var key string
-		if err = rows.Scan(&key); err != nil {
+		var p Period
+		if err = rows.Scan(&p.Type, &p.Key, &p.Kind); err != nil {
 			return out, err
 		}
-		keys = append(keys, key)
+		periods = append(periods, p)
 	}
 	if err = rows.Err(); err != nil {
 		return out, err
 	}
 	rows.Close()
-	out.More = len(keys) > awardArchiveSize
+	out.More = len(periods) > awardArchiveSize
 	if out.More {
-		keys = keys[:awardArchiveSize]
+		periods = periods[:awardArchiveSize]
 	}
-	for _, key := range keys {
-		p, err := readAwardPeriod(ctx, tx, Period{Type: typ, Key: key, Kind: kind}, 1, false)
+	for _, period := range periods {
+		p, err := readAwardPeriod(ctx, tx, period, 1, false)
 		if err != nil {
 			return out, err
 		}

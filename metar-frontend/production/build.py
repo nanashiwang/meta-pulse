@@ -150,7 +150,9 @@ def build(output: Path, config_path: Path) -> None:
     (assets / "tag-shortcuts.js").write_text(sources["tag-shortcuts"], encoding="utf-8")
     (assets / "search-suggestions.js").write_text(sources["search-suggestions"], encoding="utf-8")
     ads_version = hashlib.sha256(sources["home-ads"].encode()).hexdigest()[:16]
-    (assets / "app.js").write_text(sources["app"].replace("__HOME_ADS_VERSION__", ads_version), encoding="utf-8")
+    awards_version = hashlib.sha256(sources["awards"].encode()).hexdigest()[:16]
+    app = sources["app"].replace("__HOME_ADS_VERSION__", ads_version).replace("__AWARDS_VERSION__", awards_version)
+    (assets / "app.js").write_text(app, encoding="utf-8")
     (assets / "pulse-feed.js").write_text(sources["pulse-feed"], encoding="utf-8")
     (assets / "pulse-core.js").write_text(sources["pulse-core"], encoding="utf-8")
     shutil.copyfile(ROOT / "src/pulse-core.css", assets / "pulse-core.css")
