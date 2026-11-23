@@ -18,15 +18,16 @@ type GiftRange struct {
 	Max int64 `json:"max"`
 }
 type GiftRules struct {
-	Name     string     `json:"name"`
-	Minutes  int64      `json:"minutes"`
-	Flash    *GiftRange `json:"flash"`
-	Exp      *GiftRange `json:"exp"`
-	Tickets  *GiftRange `json:"tickets"`
-	UsageRaw string     `json:"usage_raw"`
-	Likes    *int64     `json:"likes"`
-	Comments *int64     `json:"comments"`
-	Groups   []GiftRule `json:"groups,omitempty"`
+	Name            string     `json:"name"`
+	Minutes         int64      `json:"minutes"`
+	Flash           *GiftRange `json:"flash"`
+	Exp             *GiftRange `json:"exp"`
+	Tickets         *GiftRange `json:"tickets"`
+	UsageRaw        string     `json:"usage_raw"`
+	Likes           *int64     `json:"likes"`
+	Comments        *int64     `json:"comments"`
+	Groups          []GiftRule `json:"groups,omitempty"`
+	SocialInclusive bool       `json:"social_inclusive,omitempty"`
 }
 
 type GiftRule struct {
@@ -92,7 +93,7 @@ func (g GiftRule) valid() bool {
 
 // Evaluate only as far as necessary. Missing usage is a failed threshold, but
 // an unavailable fact cannot demote a potentially eligible higher-priority rule.
-func firstGiftMatch(rules []GiftRule, likes, comments func() (int64, error), usage func() (*int64, error)) (*GiftRule, error) {
+func firstGiftMatch(rules []GiftRule, socialInclusive bool, likes, comments func() (int64, error), usage func() (*int64, error)) (*GiftRule, error) {
 	var counts [2]*int64
 	var raw *int64
 	usageRead := false
@@ -112,7 +113,7 @@ func firstGiftMatch(rules []GiftRule, likes, comments func() (int64, error), usa
 				}
 				counts[i] = &v
 			}
-			if *counts[i] <= *check.limit {
+			if *counts[i] < *check.limit || (!socialInclusive && *counts[i] == *check.limit) {
 				ok = false
 				break
 			}
@@ -269,7 +270,7 @@ func (s *Store) Gift(ctx context.Context, user, requested string, spend GiftUsag
 			return n, err
 		}
 	}
-	rule, e := firstGiftMatch(g.orderedRules(), count("SELECT COUNT(*) FROM activity a JOIN config c ON c.id=a.activity_type WHERE c.`key` IN ('question.voted_up','answer.voted_up') AND a.trigger_user_id=? AND a.cancelled=0 AND a.created_at>=FROM_UNIXTIME(?) AND a.created_at<FROM_UNIXTIME(?)"), count("SELECT COUNT(*) FROM comment WHERE user_id=? AND status=1 AND created_at>=FROM_UNIXTIME(?) AND created_at<FROM_UNIXTIME(?)"), func() (*int64, error) {
+	rule, e := firstGiftMatch(g.orderedRules(), g.SocialInclusive, count("SELECT COUNT(*) FROM activity a JOIN config c ON c.id=a.activity_type WHERE c.`key` IN ('question.voted_up','answer.voted_up') AND a.trigger_user_id=? AND a.cancelled=0 AND a.created_at>=FROM_UNIXTIME(?) AND a.created_at<FROM_UNIXTIME(?)"), count("SELECT COUNT(*) FROM comment WHERE user_id=? AND status=1 AND created_at>=FROM_UNIXTIME(?) AND created_at<FROM_UNIXTIME(?)"), func() (*int64, error) {
 		if spend == nil {
 			return nil, errors.New("usage temporarily unavailable")
 		}

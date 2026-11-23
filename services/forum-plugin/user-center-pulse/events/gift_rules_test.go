@@ -18,7 +18,7 @@ func TestGiftRulesChooseHighestEligibleOnly(t *testing.T) {
 		want            *GiftRule
 	}{{"both", 5, 5, giftNumber(101), &a}, {"exact threshold", 5, 5, giftNumber(100), &b}, {"missing usage", 5, 5, nil, &b}, {"only first", 5, 1, giftNumber(101), &a}, {"neither", 3, 3, giftNumber(101), nil}} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := firstGiftMatch(rules, count(tc.likes), count(tc.comments), func() (*int64, error) { return tc.raw, nil })
+			got, err := firstGiftMatch(rules, false, count(tc.likes), count(tc.comments), func() (*int64, error) { return tc.raw, nil })
 			if err != nil || (got == nil) != (tc.want == nil) || got != nil && *got != *tc.want {
 				t.Fatalf("got %+v, %v; want %+v", got, err, tc.want)
 			}
@@ -27,10 +27,10 @@ func TestGiftRulesChooseHighestEligibleOnly(t *testing.T) {
 	unavailable := errors.New("unavailable")
 	calls := 0
 	spend := func() (*int64, error) { calls++; return nil, unavailable }
-	if got, err := firstGiftMatch(rules, count(5), count(5), spend); got != nil || !errors.Is(err, unavailable) {
+	if got, err := firstGiftMatch(rules, false, count(5), count(5), spend); got != nil || !errors.Is(err, unavailable) {
 		t.Fatalf("should not demote a potential match: %+v %v", got, err)
 	}
-	if got, err := firstGiftMatch(rules, count(3), count(5), spend); got == nil || *got != b || err != nil || calls != 1 {
+	if got, err := firstGiftMatch(rules, false, count(3), count(5), spend); got == nil || *got != b || err != nil || calls != 1 {
 		t.Fatalf("ineligible first rule should not need usage: %+v %v (calls=%d)", got, err, calls)
 	}
 }
@@ -55,5 +55,29 @@ func TestGiftRulesValidateLegacyAndGroups(t *testing.T) {
 	modern.Groups = make([]GiftRule, maxGiftRules+1)
 	if modern.valid() {
 		t.Fatal("too many groups accepted")
+	}
+}
+
+func TestGiftInclusiveSocialThresholdsKeepStrictUsage(t *testing.T) {
+	rule := GiftRule{Likes: giftNumber(3), Comments: giftNumber(2), UsageRaw: "100", Exp: &GiftRange{4, 4}}
+	count := func(n int64) func() (int64, error) { return func() (int64, error) { return n, nil } }
+	for _, caseData := range []struct {
+		name                   string
+		inclusive              bool
+		likes, comments, usage int64
+		want                   bool
+	}{
+		{"new equality passes", true, 3, 2, 101, true},
+		{"legacy equality fails", false, 3, 2, 101, false},
+		{"below comments", true, 3, 1, 101, false},
+		{"below likes", true, 2, 2, 101, false},
+		{"usage equality still fails", true, 3, 2, 100, false},
+	} {
+		t.Run(caseData.name, func(t *testing.T) {
+			got, e := firstGiftMatch([]GiftRule{rule}, caseData.inclusive, count(caseData.likes), count(caseData.comments), func() (*int64, error) { return giftNumber(caseData.usage), nil })
+			if e != nil || (got != nil) != caseData.want {
+				t.Fatalf("got %v, %v", got, e)
+			}
+		})
 	}
 }

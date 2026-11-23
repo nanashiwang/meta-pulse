@@ -257,7 +257,10 @@ func (s *Store) execute(ctx context.Context, user, key string, c Command) (Resul
 		if live > 0 {
 			return r, ErrConflict
 		}
-		b, e := json.Marshal(c.Gift)
+		// Freeze the comparison mode at creation; existing rounds remain unchanged.
+		config := *c.Gift
+		config.SocialInclusive = true
+		b, e := json.Marshal(config)
 		if e != nil {
 			return r, e
 		}

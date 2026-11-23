@@ -54,7 +54,7 @@
       .join("");
     return `<section class="lg-rule" data-rule="${prefix}"><header class="lg-heading"><h3 data-rule-title>规则 1（最高优先级）</h3><div class="lg-rule-actions"><button type="button" class="btn" data-rule-action="up">上移</button><button type="button" class="btn" data-rule-action="down">下移</button><button type="button" class="btn" data-rule-action="remove">删除</button></div></header>
       <section class="lg-group lg-gates"><h3>昨日领取门槛 <small>留空不限 · 填写项须同时满足</small></h3><div class="lg-criteria"><label>API 消耗大于<span class="lg-unit"><input name="${prefix}usage" inputmode="decimal" placeholder="不限"><select aria-label="用量单位" name="${prefix}unit"><option value="4">万</option><option value="8">亿</option></select></span></label>
-      <label>点赞数大于<input type="number" min="0" max="1000000" name="${prefix}likes" placeholder="不限"></label><label>评论数大于<input type="number" min="0" max="1000000" name="${prefix}comments" placeholder="不限"></label></div></section>
+      <label>点赞数大于等于<input type="number" min="0" max="1000000" name="${prefix}likes" placeholder="不限"></label><label>评论数大于等于<input type="number" min="0" max="1000000" name="${prefix}comments" placeholder="不限"></label></div></section>
       <section class="lg-group lg-rewards"><h3>奖品配置 <small>可组合发放</small></h3><div class="lg-prizes">${rewards}</div></section></section>`;
   }
   function adminHTML() {
