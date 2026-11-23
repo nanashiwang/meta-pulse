@@ -65,3 +65,31 @@ func TestRepliedThreadsMustDeriveUserFromSession(t *testing.T) {
 		}
 	}
 }
+
+func TestGiftTierHistoryRejectsUnsafeFiltersAndIsNotRegisteredForMembers(t *testing.T) {
+	uc := &UserCenter{}
+	r := gin.New()
+	session := func(*gin.Context) (string, error) { return "1", nil }
+	site := func() string { return "https://forum.test" }
+	uc.registerEvents(r.Group("/admin"), session, true, site)
+	uc.registerEvents(r.Group("/member"), session, false, site)
+	for _, tc := range []struct {
+		path, auth string
+		status     int
+	}{
+		{"/member/metar/events/gift-history?id=1&tiers=1", "session", 404},
+		{"/admin/metar/events/gift-history?id=1&tiers=1", "", 401},
+		{"/admin/metar/events/gift-history?tiers=1", "session", 400},
+		{"/admin/metar/events/gift-history?id=1&tiers=1&rule=1", "session", 400},
+		{"/admin/metar/events/gift-history?id=1&rule=-1", "session", 400},
+		{"/admin/metar/events/gift-history?id=1&rule=1&rule=2", "session", 400},
+	} {
+		req := httptest.NewRequest("GET", tc.path, nil)
+		req.Header.Set("Authorization", tc.auth)
+		out := httptest.NewRecorder()
+		r.ServeHTTP(out, req)
+		if out.Code != tc.status {
+			t.Fatalf("want %d, got %d", tc.status, out.Code)
+		}
+	}
+}

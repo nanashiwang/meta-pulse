@@ -284,3 +284,62 @@ func TestMySQLGiftRuleNumberMigrationPreservesLegacyClaims(t *testing.T) {
 		t.Fatalf("legacy claim changed after upgrade: %+v", rows)
 	}
 }
+
+func TestMySQLGiftTierHistoryUsesFrozenRulesAndFiltersBeforePagination(t *testing.T) {
+	s := fixture(t)
+	ctx := context.Background()
+	for _, q := range []string{"DELETE FROM metar_gift_claim", "DELETE FROM metar_gift_round"} {
+		if _, err := s.DB.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r, err := s.Execute(ctx, "1", "history-tier-test", Command{Op: "gift_start", Gift: &GiftRules{Name: "tier history", Minutes: 5, Groups: []GiftRule{
+		{Likes: giftNumber(3), Comments: giftNumber(0), UsageRaw: "9007199254740993", MaxClaims: giftNumber(55), Flash: &GiftRange{100, 199}, Tickets: &GiftRange{0, 2}},
+		{Exp: &GiftRange{5, 5}},
+		{Exp: &GiftRange{1, 1}},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := func(i, n, flash, exp, tickets int, paid, zero bool) {
+		t.Helper()
+		if _, err := s.DB.Exec("INSERT INTO metar_gift_claim(round_id,user_id,external_id,rule_number,flash,exp,tickets,flash_paid,exp_paid,tickets_paid,no_ticket_award,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", r.ID, i, 10000+i, n, flash, exp, tickets, paid, paid, paid, zero, s.Now().Unix()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seed(2, 2, 0, 5, 0, false, false)
+	seed(3, 0, 200, 0, 0, true, false)
+	for user := 100; user <= 151; user++ {
+		seed(user, 1, 155, 0, 0, user%2 == 0, true)
+	}
+	s.Now = func() time.Time { return time.Unix(1900000000, 0) }
+	report, err := s.GiftTierReport(ctx, "1", r.ID)
+	if err != nil || len(report.Tiers) != 3 || report.Name != "tier history" || !report.SocialInclusive {
+		t.Fatal(report, err)
+	}
+	a, b, c := report.Tiers[0], report.Tiers[1], report.Tiers[2]
+	if a.Number != 1 || a.People != 52 || a.Flash != 26*155 || a.Rule.UsageRaw != "9007199254740993" || *a.Rule.MaxClaims != 55 || a.Rule.Tickets.Min != 0 || b.People != 1 || b.Exp != 0 || c.People != 0 || report.Unassigned.People != 1 || report.Unassigned.Flash != 200 {
+		t.Fatalf("incorrect tier configuration or totals: %+v", report)
+	}
+	for _, tc := range []struct {
+		tier, page, count int
+		first             string
+	}{{1, 1, 50, "100"}, {1, 2, 2, "150"}, {2, 1, 1, "2"}, {0, 1, 1, "3"}, {3, 1, 0, ""}} {
+		rows, err := s.GiftTierPeople(ctx, "1", r.ID, tc.page, tc.tier)
+		if err != nil || len(rows) != tc.count {
+			t.Fatalf("tier %d page %d: %v %v", tc.tier, tc.page, rows, err)
+		}
+		if len(rows) > 0 && (rows[0].RuleNumber != tc.tier || rows[0].User != tc.first || (tc.tier == 1 && !rows[0].NoTicketAward)) {
+			t.Fatalf("wrong claimant: %+v", rows[0])
+		}
+	}
+	if _, err := s.GiftTierReport(ctx, "2", r.ID); !errors.Is(err, ErrForbidden) {
+		t.Fatal(err)
+	}
+	if _, err := s.GiftTierPeople(ctx, "2", r.ID, 1, 1); !errors.Is(err, ErrForbidden) {
+		t.Fatal(err)
+	}
+	if _, err := s.GiftTierPeople(ctx, "1", r.ID, 1, 4); !errors.Is(err, ErrInvalid) {
+		t.Fatal(err)
+	}
+}

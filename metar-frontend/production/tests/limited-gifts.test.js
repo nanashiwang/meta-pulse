@@ -204,3 +204,51 @@ test("each gift rule posts its own limit and omits empty limits", async () => {
   assert.ok(!Object.hasOwn(second, "max_claims"));
   stop();
 });
+
+
+test("admin history shows frozen tier settings and keeps filter on page and refresh", async () => {
+  const status = {}, report = {}, button = {};
+  const form = { querySelector: field => field === '.lg-submit button' ? button : null };
+  const editor = { querySelector: field => field === 'form' ? form : status };
+  const history = { querySelector: () => report };
+  const paths = [];
+  const person = { Name: '档位领取者', User: '8', At: 1700000000, Flash: 199, Exp: 0, Tickets: 0, rule_number: 1, no_ticket_award: true };
+  const admin = { request: async path => {
+    paths.push(path);
+    const q = new URL(path, 'https://forum.test').searchParams;
+    if (q.has('tiers')) return {
+      name: '<旧轮次>', social_inclusive: true,
+      tiers: [
+        { number: 1, people: 51, flash: 199, exp: 0, tickets: 0, rule: { likes: 3, comments: 0, usage_raw: '9007199254740993', max_claims: 55, flash: { min: 100, max: 199 }, tickets: { min: 0, max: 2 } } },
+        { number: 2, people: 0, flash: 0, exp: 0, tickets: 0, rule: { exp: { min: 1, max: 1 } } },
+      ], unassigned: { people: 1, flash: 200, exp: 0, tickets: 0 },
+    };
+    if (q.get('rule') === '1') return q.get('page') === '1' ? Array(50).fill(person) : [person];
+    if (q.get('rule') === '0') return [{...person,Name: '旧领取者', rule_number: 0}];
+    return [{ID:'7',Name:'赠礼',Actor:'管理员',End:0,People:52,Flash:399,Exp:0,Tickets:0}];
+  }};
+  const stop = w.MetarLimitedGift.adminMount(editor, admin, () => {}, history);
+  const flush = () => new Promise(setImmediate);
+  const click = async (dataset) => {
+    history.onclick({ target: { closest: () => ({dataset}) } });
+    await flush();
+  };
+  await flush();
+  assert.match(report.innerHTML, /档位配置.*每人明细/);
+  await click({ list: '1', round: '7', giftView: 'tiers' });
+  assert.match(report.innerHTML, /&lt;旧轮次&gt; · 档位配置/);
+  for (const text of ['API 消耗 &gt; 90071992.54740993 亿', '点赞 ≥ 3', '评论 ≥ 0', '随机 1.00–1.99', '随机 0–2', '固定 1', '51 / 55', '未记录档位'])
+    assert.ok(report.innerHTML.includes(text), text);
+  await click({ list:'1', round:'7', giftView:'1' });
+  assert.match(report.innerHTML, /档位 1 · 每人领取明细/);
+  assert.match(report.innerHTML, /data-list="2" data-round="7" data-gift-view="1">下一页/);
+  await click({ list:'2', round:'7', giftView:'1' });
+  assert.match(paths.at(-1), /page=2&id=7&rule=1$/);
+  assert.match(report.innerHTML, /档位领取者.*待到账.*本次未获得抽奖券/);
+  await click({ list:'1', refreshHistory:'' });
+  assert.match(paths.at(-1), /page=2&id=7&rule=1$/);
+  await click({ list:'1', round:'7', giftView:'0' });
+  assert.match(paths.at(-1), /rule=0$/);
+  assert.match(report.innerHTML, /未记录档位 · 每人领取明细.*旧领取者/);
+  stop();
+});

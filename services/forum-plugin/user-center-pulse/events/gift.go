@@ -446,21 +446,7 @@ func (s *Store) GiftReport(ctx context.Context, actor, id string, page int) (any
 		if _, e := strconv.ParseUint(id, 10, 64); e != nil {
 			return nil, ErrInvalid
 		}
-		rs, e := s.DB.QueryContext(ctx, "SELECT c.user_id,COALESCE(NULLIF(u.display_name,''),u.username,''),c.flash,c.exp,c.tickets,c.flash_paid,c.exp_paid,c.tickets_paid,c.no_ticket_award,c.rule_number,c.created_at FROM metar_gift_claim c LEFT JOIN `user` u ON u.id=c.user_id WHERE round_id=? ORDER BY c.user_id LIMIT 50 OFFSET ?", id, (page-1)*50)
-		if e != nil {
-			return nil, e
-		}
-		defer rs.Close()
-		out := []GiftPerson{}
-		for rs.Next() {
-			var v GiftPerson
-			v.ID = id
-			if e = rs.Scan(&v.User, &v.Name, &v.Flash, &v.Exp, &v.Tickets, &v.FlashPaid, &v.ExpPaid, &v.TicketsPaid, &v.NoTicketAward, &v.RuleNumber, &v.At); e != nil {
-				return nil, e
-			}
-			out = append(out, v)
-		}
-		return out, rs.Err()
+		return s.giftPeople(ctx, id, page, nil)
 	}
 	rs, e := s.DB.QueryContext(ctx, "SELECT r.id,JSON_UNQUOTE(JSON_EXTRACT(r.rules,'$.name')),COALESCE(NULLIF(u.display_name,''),u.username,CAST(r.actor AS CHAR)),r.starts,r.ends,COUNT(c.user_id),COALESCE(SUM(IF(c.flash_paid,c.flash,0)),0),COALESCE(SUM(IF(c.exp_paid,c.exp,0)),0),COALESCE(SUM(IF(c.tickets_paid,c.tickets,0)),0) FROM (SELECT * FROM metar_gift_round ORDER BY id DESC LIMIT 20 OFFSET ?) r LEFT JOIN `user` u ON u.id=r.actor LEFT JOIN metar_gift_claim c ON c.round_id=r.id GROUP BY r.id,r.rules,r.actor,u.display_name,u.username,r.starts,r.ends ORDER BY r.id DESC", (page-1)*20)
 	if e != nil {

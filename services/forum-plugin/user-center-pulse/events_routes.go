@@ -94,7 +94,7 @@ func (uc *UserCenter) eventHandler(op string, session func(*gin.Context) (string
 			return
 		}
 		for k, v := range q {
-			if len(v) != 1 || !(op == "replied_threads" && (k == "page" || k == "q") || op == "list" && (k == "page" || k == "past") || (op == "roster" || op == "gift_history") && (k == "page" || k == "id")) {
+			if len(v) != 1 || !(op == "replied_threads" && (k == "page" || k == "q") || op == "list" && (k == "page" || k == "past") || op == "roster" && (k == "page" || k == "id") || op == "gift_history" && (k == "page" || k == "id" || k == "tiers" || k == "rule")) {
 				communityError(c, 400, "invalid_request")
 				return
 			}
@@ -110,6 +110,19 @@ func (uc *UserCenter) eventHandler(op string, session func(*gin.Context) (string
 		if q.Has("past") && q.Get("past") != "1" {
 			communityError(c, 400, "invalid_request")
 			return
+		}
+		var giftRule int
+		if q.Has("tiers") && (q.Get("tiers") != "1" || q.Get("id") == "" || q.Has("rule") || page != 1) {
+			communityError(c, 400, "invalid_request")
+			return
+		}
+		if q.Has("rule") {
+			raw := q.Get("rule")
+			giftRule, err = strconv.Atoi(raw)
+			if err != nil || giftRule < 0 || strconv.Itoa(giftRule) != raw || q.Get("id") == "" {
+				communityError(c, 400, "invalid_request")
+				return
+			}
 		}
 		var cmd events.Command
 		if op == "command" {
@@ -136,7 +149,14 @@ func (uc *UserCenter) eventHandler(op string, session func(*gin.Context) (string
 		case "list":
 			result, err = store.List(ctx, user, page, q.Get("past") == "1")
 		case "gift_history":
-			result, err = store.GiftReport(ctx, user, q.Get("id"), page)
+			switch {
+			case q.Has("tiers"):
+				result, err = store.GiftTierReport(ctx, user, q.Get("id"))
+			case q.Has("rule"):
+				result, err = store.GiftTierPeople(ctx, user, q.Get("id"), page, giftRule)
+			default:
+				result, err = store.GiftReport(ctx, user, q.Get("id"), page)
+			}
 		case "roster":
 			result, err = store.Roster(ctx, user, q.Get("id"), page)
 		case "command":

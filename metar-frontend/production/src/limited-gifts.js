@@ -67,7 +67,7 @@
       </details></section>`;
   }
   function historyHTML() {
-    return '<section class="card card-pad lg-admin" data-gift-history><div class="lg-heading"><h3>赠礼发布记录</h3><button type="button" class="btn" data-list="1">刷新记录</button></div><div data-report aria-live="polite">正在读取发布记录…</div></section>';
+    return '<section class="card card-pad lg-admin" data-gift-history><div class="lg-heading"><h3>赠礼发布记录</h3><button type="button" class="btn" data-list="1" data-refresh-history>刷新记录</button></div><div data-report aria-live="polite">正在读取发布记录…</div></section>';
   }
   function rewardFields(row) {
     const key = row.closest("[data-rule]").dataset.rule + row.dataset.prize,
@@ -166,7 +166,7 @@
           ? [
               esc(v.Name) + " <small>#" + esc(v.User) + "</small>",
               esc(new Date(v.At * 1000).toLocaleString()),
-              v.rule_number > 0 ? "#" + esc(v.rule_number) : "—",
+              v.rule_number > 0 ? "#" + esc(v.rule_number) : esc(translate("未记录档位")),
             ]
           : [
               esc(v.Name),
@@ -190,7 +190,7 @@
         return (
           "<tr>" +
           initial
-            .concat(rewards, detail ? [] : [nav(1, "每人明细", v.ID)])
+            .concat(rewards, detail ? [] : ['<div class="lg-report-actions">' + nav(1, "档位配置", v.ID, "tiers") + nav(1, "每人明细", v.ID) + "</div>"])
             .map((cell, i) =>
               i === 0
                 ? '<th scope="row">' + cell + "</th>"
@@ -201,19 +201,50 @@
         );
       })
       .join("");
-    return (
-      '<div class="lg-table-wrap" tabindex="0" role="region" aria-label="' +
-      caption +
-      '"><table><caption>' +
-      caption +
-      "</caption><thead><tr>" +
-      labels
-        .map((h) => '<th scope="col">' + esc(translate(h)) + "</th>")
-        .join("") +
-      "</tr></thead><tbody>" +
-      body +
-      "</tbody></table></div>"
-    );
+    return reportTable(caption, labels.map(label => translate(label)), body);
+  }
+  function reportTable(caption, labels, body) {
+    return '<div class="lg-table-wrap" tabindex="0" role="region" aria-label="' +
+      caption + '"><table><caption>' + caption + '</caption><thead><tr>' +
+      labels.map(label => '<th scope="col">' + esc(label) + '</th>').join('') +
+      '</tr></thead><tbody>' + body + '</tbody></table></div>';
+  }
+  function usageAmount(raw) {
+    const digits = BigInt(raw).toString();
+    const places = digits.length > 8 ? 8 : 4;
+    const padded = digits.padStart(places + 1, "0");
+    const fraction = padded.slice(-places).replace(/0+$/, "");
+    return padded.slice(0, -places) + (fraction ? "." + fraction : "") + (places === 8 ? " 亿" : " 万");
+  }
+  function tierGrid(round, id, nav) {
+    const compare = round.social_inclusive ? "≥" : ">";
+    const pillList = items => '<div class="lg-tier-values">' + items.map(value => '<span>' + esc(value) + '</span>').join('') + '</div>';
+    const totals = v => pillList([amount(v.flash, 2) + " 闪", v.exp + " 经验值", v.tickets + " 张券"]);
+    const body = round.tiers.map(tier => {
+      const rule = tier.rule;
+      const gates = [];
+      if (rule.usage_raw) gates.push("API 消耗 > " + usageAmount(rule.usage_raw));
+      if (rule.likes != null) gates.push("点赞 " + compare + " " + rule.likes);
+      if (rule.comments != null) gates.push("评论 " + compare + " " + rule.comments);
+      const prizes = points.flatMap(([key, label, precision]) => {
+        const reward = rule[key];
+        if (!reward) return [];
+        const low = amount(reward.min, precision), high = amount(reward.max, precision);
+        return [label + " · " + (low === high ? "固定 " + low : "随机 " + low + "–" + high)];
+      });
+      return '<tr><th scope="row">档位 ' + esc(tier.number) + (tier.number === 1 ? '<small>最高优先级</small>' : '') +
+        '</th><td>' + (gates.length ? pillList(gates) : "无限制") + '</td><td>' + pillList(prizes) +
+        '</td><td>' + esc(tier.people) + ' / ' + esc(rule.max_claims ?? "不限") + '</td><td>' + totals(tier) +
+        '</td><td>' + nav(1, "本档领取明细", id, String(tier.number)) + '</td></tr>';
+    }).join('');
+    const legacy = round.unassigned;
+    const unassigned = legacy?.people > 0
+      ? '<tr><th scope="row">未记录档位</th><td colspan="2">这些领取记录未保存命中的档位，不能归入任一档。</td><td>' + esc(legacy.people) +
+        '</td><td>' + totals(legacy) + '</td><td>' + nav(1, "查看未归档明细", id, "0") + '</td></tr>'
+      : '';
+    return '<h4 class="lg-report-title">' + esc(round.name) + ' · 档位配置</h4>' +
+      '<p class="lg-report-note">按发布时的优先级排列；同档填写的条件须同时满足。领取人数包含尚未到账及抽中零张券的记录。</p>' +
+      reportTable("各档配置及到账合计", ["档位", "昨日门槛", "奖品配置", "已领取 / 上限", "实际到账", "明细"], body + unassigned);
   }
   // The caller supplies the administrator adapter. The server still verifies
   // the administrator session before returning any per-person rows.
@@ -333,13 +364,15 @@
       headVersion = 0,
       nextCheck = 0,
       activePage = 1,
-      activeId = "";
-    const nav = (p, label, id) =>
+      activeId = "",
+      activeView = "",
+      roundListPage = 1;
+    const nav = (p, label, id, view = "") =>
       '<button type="button" class="btn" data-list="' +
       p +
       '" data-round="' +
       esc(id) +
-      '">' +
+      '" data-gift-view="' + esc(view) + '">' +
       label +
       "</button>";
     function paint() {
@@ -358,23 +391,26 @@
               ? "暂时无法确认当前轮次，请刷新记录后再开启。"
               : "正在核对当前轮次…";
     }
-    async function load(page = 1, id = "", show = true) {
+    async function load(page = 1, id = "", show = true, view = "") {
       const head = page === 1 && !id;
       const hv = head ? ++headVersion : 0,
         seq = show ? ++ticket : 0;
       if (show) {
         activeId = id;
+        activeView = view;
         activePage = page;
+        if (!id) roundListPage = page;
       }
       if (head) nextCheck = Date.now() + 30000;
       try {
         const rows = await admin.request(
           "/metar/events/gift-history?page=" +
             page +
-            (id ? "&id=" + encodeURIComponent(id) : ""),
+            (id ? "&id=" + encodeURIComponent(id) : "") +
+            (view === "tiers" ? "&tiers=1" : view ? "&rule=" + encodeURIComponent(view) : ""),
         );
         if (disposed) return false;
-        if (!Array.isArray(rows)) throw Error();
+        if (view === "tiers" ? !Array.isArray(rows?.tiers) : !Array.isArray(rows)) throw Error();
         if (head && hv === headVersion) {
           current = rows.find(
             (v) => v.End > (v.ServerNow ?? Date.now() / 1000),
@@ -388,11 +424,14 @@
           paint();
         }
         if (show && seq === ticket) {
-          report.innerHTML =
-            (id ? nav(1, "返回赠礼记录", "") : "") +
-            historyGrid(rows, !!id, nav) +
-            (page > 1 ? nav(page - 1, "上一页", id) : "") +
-            (rows.length === (id ? 50 : 20) ? nav(page + 1, "下一页", id) : "");
+          const toolbar = id ? '<div class="lg-report-actions">' + nav(roundListPage, "返回赠礼记录", "") +
+            (view === "tiers" ? nav(1, "全部领取明细", id) : nav(1, "档位配置", id, "tiers")) + '</div>' : '';
+          const title = view && view !== "tiers" ? '<h4 class="lg-report-title">' +
+            (view === "0" ? "未记录档位" : "档位 " + esc(view)) + ' · 每人领取明细</h4>' : '';
+          report.innerHTML = toolbar + (view === "tiers" ? tierGrid(rows, id, nav) : title +
+            historyGrid(rows, !!id, nav) + '<div class="lg-report-actions">' +
+            (page > 1 ? nav(page - 1, "上一页", id, view) : "") +
+            (rows.length === (id ? 50 : 20) && page < 1000 ? nav(page + 1, "下一页", id, view) : "") + '</div>');
         }
         return head && hv === headVersion && state === "idle";
       } catch {
@@ -408,7 +447,9 @@
     }
     history.onclick = (e) => {
       const b = e.target.closest("[data-list]");
-      if (b) void load(Number(b.dataset.list), b.dataset.round || "");
+      if (!b) return;
+      if (b.dataset.refreshHistory !== undefined) void load(activePage, activeId, true, activeView);
+      else void load(Number(b.dataset.list), b.dataset.round || "", true, b.dataset.giftView || "");
     };
     form.onsubmit = async (e) => {
       e.preventDefault();

@@ -858,3 +858,10 @@ html.community-wide:not(.preview-tools) .page{padding-bottom:calc(var(--communit
 .award-entry .award-review-feedback{grid-column:1/-1;margin:0}
 .award-entry .award-review-feedback:empty{display:none}
 @media(min-width:920px){.award-entry--side{grid-template-columns:minmax(0,1.65fr) minmax(0,1fr)}.award-entry--three{grid-template-columns:minmax(0,1.65fr) minmax(0,1.15fr) minmax(0,1fr)}.award-entry--three>.award-recommendations,.award-entry--side>.award-side{padding-inline-start:12px;border-inline-start:1px solid var(--border)}}
+
+.lg-report-actions,.lg-tier-values{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.lg-report-actions:empty{display:none}
+.lg-tier-values span{white-space:nowrap}
+.lg-report-title{margin:14px 0 4px}
+.lg-report-note{margin:0 0 8px;color:var(--muted)}
+.lg-table-wrap:has(.lg-tier-values) table{min-width:800px}
