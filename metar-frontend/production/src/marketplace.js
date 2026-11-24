@@ -62,7 +62,9 @@
   function card(item, privateMode = false) {
     const e = item.entry;
     if (!privateMode && e.kind==='project' && e.display_mode==='play' && item.has_published && item.status==='published') {
-      const image=coverMedia(e,item.title),play=item.demo_status==='available'&&safeURL(e.demo_url);
+      // Answer's post cleanup does not see this legacy marketplace-only upload.
+      const useFarmCover=e.demo_url===farm.demo_url && e.cover_url==='/uploads/post/5VW7QZSN5z7.jpg';
+      const image=coverMedia(useFarmCover?farm:e,item.title),play=item.demo_status==='available'&&safeURL(e.demo_url);
       const face=image+'<span>'+ (play?t('直接游玩 ↗','Play now ↗'):t('暂不可玩','Unavailable'))+'</span>';
       return '<article class="card market-card market-game"><div class="market-game-face">'+(play?'<a href="'+esc(play)+'" target="_blank" rel="noopener noreferrer" aria-label="'+esc(t('直接游玩：','Play: ')+item.title)+'">'+face+'</a>':face)+'</div><div class="market-game-body"><small>'+label(uses,e.use_case)+' · '+label(prices,e.pricing)+'</small><h2>'+esc(item.title)+'</h2><p>'+esc(e.summary)+'</p>'+link('/marketplace/item/'+item.id,t('介绍与讨论','Details & discussion'),'textlink')+'</div></article>';
     }
